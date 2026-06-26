@@ -5,9 +5,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/collector/src/cli.py\" capture --tool codex-cli",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/collector/src/cli.py\" capture-raw --output \"$(git rev-parse --show-toplevel)/docs/real-codex-payload.json\"",
             "timeout": 5,
-            "statusMessage": "Capturing PromptHub event"
+            "statusMessage": "Capturing raw Codex hook payload"
           }
         ]
       }

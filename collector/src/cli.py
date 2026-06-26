@@ -5,6 +5,7 @@ import json
 import os
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 from adapters import normalize_collector_event
@@ -23,6 +24,16 @@ def _read_stdin_json() -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("Expected hook JSON object on stdin")
     return payload
+
+
+def capture_raw(args: argparse.Namespace) -> int:
+    payload = _read_stdin_json()
+    output_path = Path(args.output).expanduser()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as file:
+        json.dump(payload, file, ensure_ascii=False, indent=2, sort_keys=True)
+        file.write("\n")
+    return 0
 
 
 def capture(args: argparse.Namespace) -> int:
@@ -78,6 +89,14 @@ def build_parser() -> argparse.ArgumentParser:
     capture_parser.add_argument("--queue-path")
     capture_parser.add_argument("--sequence-path")
     capture_parser.set_defaults(func=capture)
+
+    capture_raw_parser = subparsers.add_parser("capture-raw")
+    capture_raw_parser.add_argument(
+        "--output",
+        default="docs/real-codex-payload.json",
+        help="Path where the raw hook JSON should be written.",
+    )
+    capture_raw_parser.set_defaults(func=capture_raw)
 
     upload_parser = subparsers.add_parser("upload")
     upload_parser.add_argument(
