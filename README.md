@@ -23,9 +23,6 @@ Queue (JSONL)
 Uploader
     |
     v
-FastAPI
-    |
-    v
 Backend API
     |
     v
@@ -65,12 +62,12 @@ gemini-cli
 Supported event types:
 
 ```text
-SESSION_STARTED
-PROMPT_SENT
-PROMPT_RESPONSE
-FILES_CHANGED
-COMMIT_CREATED
-SESSION_ENDED
+SessionStarted
+PromptSubmitted
+ResponseReceived
+FilesChanged
+CommitCreated
+SessionEnded
 ```
 
 Capture a Claude Code prompt:
@@ -88,7 +85,7 @@ python3 collector/src/cli.py capture --tool codex-cli
 Capture a non-prompt event:
 
 ```bash
-python3 collector/src/cli.py capture --tool codex-cli --event-type FILES_CHANGED
+python3 collector/src/cli.py capture --tool codex-cli --event-type FilesChanged
 ```
 
 Upload queued events:
@@ -120,15 +117,18 @@ GET  /health
   "events": [
     {
       "id": "0db26f22-26a1-4b4b-b42f-8a6248eb65d8",
+      "schema_version": 1,
       "project_id": "56828395-f94c-56f7-9ff9-a2feb027ae19",
       "session_id": "7d9f16c5-76ef-5a7a-82f7-356b25b897b5",
+      "sequence": 12,
       "tool": "codex-cli",
-      "event_type": "PROMPT_SENT",
+      "event_type": "PromptSubmitted",
       "timestamp": "2026-06-27T00:00:00+00:00",
       "payload": {
         "prompt": "Build a FastAPI endpoint",
         "cwd": "/projects/prompthub",
-        "model": "gpt-5"
+        "model": "gpt-5",
+        "turn_id": 12
       }
     }
   ]
@@ -140,6 +140,8 @@ The backend currently uses an in-memory event store. PostgreSQL persistence is t
 See [Event Specification v1](docs/event-spec-v1.md) for the normalized event contract.
 
 See [Development Guidelines](docs/development-guidelines.md) for branch, commit, and module rules.
+
+See [Artifact Model Draft](docs/artifact-model.md) for the future artifact architecture.
 
 Start the local PostgreSQL service:
 

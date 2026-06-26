@@ -8,12 +8,12 @@ from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
 SupportedTool = Literal["claude-code", "codex-cli", "cursor", "gemini-cli"]
 EventType = Literal[
-    "SESSION_STARTED",
-    "PROMPT_SENT",
-    "PROMPT_RESPONSE",
-    "FILES_CHANGED",
-    "COMMIT_CREATED",
-    "SESSION_ENDED",
+    "SessionStarted",
+    "PromptSubmitted",
+    "ResponseReceived",
+    "FilesChanged",
+    "CommitCreated",
+    "SessionEnded",
 ]
 
 SUPPORTED_TOOLS: tuple[SupportedTool, ...] = (
@@ -23,13 +23,29 @@ SUPPORTED_TOOLS: tuple[SupportedTool, ...] = (
     "gemini-cli",
 )
 SUPPORTED_EVENT_TYPES: tuple[EventType, ...] = (
-    "SESSION_STARTED",
-    "PROMPT_SENT",
-    "PROMPT_RESPONSE",
-    "FILES_CHANGED",
-    "COMMIT_CREATED",
-    "SESSION_ENDED",
+    "SessionStarted",
+    "PromptSubmitted",
+    "ResponseReceived",
+    "FilesChanged",
+    "CommitCreated",
+    "SessionEnded",
 )
+EVENT_TYPE_ALIASES: dict[str, EventType] = {
+    "SESSION_STARTED": "SessionStarted",
+    "PROMPT_SENT": "PromptSubmitted",
+    "PROMPT_RESPONSE": "ResponseReceived",
+    "FILES_CHANGED": "FilesChanged",
+    "COMMIT_CREATED": "CommitCreated",
+    "SESSION_ENDED": "SessionEnded",
+    "session_started": "SessionStarted",
+    "prompt_sent": "PromptSubmitted",
+    "prompt_submitted": "PromptSubmitted",
+    "response_received": "ResponseReceived",
+    "prompt_response": "ResponseReceived",
+    "files_changed": "FilesChanged",
+    "commit_created": "CommitCreated",
+    "session_ended": "SessionEnded",
+}
 
 TOOL_ALIASES: dict[str, SupportedTool] = {
     "claude": "claude-code",
@@ -47,25 +63,100 @@ def utc_now_iso() -> str:
 
 
 @dataclass(slots=True)
+class PayloadBase:
+    def to_dict(self) -> dict[str, Any]:
+        return {key: value for key, value in asdict(self).items() if value is not None}
+
+
+@dataclass(slots=True)
+class SessionStartedPayload(PayloadBase):
+    cwd: str | None = None
+    branch: str | None = None
+    model: str | None = None
+    permission_mode: str | None = None
+    session_id: str | None = None
+
+
+@dataclass(slots=True)
+class PromptSubmittedPayload(PayloadBase):
+    prompt: str
+    cwd: str | None = None
+    model: str | None = None
+    permission_mode: str | None = None
+    transcript_path: str | None = None
+    turn_id: str | int | None = None
+    session_id: str | None = None
+    branch: str | None = None
+    hook_event_name: str | None = None
+    approval_policy: str | None = None
+    sandbox_mode: str | None = None
+
+
+@dataclass(slots=True)
+class ResponseReceivedPayload(PayloadBase):
+    tokens: int | None = None
+    duration_ms: int | None = None
+    success: bool | None = None
+    model: str | None = None
+    session_id: str | None = None
+
+
+@dataclass(slots=True)
+class FilesChangedPayload(PayloadBase):
+    files: list[str] = field(default_factory=list)
+    cwd: str | None = None
+    session_id: str | None = None
+
+
+@dataclass(slots=True)
+class CommitCreatedPayload(PayloadBase):
+    hash: str | None = None
+    message: str | None = None
+    branch: str | None = None
+    cwd: str | None = None
+    session_id: str | None = None
+
+
+@dataclass(slots=True)
+class SessionEndedPayload(PayloadBase):
+    reason: str | None = None
+    duration: int | None = None
+    session_id: str | None = None
+
+
+EventPayload = (
+    SessionStartedPayload
+    | PromptSubmittedPayload
+    | ResponseReceivedPayload
+    | FilesChangedPayload
+    | CommitCreatedPayload
+    | SessionEndedPayload
+)
+
+
+@dataclass(slots=True)
 class BaseEvent:
     tool: SupportedTool
     event_type: EventType
-    payload: dict[str, Any]
+    payload: EventPayload
     project_id: str
     session_id: str
+    sequence: int
     id: str = field(default_factory=lambda: str(uuid4()))
     timestamp: str = field(default_factory=utc_now_iso)
+    schema_version: int = 1
 
     def to_dict(self) -> dict[str, Any]:
-        event = asdict(self)
         return {
-            "id": event["id"],
-            "project_id": event["project_id"],
-            "session_id": event["session_id"],
-            "tool": event["tool"],
-            "event_type": event["event_type"],
-            "timestamp": event["timestamp"],
-            "payload": event["payload"],
+            "id": self.id,
+            "schema_version": self.schema_version,
+            "project_id": self.project_id,
+            "session_id": self.session_id,
+            "sequence": self.sequence,
+            "tool": self.tool,
+            "event_type": self.event_type,
+            "timestamp": self.timestamp,
+            "payload": self.payload.to_dict(),
         }
 
 
@@ -78,6 +169,9 @@ def normalize_tool(tool: str) -> SupportedTool:
 
 def normalize_event_type(event_type: str) -> EventType:
     if event_type not in SUPPORTED_EVENT_TYPES:
+        alias = EVENT_TYPE_ALIASES.get(event_type)
+        if alias:
+            return alias
         raise ValueError(f"Unsupported event type: {event_type}")
     return event_type  # type: ignore[return-value]
 
@@ -138,19 +232,34 @@ def resolve_session_id(
     return stable_uuid("prompthub.session", f"{project_id}:{tool}:{session_seed}")
 
 
+def resolve_sequence(raw_payload: dict[str, Any], event_payload: dict[str, Any]) -> int:
+    for key in ("sequence", "seq", "turn_id", "turn", "message_index"):
+        value = raw_payload.get(key)
+        if value is None:
+            value = event_payload.get(key)
+        if isinstance(value, int) and value > 0:
+            return value
+        if isinstance(value, str) and value.isdigit():
+            return int(value)
+    return 0
+
+
 def build_event(
     *,
     tool: SupportedTool,
     event_type: EventType,
-    payload: dict[str, Any],
+    payload: EventPayload,
     raw_payload: dict[str, Any],
 ) -> BaseEvent:
-    project_id = resolve_project_id(raw_payload, payload)
-    session_id = resolve_session_id(tool, project_id, raw_payload, payload)
+    event_payload = payload.to_dict()
+    project_id = resolve_project_id(raw_payload, event_payload)
+    session_id = resolve_session_id(tool, project_id, raw_payload, event_payload)
+    sequence = resolve_sequence(raw_payload, event_payload)
 
     return BaseEvent(
         project_id=project_id,
         session_id=session_id,
+        sequence=sequence,
         tool=tool,
         event_type=event_type,
         payload=payload,

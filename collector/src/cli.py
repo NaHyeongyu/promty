@@ -9,6 +9,7 @@ from typing import Any
 
 from adapters import normalize_collector_event
 from events import SUPPORTED_EVENT_TYPES, TOOL_ALIASES, normalize_event_type, normalize_tool
+from sequence import SequenceStore
 from uploader.client import PromptHubUploader
 from uploader.queue import JSONLQueue
 
@@ -31,6 +32,7 @@ def capture(args: argparse.Namespace) -> int:
         raise ValueError("Expected --tool")
     event_type = normalize_event_type(args.event_type) if args.event_type else None
     event = normalize_collector_event(normalize_tool(tool), payload, event_type)
+    SequenceStore(args.sequence_path).assign(event)
     JSONLQueue(args.queue_path).push(event)
     return 0
 
@@ -71,9 +73,10 @@ def build_parser() -> argparse.ArgumentParser:
     capture_parser.add_argument(
         "--event-type",
         choices=SUPPORTED_EVENT_TYPES,
-        help="PromptHub event type. Defaults to payload event_type or PROMPT_SENT.",
+        help="PromptHub event type. Defaults to payload event_type or PromptSubmitted.",
     )
     capture_parser.add_argument("--queue-path")
+    capture_parser.add_argument("--sequence-path")
     capture_parser.set_defaults(func=capture)
 
     upload_parser = subparsers.add_parser("upload")

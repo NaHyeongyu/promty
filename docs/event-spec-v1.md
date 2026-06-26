@@ -8,7 +8,7 @@ Claude Code, Codex CLI, Cursor, Gemini CLI 등 다양한 AI 개발 도구가 존
 
 Collector의 역할은 각 도구의 데이터를 PromptHub의 표준 Event 형태로 변환하는 것이다.
 
-Backend는 어떤 AI 도구에서 왔는지 신경 쓰지 않고 Event만 처리한다.
+Backend는 어떤 AI 도구에서 왔는지 신경 쓰지 않고 PromptHub Event만 처리한다.
 
 ## Event Flow
 
@@ -34,19 +34,27 @@ v
 PostgreSQL
 ```
 
+Collector는 Hook 내부에서 네트워크 요청을 하지 않는다.
+
 ## Base Event
 
 모든 Event는 아래 공통 필드를 가진다.
 
 ```text
 id: UUID
+schema_version: int
 project_id: UUID
 session_id: UUID
+sequence: int
 tool: str
 event_type: str
 timestamp: datetime
-payload: object
+payload: typed object
 ```
+
+`schema_version`의 기본값은 `1`이다.
+
+Timeline 정렬은 같은 session 안에서 `session_id + sequence`를 기준으로 한다.
 
 ## Supported Tool
 
@@ -66,67 +74,81 @@ Backend는 수정하지 않는다.
 V1에서는 아래 Event만 지원한다.
 
 ```text
-SESSION_STARTED
-PROMPT_SENT
-PROMPT_RESPONSE
-FILES_CHANGED
-COMMIT_CREATED
-SESSION_ENDED
+SessionStarted
+PromptSubmitted
+ResponseReceived
+FilesChanged
+CommitCreated
+SessionEnded
 ```
 
-## SESSION_STARTED
+Event 이름은 이미 발생한 일을 표현하기 위해 과거형을 사용한다.
+
+## SessionStarted
 
 AI 세션이 시작될 때 발생한다.
 
-Payload:
+Payload model: `SessionStartedPayload`
 
 ```json
 {
   "cwd": "/projects/football",
   "branch": "main",
-  "model": "claude-sonnet-4"
+  "model": "claude-sonnet-4",
+  "permission_mode": "default",
+  "session_id": "tool-session-id"
 }
 ```
 
-## PROMPT_SENT
+## PromptSubmitted
 
-사용자가 AI에게 Prompt를 입력한 순간 발생한다.
+사용자가 AI에게 prompt를 입력한 순간 발생한다.
 
-Payload:
+Payload model: `PromptSubmittedPayload`
 
 ```json
 {
   "prompt": "로그인 기능 만들어줘",
   "cwd": "/projects/football",
   "model": "claude-sonnet-4",
+  "permission_mode": "default",
   "transcript_path": "...",
-  "turn": 12
+  "turn_id": 12,
+  "session_id": "tool-session-id",
+  "branch": "main",
+  "hook_event_name": "UserPromptSubmit",
+  "approval_policy": "on-request",
+  "sandbox_mode": "workspace-write"
 }
 ```
 
 PromptHub에서 가장 중요한 Event이다.
 
-## PROMPT_RESPONSE
+Claude/Codex에서 제공하는 유용한 metadata는 이 typed payload 안에 보존한다.
+
+## ResponseReceived
 
 AI 응답이 완료되면 발생한다.
 
-Payload:
+Payload model: `ResponseReceivedPayload`
 
 ```json
 {
   "tokens": 1350,
   "duration_ms": 4210,
-  "success": true
+  "success": true,
+  "model": "claude-sonnet-4",
+  "session_id": "tool-session-id"
 }
 ```
 
-V1에서는 Response 전문은 저장하지 않는다.
+V1에서는 response 전문은 저장하지 않는다.
 
-## FILES_CHANGED
+## FilesChanged
 
 AI가 수정한 파일 목록.
 
-Payload:
+Payload model: `FilesChangedPayload`
 
 ```json
 {
@@ -134,33 +156,39 @@ Payload:
     "auth.py",
     "login.tsx",
     "middleware.py"
-  ]
+  ],
+  "cwd": "/projects/football",
+  "session_id": "tool-session-id"
 }
 ```
 
-## COMMIT_CREATED
+## CommitCreated
 
-Git Commit이 생성되면 발생한다.
+Git commit이 생성되면 발생한다.
 
-Payload:
+Payload model: `CommitCreatedPayload`
 
 ```json
 {
   "hash": "abc123",
-  "message": "Implement JWT Login"
+  "message": "Implement JWT Login",
+  "branch": "main",
+  "cwd": "/projects/football",
+  "session_id": "tool-session-id"
 }
 ```
 
-## SESSION_ENDED
+## SessionEnded
 
 AI 세션이 종료되면 발생한다.
 
-Payload:
+Payload model: `SessionEndedPayload`
 
 ```json
 {
   "reason": "exit",
-  "duration": 352
+  "duration": 352,
+  "session_id": "tool-session-id"
 }
 ```
 
@@ -192,7 +220,7 @@ Collector는 이를 PromptHub Event로 변환한다.
 
 ```json
 {
-  "event_type": "PROMPT_SENT",
+  "event_type": "PromptSubmitted",
   "tool": "claude-code",
   "payload": {
     "prompt": "로그인 기능 만들어줘"
@@ -227,6 +255,12 @@ Uploader가 백그라운드 업로드
 ~/.prompthub/events.jsonl
 ```
 
+Sequence state 저장 위치:
+
+```text
+~/.prompthub/sequences.json
+```
+
 ## Session 구조
 
 ```text
@@ -236,25 +270,25 @@ v
 Session
 |
 v
-Prompt
+PromptSubmitted
 |
 v
-Prompt
+ResponseReceived
 |
 v
-Files Changed
+FilesChanged
 |
 v
-Commit
+CommitCreated
 |
 v
-Prompt
+PromptSubmitted
 |
 v
-Session End
+SessionEnded
 ```
 
-PromptHub Timeline은 Event를 시간순으로 정렬하여 생성한다.
+PromptHub Timeline은 Event를 session별 sequence 순서로 정렬하여 생성한다.
 
 ## Design Principle
 

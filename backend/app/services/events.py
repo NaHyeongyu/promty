@@ -19,8 +19,7 @@ class InMemoryEventStore:
     def list_recent(self, limit: int = 100) -> list[EventRead]:
         events = sorted(
             self._events.values(),
-            key=lambda event: event.timestamp,
-            reverse=True,
+            key=lambda event: (str(event.session_id), event.sequence),
         )
         return events[:limit]
 

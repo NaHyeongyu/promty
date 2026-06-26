@@ -5,21 +5,33 @@ type EventTimelineProps = {
 };
 
 function getEventSummary(event: PromptHubEvent): string {
-  if (event.event_type === "PROMPT_SENT" && typeof event.payload.prompt === "string") {
+  if (event.event_type === "PromptSubmitted") {
     return event.payload.prompt;
   }
 
-  if (event.event_type === "FILES_CHANGED" && Array.isArray(event.payload.files)) {
+  if (event.event_type === "FilesChanged") {
     return event.payload.files.join(", ");
   }
 
-  if (event.event_type === "COMMIT_CREATED") {
-    const hash = typeof event.payload.hash === "string" ? event.payload.hash : "";
-    const message = typeof event.payload.message === "string" ? event.payload.message : "";
+  if (event.event_type === "CommitCreated") {
+    const hash = event.payload.hash ?? "";
+    const message = event.payload.message ?? "";
     return [hash, message].filter(Boolean).join(" ");
   }
 
-  return event.event_type.split("_").join(" ").toLowerCase();
+  if (event.event_type === "ResponseReceived") {
+    const tokens = event.payload.tokens ? `${event.payload.tokens} tokens` : "";
+    const duration = event.payload.duration_ms ? `${event.payload.duration_ms} ms` : "";
+    return [tokens, duration].filter(Boolean).join(" ");
+  }
+
+  return event.event_type;
+}
+
+function getStringPayloadValue(event: PromptHubEvent, key: "model" | "cwd"): string | null {
+  const payload = event.payload as Partial<Record<"model" | "cwd", unknown>>;
+  const value = payload[key];
+  return typeof value === "string" ? value : null;
 }
 
 export function EventTimeline({ events }: EventTimelineProps) {
@@ -27,14 +39,23 @@ export function EventTimeline({ events }: EventTimelineProps) {
     return <p>No events yet.</p>;
   }
 
+  const orderedEvents = [...events].sort((left, right) => {
+    const sessionCompare = left.session_id.localeCompare(right.session_id);
+    if (sessionCompare !== 0) {
+      return sessionCompare;
+    }
+    return left.sequence - right.sequence;
+  });
+
   return (
     <ol>
-      {events.map((event) => (
+      {orderedEvents.map((event) => (
         <li key={event.id}>
           <article>
             <header>
               <strong>{event.event_type}</strong>
               <span>{event.tool}</span>
+              <span>#{event.sequence}</span>
               <time dateTime={event.timestamp}>
                 {new Date(event.timestamp).toLocaleString()}
               </time>
@@ -43,16 +64,16 @@ export function EventTimeline({ events }: EventTimelineProps) {
             <dl>
               <dt>Session</dt>
               <dd>{event.session_id}</dd>
-              {typeof event.payload.model === "string" ? (
+              {getStringPayloadValue(event, "model") ? (
                 <>
                   <dt>Model</dt>
-                  <dd>{event.payload.model}</dd>
+                  <dd>{getStringPayloadValue(event, "model")}</dd>
                 </>
               ) : null}
-              {typeof event.payload.cwd === "string" ? (
+              {getStringPayloadValue(event, "cwd") ? (
                 <>
                   <dt>Working directory</dt>
-                  <dd>{event.payload.cwd}</dd>
+                  <dd>{getStringPayloadValue(event, "cwd")}</dd>
                 </>
               ) : null}
             </dl>

@@ -186,13 +186,28 @@ Base fields:
 
 ```text
 id
+schema_version
 project_id
 session_id
+sequence
 tool
 event_type
 timestamp
 payload
 ```
+
+Event names use past tense:
+
+```text
+SessionStarted
+PromptSubmitted
+ResponseReceived
+FilesChanged
+CommitCreated
+SessionEnded
+```
+
+Payloads must use typed models. Do not pass arbitrary JSON through the backend.
 
 Backend changes are required only when the PromptHub Event contract changes, not when a tool changes its own hook payload.
 
