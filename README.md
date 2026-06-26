@@ -139,6 +139,8 @@ The backend currently uses an in-memory event store. PostgreSQL persistence is t
 
 See [Event Specification v1](docs/event-spec-v1.md) for the normalized event contract.
 
+See [Development Guidelines](docs/development-guidelines.md) for branch, commit, and module rules.
+
 Start the local PostgreSQL service:
 
 ```bash
