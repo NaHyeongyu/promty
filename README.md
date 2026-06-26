@@ -143,6 +143,8 @@ See [Development Guidelines](docs/development-guidelines.md) for branch, commit,
 
 See [Artifact Model Draft](docs/artifact-model.md) for the future artifact architecture.
 
+See [Codex Hook Verification](docs/codex-hook-verification.md) for the first hook smoke path.
+
 Start the local PostgreSQL service:
 
 ```bash

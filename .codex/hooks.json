@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/collector/src/cli.py\" capture --tool codex-cli",
+            "timeout": 5,
+            "statusMessage": "Capturing PromptHub event"
+          }
+        ]
+      }
+    ]
+  }
+}
