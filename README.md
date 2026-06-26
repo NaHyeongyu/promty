@@ -1,6 +1,41 @@
 # PromptHub
 
-Project structure:
+PromptHub collects AI development events from local coding tools and shows them in a timeline.
+
+## Flow
+
+```text
+AI Tool
+    |
+    v
+Hook
+    |
+    v
+Adapter
+    |
+    v
+PromptHub Event
+    |
+    v
+Queue (JSONL)
+    |
+    v
+Uploader
+    |
+    v
+FastAPI
+    |
+    v
+Backend API
+    |
+    v
+PostgreSQL
+    |
+    v
+React Timeline
+```
+
+## Project Structure
 
 ```text
 prompthub/
@@ -12,4 +47,100 @@ prompthub/
 ├── docker-compose.yml
 ├── README.md
 └── .github/
+```
+
+## Collector
+
+The collector receives hook JSON through stdin and normalizes each tool payload into a PromptHub Event.
+
+Supported tools:
+
+```text
+claude-code
+codex-cli
+cursor
+gemini-cli
+```
+
+Supported event types:
+
+```text
+SESSION_STARTED
+PROMPT_SENT
+PROMPT_RESPONSE
+FILES_CHANGED
+COMMIT_CREATED
+SESSION_ENDED
+```
+
+Capture a Claude Code prompt:
+
+```bash
+python3 collector/src/cli.py capture --tool claude-code
+```
+
+Capture a Codex prompt:
+
+```bash
+python3 collector/src/cli.py capture --tool codex-cli
+```
+
+Capture a non-prompt event:
+
+```bash
+python3 collector/src/cli.py capture --tool codex-cli --event-type FILES_CHANGED
+```
+
+Upload queued events:
+
+```bash
+python3 collector/src/cli.py upload --api-url http://localhost:8000
+```
+
+By default, queued events are stored at:
+
+```text
+~/.prompthub/events.jsonl
+```
+
+## Backend
+
+Current API contract:
+
+```text
+POST /api/events/batch
+GET  /api/events
+GET  /health
+```
+
+`POST /api/events/batch` accepts:
+
+```json
+{
+  "events": [
+    {
+      "id": "0db26f22-26a1-4b4b-b42f-8a6248eb65d8",
+      "project_id": "56828395-f94c-56f7-9ff9-a2feb027ae19",
+      "session_id": "7d9f16c5-76ef-5a7a-82f7-356b25b897b5",
+      "tool": "codex-cli",
+      "event_type": "PROMPT_SENT",
+      "timestamp": "2026-06-27T00:00:00+00:00",
+      "payload": {
+        "prompt": "Build a FastAPI endpoint",
+        "cwd": "/projects/prompthub",
+        "model": "gpt-5"
+      }
+    }
+  ]
+}
+```
+
+The backend currently uses an in-memory event store. PostgreSQL persistence is the next storage step.
+
+See [Event Specification v1](docs/event-spec-v1.md) for the normalized event contract.
+
+Start the local PostgreSQL service:
+
+```bash
+docker compose up -d postgres
 ```
