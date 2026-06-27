@@ -12,6 +12,11 @@ from app.models.projects import Project
 from app.models.sessions import Session
 from app.models.users import User
 from app.schemas.events import EventCreate, EventRead
+from app.services.event_payload_security import (
+    apply_event_storage_policy,
+    decrypt_event_payload,
+    encrypt_event_payload,
+)
 from app.services.project_resources import sync_project_resources_from_event
 
 SYSTEM_USER_ID = uuid5(NAMESPACE_DNS, "prompthub.system_user")
@@ -159,7 +164,7 @@ def _to_read_model(event: Event) -> EventRead:
         tool=event.tool,
         event_type=event.event_type,
         timestamp=event.created_at,
-        payload=event.payload,
+        payload=decrypt_event_payload(event.event_type, event.payload),
     )
 
 
@@ -177,6 +182,10 @@ def _event_values(event: EventCreate, payload: dict[str, Any]) -> dict[str, Any]
 
 
 def _stored_event_values(event: Event) -> dict[str, Any]:
+    payload = apply_event_storage_policy(
+        event.event_type,
+        decrypt_event_payload(event.event_type, event.payload),
+    )
     return {
         "project_id": event.project_id,
         "session_id": event.session_id,
@@ -184,7 +193,7 @@ def _stored_event_values(event: Event) -> dict[str, Any]:
         "schema_version": event.schema_version,
         "tool": event.tool,
         "event_type": event.event_type,
-        "payload": event.payload,
+        "payload": payload,
         "created_at": event.created_at,
     }
 
@@ -223,7 +232,8 @@ def add_events(
     event_ids: list[str] = []
 
     for event in events:
-        payload = _dump_model(event.payload)
+        payload = apply_event_storage_policy(event.event_type, _dump_model(event.payload))
+        storage_payload = encrypt_event_payload(event.event_type, payload)
         existing = db.get(Event, event.id)
 
         if existing is not None:
@@ -241,10 +251,11 @@ def add_events(
             schema_version=event.schema_version,
             tool=event.tool,
             event_type=event.event_type,
-            payload=payload,
+            payload=storage_payload,
             created_at=event.timestamp,
         )
         db.add(event_row)
+        db.flush()
         sync_project_resources_from_event(db, event_row, payload)
 
         event_ids.append(str(event.id))

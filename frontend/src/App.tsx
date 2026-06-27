@@ -90,9 +90,30 @@ type ProjectDetailApiResponse = {
     started_at: string | null;
   }>;
   prompt_activities?: Array<{
+    file_changes?: Array<{
+      additions: number | null;
+      binary?: boolean;
+      deletions: number | null;
+      old_path?: string | null;
+      patch?: string | null;
+      patch_omitted_reason?: string | null;
+      patch_truncated?: boolean;
+      path: string;
+      status: string;
+    }>;
+    files_changed?: number;
     id: string;
     model: string;
     prompt: string;
+    prompt_original_length?: number | null;
+    prompt_storage_limit?: number | null;
+    prompt_truncated?: boolean;
+    response?: string | null;
+    response_original_length?: number | null;
+    response_received_at?: string | null;
+    response_source?: string | null;
+    response_storage_limit?: number | null;
+    response_truncated?: boolean;
     sequence: number;
     session_id: string;
     submitted_at: string | null;
@@ -391,9 +412,32 @@ function projectDetailDataFromApi(
       startedAt: formatOptionalTimestamp(activity.started_at, "Unknown"),
     })),
     promptActivities: (payload.prompt_activities ?? []).map((activity) => ({
+      fileChanges: (activity.file_changes ?? []).map((change) => ({
+        additions: change.additions,
+        binary: change.binary,
+        deletions: change.deletions,
+        oldPath: change.old_path,
+        patch: change.patch,
+        patchOmittedReason: change.patch_omitted_reason,
+        patchTruncated: change.patch_truncated,
+        path: change.path,
+        status: change.status,
+      })),
+      filesChanged: activity.files_changed ?? activity.file_changes?.length ?? 0,
       id: activity.id,
       model: activity.model,
       prompt: activity.prompt,
+      promptOriginalLength: activity.prompt_original_length,
+      promptStorageLimit: activity.prompt_storage_limit,
+      promptTruncated: activity.prompt_truncated,
+      response: activity.response,
+      responseOriginalLength: activity.response_original_length,
+      responseReceivedAt: activity.response_received_at
+        ? formatOptionalTimestamp(activity.response_received_at, "Unknown")
+        : null,
+      responseSource: activity.response_source,
+      responseStorageLimit: activity.response_storage_limit,
+      responseTruncated: activity.response_truncated,
       sequence: activity.sequence,
       sessionId: activity.session_id,
       submittedAt: formatOptionalTimestamp(activity.submitted_at, "Unknown"),

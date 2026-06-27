@@ -214,12 +214,18 @@ export PROMPTHUB_APP_URL="https://app.prompthub.example"
 export PROMPTHUB_GITHUB_CLIENT_ID="github-oauth-client-id"
 export PROMPTHUB_GITHUB_CLIENT_SECRET="github-oauth-client-secret"
 export PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_KEY="replace-with-github-token-encryption-secret"
+export PROMPTHUB_APP_ENCRYPTION_KEY="replace-with-app-data-encryption-secret"
+export PROMPTHUB_APP_ENCRYPTION_KEY_ID="local"
+export PROMPTHUB_PROMPT_MAX_CHARS="50000"
+export PROMPTHUB_RESPONSE_MAX_CHARS="50000"
 export PROMPTHUB_OAUTH_STATE_SECRET="replace-with-oauth-state-secret"
 export PROMPTHUB_JWT_SECRET="replace-with-jwt-secret"
 export PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS="3600"
 ```
 
 Web users sign in through GitHub OAuth. The backend issues a short-lived HS256 JWT in an HttpOnly session cookie and requires it for browser reads such as `GET /api/events`.
+
+Prompt text, AI response text, and unified diff patch text are encrypted at rest with application-level encryption. Project/session IDs, timestamps, file paths, line counts, and status metadata remain queryable for sorting and filtering. Prompt and response text are capped before encryption and default to 50,000 characters.
 
 Collectors do not use the web JWT. CLI login issues a separate per-user collector token stored as a hash in PostgreSQL. `POST /api/events/batch` accepts that collector token as `Authorization: Bearer <token>`. `PROMPTHUB_API_TOKEN` remains available as an optional local/global ingest token.
 

@@ -99,6 +99,13 @@ class PromptSubmittedPayload(PayloadBase):
 
 @dataclass(slots=True)
 class ResponseReceivedPayload(PayloadBase):
+    response: str | None = None
+    response_truncated: bool = False
+    response_original_length: int | None = None
+    response_storage_limit: int | None = None
+    response_source: str | None = None
+    transcript_path: str | None = None
+    turn_id: str | int | None = None
     tokens: int | None = None
     duration_ms: int | None = None
     success: bool | None = None

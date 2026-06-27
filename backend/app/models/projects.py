@@ -46,6 +46,11 @@ class Project(Base):
     events = relationship("Event", back_populates="project", cascade="all, delete-orphan")
     artifacts = relationship("Artifact", back_populates="project", cascade="all, delete-orphan")
     files = relationship("ProjectFile", back_populates="project", cascade="all, delete-orphan")
+    code_change_patches = relationship(
+        "CodeChangePatch",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
     knowledge_resources = relationship(
         "ProjectKnowledgeResource",
         back_populates="project",

@@ -82,6 +82,16 @@ class Settings:
     github_token_encryption_key: str | None = field(
         default_factory=lambda: _optional_env("PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_KEY")
     )
+    app_encryption_key: str | None = field(
+        default_factory=lambda: _optional_env("PROMPTHUB_APP_ENCRYPTION_KEY")
+    )
+    app_encryption_key_id: str = os.environ.get("PROMPTHUB_APP_ENCRYPTION_KEY_ID", "local")
+    prompt_max_chars: int = field(
+        default_factory=lambda: _int_env("PROMPTHUB_PROMPT_MAX_CHARS", 50000)
+    )
+    response_max_chars: int = field(
+        default_factory=lambda: _int_env("PROMPTHUB_RESPONSE_MAX_CHARS", 50000)
+    )
     oauth_state_secret: str | None = field(
         default_factory=lambda: _optional_env("PROMPTHUB_OAUTH_STATE_SECRET")
     )

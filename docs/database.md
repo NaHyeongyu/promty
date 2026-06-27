@@ -48,6 +48,11 @@ PROMPTHUB_API_PUBLIC_URL
 PROMPTHUB_APP_URL
 PROMPTHUB_GITHUB_CLIENT_ID
 PROMPTHUB_GITHUB_CLIENT_SECRET
+PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_KEY
+PROMPTHUB_APP_ENCRYPTION_KEY
+PROMPTHUB_APP_ENCRYPTION_KEY_ID
+PROMPTHUB_PROMPT_MAX_CHARS
+PROMPTHUB_RESPONSE_MAX_CHARS
 PROMPTHUB_OAUTH_STATE_SECRET
 PROMPTHUB_JWT_SECRET
 PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS
@@ -62,6 +67,8 @@ Browser reads require GitHub login and a valid PromptHub JWT session cookie. The
 If `PROMPTHUB_API_TOKEN` is set, `POST /api/events/batch` accepts that global `Authorization: Bearer <token>`. GitHub CLI login issues per-user collector tokens stored as hashes in `collector_tokens`. Web JWTs and collector tokens are intentionally separate.
 
 The web OAuth flow stores a short-lived HttpOnly nonce cookie and verifies it against the signed OAuth state in the callback. `PROMPTHUB_CORS_ORIGINS` is a comma-separated allowlist and defaults to the local Vite origins.
+
+Application-level encryption protects sensitive development context at rest. `PROMPTHUB_APP_ENCRYPTION_KEY` is the preferred dedicated key for prompt text, AI response text, and unified diff patch text. If it is not configured, the backend falls back to the JWT/OAuth/API secret chain for local compatibility. Decryption keeps that fallback key chain available so local data written before a dedicated app key is added can still be read. Production deployments should always set a dedicated app encryption key and key id.
 
 ## ERD
 
@@ -191,6 +198,19 @@ payload JSONB
 created_at timestamptz
 ```
 
+Storage policy:
+
+```text
+PromptSubmitted.payload.prompt is encrypted before persistence.
+Prompt text is capped by PROMPTHUB_PROMPT_MAX_CHARS, default 50000 characters.
+Prompt truncation metadata is stored as prompt_truncated, prompt_original_length, and prompt_storage_limit.
+ResponseReceived.payload.response is encrypted before persistence.
+Response text is capped by PROMPTHUB_RESPONSE_MAX_CHARS, default 50000 characters.
+Response truncation metadata is stored as response_truncated, response_original_length, and response_storage_limit.
+FilesChanged.payload.changes[].patch is encrypted before persistence.
+Queryable metadata such as project_id, session_id, event_type, timestamps, file paths, and line counts remains plaintext.
+```
+
 Indexes:
 
 ```text
@@ -210,6 +230,47 @@ sequence > 0
 schema_version >= 1
 tool in supported tools
 event_type in supported event types
+```
+
+### code_change_patches
+
+Prompt/turn-level file diffs extracted from `FilesChanged` events. This table is optimized for showing GitHub-style code review UI without scanning every event payload.
+
+```text
+id UUID PK
+project_id UUID FK -> projects.id on delete cascade
+session_id UUID FK -> sessions.id on delete cascade
+event_id UUID FK -> events.id on delete cascade
+prompt_event_id UUID nullable
+path string
+old_path string nullable
+status string
+additions int nullable
+deletions int nullable
+patch text nullable
+patch_truncated boolean
+binary boolean
+metadata JSONB
+created_at timestamptz
+```
+
+Indexes:
+
+```text
+(project_id, prompt_event_id)
+(project_id, created_at)
+event_id
+session_id
+```
+
+Patch policy:
+
+```text
+Store unified diffs per PromptSubmitted -> FilesChanged turn.
+Do not store full before/after file bodies.
+Encrypt stored patch text with application-level encryption.
+Do not store patch text for sensitive paths, excluded directories, binary files, or oversized files.
+Use metadata.patch_omitted_reason when patch text is omitted.
 ```
 
 ### session constraints

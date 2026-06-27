@@ -36,10 +36,33 @@ export type ActivityItem = {
   filesChanged: number;
 };
 
+export type PromptFileChange = {
+  additions: number | null;
+  binary?: boolean;
+  deletions: number | null;
+  oldPath?: string | null;
+  patch?: string | null;
+  patchOmittedReason?: string | null;
+  patchTruncated?: boolean;
+  path: string;
+  status: string;
+};
+
 export type PromptActivityItem = {
+  fileChanges: PromptFileChange[];
+  filesChanged: number;
   id: string;
   model: string;
   prompt: string;
+  promptOriginalLength?: number | null;
+  promptStorageLimit?: number | null;
+  promptTruncated?: boolean;
+  response?: string | null;
+  responseOriginalLength?: number | null;
+  responseReceivedAt?: string | null;
+  responseSource?: string | null;
+  responseStorageLimit?: number | null;
+  responseTruncated?: boolean;
   sequence: number;
   sessionId: string;
   submittedAt: string;

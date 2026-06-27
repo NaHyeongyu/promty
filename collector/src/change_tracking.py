@@ -3,6 +3,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import difflib
+import fnmatch
 import hashlib
 import json
 import os
@@ -25,6 +27,8 @@ DEFAULT_CHANGE_BASELINE_PATH = Path(
 ).expanduser()
 GIT_TIMEOUT_SECONDS = float(os.environ.get("PROMPTHUB_GIT_TIMEOUT", "5"))
 FINGERPRINT_MAX_BYTES = int(os.environ.get("PROMPTHUB_FINGERPRINT_MAX_BYTES", "2097152"))
+PATCH_CONTENT_MAX_BYTES = int(os.environ.get("PROMPTHUB_PATCH_CONTENT_MAX_BYTES", "524288"))
+PATCH_MAX_BYTES = int(os.environ.get("PROMPTHUB_PATCH_MAX_BYTES", "262144"))
 UNTRACKED_LINE_COUNT_MAX_BYTES = int(
     os.environ.get("PROMPTHUB_UNTRACKED_LINE_COUNT_MAX_BYTES", "1048576")
 )
@@ -33,6 +37,28 @@ CONSUMED_BASELINE_TTL_HOURS = float(
     os.environ.get("PROMPTHUB_CONSUMED_BASELINE_TTL_HOURS", "1")
 )
 BASELINE_MAX_RECORDS = int(os.environ.get("PROMPTHUB_BASELINE_MAX_RECORDS", "500"))
+PATCH_EXCLUDED_DIRS = {
+    ".git",
+    ".hg",
+    ".svn",
+    ".venv",
+    "__pycache__",
+    "build",
+    "coverage",
+    "dist",
+    "node_modules",
+}
+PATCH_SENSITIVE_PATTERNS = (
+    ".env",
+    ".env.*",
+    "*.key",
+    "*.pem",
+    "*.p12",
+    "*.pfx",
+    "*id_rsa*",
+    "*secret*",
+    "*token*",
+)
 
 
 @dataclass(slots=True)
@@ -76,12 +102,77 @@ def _run_git(args: list[str], cwd: str | Path, timeout: float = GIT_TIMEOUT_SECO
     return result.stdout
 
 
+def _run_git_bytes(
+    args: list[str],
+    cwd: str | Path,
+    timeout: float = GIT_TIMEOUT_SECONDS,
+) -> bytes | None:
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=str(cwd),
+            check=False,
+            capture_output=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+    if result.returncode != 0:
+        return None
+    return result.stdout
+
+
 def resolve_git_root(cwd: str | Path | None) -> str | None:
     start = Path(cwd or os.getcwd()).expanduser()
     output = _run_git(["rev-parse", "--show-toplevel"], start)
     if output is None:
         return None
     return output.strip() or None
+
+
+def _patch_omitted_reason(path: str) -> str | None:
+    parts = [part for part in path.replace("\\", "/").split("/") if part]
+    if any(part in PATCH_EXCLUDED_DIRS for part in parts):
+        return "excluded_path"
+    name = parts[-1] if parts else path
+    lowered_path = path.lower()
+    lowered_name = name.lower()
+    for pattern in PATCH_SENSITIVE_PATTERNS:
+        if fnmatch.fnmatch(lowered_name, pattern) or fnmatch.fnmatch(lowered_path, pattern):
+            return "sensitive_path"
+    return None
+
+
+def _decode_text(data: bytes | None) -> str | None:
+    if data is None or b"\0" in data or len(data) > PATCH_CONTENT_MAX_BYTES:
+        return None
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def _read_worktree_text(git_root: str, path: str) -> str | None:
+    if _patch_omitted_reason(path):
+        return None
+    file_path = Path(git_root) / path
+    try:
+        stat = file_path.stat()
+    except OSError:
+        return None
+    if not file_path.is_file() or stat.st_size > PATCH_CONTENT_MAX_BYTES:
+        return None
+    try:
+        return _decode_text(file_path.read_bytes())
+    except OSError:
+        return None
+
+
+def _git_show_text(git_root: str, commit: str | None, path: str) -> str | None:
+    if not commit or _patch_omitted_reason(path):
+        return None
+    return _decode_text(_run_git_bytes(["show", f"{commit}:{path}"], git_root))
 
 
 def _parse_num(value: str) -> int | None:
@@ -190,9 +281,16 @@ def capture_git_snapshot(cwd: str | Path | None) -> dict[str, Any] | None:
     )
     numstat = _parse_numstat(_run_git(["diff", "--numstat", "HEAD", "--"], git_root))
     signatures: dict[str, dict[str, Any] | None] = {}
+    contents: dict[str, dict[str, Any]] = {}
 
     for path, entry in status.items():
         signatures[path] = _file_fingerprint(Path(git_root) / path)
+        text = _read_worktree_text(git_root, path)
+        if text is not None:
+            contents[path] = {
+                "content": text,
+                "captured_at": utc_now_iso(),
+            }
         if entry.get("code") == "??" and path not in numstat:
             line_count = _count_text_lines(Path(git_root) / path)
             numstat[path] = {
@@ -209,6 +307,7 @@ def capture_git_snapshot(cwd: str | Path | None) -> dict[str, Any] | None:
         "status": status,
         "numstat": numstat,
         "signatures": signatures,
+        "contents": contents,
         "captured_at": utc_now_iso(),
     }
 
@@ -237,6 +336,106 @@ def _metric_delta(
     if current_value is None and baseline_value is None:
         return None
     return (current_value or 0) - (baseline_value or 0)
+
+
+def _snapshot_content(snapshot: dict[str, Any], path: str | None) -> str | None:
+    if not path:
+        return None
+    contents = snapshot.get("contents")
+    if not isinstance(contents, dict):
+        return None
+    entry = contents.get(path)
+    if not isinstance(entry, dict):
+        return None
+    content = entry.get("content")
+    return content if isinstance(content, str) else None
+
+
+def _before_text(
+    baseline_snapshot: dict[str, Any],
+    path: str,
+    old_path: str | None,
+) -> str | None:
+    baseline_status = baseline_snapshot.get("status") or {}
+    baseline_entry = baseline_status.get(path) or (baseline_status.get(old_path) if old_path else None)
+    baseline_code = (baseline_entry or {}).get("code")
+    if baseline_code and ("A" in baseline_code or baseline_code == "??"):
+        return _snapshot_content(baseline_snapshot, path) or _snapshot_content(baseline_snapshot, old_path)
+
+    snapshot_text = _snapshot_content(baseline_snapshot, path) or _snapshot_content(baseline_snapshot, old_path)
+    if snapshot_text is not None:
+        return snapshot_text
+
+    git_root = baseline_snapshot.get("git_root")
+    if not isinstance(git_root, str):
+        return None
+    return _git_show_text(git_root, baseline_snapshot.get("head_commit"), old_path or path)
+
+
+def _after_text(current_snapshot: dict[str, Any], path: str, status: str) -> str | None:
+    if status == "deleted":
+        return None
+    git_root = current_snapshot.get("git_root")
+    if not isinstance(git_root, str):
+        return None
+    return _read_worktree_text(git_root, path)
+
+
+def _build_patch(
+    *,
+    after: str | None,
+    before: str | None,
+    old_path: str | None,
+    path: str,
+) -> tuple[str | None, bool]:
+    before_lines = [] if before is None else before.splitlines(keepends=True)
+    after_lines = [] if after is None else after.splitlines(keepends=True)
+    patch = "".join(
+        difflib.unified_diff(
+            before_lines,
+            after_lines,
+            fromfile=f"a/{old_path or path}",
+            tofile=f"b/{path}",
+        )
+    )
+    if not patch:
+        return None, False
+    encoded = patch.encode("utf-8")
+    if len(encoded) <= PATCH_MAX_BYTES:
+        return patch, False
+    truncated = encoded[:PATCH_MAX_BYTES].decode("utf-8", errors="ignore")
+    return f"{truncated}\n\n[BuildHub patch truncated]", True
+
+
+def _attach_patch(
+    change: dict[str, Any],
+    *,
+    baseline_snapshot: dict[str, Any],
+    current_snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    path = change["path"]
+    old_path = change.get("old_path")
+    reason = _patch_omitted_reason(path)
+    if reason is not None:
+        change["patch_omitted_reason"] = reason
+        return change
+    if change.get("binary") is True:
+        change["patch_omitted_reason"] = "binary"
+        return change
+
+    before = _before_text(baseline_snapshot, path, old_path if isinstance(old_path, str) else None)
+    after = _after_text(current_snapshot, path, str(change.get("status") or "modified"))
+    if before is None and after is None:
+        change["patch_omitted_reason"] = "content_unavailable"
+        return change
+
+    patch, truncated = _build_patch(before=before, after=after, old_path=old_path, path=path)
+    if patch:
+        change["patch"] = patch
+        change["patch_truncated"] = truncated
+    else:
+        change["patch_omitted_reason"] = "empty_patch"
+    return change
 
 
 def _changed_paths(
@@ -294,6 +493,11 @@ def _changed_paths(
         }
         if deletions_delta is not None:
             change["removals"] = deletions_delta
+        change = _attach_patch(
+            change,
+            baseline_snapshot=baseline_snapshot,
+            current_snapshot=current_snapshot,
+        )
         changes.append({key: value for key, value in change.items() if value is not None})
 
     return changes

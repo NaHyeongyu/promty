@@ -130,6 +130,15 @@ PromptHub에서 가장 중요한 Event이다.
 
 Claude/Codex에서 제공하는 유용한 metadata는 이 typed payload 안에 보존한다.
 
+Backend storage policy:
+
+```text
+payload.prompt is capped at 50000 characters by default before storage.
+prompt_truncated, prompt_original_length, and prompt_storage_limit are added by the backend.
+The stored prompt text is encrypted at rest with application-level encryption.
+API responses decrypt the prompt for authorized users.
+```
+
 ## ResponseReceived
 
 AI 응답이 완료되면 발생한다.
@@ -138,6 +147,13 @@ Payload model: `ResponseReceivedPayload`
 
 ```json
 {
+  "response": "구현 완료했습니다...",
+  "response_truncated": false,
+  "response_original_length": 1234,
+  "response_storage_limit": 50000,
+  "response_source": "transcript",
+  "transcript_path": "...",
+  "turn_id": "tool-turn-id",
   "tokens": 1350,
   "duration_ms": 4210,
   "success": true,
@@ -146,7 +162,7 @@ Payload model: `ResponseReceivedPayload`
 }
 ```
 
-V1에서는 response 전문은 저장하지 않는다.
+`response`는 optional이다. Hook payload에 답변 본문이 직접 있으면 그 값을 사용하고, 없으면 `transcript_path`에서 마지막 assistant message를 추출한다. Backend는 response text를 저장 전에 기본 50000자로 제한하고 application-level encryption으로 암호화한다.
 
 ## FilesChanged
 
@@ -192,7 +208,9 @@ Payload model: `FilesChangedPayload`
       "git_status": " M",
       "additions": 38,
       "insertions_delta": 38,
-      "deletions_delta": 8
+      "deletions_delta": 8,
+      "patch": "--- a/login.tsx\n+++ b/login.tsx\n@@ ...",
+      "patch_truncated": false
     },
     {
       "path": "auth.py",
@@ -200,7 +218,8 @@ Payload model: `FilesChangedPayload`
       "git_status": "??",
       "additions": 4,
       "insertions_delta": 4,
-      "deletions_delta": 0
+      "deletions_delta": 0,
+      "patch_omitted_reason": "sensitive_path"
     }
   ]
 }
@@ -209,6 +228,25 @@ Payload model: `FilesChangedPayload`
 Codex hooks provide lifecycle timing, not a ready-made code diff payload. The collector stores a git baseline on `UserPromptSubmit`, then computes the delta on `Stop`.
 
 `insertions_delta` and `deletions_delta` are the canonical git delta fields. `files_changed`, `additions`, and `deletions` are included as UI-friendly aliases for timeline summaries.
+
+BuildHub stores line-level code review data at the prompt/turn boundary, not on every filesystem write. For each changed file, the collector attempts to include a unified diff in `changes[].patch`. Patch capture is bounded and defensive:
+
+```text
+default max source file bytes: 524288
+default max stored patch bytes: 262144
+excluded directories: .git, node_modules, dist, build, coverage, .venv
+sensitive paths: .env*, *.key, *.pem, *secret*, *token*, *id_rsa*
+```
+
+When patch content is not stored, `patch_omitted_reason` explains why. Expected values include `sensitive_path`, `excluded_path`, `binary`, `content_unavailable`, and `empty_patch`.
+
+Backend storage policy:
+
+```text
+changes[].patch is encrypted at rest in the event payload.
+The extracted code_change_patches.patch copy is also encrypted.
+File path, status, additions, deletions, and omission reason remain plaintext metadata.
+```
 
 ## CommitCreated
 

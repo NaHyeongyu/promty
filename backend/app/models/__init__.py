@@ -1,4 +1,5 @@
 from app.models.artifacts import Artifact
+from app.models.code_change_patches import CodeChangePatch
 from app.models.devices import Device
 from app.models.events import Event
 from app.models.github_connections import GitHubConnection
@@ -11,6 +12,7 @@ from app.models.users import User
 
 __all__ = [
     "Artifact",
+    "CodeChangePatch",
     "CollectorToken",
     "Device",
     "Event",

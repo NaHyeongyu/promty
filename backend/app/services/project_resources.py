@@ -2,13 +2,17 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession
 
+from app.core.encryption import encrypt_app_text_to_string
+from app.models.code_change_patches import CodeChangePatch
 from app.models.events import Event
 from app.models.project_files import ProjectFile
 from app.models.project_knowledge import ProjectKnowledgeResource
+from app.services.event_payload_security import CODE_CHANGE_PATCH_PURPOSE
 
 KNOWLEDGE_KEYWORDS: tuple[tuple[str, str], ...] = (
     ("architecture", "Architecture"),
@@ -73,6 +77,49 @@ def _status(value: Any) -> str:
     return "modified"
 
 
+def _int_or_none(value: Any) -> int | None:
+    return value if isinstance(value, int) else None
+
+
+def _uuid_or_none(value: Any) -> UUID | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return UUID(value)
+    except ValueError:
+        return None
+
+
+def _patch_metadata(change: dict[str, Any]) -> dict[str, Any]:
+    excluded = {
+        "path",
+        "old_path",
+        "before_path",
+        "status",
+        "additions",
+        "insertions_delta",
+        "deletions",
+        "deletions_delta",
+        "removals",
+        "patch",
+        "patch_truncated",
+        "binary",
+    }
+    return {
+        key: value
+        for key, value in change.items()
+        if key not in excluded and value is not None
+    }
+
+
+def _resource_metadata(change: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in change.items()
+        if key not in {"path", "patch"} and value is not None
+    }
+
+
 def _changes_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
     changes = payload.get("changes")
     if isinstance(changes, list):
@@ -84,6 +131,46 @@ def _changes_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
     if isinstance(files, list):
         return [{"path": path, "status": "modified"} for path in files]
     return []
+
+
+def _create_code_change_patch(
+    db: DBSession,
+    *,
+    event: Event,
+    path: str,
+    status: str,
+    change: dict[str, Any],
+    prompt_event_id: UUID | None,
+) -> None:
+    patch = change.get("patch")
+    old_path = change.get("old_path") or change.get("before_path")
+    additions = _int_or_none(change.get("additions"))
+    if additions is None:
+        additions = _int_or_none(change.get("insertions_delta"))
+    deletions = _int_or_none(change.get("deletions_delta"))
+    if deletions is None:
+        deletions = _int_or_none(change.get("deletions"))
+
+    db.add(
+        CodeChangePatch(
+            project_id=event.project_id,
+            session_id=event.session_id,
+            event_id=event.id,
+            prompt_event_id=prompt_event_id,
+            path=path,
+            old_path=old_path if isinstance(old_path, str) and old_path else None,
+            status=status,
+            additions=additions,
+            deletions=deletions,
+            patch=encrypt_app_text_to_string(patch, purpose=CODE_CHANGE_PATCH_PURPOSE)
+            if isinstance(patch, str) and patch
+            else None,
+            patch_truncated=change.get("patch_truncated") is True,
+            binary=change.get("binary") is True,
+            metadata_=_patch_metadata(change),
+            created_at=event.created_at,
+        )
+    )
 
 
 def _upsert_project_file(
@@ -162,22 +249,27 @@ def sync_project_resources_from_event(db: DBSession, event: Event, payload: dict
     if event.event_type != "FilesChanged":
         return
 
+    prompt_event_id = _uuid_or_none(payload.get("prompt_event_id"))
     for change in _changes_from_payload(payload):
         path = _clean_path(change.get("path"))
         if path is None:
             continue
         status = _status(change.get("status"))
-        metadata = {
-            key: value
-            for key, value in change.items()
-            if key not in {"path"} and value is not None
-        }
+        metadata = _resource_metadata(change)
         _upsert_project_file(
             db,
             event=event,
             path=path,
             status=status,
             metadata=metadata,
+        )
+        _create_code_change_patch(
+            db,
+            event=event,
+            path=path,
+            status=status,
+            change=change,
+            prompt_event_id=prompt_event_id,
         )
         _upsert_knowledge_resource(
             db,

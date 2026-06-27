@@ -1,6 +1,11 @@
-import { useState } from "react";
-import { Activity, BookOpen } from "lucide-react";
-import { ActivityCard, PromptActivityCard } from "./ActivityCard";
+import { useMemo, useState } from "react";
+import { Activity, BookOpen, Search } from "lucide-react";
+import {
+  ActivityCard,
+  PromptActivityCard,
+  PromptChangeDetail,
+  SessionDetail,
+} from "./ActivityCard";
 import { CodeViewer } from "./CodeViewer";
 import { EmptyState } from "./EmptyState";
 import { FileTree } from "./FileTree";
@@ -55,8 +60,35 @@ function OverviewPanel({ data }: { data: ProjectDetailData }) {
 
 function ActivityPanel({ data }: { data: ProjectDetailData }) {
   const [view, setView] = useState<"prompts" | "sessions">("prompts");
+  const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [promptSearchQuery, setPromptSearchQuery] = useState("");
   const hasPromptActivity = data.promptActivities.length > 0;
   const hasSessionActivity = data.activities.length > 0;
+  const filteredPromptActivities = useMemo(() => {
+    const query = promptSearchQuery.trim().toLowerCase();
+
+    if (!query) {
+      return data.promptActivities;
+    }
+
+    return data.promptActivities.filter((activity) =>
+      `${activity.prompt} ${activity.submittedAt}`.toLowerCase().includes(query),
+    );
+  }, [data.promptActivities, promptSearchQuery]);
+  const selectedPrompt =
+    filteredPromptActivities.find((activity) => activity.id === selectedPromptId) ??
+    filteredPromptActivities[0] ??
+    null;
+  const selectedSession =
+    data.activities.find((activity) => activity.id === selectedSessionId) ??
+    data.activities[0] ??
+    null;
+  const selectedSessionPrompts = selectedSession
+    ? data.promptActivities.filter(
+        (activity) => activity.sessionId === selectedSession.id,
+      )
+    : [];
 
   if (!hasPromptActivity && !hasSessionActivity) {
     return (
@@ -95,10 +127,37 @@ function ActivityPanel({ data }: { data: ProjectDetailData }) {
 
       {view === "prompts" ? (
         hasPromptActivity ? (
-          <div className="bh-activity-list" role="tabpanel">
-            {data.promptActivities.map((activity) => (
-              <PromptActivityCard activity={activity} key={activity.id} />
-            ))}
+          <div className="bh-prompt-activity-layout" role="tabpanel">
+            <div className="bh-prompt-sidebar">
+              <label className="bh-prompt-search">
+                <Search aria-hidden="true" size={15} strokeWidth={1.7} />
+                <input
+                  aria-label="Search prompts by text or date"
+                  onChange={(event) => setPromptSearchQuery(event.target.value)}
+                  placeholder="Search prompts or dates"
+                  type="search"
+                  value={promptSearchQuery}
+                />
+              </label>
+
+              {filteredPromptActivities.length > 0 ? (
+                <div className="bh-prompt-list">
+                  {filteredPromptActivities.map((activity) => (
+                    <PromptActivityCard
+                      activity={activity}
+                      isSelected={activity.id === selectedPrompt?.id}
+                      key={activity.id}
+                      onOpen={() => setSelectedPromptId(activity.id)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="bh-prompt-search-empty">
+                  No prompts match this search.
+                </div>
+              )}
+            </div>
+            <PromptChangeDetail activity={selectedPrompt} />
           </div>
         ) : (
           <EmptyState
@@ -108,10 +167,21 @@ function ActivityPanel({ data }: { data: ProjectDetailData }) {
           />
         )
       ) : hasSessionActivity ? (
-        <div className="bh-activity-list" role="tabpanel">
-          {data.activities.map((activity) => (
-            <ActivityCard activity={activity} key={activity.id} />
-          ))}
+        <div className="bh-activity-session-layout" role="tabpanel">
+          <div className="bh-activity-list">
+            {data.activities.map((activity) => (
+              <ActivityCard
+                activity={activity}
+                isSelected={activity.id === selectedSession?.id}
+                key={activity.id}
+                onOpen={() => setSelectedSessionId(activity.id)}
+              />
+            ))}
+          </div>
+          <SessionDetail
+            activity={selectedSession}
+            prompts={selectedSessionPrompts}
+          />
         </div>
       ) : (
         <EmptyState
@@ -121,17 +191,6 @@ function ActivityPanel({ data }: { data: ProjectDetailData }) {
         />
       )}
 
-      <section
-        className="bh-activity-detail-placeholder"
-        id="activity-detail-placeholder"
-        aria-labelledby="activity-detail-placeholder-title"
-      >
-        <Activity aria-hidden="true" size={18} strokeWidth={1.5} />
-        <div>
-          <h2 id="activity-detail-placeholder-title">Activity detail</h2>
-          <p>Select an AI interaction to review the detailed timeline.</p>
-        </div>
-      </section>
     </div>
   );
 }
@@ -316,6 +375,7 @@ export function ProjectDetailPage({
       <ProjectTabs
         activeTab={activeTab}
         onTabChange={onTabChange}
+        repositoryUrl={data.project.repositoryUrl}
         tabs={projectTabs}
       />
 

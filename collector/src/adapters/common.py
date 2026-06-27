@@ -29,6 +29,7 @@ from payloads import (
     payload_views,
     string_list,
 )
+from response_capture import response_payload_fields
 
 EXTERNAL_EVENT_ALIASES: dict[str, EventType] = {
     "UserPromptSubmit": "PromptSubmitted",
@@ -111,11 +112,13 @@ def normalize_event_payload(
 
     if event_type == "ResponseReceived":
         return ResponseReceivedPayload(
+            **response_payload_fields(raw_payload),
             tokens=first_int(payloads, ("tokens", "total_tokens")),
             duration_ms=first_int(payloads, ("duration_ms", "elapsed_ms")),
             success=first_bool(payloads, ("success", "ok")),
             model=first_string(payloads, ("model", "model_name")),
             session_id=first_string(payloads, SESSION_ID_KEYS),
+            turn_id=first_value(payloads, TURN_ID_KEYS),
         )
 
     if event_type == "FilesChanged":

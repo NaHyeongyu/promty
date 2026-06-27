@@ -57,7 +57,7 @@ CODEX_HOOKS: tuple[dict[str, Any], ...] = (
         "event": "Stop",
         "subcommand": "capture-changes",
         "timeout": 10,
-        "statusMessage": "Capturing PromptHub file changes",
+        "statusMessage": "Capturing PromptHub AI activity",
     },
 )
 LOGIN_CALLBACK_HTML = """<!doctype html>
@@ -216,6 +216,32 @@ def capture_changes(args: argparse.Namespace) -> int:
     normalized_tool = _normalize_required_tool(args)
     external_session_id = get_first_string(payload, SESSION_ID_KEYS)
     cwd = get_first_string(payload, WORKSPACE_KEYS) or os.getcwd()
+    session_index = SessionIndex(args.session_index_path)
+    sequence_store = SequenceStore(args.sequence_path)
+    queue = JSONLQueue(args.queue_path)
+
+    response_event = normalize_collector_event(
+        normalized_tool,
+        payload,
+        "ResponseReceived",
+    )
+    _apply_known_session(
+        index=session_index,
+        tool=normalized_tool,
+        external_session_id=external_session_id,
+        event=response_event,
+        raw_payload=payload,
+    )
+    sequence_store.assign(response_event)
+    queue.push(response_event)
+    _remember_session(
+        index=session_index,
+        tool=normalized_tool,
+        external_session_id=external_session_id,
+        event=response_event,
+        raw_payload=payload,
+    )
+
     store = ChangeBaselineStore(args.change_baseline_path)
     baseline = store.find_latest(
         tool=normalized_tool,
@@ -238,8 +264,8 @@ def capture_changes(args: argparse.Namespace) -> int:
         session_id=str(baseline["session_id"]),
         sequence=0,
     )
-    SequenceStore(args.sequence_path).assign(event)
-    JSONLQueue(args.queue_path).push(event)
+    sequence_store.assign(event)
+    queue.push(event)
     return 0
 
 
@@ -795,6 +821,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     capture_changes_parser.add_argument("--queue-path")
     capture_changes_parser.add_argument("--sequence-path")
+    capture_changes_parser.add_argument("--session-index-path")
     capture_changes_parser.add_argument("--change-baseline-path")
     capture_changes_parser.set_defaults(func=capture_changes)
 

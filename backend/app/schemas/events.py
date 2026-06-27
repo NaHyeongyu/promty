@@ -34,6 +34,9 @@ class SessionStartedPayload(PayloadModel):
 
 class PromptSubmittedPayload(PayloadModel):
     prompt: str
+    prompt_truncated: bool = False
+    prompt_original_length: int | None = None
+    prompt_storage_limit: int | None = None
     cwd: str | None = None
     model: str | None = None
     permission_mode: str | None = None
@@ -49,6 +52,13 @@ class PromptSubmittedPayload(PayloadModel):
 
 
 class ResponseReceivedPayload(PayloadModel):
+    response: str | None = None
+    response_truncated: bool = False
+    response_original_length: int | None = None
+    response_storage_limit: int | None = None
+    response_source: str | None = None
+    transcript_path: str | None = None
+    turn_id: str | int | None = None
     tokens: int | None = None
     duration_ms: int | None = None
     success: bool | None = None

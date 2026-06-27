@@ -10,14 +10,20 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.encryption import maybe_decrypt_app_text_from_string
 from app.core.security import require_web_user
 from app.db.session import get_db
+from app.models.code_change_patches import CodeChangePatch
 from app.models.events import Event
 from app.models.project_files import ProjectFile
 from app.models.project_knowledge import ProjectKnowledgeResource
 from app.models.projects import Project
 from app.models.sessions import Session as PromptSession
 from app.models.users import User
+from app.services.event_payload_security import (
+    CODE_CHANGE_PATCH_PURPOSE,
+    decrypt_event_payload,
+)
 from app.services.github_repositories import (
     list_github_repositories,
     read_github_repository_file_content,
@@ -105,6 +111,95 @@ def _payload_prompt(payload: dict[str, Any]) -> str:
     if isinstance(prompt, str) and prompt.strip():
         return prompt.strip()
     return "Untitled prompt"
+
+
+def _string_or_none(value: Any) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def _response_summary(event: Event, payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "response": _string_or_none(payload.get("response")),
+        "response_original_length": payload.get("response_original_length")
+        if isinstance(payload.get("response_original_length"), int)
+        else None,
+        "response_received_at": _iso(event.created_at),
+        "response_source": _string_or_none(payload.get("response_source")),
+        "response_storage_limit": payload.get("response_storage_limit")
+        if isinstance(payload.get("response_storage_limit"), int)
+        else None,
+        "response_truncated": payload.get("response_truncated") is True,
+    }
+
+
+def _first_int(*values: Any) -> int | None:
+    for value in values:
+        if isinstance(value, int):
+            return value
+    return None
+
+
+def _file_changes_from_files_changed(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    changes = payload.get("changes")
+    if isinstance(changes, list):
+        file_changes: list[dict[str, Any]] = []
+        for change in changes:
+            if not isinstance(change, dict):
+                continue
+            path = change.get("path")
+            if not isinstance(path, str) or not path:
+                continue
+            file_changes.append(
+                {
+                    "path": path,
+                    "status": change.get("status") if isinstance(change.get("status"), str) else "changed",
+                    "additions": _first_int(change.get("additions"), change.get("insertions_delta")),
+                    "deletions": _first_int(change.get("deletions_delta"), change.get("deletions")),
+                    "old_path": change.get("old_path") if isinstance(change.get("old_path"), str) else None,
+                    "patch": change.get("patch") if isinstance(change.get("patch"), str) else None,
+                    "patch_omitted_reason": change.get("patch_omitted_reason")
+                    if isinstance(change.get("patch_omitted_reason"), str)
+                    else None,
+                    "patch_truncated": change.get("patch_truncated") is True,
+                    "binary": change.get("binary") is True,
+                }
+            )
+        if file_changes:
+            return file_changes
+
+    files = payload.get("files")
+    if isinstance(files, list):
+        return [
+            {
+                "path": path,
+                "status": "changed",
+                "additions": None,
+                "deletions": None,
+            }
+            for path in files
+            if isinstance(path, str) and path
+        ]
+    return []
+
+
+def _file_change_from_patch(patch: CodeChangePatch) -> dict[str, Any]:
+    return {
+        "additions": patch.additions,
+        "binary": patch.binary,
+        "deletions": patch.deletions,
+        "event_id": str(patch.event_id),
+        "old_path": patch.old_path,
+        "patch": maybe_decrypt_app_text_from_string(
+            patch.patch,
+            purpose=CODE_CHANGE_PATCH_PURPOSE,
+        ),
+        "patch_omitted_reason": patch.metadata_.get("patch_omitted_reason")
+        if isinstance(patch.metadata_, dict)
+        else None,
+        "patch_truncated": patch.patch_truncated,
+        "path": patch.path,
+        "status": patch.status,
+    }
 
 
 def _build_file_tree(paths: list[str]) -> list[dict[str, Any]]:
@@ -335,6 +430,9 @@ def read_project_detail(
             .limit(5000)
         ).scalars()
     )
+    event_payloads = {
+        event.id: decrypt_event_payload(event.event_type, event.payload) for event in events
+    }
     sessions = {
         session.id: session
         for session in db.execute(
@@ -345,12 +443,13 @@ def read_project_detail(
     activity_groups: dict[UUID, dict[str, Any]] = {}
     models: set[str] = {session.model for session in sessions.values() if session.model}
     for event in events:
+        payload = event_payloads[event.id]
         session = sessions.get(event.session_id)
         group = activity_groups.setdefault(
             event.session_id,
             {
                 "id": str(event.session_id),
-                "model": session.model if session and session.model else _payload_model(event.payload, event.tool),
+                "model": session.model if session and session.model else _payload_model(payload, event.tool),
                 "started_at": session.started_at if session else event.created_at,
                 "last_activity_at": event.created_at,
                 "prompts": 0,
@@ -369,8 +468,8 @@ def read_project_detail(
         if event.event_type == "ResponseReceived":
             group["responses"] += 1
         if event.event_type == "FilesChanged":
-            group["files"].update(_paths_from_files_changed(event.payload))
-        model = _payload_model(event.payload, event.tool)
+            group["files"].update(_paths_from_files_changed(payload))
+        model = _payload_model(payload, event.tool)
         if model:
             models.add(model)
 
@@ -379,11 +478,83 @@ def read_project_detail(
         key=lambda item: item["last_activity_at"],
         reverse=True,
     )
+
+    prompt_changes: dict[str, list[dict[str, Any]]] = {}
+    patch_rows = list(
+        db.execute(
+            select(CodeChangePatch)
+            .where(
+                CodeChangePatch.project_id == project.id,
+                CodeChangePatch.prompt_event_id.is_not(None),
+            )
+            .order_by(CodeChangePatch.created_at.desc(), CodeChangePatch.path)
+        ).scalars()
+    )
+    for patch in patch_rows:
+        if patch.prompt_event_id is None:
+            continue
+        prompt_changes.setdefault(str(patch.prompt_event_id), []).append(
+            _file_change_from_patch(patch)
+        )
+
+    for event in events:
+        if event.event_type != "FilesChanged":
+            continue
+        payload = event_payloads[event.id]
+        prompt_event_id = payload.get("prompt_event_id")
+        if not isinstance(prompt_event_id, str) or not prompt_event_id:
+            continue
+        if prompt_event_id in prompt_changes:
+            continue
+        prompt_changes.setdefault(prompt_event_id, []).extend(
+            _file_changes_from_files_changed(payload)
+        )
+
+    prompt_responses: dict[str, dict[str, Any]] = {}
+    prompt_by_session_turn: dict[tuple[UUID, str], str] = {}
+    latest_prompt_by_session: dict[UUID, Event] = {}
+    for event in sorted(events, key=lambda item: (item.created_at, item.sequence)):
+        payload = event_payloads[event.id]
+        if event.event_type == "PromptSubmitted":
+            latest_prompt_by_session[event.session_id] = event
+            turn_id = payload.get("turn_id")
+            if turn_id is not None:
+                prompt_by_session_turn[(event.session_id, str(turn_id))] = str(event.id)
+            continue
+
+        if event.event_type != "ResponseReceived":
+            continue
+
+        prompt_event_id = _string_or_none(payload.get("prompt_event_id"))
+        if prompt_event_id is None:
+            turn_id = payload.get("turn_id")
+            if turn_id is not None:
+                prompt_event_id = prompt_by_session_turn.get(
+                    (event.session_id, str(turn_id))
+                )
+        if prompt_event_id is None:
+            prompt_event = latest_prompt_by_session.get(event.session_id)
+            prompt_event_id = str(prompt_event.id) if prompt_event else None
+        if prompt_event_id is not None:
+            prompt_responses[prompt_event_id] = _response_summary(event, payload)
+
     prompt_activities = [
         {
+            "file_changes": prompt_changes.get(str(event.id), []),
+            "files_changed": len(
+                {change["path"] for change in prompt_changes.get(str(event.id), [])}
+            ),
             "id": str(event.id),
-            "model": _payload_model(event.payload, event.tool),
-            "prompt": _payload_prompt(event.payload),
+            "model": _payload_model(event_payloads[event.id], event.tool),
+            "prompt": _payload_prompt(event_payloads[event.id]),
+            "prompt_original_length": event_payloads[event.id].get("prompt_original_length")
+            if isinstance(event_payloads[event.id].get("prompt_original_length"), int)
+            else None,
+            "prompt_storage_limit": event_payloads[event.id].get("prompt_storage_limit")
+            if isinstance(event_payloads[event.id].get("prompt_storage_limit"), int)
+            else None,
+            "prompt_truncated": event_payloads[event.id].get("prompt_truncated") is True,
+            **prompt_responses.get(str(event.id), {}),
             "sequence": event.sequence,
             "session_id": str(event.session_id),
             "submitted_at": _iso(event.created_at),
