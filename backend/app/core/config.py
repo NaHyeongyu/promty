@@ -2,6 +2,27 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
+
+
+def _load_local_env() -> None:
+    """Load ignored local env files for development without overriding shell env."""
+    root_dir = Path(__file__).resolve().parents[3]
+    for env_path in (root_dir / ".env.local", root_dir / "backend" / ".env.local"):
+        if not env_path.exists():
+            continue
+        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            name, value = line.split("=", 1)
+            name = name.strip()
+            value = value.strip().strip("\"'")
+            if name and name not in os.environ:
+                os.environ[name] = value
+
+
+_load_local_env()
 
 
 def _optional_env(name: str) -> str | None:
