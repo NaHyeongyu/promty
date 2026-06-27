@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -48,11 +49,10 @@ def capture(args: argparse.Namespace) -> int:
     return 0
 
 
-def upload(args: argparse.Namespace) -> int:
+def _upload_queued_events(args: argparse.Namespace) -> int:
     queue = JSONLQueue(args.queue_path)
     events = queue.read_batch(args.limit)
     if not events:
-        print("No events queued")
         return 0
 
     uploader = PromptHubUploader(
@@ -62,7 +62,36 @@ def upload(args: argparse.Namespace) -> int:
     )
     uploaded_ids = uploader.upload_events(events)
     queue.ack(set(uploaded_ids))
-    print(f"Uploaded {len(uploaded_ids)} events")
+    return len(uploaded_ids)
+
+
+def upload(args: argparse.Namespace) -> int:
+    if not args.watch:
+        uploaded_count = _upload_queued_events(args)
+        if uploaded_count:
+            print(f"Uploaded {uploaded_count} events")
+        else:
+            print("No events queued")
+        return 0
+
+    interval = max(args.interval, 0.25)
+    print(
+        "Watching queue "
+        f"{JSONLQueue(args.queue_path).path} -> {args.api_url} "
+        f"every {interval:g}s"
+    )
+    while True:
+        try:
+            uploaded_count = _upload_queued_events(args)
+            if uploaded_count:
+                print(f"Uploaded {uploaded_count} events", flush=True)
+        except KeyboardInterrupt:
+            print("Stopped uploader watch")
+            return 0
+        except Exception as exc:
+            print(f"Upload failed: {exc}", file=sys.stderr, flush=True)
+        time.sleep(interval)
+
     return 0
 
 
@@ -107,6 +136,17 @@ def build_parser() -> argparse.ArgumentParser:
     upload_parser.add_argument("--queue-path")
     upload_parser.add_argument("--limit", type=int, default=100)
     upload_parser.add_argument("--timeout", type=float, default=10)
+    upload_parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="Continuously upload queued events without blocking hooks.",
+    )
+    upload_parser.add_argument(
+        "--interval",
+        type=float,
+        default=float(os.environ.get("PROMPTHUB_UPLOAD_INTERVAL", "2")),
+        help="Seconds between queue checks in watch mode.",
+    )
     upload_parser.set_defaults(func=upload)
 
     return parser

@@ -94,6 +94,12 @@ Upload queued events:
 python3 collector/src/cli.py upload --api-url http://localhost:8000
 ```
 
+Run the uploader in the background for near-real-time sync:
+
+```bash
+python3 collector/src/cli.py upload --api-url http://localhost:8000 --watch --interval 2
+```
+
 By default, queued events are stored at:
 
 ```text

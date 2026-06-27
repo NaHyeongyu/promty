@@ -56,6 +56,17 @@
         background: #edf2f7;
       }
 
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .sync-meta {
+        color: #627d98;
+        font-size: 13px;
+      }
+
       .status {
         min-height: 24px;
         margin-bottom: 14px;
@@ -130,6 +141,11 @@
           flex-direction: column;
         }
 
+        .controls {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
         dl {
           grid-template-columns: 1fr;
         }
@@ -140,7 +156,10 @@
     <main>
       <header>
         <h1>PromptHub Timeline</h1>
-        <button id="refresh" type="button">Refresh</button>
+        <div class="controls">
+          <button id="refresh" type="button">Refresh</button>
+          <span class="sync-meta" id="sync-meta"></span>
+        </div>
       </header>
       <div class="status" id="status"></div>
       <ol class="timeline" id="timeline"></ol>
@@ -153,6 +172,24 @@
       const timeline = document.querySelector("#timeline");
       const status = document.querySelector("#status");
       const refresh = document.querySelector("#refresh");
+      const syncMeta = document.querySelector("#sync-meta");
+      const configuredPollIntervalMs = Number(
+        new URLSearchParams(window.location.search).get("poll") || 2000,
+      );
+      const pollIntervalMs =
+        Number.isFinite(configuredPollIntervalMs) && configuredPollIntervalMs >= 1000
+          ? configuredPollIntervalMs
+          : 2000;
+      let isLoading = false;
+      let latestEventCount = null;
+
+      function formatTime(date) {
+        return date.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+      }
 
       function summarize(event) {
         if (event.event_type === "PromptSubmitted") {
@@ -179,11 +216,13 @@
       function render(events) {
         timeline.innerHTML = "";
         if (events.length === 0) {
-          status.textContent = "No events returned from the backend.";
+          status.textContent = "No events returned from the backend yet.";
+          latestEventCount = 0;
           return;
         }
 
-        status.textContent = `${events.length} event(s) loaded from ${apiBaseUrl}`;
+        latestEventCount = events.length;
+        status.textContent = `${events.length} event(s) synced from ${apiBaseUrl}`;
         events
           .slice()
           .sort((a, b) => {
@@ -229,22 +268,37 @@
           });
       }
 
-      async function loadEvents() {
-        status.textContent = "Loading events...";
+      function updateSyncMeta(message) {
+        syncMeta.textContent = message;
+      }
+
+      async function loadEvents(options = {}) {
+        if (isLoading) return;
+        isLoading = true;
+        const manual = Boolean(options.manual);
+        if (manual || latestEventCount === null) {
+          status.textContent = "Loading events...";
+        }
         try {
-          const response = await fetch(`${apiBaseUrl}/events`);
+          const response = await fetch(`${apiBaseUrl}/events`, {
+            cache: "no-store",
+          });
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
           }
           render(await response.json());
+          updateSyncMeta(`Auto sync ${pollIntervalMs / 1000}s · ${formatTime(new Date())}`);
         } catch (error) {
-          timeline.innerHTML = "";
           status.textContent = `Could not load events: ${error.message}`;
+          updateSyncMeta(`Retrying · ${formatTime(new Date())}`);
+        } finally {
+          isLoading = false;
         }
       }
 
-      refresh.addEventListener("click", loadEvents);
+      refresh.addEventListener("click", () => loadEvents({ manual: true }));
       loadEvents();
+      window.setInterval(loadEvents, pollIntervalMs);
     </script>
   </body>
 </html>
