@@ -135,7 +135,7 @@ GET  /health
 }
 ```
 
-The backend currently uses an in-memory event store. PostgreSQL persistence is the next storage step.
+The backend persists events to PostgreSQL through SQLAlchemy and Alembic.
 
 See [Event Specification v1](docs/event-spec-v1.md) for the normalized event contract.
 
@@ -145,8 +145,16 @@ See [Artifact Model Draft](docs/artifact-model.md) for the future artifact archi
 
 See [Codex Hook Verification](docs/codex-hook-verification.md) for the first hook smoke path.
 
+See [Database](docs/database.md) for the PostgreSQL schema and migration commands.
+
 Start the local PostgreSQL service:
 
 ```bash
 docker compose up -d postgres
+```
+
+Run database migrations:
+
+```bash
+./.venv/bin/alembic -c backend/alembic.ini upgrade head
 ```
