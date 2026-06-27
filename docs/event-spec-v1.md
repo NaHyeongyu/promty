@@ -94,6 +94,8 @@ Payload model: `SessionStartedPayload`
 {
   "cwd": "/projects/football",
   "branch": "main",
+  "git_remote": "git@github.com:OWNER/football.git",
+  "github_url": "https://github.com/OWNER/football",
   "model": "claude-sonnet-4",
   "permission_mode": "default",
   "session_id": "tool-session-id"
@@ -116,6 +118,8 @@ Payload model: `PromptSubmittedPayload`
   "turn_id": 12,
   "session_id": "tool-session-id",
   "branch": "main",
+  "git_remote": "git@github.com:OWNER/football.git",
+  "github_url": "https://github.com/OWNER/football",
   "hook_event_name": "UserPromptSubmit",
   "approval_policy": "on-request",
   "sandbox_mode": "workspace-write"
@@ -146,7 +150,7 @@ V1에서는 response 전문은 저장하지 않는다.
 
 ## FilesChanged
 
-AI가 수정한 파일 목록.
+AI가 수정한 파일 목록과 git 기반 변경 요약.
 
 Payload model: `FilesChangedPayload`
 
@@ -158,9 +162,53 @@ Payload model: `FilesChangedPayload`
     "middleware.py"
   ],
   "cwd": "/projects/football",
-  "session_id": "tool-session-id"
+  "session_id": "tool-session-id",
+  "prompt_event_id": "0db26f22-26a1-4b4b-b42f-8a6248eb65d8",
+  "turn_id": "tool-turn-id",
+  "git_root": "/projects/football",
+  "branch": "main",
+  "git_remote": "git@github.com:OWNER/football.git",
+  "github_url": "https://github.com/OWNER/football",
+  "base_commit": "abc123",
+  "head_commit": "abc123",
+  "source": "git",
+  "summary": {
+    "total": 2,
+    "files_changed": 2,
+    "files": 2,
+    "added": 1,
+    "modified": 1,
+    "deleted": 0,
+    "renamed": 0,
+    "additions": 42,
+    "deletions": 8,
+    "insertions_delta": 42,
+    "deletions_delta": 8
+  },
+  "changes": [
+    {
+      "path": "login.tsx",
+      "status": "modified",
+      "git_status": " M",
+      "additions": 38,
+      "insertions_delta": 38,
+      "deletions_delta": 8
+    },
+    {
+      "path": "auth.py",
+      "status": "added",
+      "git_status": "??",
+      "additions": 4,
+      "insertions_delta": 4,
+      "deletions_delta": 0
+    }
+  ]
 }
 ```
+
+Codex hooks provide lifecycle timing, not a ready-made code diff payload. The collector stores a git baseline on `UserPromptSubmit`, then computes the delta on `Stop`.
+
+`insertions_delta` and `deletions_delta` are the canonical git delta fields. `files_changed`, `additions`, and `deletions` are included as UI-friendly aliases for timeline summaries.
 
 ## CommitCreated
 
@@ -173,6 +221,8 @@ Payload model: `CommitCreatedPayload`
   "hash": "abc123",
   "message": "Implement JWT Login",
   "branch": "main",
+  "git_remote": "git@github.com:OWNER/football.git",
+  "github_url": "https://github.com/OWNER/football",
   "cwd": "/projects/football",
   "session_id": "tool-session-id"
 }
@@ -234,6 +284,8 @@ Backend는 PromptHub Event만 처리한다.
 
 Collector는 Hook 내부에서 네트워크 요청을 하지 않는다.
 
+`project_id`는 명시값이 없으면 `cwd`의 git root를 우선 사용하고, git root가 없으면 `cwd`를 기반으로 만든다. 같은 tool session id로 들어오는 후속 이벤트는 session index를 통해 이미 감지한 project/session에 붙인다.
+
 순서:
 
 ```text
@@ -243,7 +295,7 @@ v
 PromptHub Event 생성
 |
 v
-events.jsonl 저장
+project/session queue에 events.jsonl 저장
 |
 v
 Uploader가 백그라운드 업로드
@@ -252,13 +304,25 @@ Uploader가 백그라운드 업로드
 저장 위치:
 
 ```text
-~/.prompthub/events.jsonl
+~/.prompthub/events/<project_id>/<session_id>/events.jsonl
 ```
 
 Sequence state 저장 위치:
 
 ```text
 ~/.prompthub/sequences.json
+```
+
+Session index 저장 위치:
+
+```text
+~/.prompthub/session-index.json
+```
+
+Git baseline 저장 위치:
+
+```text
+~/.prompthub/change-baselines.json
 ```
 
 ## Session 구조

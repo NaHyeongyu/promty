@@ -39,6 +39,30 @@ The backend reads `DATABASE_URL` and falls back to:
 postgresql+psycopg://prompthub:prompthub@localhost:5432/prompthub
 ```
 
+Optional security environment variables:
+
+```text
+PROMPTHUB_API_TOKEN
+PROMPTHUB_CORS_ORIGINS
+PROMPTHUB_API_PUBLIC_URL
+PROMPTHUB_APP_URL
+PROMPTHUB_GITHUB_CLIENT_ID
+PROMPTHUB_GITHUB_CLIENT_SECRET
+PROMPTHUB_OAUTH_STATE_SECRET
+PROMPTHUB_JWT_SECRET
+PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS
+PROMPTHUB_SESSION_COOKIE_NAME
+PROMPTHUB_SESSION_COOKIE_SECURE
+PROMPTHUB_SESSION_COOKIE_SAMESITE
+PROMPTHUB_OAUTH_STATE_COOKIE_NAME
+```
+
+Browser reads require GitHub login and a valid PromptHub JWT session cookie. The session cookie is HttpOnly; JavaScript does not read the token directly.
+
+If `PROMPTHUB_API_TOKEN` is set, `POST /api/events/batch` accepts that global `Authorization: Bearer <token>`. GitHub CLI login issues per-user collector tokens stored as hashes in `collector_tokens`. Web JWTs and collector tokens are intentionally separate.
+
+The web OAuth flow stores a short-lived HttpOnly nonce cookie and verifies it against the signed OAuth state in the callback. `PROMPTHUB_CORS_ORIGINS` is a comma-separated allowlist and defaults to the local Vite origins.
+
 ## ERD
 
 ```text
@@ -47,6 +71,12 @@ users
   | 1:N
   v
 devices
+
+users
+  |
+  | 1:N
+  v
+collector_tokens
 
 users
   |
@@ -94,6 +124,20 @@ collector_version string nullable
 last_seen timestamptz
 created_at timestamptz
 ```
+
+### collector_tokens
+
+```text
+id UUID PK
+user_id UUID FK -> users.id on delete cascade
+token_hash string unique
+name string
+created_at timestamptz
+last_used_at timestamptz nullable
+revoked_at timestamptz nullable
+```
+
+Only token hashes are persisted. Raw collector tokens are returned once to the CLI login callback.
 
 ### projects
 
@@ -150,8 +194,28 @@ created_at timestamptz
 Indexes:
 
 ```text
-(project_id, session_id, sequence)
+unique(project_id, session_id, sequence)
 (project_id, created_at)
+(created_at, sequence)
+(event_type, created_at)
+(session_id, created_at)
+(project_id, session_id, created_at)
+GIN(payload)
+```
+
+Constraints:
+
+```text
+sequence > 0
+schema_version >= 1
+tool in supported tools
+event_type in supported event types
+```
+
+### session constraints
+
+```text
+ended_at is null or ended_at >= started_at
 ```
 
 ### artifacts
@@ -175,10 +239,31 @@ To keep the API contract unchanged, the persistence layer currently:
 ```text
 creates a deterministic system user when needed
 creates a placeholder project when project_id is new
+assigns projects uploaded with collector tokens to the token owner
 creates a session when session_id is new
 stores the incoming event payload as JSONB
+optionally requires Bearer auth when PROMPTHUB_API_TOKEN is set
+accepts per-user collector tokens issued through GitHub OAuth
+requires web JWT auth for browser event reads
+rejects empty batches and batches larger than 500 events
+accepts exact event-id replays as idempotent no-ops
+rejects event-id replays with changed content
+rejects project/session mismatches
+rejects duplicate sequences within a project/session
 ```
 
 This keeps backend logic tool-independent. Codex, Claude Code, Cursor, and Gemini-specific normalization remains in the collector.
 
 Future authentication and device registration work should replace the system user and null device behavior without changing the Event contract.
+
+## Migrations
+
+```text
+0001_initial_schema
+0002_event_security_indexes
+0003_collector_tokens
+```
+
+`0002_event_security_indexes` adds event sequence uniqueness, event check constraints, session time ordering, latest/event-type/session query indexes, and a JSONB GIN index for future payload filtering.
+
+`0003_collector_tokens` adds hashed per-user collector tokens for CLI login and upload authentication.

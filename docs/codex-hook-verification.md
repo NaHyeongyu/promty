@@ -12,6 +12,20 @@ The repo-local Codex hook lives at:
 .codex/hooks.json
 ```
 
+Preferred setup:
+
+```bash
+python3 collector/src/cli.py install-hooks --tool codex-cli
+```
+
+Full local setup with login, hook installation, and uploader startup:
+
+```bash
+python3 collector/src/cli.py init \
+  --app-url http://127.0.0.1:5173 \
+  --api-url http://127.0.0.1:8011
+```
+
 Raw capture hook used for Step 2:
 
 ```bash
@@ -25,9 +39,21 @@ The active hook for Step 4 and Step 5 is:
 python3 "$(git rev-parse --show-toplevel)/collector/src/cli.py" capture --tool codex-cli
 ```
 
+The active Stop hook for code-change capture is:
+
+```bash
+python3 "$(git rev-parse --show-toplevel)/collector/src/cli.py" capture-changes --tool codex-cli
+```
+
 Neither command uploads to the backend.
 
 After adding or changing the hook, open `/hooks` in Codex and trust the hook if prompted.
+
+Check the local setup status:
+
+```bash
+python3 collector/src/cli.py doctor
+```
 
 ## Step 2: Capture Raw Payload
 
@@ -97,7 +123,7 @@ Notes:
 turn_id is a Codex UUID, not a numeric sequence
 sequence is assigned by PromptHub's local sequence store
 session_id is stable and can be used directly as the PromptHub session_id
-project_id is derived from cwd when no explicit project_id is provided
+project_id is derived from the git root for cwd when no explicit project_id is provided
 ```
 
 ## Step 4: Convert Real Payload
@@ -127,13 +153,25 @@ No backend upload yet.
 Default queue path:
 
 ```text
-~/.prompthub/events.jsonl
+~/.prompthub/events/<project_id>/<session_id>/events.jsonl
 ```
 
 Default sequence path:
 
 ```text
 ~/.prompthub/sequences.json
+```
+
+Default session index path:
+
+```text
+~/.prompthub/session-index.json
+```
+
+Default change baseline path:
+
+```text
+~/.prompthub/change-baselines.json
 ```
 
 ## Step 5: Multiple Prompt Validation
@@ -146,7 +184,8 @@ Verify:
 sequence increments correctly
 session_id remains stable
 project detection works
-events.jsonl ordering is correct
+project/session queue partitioning is correct
+events.jsonl ordering is correct inside each session
 ```
 
 ## Success Criteria
@@ -160,7 +199,7 @@ v
 PromptHub Event
 |
 v
-events.jsonl
+~/.prompthub/events/<project_id>/<session_id>/events.jsonl
 ```
 
 No mock data is used for the final validation.

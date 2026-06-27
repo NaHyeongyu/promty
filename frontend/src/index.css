@@ -1,0 +1,31 @@
+@import "./tokens.css";
+
+:root {
+  color-scheme: dark;
+  color: var(--bh-color-text-primary);
+  background: var(--bh-color-background);
+  font-family: var(--bh-font-ui);
+  font-weight: var(--bh-font-weight-regular);
+  line-height: var(--bh-line-height-body);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: inherit;
+  font-weight: inherit;
+  text-decoration: inherit;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--bh-color-background);
+}
+
+button {
+  font-family: inherit;
+}

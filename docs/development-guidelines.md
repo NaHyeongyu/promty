@@ -161,11 +161,11 @@ Responsibilities:
 
 Rules:
 
-- API calls belong in `frontend/src/api/`.
-- Shared TypeScript types belong in `frontend/src/types/`.
-- Reusable UI belongs in `frontend/src/components/`.
-- Route-level screens belong in `frontend/src/pages/`.
-- React stateful data-loading helpers belong in `frontend/src/hooks/`.
+- The frontend starts from the standard Vite React scaffold.
+- Frontend UI work must follow `design.md`.
+- Introduce folders only when a real feature needs them.
+- API calls should not be embedded directly in presentation-only components.
+- Shared TypeScript types should stay close to the feature until they have multiple consumers.
 - Components should receive data through props where practical.
 
 ### Docs

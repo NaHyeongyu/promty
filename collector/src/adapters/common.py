@@ -17,6 +17,18 @@ from events import (
     build_event,
     normalize_event_type,
 )
+from git_context import git_context
+from payloads import (
+    SESSION_ID_KEYS,
+    TURN_ID_KEYS,
+    WORKSPACE_KEYS,
+    first_bool,
+    first_int,
+    first_string,
+    first_value,
+    payload_views,
+    string_list,
+)
 
 EXTERNAL_EVENT_ALIASES: dict[str, EventType] = {
     "UserPromptSubmit": "PromptSubmitted",
@@ -30,53 +42,6 @@ EXTERNAL_EVENT_ALIASES: dict[str, EventType] = {
     "response_received": "ResponseReceived",
     "prompt_response": "ResponseReceived",
 }
-
-
-def _payload_views(payload: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
-    nested_payload = payload.get("payload")
-    if isinstance(nested_payload, dict):
-        return nested_payload, payload
-    return (payload,)
-
-
-def _get_first_string(payloads: tuple[Mapping[str, Any], ...], keys: tuple[str, ...]) -> str | None:
-    for payload in payloads:
-        for key in keys:
-            value = payload.get(key)
-            if isinstance(value, str) and value:
-                return value
-    return None
-
-
-def _get_first_value(payloads: tuple[Mapping[str, Any], ...], keys: tuple[str, ...]) -> Any:
-    for payload in payloads:
-        for key in keys:
-            if key in payload and payload[key] is not None:
-                return payload[key]
-    return None
-
-
-def _get_first_int(payloads: tuple[Mapping[str, Any], ...], keys: tuple[str, ...]) -> int | None:
-    value = _get_first_value(payloads, keys)
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str) and value.isdigit():
-        return int(value)
-    return None
-
-
-def _get_first_bool(payloads: tuple[Mapping[str, Any], ...], keys: tuple[str, ...]) -> bool | None:
-    value = _get_first_value(payloads, keys)
-    if isinstance(value, bool):
-        return value
-    return None
-
-
-def _get_string_list(payloads: tuple[Mapping[str, Any], ...], keys: tuple[str, ...]) -> list[str]:
-    value = _get_first_value(payloads, keys)
-    if not isinstance(value, list):
-        return []
-    return [item for item in value if isinstance(item, str)]
 
 
 def infer_event_type(raw_payload: Mapping[str, Any], default: EventType = "PromptSubmitted") -> EventType:
@@ -108,66 +73,87 @@ def normalize_event_payload(
     | CommitCreatedPayload
     | SessionEndedPayload
 ):
-    payloads = _payload_views(raw_payload)
+    payloads = payload_views(raw_payload)
+    cwd = first_string(payloads, WORKSPACE_KEYS)
+    git = git_context(cwd)
 
     if event_type == "SessionStarted":
         return SessionStartedPayload(
-            cwd=_get_first_string(payloads, ("cwd", "working_directory", "workspace")),
-            branch=_get_first_string(payloads, ("branch", "git_branch")),
-            model=_get_first_string(payloads, ("model", "model_name")),
-            permission_mode=_get_first_string(payloads, ("permission_mode",)),
-            session_id=_get_first_string(payloads, ("session_id", "conversation_id", "thread_id")),
+            cwd=cwd,
+            branch=first_string(payloads, ("branch", "git_branch")) or git.get("branch"),
+            git_remote=first_string(payloads, ("git_remote", "remote_url")) or git.get("git_remote"),
+            github_url=first_string(payloads, ("github_url", "repository_url")) or git.get("github_url"),
+            model=first_string(payloads, ("model", "model_name")),
+            permission_mode=first_string(payloads, ("permission_mode",)),
+            session_id=first_string(payloads, SESSION_ID_KEYS),
         )
 
     if event_type == "PromptSubmitted":
-        prompt = _get_first_string(payloads, ("prompt", "input", "text", "message"))
+        prompt = first_string(payloads, ("prompt", "input", "text", "message"))
         if not prompt or not prompt.strip():
             raise ValueError("Hook payload is missing a non-empty prompt/input")
 
         return PromptSubmittedPayload(
             prompt=prompt,
-            cwd=_get_first_string(payloads, ("cwd", "working_directory", "workspace")),
-            model=_get_first_string(payloads, ("model", "model_name")),
-            permission_mode=_get_first_string(payloads, ("permission_mode",)),
-            transcript_path=_get_first_string(payloads, ("transcript_path", "transcript")),
-            turn_id=_get_first_value(payloads, ("turn_id", "turn", "message_index")),
-            session_id=_get_first_string(payloads, ("session_id", "conversation_id", "thread_id")),
-            branch=_get_first_string(payloads, ("branch", "git_branch")),
-            hook_event_name=_get_first_string(payloads, ("hook_event_name",)),
-            approval_policy=_get_first_string(payloads, ("approval_policy",)),
-            sandbox_mode=_get_first_string(payloads, ("sandbox_mode",)),
+            cwd=cwd,
+            model=first_string(payloads, ("model", "model_name")),
+            permission_mode=first_string(payloads, ("permission_mode",)),
+            transcript_path=first_string(payloads, ("transcript_path", "transcript")),
+            turn_id=first_value(payloads, TURN_ID_KEYS),
+            session_id=first_string(payloads, SESSION_ID_KEYS),
+            branch=first_string(payloads, ("branch", "git_branch")) or git.get("branch"),
+            git_remote=first_string(payloads, ("git_remote", "remote_url")) or git.get("git_remote"),
+            github_url=first_string(payloads, ("github_url", "repository_url")) or git.get("github_url"),
+            hook_event_name=first_string(payloads, ("hook_event_name",)),
+            approval_policy=first_string(payloads, ("approval_policy",)),
+            sandbox_mode=first_string(payloads, ("sandbox_mode",)),
         )
 
     if event_type == "ResponseReceived":
         return ResponseReceivedPayload(
-            tokens=_get_first_int(payloads, ("tokens", "total_tokens")),
-            duration_ms=_get_first_int(payloads, ("duration_ms", "elapsed_ms")),
-            success=_get_first_bool(payloads, ("success", "ok")),
-            model=_get_first_string(payloads, ("model", "model_name")),
-            session_id=_get_first_string(payloads, ("session_id", "conversation_id", "thread_id")),
+            tokens=first_int(payloads, ("tokens", "total_tokens")),
+            duration_ms=first_int(payloads, ("duration_ms", "elapsed_ms")),
+            success=first_bool(payloads, ("success", "ok")),
+            model=first_string(payloads, ("model", "model_name")),
+            session_id=first_string(payloads, SESSION_ID_KEYS),
         )
 
     if event_type == "FilesChanged":
         return FilesChangedPayload(
-            files=_get_string_list(payloads, ("files", "changed_files", "paths")),
-            cwd=_get_first_string(payloads, ("cwd", "working_directory", "workspace")),
-            session_id=_get_first_string(payloads, ("session_id", "conversation_id", "thread_id")),
+            files=string_list(payloads, ("files", "changed_files", "paths")),
+            cwd=cwd,
+            session_id=first_string(payloads, SESSION_ID_KEYS),
+            prompt_event_id=first_string(payloads, ("prompt_event_id",)),
+            turn_id=first_value(payloads, TURN_ID_KEYS),
+            git_root=first_string(payloads, ("git_root",)) or git.get("git_root"),
+            branch=first_string(payloads, ("branch", "git_branch")) or git.get("branch"),
+            git_remote=first_string(payloads, ("git_remote", "remote_url")) or git.get("git_remote"),
+            github_url=first_string(payloads, ("github_url", "repository_url")) or git.get("github_url"),
+            base_commit=first_string(payloads, ("base_commit",)),
+            head_commit=first_string(payloads, ("head_commit",)),
+            baseline_captured_at=first_string(payloads, ("baseline_captured_at",)),
+            detected_at=first_string(payloads, ("detected_at",)),
+            source=first_string(payloads, ("source",)),
+            summary=first_value(payloads, ("summary",)),
+            changes=first_value(payloads, ("changes",)) or [],
         )
 
     if event_type == "CommitCreated":
         return CommitCreatedPayload(
-            hash=_get_first_string(payloads, ("hash", "commit_hash", "sha")),
-            message=_get_first_string(payloads, ("message", "commit_message")),
-            branch=_get_first_string(payloads, ("branch", "git_branch")),
-            cwd=_get_first_string(payloads, ("cwd", "working_directory", "workspace")),
-            session_id=_get_first_string(payloads, ("session_id", "conversation_id", "thread_id")),
+            hash=first_string(payloads, ("hash", "commit_hash", "sha")),
+            message=first_string(payloads, ("message", "commit_message")),
+            branch=first_string(payloads, ("branch", "git_branch")) or git.get("branch"),
+            git_remote=first_string(payloads, ("git_remote", "remote_url")) or git.get("git_remote"),
+            github_url=first_string(payloads, ("github_url", "repository_url")) or git.get("github_url"),
+            cwd=cwd,
+            session_id=first_string(payloads, SESSION_ID_KEYS),
         )
 
     if event_type == "SessionEnded":
         return SessionEndedPayload(
-            reason=_get_first_string(payloads, ("reason", "exit_reason")),
-            duration=_get_first_int(payloads, ("duration", "duration_seconds")),
-            session_id=_get_first_string(payloads, ("session_id", "conversation_id", "thread_id")),
+            reason=first_string(payloads, ("reason", "exit_reason")),
+            duration=first_int(payloads, ("duration", "duration_seconds")),
+            session_id=first_string(payloads, SESSION_ID_KEYS),
         )
 
     raise ValueError(f"Unsupported event type: {event_type}")
