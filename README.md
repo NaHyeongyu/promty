@@ -153,6 +153,8 @@ See [Codex Hook Verification](docs/codex-hook-verification.md) for the first hoo
 
 See [Database](docs/database.md) for the PostgreSQL schema and migration commands.
 
+See [Project Status](docs/project-status.md) for the current implementation snapshot and local runbook.
+
 Start the local PostgreSQL service:
 
 ```bash
