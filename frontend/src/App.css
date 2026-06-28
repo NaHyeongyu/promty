@@ -1516,6 +1516,11 @@ button.github-button {
   line-height: var(--bh-line-height-heading);
 }
 
+.model-badge[data-muted="true"] {
+  color: var(--bh-color-text-muted);
+  background: var(--bh-color-surface-secondary);
+}
+
 .brand-icon {
   width: var(--bh-icon-size-sm);
   height: var(--bh-icon-size-sm);

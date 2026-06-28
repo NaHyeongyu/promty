@@ -18,6 +18,7 @@ from app.models.events import Event
 from app.models.project_files import ProjectFile
 from app.models.project_knowledge import ProjectKnowledgeResource
 from app.models.projects import Project
+from app.models.published_flows import PublishedFlow
 from app.models.sessions import Session as PromptSession
 from app.models.users import User
 from app.services.event_payload_security import (
@@ -85,9 +86,28 @@ def _tool_label(tool: str) -> str:
     return labels.get(tool, tool)
 
 
+TOOL_MODEL_ALIASES = {
+    "claude code",
+    "claude-code",
+    "codex",
+    "codex-cli",
+    "cursor",
+    "gemini cli",
+    "gemini-cli",
+}
+
+
+def _model_name(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    model = value.strip()
+    if not model or model.lower() in TOOL_MODEL_ALIASES:
+        return None
+    return model
+
+
 def _payload_model(payload: dict[str, Any], tool: str) -> str:
-    model = payload.get("model")
-    return model if isinstance(model, str) and model else _tool_label(tool)
+    return _model_name(payload.get("model")) or _tool_label(tool)
 
 
 def _paths_from_files_changed(payload: dict[str, Any]) -> set[str]:
@@ -419,8 +439,36 @@ def read_project_detail(
     event_count = db.scalar(
         select(func.count()).select_from(Event).where(Event.project_id == project.id)
     ) or 0
+    prompt_count = db.scalar(
+        select(func.count())
+        .select_from(Event)
+        .where(Event.project_id == project.id, Event.event_type == "PromptSubmitted")
+    ) or 0
     latest_activity_at = db.scalar(
         select(func.max(Event.created_at)).where(Event.project_id == project.id)
+    )
+    flow_status_rows = db.execute(
+        select(PublishedFlow.status, func.count(PublishedFlow.id))
+        .where(
+            PublishedFlow.source_project_id == project.id,
+            PublishedFlow.author_id == current_user.id,
+        )
+        .group_by(PublishedFlow.status)
+    ).all()
+    flow_status_counts = {
+        str(status_value): int(count_value or 0)
+        for status_value, count_value in flow_status_rows
+    }
+    recent_flows = list(
+        db.execute(
+            select(PublishedFlow)
+            .where(
+                PublishedFlow.source_project_id == project.id,
+                PublishedFlow.author_id == current_user.id,
+            )
+            .order_by(desc(PublishedFlow.updated_at), desc(PublishedFlow.created_at))
+            .limit(3)
+        ).scalars()
     )
 
     events = list(
@@ -442,15 +490,23 @@ def read_project_detail(
     }
 
     activity_groups: dict[UUID, dict[str, Any]] = {}
-    models: set[str] = {session.model for session in sessions.values() if session.model}
+    models: set[str] = {
+        model
+        for session in sessions.values()
+        if (model := _model_name(session.model)) is not None
+    }
+    tools: set[str] = {
+        _tool_label(session.tool) for session in sessions.values() if session.tool
+    }
     for event in events:
         payload = event_payloads[event.id]
         session = sessions.get(event.session_id)
+        session_model = _model_name(session.model) if session else None
         group = activity_groups.setdefault(
             event.session_id,
             {
                 "id": str(event.session_id),
-                "model": session.model if session and session.model else _payload_model(payload, event.tool),
+                "model": session_model or _payload_model(payload, event.tool),
                 "started_at": session.started_at if session else event.created_at,
                 "last_activity_at": event.created_at,
                 "prompts": 0,
@@ -459,6 +515,7 @@ def read_project_detail(
                 "files": set(),
             },
         )
+        tools.add(_tool_label(event.tool))
         group["events"] += 1
         if event.created_at < group["started_at"]:
             group["started_at"] = event.created_at
@@ -470,7 +527,7 @@ def read_project_detail(
             group["responses"] += 1
         if event.event_type == "FilesChanged":
             group["files"].update(_paths_from_files_changed(payload))
-        model = _payload_model(payload, event.tool)
+        model = _model_name(payload.get("model"))
         if model:
             models.add(model)
 
@@ -602,12 +659,35 @@ def read_project_detail(
         },
         "metrics": {
             "connected_models": sorted(models),
+            "connected_tools": sorted(tools),
             "latest_activity_at": _iso(latest_activity_at),
             "last_modified_at": _iso(last_modified_at or project.updated_at),
             "repository_connected": repository_url is not None,
             "tracked_files": len(active_files),
             "total_events": event_count,
+            "total_prompts": prompt_count,
             "total_sessions": session_count,
+        },
+        "community": {
+            "draft_flows": flow_status_counts.get("draft", 0),
+            "latest_flow_at": _iso(recent_flows[0].updated_at) if recent_flows else None,
+            "published_flows": flow_status_counts.get("published", 0),
+            "recent_flows": [
+                {
+                    "file_count": flow.file_count,
+                    "id": str(flow.id),
+                    "prompt_count": flow.prompt_count,
+                    "published_at": _iso(flow.published_at),
+                    "slug": flow.slug,
+                    "status": flow.status,
+                    "summary": flow.summary,
+                    "title": flow.title,
+                    "updated_at": _iso(flow.updated_at),
+                    "visibility": flow.visibility,
+                }
+                for flow in recent_flows
+            ],
+            "total_flows": sum(flow_status_counts.values()),
         },
         "activities": [
             {

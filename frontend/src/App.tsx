@@ -97,6 +97,24 @@ type ProjectDetailApiResponse = {
     responses: number;
     started_at: string | null;
   }>;
+  community?: {
+    draft_flows: number;
+    latest_flow_at: string | null;
+    published_flows: number;
+    recent_flows: Array<{
+      file_count: number;
+      id: string;
+      prompt_count: number;
+      published_at: string | null;
+      slug: string;
+      status: string;
+      summary: string | null;
+      title: string;
+      updated_at: string | null;
+      visibility: string;
+    }>;
+    total_flows: number;
+  };
   prompt_activities?: Array<{
     file_changes?: Array<{
       additions: number | null;
@@ -136,10 +154,12 @@ type ProjectDetailApiResponse = {
   }>;
   metrics: {
     connected_models: string[];
+    connected_tools?: string[];
     latest_activity_at: string | null;
     last_modified_at: string | null;
     repository_connected: boolean;
     total_events: number;
+    total_prompts?: number;
     total_sessions: number;
     tracked_files: number;
   };
@@ -624,22 +644,26 @@ function projectNameFromEvent(event: EventRecord) {
   );
 }
 
+const TOOL_MODEL_NAMES = new Set([
+  "claude code",
+  "claude-code",
+  "codex",
+  "codex-cli",
+  "cursor",
+  "gemini cli",
+  "gemini-cli",
+]);
+
+function normalizeModelName(value: string | null) {
+  if (!value) {
+    return null;
+  }
+  return TOOL_MODEL_NAMES.has(value.toLowerCase()) ? null : value;
+}
+
 function modelNameFromEvent(event: EventRecord) {
   const model = getStringPayloadValue(event.payload, "model");
-  if (model) {
-    return model;
-  }
-
-  if (event.tool === "codex-cli") {
-    return "Codex";
-  }
-  if (event.tool === "claude-code") {
-    return "Claude Code";
-  }
-  if (event.tool === "gemini-cli") {
-    return "Gemini CLI";
-  }
-  return event.tool;
+  return normalizeModelName(model);
 }
 
 function normalizeGithubUrl(value: string | null) {
@@ -716,7 +740,10 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
 
     current.events += 1;
     current.sessions.add(event.session_id);
-    current.models.add(modelNameFromEvent(event));
+    const modelName = modelNameFromEvent(event);
+    if (modelName) {
+      current.models.add(modelName);
+    }
     current.githubUrl = current.githubUrl ?? githubUrlFromEvent(event);
     if (event.event_type === "FilesChanged") {
       const files = event.payload.files;
@@ -751,6 +778,13 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
 function emptyProjectDetailData(project: Project | null): ProjectDetailData {
   return {
     activities: [],
+    community: {
+      draftFlows: 0,
+      latestFlowAt: null,
+      publishedFlows: 0,
+      recentFlows: [],
+      totalFlows: 0,
+    },
     files: [],
     knowledge: [],
     overview: [],
@@ -777,6 +811,22 @@ function projectDetailDataFromApi(
   fallbackProject: Project | null,
 ): ProjectDetailData {
   const models = payload.metrics.connected_models;
+  const tools = payload.metrics.connected_tools ?? [];
+  const community = payload.community;
+  const totalPrompts =
+    payload.metrics.total_prompts ?? payload.prompt_activities?.length ?? 0;
+  const runtimeValue =
+    tools.length === 1
+      ? tools[0]
+      : tools.length > 1
+        ? `${tools.length} tools`
+        : "Tool unknown";
+  const runtimeDescription =
+    models.length === 1
+      ? `Model ${models[0]}`
+      : models.length > 1
+        ? `Models ${models.join(", ")}`
+        : "Model metadata not captured";
 
   return {
     activities: payload.activities.map((activity) => ({
@@ -820,6 +870,30 @@ function projectDetailDataFromApi(
       sessionId: activity.session_id,
       submittedAt: formatOptionalTimestamp(activity.submitted_at, "Unknown"),
     })),
+    community: {
+      draftFlows: community?.draft_flows ?? 0,
+      latestFlowAt: community?.latest_flow_at
+        ? formatOptionalTimestamp(community.latest_flow_at, "Unknown")
+        : null,
+      publishedFlows: community?.published_flows ?? 0,
+      recentFlows: (community?.recent_flows ?? []).map((flow) => ({
+        fileCount: flow.file_count,
+        id: flow.id,
+        promptCount: flow.prompt_count,
+        publishedAt: flow.published_at
+          ? formatOptionalTimestamp(flow.published_at, "Unknown")
+          : null,
+        slug: flow.slug,
+        status: flow.status,
+        summary: flow.summary,
+        title: flow.title,
+        updatedAt: flow.updated_at
+          ? formatOptionalTimestamp(flow.updated_at, "Unknown")
+          : null,
+        visibility: flow.visibility,
+      })),
+      totalFlows: community?.total_flows ?? 0,
+    },
     files: payload.files,
     knowledge: payload.knowledge.map((item) => ({
       fileType: item.file_type,
@@ -833,9 +907,9 @@ function projectDetailDataFromApi(
         description: `Default branch ${payload.project.default_branch}`,
       },
       {
-        title: "Connected AI Models",
-        value: models.length > 0 ? `${models.length} models` : "No models",
-        description: models.length > 0 ? models.join(", ") : "No model metadata yet",
+        title: "AI Runtime",
+        value: runtimeValue,
+        description: runtimeDescription,
       },
       {
         title: "Last Activity",
@@ -848,6 +922,11 @@ function projectDetailDataFromApi(
         description: "Across this workspace",
       },
       {
+        title: "Total Prompts",
+        value: formatCompactNumber(totalPrompts),
+        description: "Captured prompt submissions",
+      },
+      {
         title: "Total Events",
         value: formatCompactNumber(payload.metrics.total_events),
         description: "Prompts, responses, file changes",
@@ -856,11 +935,6 @@ function projectDetailDataFromApi(
         title: "Last Modified",
         value: formatOptionalTimestamp(payload.metrics.last_modified_at, "Unknown"),
         description: `${formatCompactNumber(payload.metrics.tracked_files)} tracked files`,
-      },
-      {
-        title: "Quick Actions",
-        value: "Workspace shortcuts",
-        actions: ["Review activity", "Open knowledge", "Inspect files"],
       },
     ],
     project: {
@@ -2795,15 +2869,19 @@ function WorkspaceApp() {
                     <div className="model-group" aria-label="Models used">
                       <span className="model-group-label">
                         <Bot aria-hidden="true" size={15} strokeWidth={1.5} />
-                        Models
+                        Model
                       </span>
                       <div className="model-list">
-                        {project.models.map((model) => (
+                        {project.models.length > 0 ? project.models.map((model) => (
                           <span className="model-badge" key={model}>
                             <ModelIcon model={model} />
                             {model}
                           </span>
-                        ))}
+                        )) : (
+                          <span className="model-badge" data-muted="true">
+                            Model unknown
+                          </span>
+                        )}
                       </div>
                     </div>
 

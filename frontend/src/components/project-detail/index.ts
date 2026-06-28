@@ -17,6 +17,8 @@ export type {
   PublishedFlowDetail,
   PromptActivityItem,
   PromptFlowPublishPayload,
+  ProjectCommunityFlow,
+  ProjectCommunityStatus,
   ProjectDetailData,
   ProjectDetailProject,
   ProjectDetailTab,

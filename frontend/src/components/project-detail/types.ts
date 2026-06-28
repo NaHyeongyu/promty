@@ -36,6 +36,27 @@ export type OverviewItem = {
   actions?: string[];
 };
 
+export type ProjectCommunityFlow = {
+  fileCount: number;
+  id: string;
+  promptCount: number;
+  publishedAt: string | null;
+  slug: string;
+  status: string;
+  summary?: string | null;
+  title: string;
+  updatedAt: string | null;
+  visibility: string;
+};
+
+export type ProjectCommunityStatus = {
+  draftFlows: number;
+  latestFlowAt: string | null;
+  publishedFlows: number;
+  recentFlows: ProjectCommunityFlow[];
+  totalFlows: number;
+};
+
 export type ActivityItem = {
   id: string;
   model: string;
@@ -113,6 +134,7 @@ export type EmptyStateProps = {
 
 export type ProjectDetailData = {
   activities: ActivityItem[];
+  community: ProjectCommunityStatus;
   files: FileTreeNode[];
   knowledge: KnowledgeItem[];
   overview: OverviewItem[];

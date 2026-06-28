@@ -22,6 +22,7 @@ import { ProjectTabs } from "./ProjectTabs";
 import type {
   ActivityNavigationState,
   ActivityItem,
+  OverviewItem,
   PublishedFlowDetail,
   ProjectDetailData,
   ProjectDetailTab,
@@ -82,6 +83,14 @@ function shareSelectionTitle(
     return prompts.length === 1 ? "1 prompt selected" : `${prompts.length} prompts selected`;
   }
   return promptRangeLabel(prompts);
+}
+
+function compactLabel(value: string) {
+  return value
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function tagsFromPrompts(prompts: PromptActivityItem[]) {
@@ -790,11 +799,104 @@ function OverviewPanel({ data }: { data: ProjectDetailData }) {
     );
   }
 
+  const overviewItems = new Map(data.overview.map((item) => [item.title, item]));
+  const snapshotItems = [
+    overviewItems.get("Repository"),
+    overviewItems.get("AI Runtime"),
+    overviewItems.get("Last Activity"),
+  ].filter((item): item is OverviewItem => Boolean(item));
+  const totalItems = [
+    overviewItems.get("Total AI Sessions"),
+    overviewItems.get("Total Prompts"),
+    overviewItems.get("Total Events"),
+    overviewItems.get("Last Modified"),
+  ].filter((item): item is OverviewItem => Boolean(item));
+  const community = data.community;
+  const recentFlows = community.recentFlows;
+
   return (
-    <div className="bh-overview-grid">
-      {data.overview.map((item) => (
-        <OverviewCard item={item} key={item.title} />
-      ))}
+    <div className="bh-overview-layout">
+      <section className="bh-overview-section" aria-labelledby="project-snapshot-title">
+        <div className="bh-overview-section-header">
+          <div>
+            <span>Overview</span>
+            <h2 id="project-snapshot-title">Project snapshot</h2>
+          </div>
+          <strong>{data.project.repositoryStatus}</strong>
+        </div>
+
+        <div className="bh-overview-grid">
+          {snapshotItems.map((item) => (
+            <OverviewCard item={item} key={item.title} />
+          ))}
+        </div>
+
+        <dl className="bh-overview-totals" aria-label="Project activity totals">
+          {totalItems.map((item) => (
+            <div key={item.title}>
+              <dt>{item.title.replace("Total ", "")}</dt>
+              <dd>{item.value}</dd>
+              {item.description ? <span>{item.description}</span> : null}
+            </div>
+          ))}
+        </dl>
+      </section>
+
+      <section className="bh-overview-section" aria-labelledby="community-status-title">
+        <div className="bh-overview-section-header">
+          <div>
+            <span>Community</span>
+            <h2 id="community-status-title">Shared flows</h2>
+          </div>
+          <strong>{community.totalFlows} total</strong>
+        </div>
+
+        <dl className="bh-overview-community-stats" aria-label="Community sharing status">
+          <div>
+            <dt>Published</dt>
+            <dd>{community.publishedFlows}</dd>
+          </div>
+          <div>
+            <dt>Drafts</dt>
+            <dd>{community.draftFlows}</dd>
+          </div>
+          <div>
+            <dt>Latest</dt>
+            <dd>{community.latestFlowAt ?? "No shares"}</dd>
+          </div>
+        </dl>
+
+        {recentFlows.length > 0 ? (
+          <div className="bh-overview-flow-list" aria-label="Recent shared flows">
+            {recentFlows.map((flow) => (
+              <article className="bh-overview-flow-row" key={flow.id}>
+                <div>
+                  <span>
+                    {compactLabel(flow.status)} · {compactLabel(flow.visibility)}
+                  </span>
+                  <strong>{flow.title}</strong>
+                  {flow.summary ? <p>{flow.summary}</p> : null}
+                </div>
+                <dl>
+                  <div>
+                    <dt>Prompts</dt>
+                    <dd>{flow.promptCount}</dd>
+                  </div>
+                  <div>
+                    <dt>Files</dt>
+                    <dd>{flow.fileCount}</dd>
+                  </div>
+                </dl>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="bh-overview-community-empty">
+            <strong>No shared flows yet</strong>
+            <span>Published prompt flows from this project will appear here.</span>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
