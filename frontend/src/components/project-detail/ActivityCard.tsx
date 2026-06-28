@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Share2 } from "lucide-react";
 import type { ActivityItem, PromptActivityItem } from "./types";
 
 const PROMPT_PREVIEW_LINES = 10;
@@ -70,6 +71,19 @@ function responseTruncatedLabel(activity: PromptActivityItem) {
   return "response truncated";
 }
 
+function shareStateLabel(state: PromptActivityCardProps["shareState"]) {
+  if (state === "start") {
+    return "Start";
+  }
+  if (state === "end") {
+    return "End";
+  }
+  if (state === "range") {
+    return "Selected";
+  }
+  return null;
+}
+
 type ActivityCardProps = {
   activity: ActivityItem;
   isSelected?: boolean;
@@ -115,22 +129,26 @@ type PromptActivityCardProps = {
   activity: PromptActivityItem;
   isSelected: boolean;
   onOpen: () => void;
-  turnLabel?: string;
+  promptLabel?: string;
+  shareState?: "end" | "range" | "start";
 };
 
 export function PromptActivityCard({
   activity,
   isSelected,
   onOpen,
-  turnLabel,
+  promptLabel,
+  shareState,
 }: PromptActivityCardProps) {
   const truncatedLabel = promptTruncatedLabel(activity);
   const responseLimitLabel = responseTruncatedLabel(activity);
+  const selectedShareLabel = shareStateLabel(shareState);
 
   return (
     <article
       className="bh-prompt-row"
       data-active={isSelected}
+      data-share-state={shareState}
       aria-label={`Select prompt submitted at ${activity.submittedAt}`}
       aria-pressed={isSelected}
       onClick={onOpen}
@@ -146,11 +164,14 @@ export function PromptActivityCard({
       <div className="bh-prompt-row-main">
         <div className="bh-prompt-row-header">
           <time>{activity.submittedAt}</time>
-          {turnLabel ? <span>{turnLabel}</span> : null}
+          {promptLabel ? <span>{promptLabel}</span> : null}
         </div>
         <div className="bh-prompt-row-meta" aria-label="Prompt metadata">
           <span className="bh-prompt-row-chip is-model">{activity.model}</span>
           <span className="bh-prompt-row-chip">{activity.filesChanged} files</span>
+          {selectedShareLabel ? (
+            <span className="bh-prompt-row-chip is-share">{selectedShareLabel}</span>
+          ) : null}
           {activity.response ? (
             <span className="bh-prompt-row-chip is-response">Response</span>
           ) : null}
@@ -170,6 +191,7 @@ export function PromptActivityCard({
 type PromptChangeDetailProps = {
   activity: PromptActivityItem | null;
   onOpenSession?: (activity: PromptActivityItem) => void;
+  onSharePrompt?: (activity: PromptActivityItem) => void;
 };
 
 function diffLineKind(line: string) {
@@ -224,6 +246,7 @@ function DiffViewer({ patch }: { patch: string }) {
 export function PromptChangeDetail({
   activity,
   onOpenSession,
+  onSharePrompt,
 }: PromptChangeDetailProps) {
   if (!activity) {
     return (
@@ -234,7 +257,7 @@ export function PromptChangeDetail({
       >
         <div>
           <h2 id="activity-detail-placeholder-title">Code changes</h2>
-          <p>Open a prompt to inspect changed files from that turn.</p>
+          <p>Open a prompt to inspect changed files from that prompt.</p>
         </div>
       </section>
     );
@@ -252,6 +275,16 @@ export function PromptChangeDetail({
           <h2 id="activity-detail-placeholder-title">Code changes</h2>
         </div>
         <div className="bh-prompt-change-header-actions">
+          {onSharePrompt ? (
+            <button
+              className="bh-header-action-button is-primary"
+              onClick={() => onSharePrompt(activity)}
+              type="button"
+            >
+              <Share2 aria-hidden="true" size={15} strokeWidth={1.5} />
+              <span>Share prompt</span>
+            </button>
+          ) : null}
           {onOpenSession ? (
             <button
               className="bh-header-action-button"
@@ -410,7 +443,7 @@ export function SessionDetail({ activity, prompts }: SessionDetailProps) {
               <article className="bh-session-conversation-row" key={prompt.id}>
                 <div>
                   <div className="bh-session-conversation-meta">
-                    <span>Turn {prompt.sequence}</span>
+                    <span>Prompt {prompt.sequence}</span>
                     <time>{prompt.submittedAt}</time>
                   </div>
                   <PromptText text={prompt.prompt} />

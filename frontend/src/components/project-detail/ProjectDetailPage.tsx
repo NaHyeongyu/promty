@@ -1,5 +1,12 @@
-import { useMemo, useState } from "react";
-import { Activity, BookOpen, Search } from "lucide-react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
+import { Activity, BookOpen, Check, Search, Share2, X } from "lucide-react";
+import { MarkdownContent } from "../MarkdownContent";
 import {
   ActivityCard,
   PromptActivityCard,
@@ -14,9 +21,13 @@ import { ProjectHeader } from "./ProjectHeader";
 import { ProjectTabs } from "./ProjectTabs";
 import type {
   ActivityNavigationState,
+  ActivityItem,
+  PublishedFlowDetail,
   ProjectDetailData,
   ProjectDetailTab,
   ProjectDetailTabId,
+  PromptActivityItem,
+  PromptFlowPublishPayload,
 } from "./types";
 import "./project-detail.css";
 
@@ -29,6 +40,7 @@ type ProjectDetailPageProps = {
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onConnectRepository?: () => void;
   onRepositoryFileSelect?: (path: string) => void;
+  onPublishFlow?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
   onRetry?: () => void;
   onTabChange: (tabId: ProjectDetailTabId) => void;
 };
@@ -46,6 +58,726 @@ const projectTabs: ProjectDetailTab[] = [
   { id: "knowledge", label: "Knowledge" },
   { id: "files", label: "Files" },
 ];
+
+function promptTitle(prompt: string) {
+  return prompt.split(/\r?\n/)[0]?.trim().replace(/\s+/g, " ") || "Prompt flow";
+}
+
+function promptRangeLabel(prompts: PromptActivityItem[]) {
+  if (prompts.length === 0) {
+    return "No prompts selected";
+  }
+  const first = prompts[0];
+  const last = prompts[prompts.length - 1];
+  return first.id === last.id
+    ? `Prompt ${first.sequence}`
+    : `Prompts ${first.sequence}-${last.sequence}`;
+}
+
+function shareSelectionTitle(
+  prompts: PromptActivityItem[],
+  scope: "project" | "session",
+) {
+  if (scope === "project") {
+    return prompts.length === 1 ? "1 prompt selected" : `${prompts.length} prompts selected`;
+  }
+  return promptRangeLabel(prompts);
+}
+
+function tagsFromPrompts(prompts: PromptActivityItem[]) {
+  const tags = new Set<string>();
+  for (const prompt of prompts) {
+    if (prompt.model) {
+      tags.add(prompt.model.toLowerCase().replace(/[^a-z0-9]+/g, "-"));
+    }
+    if (prompt.filesChanged > 0) {
+      tags.add("code-changes");
+    }
+  }
+  return Array.from(tags).filter(Boolean).slice(0, 6).join(", ");
+}
+
+function shareSelectionLabel(state: "end" | "range" | "start" | undefined) {
+  if (state === "start") {
+    return "Start";
+  }
+  if (state === "end") {
+    return "End";
+  }
+  if (state === "range") {
+    return "Included";
+  }
+  return null;
+}
+
+type MarkdownEditorView = {
+  destroy: () => void;
+  dispatch: (transaction: {
+    changes: { from: number; insert: string; to: number };
+  }) => void;
+  state: {
+    doc: {
+      toString: () => string;
+    };
+  };
+};
+
+const MODAL_FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "textarea:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+  '[contenteditable="true"]',
+].join(",");
+
+function focusableModalElements(root: HTMLElement) {
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(MODAL_FOCUSABLE_SELECTOR),
+  ).filter((element) => {
+    const isHidden = element.getAttribute("aria-hidden") === "true";
+    const isDisabled = element.hasAttribute("disabled");
+    return !isHidden && !isDisabled && element.getClientRects().length > 0;
+  });
+}
+
+function MarkdownEditor({
+  onChange,
+  placeholder,
+  value,
+}: {
+  onChange: (value: string) => void;
+  placeholder: string;
+  value: string;
+}) {
+  const editorElementRef = useRef<HTMLDivElement | null>(null);
+  const editorViewRef = useRef<MarkdownEditorView | null>(null);
+  const onChangeRef = useRef(onChange);
+  const valueRef = useRef(value);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
+    let isDisposed = false;
+    let mountedEditorView: MarkdownEditorView | null = null;
+
+    async function mountEditor() {
+      const [
+        commands,
+        markdownLanguage,
+        language,
+        state,
+        view,
+      ] = await Promise.all([
+        import("@codemirror/commands"),
+        import("@codemirror/lang-markdown"),
+        import("@codemirror/language"),
+        import("@codemirror/state"),
+        import("@codemirror/view"),
+      ]);
+
+      if (isDisposed || !editorElementRef.current) {
+        return;
+      }
+
+      const markdownEditorTheme = view.EditorView.theme(
+        {
+          "&": {
+            backgroundColor: "transparent",
+            color: "var(--bh-color-text-primary)",
+            fontSize: "var(--bh-font-size-code)",
+          },
+          "&.cm-focused": {
+            outline: "none",
+          },
+          ".cm-content": {
+            minHeight: "240px",
+            padding: "var(--bh-space-3)",
+          },
+          ".cm-line": {
+            padding: "0",
+          },
+          ".cm-scroller": {
+            fontFamily: "var(--bh-font-code)",
+            lineHeight: "var(--bh-line-height-code)",
+          },
+          ".cm-placeholder": {
+            color: "var(--bh-color-text-muted)",
+          },
+          ".cm-cursor": {
+            borderLeftColor: "var(--bh-color-text-primary)",
+          },
+          ".cm-selectionBackground, .cm-content ::selection": {
+            backgroundColor: "var(--bh-color-primary-subtle) !important",
+          },
+        },
+        { dark: true },
+      );
+
+      mountedEditorView = new view.EditorView({
+        parent: editorElementRef.current,
+        state: state.EditorState.create({
+          doc: valueRef.current,
+          extensions: [
+            commands.history(),
+            markdownLanguage.markdown(),
+            language.syntaxHighlighting(language.defaultHighlightStyle, {
+              fallback: true,
+            }),
+            view.EditorView.lineWrapping,
+            view.placeholder(placeholder),
+            markdownEditorTheme,
+            view.keymap.of([
+              ...commands.defaultKeymap,
+              ...commands.historyKeymap,
+              commands.indentWithTab,
+            ]),
+            view.EditorView.updateListener.of((update) => {
+              if (update.docChanged) {
+                onChangeRef.current(update.state.doc.toString());
+              }
+            }),
+          ],
+        }),
+      });
+
+      editorViewRef.current = mountedEditorView;
+    }
+
+    void mountEditor();
+
+    return () => {
+      isDisposed = true;
+      mountedEditorView?.destroy();
+      editorViewRef.current = null;
+    };
+  }, [placeholder]);
+
+  useEffect(() => {
+    valueRef.current = value;
+    const editorView = editorViewRef.current;
+    if (!editorView) {
+      return;
+    }
+
+    const currentValue = editorView.state.doc.toString();
+    if (currentValue === value) {
+      return;
+    }
+
+    editorView.dispatch({
+      changes: {
+        from: 0,
+        insert: value,
+        to: currentValue.length,
+      },
+    });
+  }, [value]);
+
+  return <div className="bh-markdown-editor" ref={editorElementRef} />;
+}
+
+function PromptFlowShareDrawer({
+  data,
+  onClose,
+  onPublishFlow,
+  onSelectPrompt,
+  prompts,
+  scope,
+  session,
+  sessionPrompts,
+  shareStateForPrompt,
+}: {
+  data: ProjectDetailData;
+  onClose: () => void;
+  onPublishFlow?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
+  onSelectPrompt: (prompt: PromptActivityItem) => void;
+  prompts: PromptActivityItem[];
+  scope: "project" | "session";
+  session: ActivityItem | null;
+  sessionPrompts: PromptActivityItem[];
+  shareStateForPrompt: (
+    prompt: PromptActivityItem,
+  ) => "end" | "range" | "start" | undefined;
+}) {
+  const modalElementRef = useRef<HTMLElement | null>(null);
+  const orderedPrompts = useMemo(
+    () =>
+      [...prompts].sort((first, second) => {
+        if (scope === "project") {
+          const firstTime = Date.parse(first.submittedAt);
+          const secondTime = Date.parse(second.submittedAt);
+          if (!Number.isNaN(firstTime) && !Number.isNaN(secondTime)) {
+            return firstTime - secondTime;
+          }
+        }
+        return first.sequence - second.sequence;
+      }),
+    [prompts, scope],
+  );
+  const orderedSessionPrompts = useMemo(
+    () =>
+      [...sessionPrompts].sort((first, second) => {
+        if (scope === "project") {
+          const firstTime = Date.parse(first.submittedAt);
+          const secondTime = Date.parse(second.submittedAt);
+          if (!Number.isNaN(firstTime) && !Number.isNaN(secondTime)) {
+            return secondTime - firstTime;
+          }
+        }
+        return first.sequence - second.sequence;
+      }),
+    [scope, sessionPrompts],
+  );
+  const selectionKey = orderedPrompts.map((prompt) => prompt.id).join(":");
+  const defaultTitle =
+    orderedPrompts.length > 0
+      ? `${data.project.name}: ${promptTitle(orderedPrompts[0].prompt)}`
+      : `${data.project.name}: Prompt flow`;
+  const defaultSummary =
+    orderedPrompts.length > 0
+      ? `${orderedPrompts.length} prompt flow from ${
+          session?.model ?? data.project.name
+        } with ${orderedPrompts.reduce(
+          (total, prompt) => total + prompt.filesChanged,
+          0,
+        )} linked file changes.`
+      : "";
+  const defaultContext =
+    orderedPrompts.length > 0
+      ? scope === "session" && session
+        ? `${promptRangeLabel(orderedPrompts)} from session ${session.id.slice(0, 8)}.`
+        : `${orderedPrompts.length} selected prompts from ${data.project.name}.`
+      : "";
+  const editorPlaceholder =
+    "Write the context, decisions, code notes, and follow-up ideas in Markdown.\n\n```ts\n// Code blocks work well here.\n```";
+  const [shareStep, setShareStep] = useState<"compose" | "select">("select");
+  const [editorMode, setEditorMode] = useState<"preview" | "write">("write");
+  const [title, setTitle] = useState(defaultTitle);
+  const [summary, setSummary] = useState(defaultSummary);
+  const [contextSummary, setContextSummary] = useState(defaultContext);
+  const [content, setContent] = useState("");
+  const [tags, setTags] = useState(tagsFromPrompts(orderedPrompts));
+  const [visibility, setVisibility] =
+    useState<PromptFlowPublishPayload["visibility"]>("public");
+  const [publishIntent, setPublishIntent] =
+    useState<PromptFlowPublishPayload["status"] | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const previousActiveElement =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousBodyOverscrollBehavior = document.body.style.overscrollBehavior;
+
+    document.body.style.overflow = "hidden";
+    document.body.style.overscrollBehavior = "contain";
+
+    const focusTimer = window.setTimeout(() => {
+      modalElementRef.current?.focus({ preventScroll: true });
+    }, 0);
+
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.body.style.overflow = previousBodyOverflow;
+      document.body.style.overscrollBehavior = previousBodyOverscrollBehavior;
+      previousActiveElement?.focus({ preventScroll: true });
+    };
+  }, []);
+
+  useEffect(() => {
+    setTitle(defaultTitle);
+    setSummary(defaultSummary);
+    setContextSummary(defaultContext);
+    setTags(tagsFromPrompts(orderedPrompts));
+    setContent("");
+    setEditorMode("write");
+    setShareStep("select");
+    setErrorMessage(null);
+  }, [defaultContext, defaultSummary, defaultTitle, selectionKey]);
+
+  const canContinue = orderedPrompts.length > 0;
+  const canPublish =
+    Boolean(onPublishFlow) &&
+    data.project.id.length > 0 &&
+    orderedPrompts.length > 0 &&
+    title.trim().length > 0;
+  const isSubmitting = publishIntent !== null;
+
+  const submitFlow = (status: PromptFlowPublishPayload["status"]) => {
+    if (!onPublishFlow || orderedPrompts.length === 0 || !title.trim()) {
+      return;
+    }
+
+    setPublishIntent(status);
+    setErrorMessage(null);
+    void onPublishFlow({
+      context_summary: contextSummary.trim() || null,
+      end_prompt_event_id:
+        scope === "session" ? orderedPrompts[orderedPrompts.length - 1].id : null,
+      notes: content.trim() || null,
+      prompt_event_ids:
+        scope === "project" ? orderedPrompts.map((prompt) => prompt.id) : undefined,
+      project_id: data.project.id,
+      session_id: scope === "session" ? session?.id ?? null : null,
+      start_prompt_event_id: scope === "session" ? orderedPrompts[0].id : null,
+      status,
+      summary: summary.trim() || null,
+      tags: tags
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+      title: title.trim(),
+      visibility,
+    })
+      .then(() => {
+        onClose();
+      })
+      .catch((error) => {
+        setErrorMessage(
+          error instanceof Error ? error.message : "Flow could not be saved.",
+        );
+      })
+      .finally(() => {
+        setPublishIntent(null);
+      });
+  };
+  const handleModalKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+
+    if (event.key !== "Tab") {
+      return;
+    }
+
+    const modalElement = modalElementRef.current;
+    if (!modalElement) {
+      return;
+    }
+
+    const focusableElements = focusableModalElements(modalElement);
+    if (focusableElements.length === 0) {
+      event.preventDefault();
+      modalElement.focus({ preventScroll: true });
+      return;
+    }
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+    const activeElement =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    if (event.shiftKey && activeElement === firstElement) {
+      event.preventDefault();
+      lastElement.focus({ preventScroll: true });
+      return;
+    }
+
+    if (!event.shiftKey && activeElement === lastElement) {
+      event.preventDefault();
+      firstElement.focus({ preventScroll: true });
+    }
+  };
+
+  return (
+    <div className="bh-share-overlay" role="presentation">
+      <section
+        aria-modal="true"
+        aria-labelledby="prompt-flow-share-title"
+        className="bh-share-drawer"
+        onKeyDown={handleModalKeyDown}
+        ref={modalElementRef}
+        role="dialog"
+        tabIndex={-1}
+      >
+        <div className="bh-share-drawer-header">
+          <div>
+            <span>
+              {shareStep === "select"
+                ? "Step 1 of 2 · Select prompts"
+                : "Step 2 of 2 · Write post"}
+            </span>
+            <h2 id="prompt-flow-share-title">
+              {shareSelectionTitle(orderedPrompts, scope)}
+            </h2>
+          </div>
+          <button
+            aria-label="Close share drawer"
+            className="bh-icon-button"
+            onClick={onClose}
+            type="button"
+          >
+            <X aria-hidden="true" size={16} strokeWidth={1.5} />
+          </button>
+        </div>
+
+        <form
+          className={
+            shareStep === "select"
+              ? "bh-share-form is-select-step"
+              : "bh-share-form"
+          }
+          onSubmit={(event) => {
+            event.preventDefault();
+            submitFlow("published");
+          }}
+        >
+          {shareStep === "select" ? (
+            <>
+              <div className="bh-share-selection-panel">
+                <div className="bh-share-selection-header">
+                  <div>
+                    <span>Prompt selection</span>
+                    <strong>{shareSelectionTitle(orderedPrompts, scope)}</strong>
+                  </div>
+                  <span>{orderedPrompts.length} selected</span>
+                </div>
+                <div className="bh-share-selection-list">
+                  {orderedSessionPrompts.map((prompt) => {
+                    const shareState = shareStateForPrompt(prompt);
+                    const selectedLabel = shareSelectionLabel(shareState);
+
+                    return (
+                      <article
+                        aria-label={`Select prompt ${prompt.sequence}`}
+                        aria-pressed={Boolean(shareState)}
+                        className="bh-share-selection-row bh-prompt-row"
+                        data-share-state={shareState}
+                        key={prompt.id}
+                        onClick={() => onSelectPrompt(prompt)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            onSelectPrompt(prompt);
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        <div className="bh-prompt-row-main">
+                          <div className="bh-prompt-row-header">
+                            <time>{prompt.submittedAt}</time>
+                            <span>Prompt {prompt.sequence}</span>
+                          </div>
+                          <div
+                            className="bh-prompt-row-meta"
+                            aria-label="Prompt metadata"
+                          >
+                            <span className="bh-prompt-row-chip is-model">
+                              {prompt.model}
+                            </span>
+                            <span className="bh-prompt-row-chip">
+                              {prompt.filesChanged} files
+                            </span>
+                            {selectedLabel ? (
+                              <span className="bh-prompt-row-chip is-share">
+                                {selectedLabel}
+                              </span>
+                            ) : null}
+                            {prompt.response ? (
+                              <span className="bh-prompt-row-chip is-response">
+                                Response
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="bh-prompt-text">
+                            <p>{prompt.prompt}</p>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="bh-share-actions">
+                <button
+                  className="bh-header-action-button"
+                  onClick={onClose}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className="bh-header-action-button is-primary"
+                  disabled={!canContinue}
+                  onClick={() => setShareStep("compose")}
+                  type="button"
+                >
+                  Next
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div
+                className="bh-share-preview"
+                aria-label="Selected prompt flow preview"
+              >
+                <div>
+                  <strong>{orderedPrompts.length}</strong>
+                  <span>prompts</span>
+                </div>
+                <div>
+                  <strong>
+                    {orderedPrompts.reduce(
+                      (total, prompt) => total + prompt.filesChanged,
+                      0,
+                    )}
+                  </strong>
+                  <span>file links</span>
+                </div>
+                <div>
+                  <strong>{session?.model ?? "Project"}</strong>
+                  <span>session</span>
+                </div>
+              </div>
+
+              <label>
+                <span>Title</span>
+                <input
+                  maxLength={255}
+                  onChange={(event) => setTitle(event.target.value)}
+                  value={title}
+                />
+              </label>
+
+              <div className="bh-share-editor-field">
+                <div className="bh-share-editor-header">
+                  <span>Content</span>
+                  <div
+                    className="bh-share-editor-tabs"
+                    role="tablist"
+                    aria-label="Markdown editor mode"
+                  >
+                    <button
+                      aria-selected={editorMode === "write"}
+                      data-active={editorMode === "write"}
+                      onClick={() => setEditorMode("write")}
+                      role="tab"
+                      type="button"
+                    >
+                      Write
+                    </button>
+                    <button
+                      aria-selected={editorMode === "preview"}
+                      data-active={editorMode === "preview"}
+                      onClick={() => setEditorMode("preview")}
+                      role="tab"
+                      type="button"
+                    >
+                      Preview
+                    </button>
+                  </div>
+                </div>
+                {editorMode === "write" ? (
+                  <MarkdownEditor
+                    onChange={setContent}
+                    placeholder={editorPlaceholder}
+                    value={content}
+                  />
+                ) : (
+                  <MarkdownContent value={content} />
+                )}
+              </div>
+
+              <div
+                className="bh-share-visibility"
+                role="radiogroup"
+                aria-label="Visibility"
+              >
+                {(["public", "unlisted", "private"] as const).map((option) => (
+                  <button
+                    aria-checked={visibility === option}
+                    className="bh-share-visibility-option"
+                    data-active={visibility === option}
+                    key={option}
+                    onClick={() => setVisibility(option)}
+                    role="radio"
+                    type="button"
+                  >
+                    {option[0].toUpperCase()}
+                    {option.slice(1)}
+                  </button>
+                ))}
+              </div>
+
+              <details className="bh-share-details">
+                <summary>Details</summary>
+                <div>
+                  <label>
+                    <span>Summary</span>
+                    <textarea
+                      onChange={(event) => setSummary(event.target.value)}
+                      rows={3}
+                      value={summary}
+                    />
+                  </label>
+
+                  <label>
+                    <span>Context</span>
+                    <textarea
+                      onChange={(event) => setContextSummary(event.target.value)}
+                      rows={3}
+                      value={contextSummary}
+                    />
+                  </label>
+
+                  <label>
+                    <span>Tags</span>
+                    <input
+                      onChange={(event) => setTags(event.target.value)}
+                      placeholder="react, api, refactor"
+                      value={tags}
+                    />
+                  </label>
+                </div>
+              </details>
+
+              {errorMessage ? (
+                <div className="bh-share-error">{errorMessage}</div>
+              ) : null}
+
+              <div className="bh-share-actions">
+                <button
+                  className="bh-header-action-button"
+                  onClick={() => setShareStep("select")}
+                  type="button"
+                >
+                  Back
+                </button>
+                <button
+                  className="bh-header-action-button"
+                  disabled={!canPublish || isSubmitting}
+                  onClick={() => submitFlow("draft")}
+                  type="button"
+                >
+                  <span>{publishIntent === "draft" ? "Saving" : "Save draft"}</span>
+                </button>
+                <button
+                  className="bh-header-action-button is-primary"
+                  disabled={!canPublish || isSubmitting}
+                  type="submit"
+                >
+                  <Share2 aria-hidden="true" size={15} strokeWidth={1.5} />
+                  <span>
+                    {publishIntent === "published" ? "Publishing" : "Publish"}
+                  </span>
+                </button>
+              </div>
+            </>
+          )}
+        </form>
+      </section>
+    </div>
+  );
+}
 
 function OverviewPanel({ data }: { data: ProjectDetailData }) {
   if (data.overview.length === 0) {
@@ -71,16 +803,24 @@ function ActivityPanel({
   activityNavigation,
   data,
   onActivityNavigationChange,
+  onPublishFlow,
 }: {
   activityNavigation?: ActivityNavigationState;
   data: ProjectDetailData;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
+  onPublishFlow?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
 }) {
   const [localActivityNavigation, setLocalActivityNavigation] =
     useState<ActivityNavigationState>(defaultActivityNavigation);
   const [promptSearchQuery, setPromptSearchQuery] = useState("");
   const [sessionConversationSearchQuery, setSessionConversationSearchQuery] =
     useState("");
+  const [shareScope, setShareScope] = useState<"project" | "session">("session");
+  const [shareModeSessionId, setShareModeSessionId] = useState<string | null>(null);
+  const [shareProjectPromptIds, setShareProjectPromptIds] = useState<string[]>([]);
+  const [shareStartPromptId, setShareStartPromptId] = useState<string | null>(null);
+  const [shareEndPromptId, setShareEndPromptId] = useState<string | null>(null);
+  const [isShareDrawerOpen, setIsShareDrawerOpen] = useState(false);
   const currentActivityNavigation =
     activityNavigation ?? localActivityNavigation;
   const updateActivityNavigation = (state: Partial<ActivityNavigationState>) => {
@@ -122,11 +862,15 @@ function ActivityPanel({
     data.activities.find((activity) => activity.id === selectedSessionId) ??
     data.activities[0] ??
     null;
-  const selectedSessionPrompts = selectedSession
-    ? data.promptActivities.filter(
-        (activity) => activity.sessionId === selectedSession.id,
-      ).sort((first, second) => second.sequence - first.sequence)
-    : [];
+  const selectedSessionPrompts = useMemo(
+    () =>
+      selectedSession
+        ? data.promptActivities
+            .filter((activity) => activity.sessionId === selectedSession.id)
+            .sort((first, second) => second.sequence - first.sequence)
+        : [],
+    [data.promptActivities, selectedSession],
+  );
   const filteredSessionPrompts = useMemo(() => {
     const query = sessionConversationSearchQuery.trim().toLowerCase();
 
@@ -139,7 +883,7 @@ function ActivityPanel({
         activity.prompt,
         activity.response ?? "",
         activity.submittedAt,
-        `turn ${activity.sequence}`,
+        `prompt ${activity.sequence}`,
         String(activity.sequence),
       ]
         .join(" ")
@@ -156,6 +900,190 @@ function ActivityPanel({
   const sessionPromptCountLabel = sessionConversationSearchQuery.trim()
     ? `${filteredSessionPrompts.length}/${selectedSessionPrompts.length} prompts`
     : `${selectedSessionPrompts.length} prompts`;
+  const isShareMode =
+    shareScope === "session" &&
+    Boolean(selectedSession) &&
+    shareModeSessionId === selectedSession?.id;
+  const shareSession =
+    shareScope === "session"
+      ? data.activities.find((activity) => activity.id === shareModeSessionId) ?? null
+      : null;
+  const projectSharePrompts = useMemo(
+    () =>
+      [...data.promptActivities].sort((first, second) => {
+        const firstTime = Date.parse(first.submittedAt);
+        const secondTime = Date.parse(second.submittedAt);
+        if (!Number.isNaN(firstTime) && !Number.isNaN(secondTime)) {
+          return secondTime - firstTime;
+        }
+        return second.sequence - first.sequence;
+      }),
+    [data.promptActivities],
+  );
+  const shareSessionPrompts = useMemo(
+    () =>
+      shareScope === "project"
+        ? projectSharePrompts
+        : shareSession
+        ? data.promptActivities
+            .filter((activity) => activity.sessionId === shareSession.id)
+            .sort((first, second) => second.sequence - first.sequence)
+        : [],
+    [data.promptActivities, projectSharePrompts, shareScope, shareSession],
+  );
+  const shareStartPrompt = shareSessionPrompts.find(
+    (activity) => activity.id === shareStartPromptId,
+  );
+  const shareEndPrompt = shareSessionPrompts.find(
+    (activity) => activity.id === shareEndPromptId,
+  );
+  const selectedSharePrompts = useMemo(() => {
+    if (shareScope === "project") {
+      const selectedIds = new Set(shareProjectPromptIds);
+      return projectSharePrompts
+        .filter((activity) => selectedIds.has(activity.id))
+        .sort((first, second) => {
+          const firstTime = Date.parse(first.submittedAt);
+          const secondTime = Date.parse(second.submittedAt);
+          if (!Number.isNaN(firstTime) && !Number.isNaN(secondTime)) {
+            return firstTime - secondTime;
+          }
+          return first.sequence - second.sequence;
+        });
+    }
+    if (!shareStartPrompt) {
+      return [];
+    }
+    if (!shareEndPrompt) {
+      return [shareStartPrompt];
+    }
+    if (shareEndPrompt.sequence <= shareStartPrompt.sequence) {
+      return [shareStartPrompt];
+    }
+    return shareSessionPrompts
+      .filter(
+        (activity) =>
+          activity.sequence >= shareStartPrompt.sequence &&
+          activity.sequence <= shareEndPrompt.sequence,
+      )
+      .sort((first, second) => first.sequence - second.sequence);
+  }, [
+    projectSharePrompts,
+    shareEndPrompt,
+    shareProjectPromptIds,
+    shareScope,
+    shareSessionPrompts,
+    shareStartPrompt,
+  ]);
+  const selectedSharePromptIds = new Set(
+    selectedSharePrompts.map((activity) => activity.id),
+  );
+  const sessionForPrompt = (activity: PromptActivityItem) =>
+    data.activities.find((session) => session.id === activity.sessionId) ?? null;
+  const openShareSelection = (
+    session: ActivityItem,
+    prompts: PromptActivityItem[],
+  ) => {
+    const orderedPrompts = [...prompts].sort(
+      (first, second) => first.sequence - second.sequence,
+    );
+    if (orderedPrompts.length === 0) {
+      return;
+    }
+    setShareScope("session");
+    setShareModeSessionId(session.id);
+    setShareProjectPromptIds([]);
+    setShareStartPromptId(orderedPrompts[0].id);
+    setShareEndPromptId(orderedPrompts[orderedPrompts.length - 1].id);
+    setIsShareDrawerOpen(true);
+  };
+  const startShareMode = () => {
+    if (!selectedSession) {
+      return;
+    }
+    const defaultPrompt = selectedSessionPrompt ?? selectedSessionPrompts[0] ?? null;
+    setShareScope("session");
+    setShareModeSessionId(selectedSession.id);
+    setShareProjectPromptIds([]);
+    setShareStartPromptId(defaultPrompt?.id ?? null);
+    setShareEndPromptId(null);
+    setIsShareDrawerOpen(Boolean(defaultPrompt));
+  };
+  const shareEntireSession = () => {
+    if (!selectedSession || selectedSessionPrompts.length === 0) {
+      return;
+    }
+    openShareSelection(selectedSession, selectedSessionPrompts);
+  };
+  const startProjectShareFromPrompt = (activity: PromptActivityItem) => {
+    setShareScope("project");
+    setShareModeSessionId(null);
+    setShareProjectPromptIds([activity.id]);
+    setShareStartPromptId(null);
+    setShareEndPromptId(null);
+    setIsShareDrawerOpen(true);
+  };
+  const startSessionShareFromPrompt = (activity: PromptActivityItem) => {
+    const session = sessionForPrompt(activity);
+    if (!session) {
+      return;
+    }
+    setShareScope("session");
+    setShareModeSessionId(session.id);
+    setShareProjectPromptIds([]);
+    setShareStartPromptId(activity.id);
+    setShareEndPromptId(null);
+    setIsShareDrawerOpen(true);
+  };
+  const selectSharePrompt = (activity: PromptActivityItem) => {
+    if (shareScope === "project") {
+      setShareProjectPromptIds((currentIds) => {
+        if (currentIds.includes(activity.id)) {
+          return currentIds.length > 1
+            ? currentIds.filter((promptId) => promptId !== activity.id)
+            : currentIds;
+        }
+        return [...currentIds, activity.id];
+      });
+      return;
+    }
+    const session = sessionForPrompt(activity);
+    if (!session) {
+      return;
+    }
+    if (
+      !shareStartPrompt ||
+      activity.sessionId !== shareModeSessionId ||
+      shareEndPrompt ||
+      activity.id === shareStartPrompt.id ||
+      activity.sequence <= shareStartPrompt.sequence
+    ) {
+      setShareModeSessionId(session.id);
+      setShareStartPromptId(activity.id);
+      setShareEndPromptId(null);
+      return;
+    }
+    setShareModeSessionId(session.id);
+    setShareEndPromptId(activity.id);
+  };
+  const shareStateForPrompt = (activity: PromptActivityItem) => {
+    if (shareScope === "project") {
+      return selectedSharePromptIds.has(activity.id) ? ("range" as const) : undefined;
+    }
+    if (
+      activity.sessionId !== shareModeSessionId ||
+      !selectedSharePromptIds.has(activity.id)
+    ) {
+      return undefined;
+    }
+    if (activity.id === shareStartPromptId) {
+      return "start" as const;
+    }
+    if (activity.id === shareEndPromptId) {
+      return "end" as const;
+    }
+    return "range" as const;
+  };
 
   if (!hasPromptActivity && !hasSessionActivity) {
     return (
@@ -191,14 +1119,18 @@ function ActivityPanel({
           aria-selected={view === "sessions"}
           className="bh-activity-view-tab"
           data-active={view === "sessions"}
-          onClick={() =>
+          onClick={() => {
+            const promptSessionTarget = view === "prompts" ? selectedPrompt : null;
             updateActivityNavigation({
               selectedPromptId: null,
-              selectedSessionId: null,
-              selectedSessionPromptId: null,
+              selectedSessionId:
+                promptSessionTarget?.sessionId ?? selectedSessionId,
+              selectedSessionPromptId:
+                promptSessionTarget?.id ?? selectedSessionPromptId,
               view: "sessions",
-            })
-          }
+            });
+            setSessionConversationSearchQuery("");
+          }}
           role="tab"
           type="button"
         >
@@ -256,6 +1188,7 @@ function ActivityPanel({
                 });
                 setSessionConversationSearchQuery("");
               }}
+              onSharePrompt={startProjectShareFromPrompt}
             />
           </div>
         ) : (
@@ -274,10 +1207,15 @@ function ActivityPanel({
                 isSelected={activity.id === selectedSession?.id}
                 key={activity.id}
                 onOpen={() => {
+                  const latestPromptInSession =
+                    data.promptActivities
+                      .filter((prompt) => prompt.sessionId === activity.id)
+                      .sort((first, second) => second.sequence - first.sequence)[0] ??
+                    null;
                   updateActivityNavigation({
                     selectedPromptId: null,
                     selectedSessionId: activity.id,
-                    selectedSessionPromptId: null,
+                    selectedSessionPromptId: latestPromptInSession?.id ?? null,
                     view: "sessions",
                   });
                   setSessionConversationSearchQuery("");
@@ -301,7 +1239,40 @@ function ActivityPanel({
                       {selectedSession.lastActivity}
                     </p>
                   </div>
-                  <strong>{sessionPromptCountLabel}</strong>
+                  <div className="bh-session-header-actions">
+                    <strong>{sessionPromptCountLabel}</strong>
+                    {selectedSessionPrompts.length > 0 ? (
+                      <>
+                        <button
+                          className="bh-header-action-button is-primary"
+                          onClick={shareEntireSession}
+                          type="button"
+                        >
+                          <Share2 aria-hidden="true" size={15} strokeWidth={1.5} />
+                          <span>Share session</span>
+                        </button>
+                        <button
+                          className="bh-header-action-button"
+                          data-active={isShareMode}
+                          onClick={isShareMode ? () => {
+                            setShareModeSessionId(null);
+                            setShareProjectPromptIds([]);
+                            setShareStartPromptId(null);
+                            setShareEndPromptId(null);
+                            setIsShareDrawerOpen(false);
+                          } : startShareMode}
+                          type="button"
+                        >
+                          {isShareMode ? (
+                            <X aria-hidden="true" size={15} strokeWidth={1.5} />
+                          ) : (
+                            <Check aria-hidden="true" size={15} strokeWidth={1.5} />
+                          )}
+                          <span>{isShareMode ? "Cancel" : "Select prompts"}</span>
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
                 </div>
 
                 <label className="bh-prompt-search">
@@ -317,6 +1288,34 @@ function ActivityPanel({
                   />
                 </label>
 
+                {isShareMode ? (
+                  <div className="bh-share-mode-bar">
+                    <span>{promptRangeLabel(selectedSharePrompts)}</span>
+                    <div>
+                      <button
+                        className="bh-header-action-button"
+                        onClick={() => {
+                          setShareProjectPromptIds([]);
+                          setShareStartPromptId(null);
+                          setShareEndPromptId(null);
+                          setIsShareDrawerOpen(false);
+                        }}
+                        type="button"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        className="bh-header-action-button is-primary"
+                        disabled={selectedSharePrompts.length === 0}
+                        onClick={() => setIsShareDrawerOpen(true)}
+                        type="button"
+                      >
+                        Preview
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
                 {selectedSessionPrompts.length > 0 ? (
                   filteredSessionPrompts.length > 0 ? (
                     <div className="bh-prompt-list">
@@ -325,15 +1324,20 @@ function ActivityPanel({
                           activity={activity}
                           isSelected={activity.id === selectedSessionPrompt?.id}
                           key={activity.id}
-                          onOpen={() =>
+                          onOpen={() => {
+                            if (isShareMode) {
+                              selectSharePrompt(activity);
+                              return;
+                            }
                             updateActivityNavigation({
                               selectedPromptId: null,
                               selectedSessionId: selectedSession?.id ?? null,
                               selectedSessionPromptId: activity.id,
                               view: "sessions",
                             })
-                          }
-                          turnLabel={`Turn ${activity.sequence}`}
+                          }}
+                          shareState={shareStateForPrompt(activity)}
+                          promptLabel={`Prompt ${activity.sequence}`}
                         />
                       ))}
                     </div>
@@ -355,7 +1359,10 @@ function ActivityPanel({
             )}
           </section>
 
-          <PromptChangeDetail activity={selectedSessionPrompt} />
+          <PromptChangeDetail
+            activity={selectedSessionPrompt}
+            onSharePrompt={startSessionShareFromPrompt}
+          />
         </div>
       ) : (
         <EmptyState
@@ -364,6 +1371,22 @@ function ActivityPanel({
           title="No sessions yet"
         />
       )}
+
+      {isShareDrawerOpen &&
+      (shareScope === "project" || shareSession) &&
+      selectedSharePrompts.length > 0 ? (
+        <PromptFlowShareDrawer
+          data={data}
+          onClose={() => setIsShareDrawerOpen(false)}
+          onSelectPrompt={selectSharePrompt}
+          onPublishFlow={onPublishFlow}
+          prompts={selectedSharePrompts}
+          scope={shareScope}
+          session={shareSession}
+          sessionPrompts={shareSessionPrompts}
+          shareStateForPrompt={shareStateForPrompt}
+        />
+      ) : null}
 
     </div>
   );
@@ -467,6 +1490,7 @@ function ProjectPanel({
   errorMessage,
   isLoading,
   onActivityNavigationChange,
+  onPublishFlow,
   onRepositoryFileSelect,
   onRetry,
 }: {
@@ -476,6 +1500,7 @@ function ProjectPanel({
   errorMessage?: string | null;
   isLoading?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
+  onPublishFlow?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
   onRepositoryFileSelect?: (path: string) => void;
   onRetry?: () => void;
 }) {
@@ -515,6 +1540,7 @@ function ProjectPanel({
         activityNavigation={activityNavigation}
         data={data}
         onActivityNavigationChange={onActivityNavigationChange}
+        onPublishFlow={onPublishFlow}
       />
     );
   }
@@ -544,6 +1570,7 @@ export function ProjectDetailPage({
   isLoading,
   onActivityNavigationChange,
   onConnectRepository,
+  onPublishFlow,
   onRepositoryFileSelect,
   onRetry,
   onTabChange,
@@ -578,6 +1605,7 @@ export function ProjectDetailPage({
           errorMessage={errorMessage}
           isLoading={isLoading}
           onActivityNavigationChange={onActivityNavigationChange}
+          onPublishFlow={onPublishFlow}
           onRepositoryFileSelect={onRepositoryFileSelect}
           onRetry={onRetry}
         />

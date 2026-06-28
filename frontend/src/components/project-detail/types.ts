@@ -25,7 +25,9 @@ export type ProjectHeaderProps = {
   repositoryUrl?: string;
 };
 
-export type ProjectDetailProject = ProjectHeaderProps;
+export type ProjectDetailProject = ProjectHeaderProps & {
+  id: string;
+};
 
 export type OverviewItem = {
   title: string;
@@ -126,4 +128,30 @@ export type ProjectDetailData = {
   repositoryFilesRepository?: string;
   repositoryFilesStatus?: string;
   repositoryFilesTruncated?: boolean;
+};
+
+export type PromptFlowPublishPayload = {
+  context_summary?: string | null;
+  end_prompt_event_id?: string | null;
+  notes?: string | null;
+  prompt_event_ids?: string[];
+  project_id: string;
+  session_id?: string | null;
+  start_prompt_event_id?: string | null;
+  status: "draft" | "published";
+  summary?: string | null;
+  tags: string[];
+  title?: string | null;
+  visibility: "private" | "public" | "unlisted";
+};
+
+export type PublishedFlowDetail = {
+  id: string;
+  slug: string;
+  title: string;
+  summary?: string | null;
+  visibility: string;
+  status: string;
+  prompt_count: number;
+  file_count: number;
 };

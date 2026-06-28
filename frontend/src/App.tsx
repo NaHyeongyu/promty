@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Search,
   Settings,
+  Share2,
   ShieldCheck,
   Terminal,
   User,
@@ -25,18 +26,21 @@ import {
   type SimpleIcon,
 } from "simple-icons";
 import { SiOpenai } from "react-icons/si";
+import { MarkdownContent } from "./components/MarkdownContent";
 import {
   ProjectDetailPage,
   type ActivityNavigationState,
   type ActivityViewId,
   type FileTreeNode,
+  type PublishedFlowDetail,
   type ProjectDetailData,
   type ProjectDetailTabId,
+  type PromptFlowPublishPayload,
   type RepositoryFileContent,
 } from "./components/project-detail";
 import "./App.css";
 
-type SidebarItemId = "projects" | "settings" | "profile";
+type SidebarItemId = "projects" | "community" | "settings" | "profile";
 
 type Project = {
   id: string;
@@ -174,6 +178,65 @@ type ProjectGithubFileContentApiResponse = {
   status: string;
 };
 
+type PublishedFlowSummary = PublishedFlowDetail & {
+  author: {
+    avatar_url: string | null;
+    id: string | null;
+    username: string;
+  };
+  created_at: string | null;
+  file_count: number;
+  is_owner: boolean;
+  metrics: Record<string, unknown>;
+  model_name: string | null;
+  prompt_count: number;
+  published_at: string | null;
+  slug: string;
+  status: string;
+  summary: string | null;
+  tags: string[];
+  title: string;
+  tool_name: string | null;
+  updated_at: string | null;
+  visibility: string;
+};
+
+type PublishedFlowDetailResponse = PublishedFlowSummary & {
+  context_summary: string | null;
+  end_sequence: number | null;
+  files: Array<{
+    additions: number;
+    change_type: string | null;
+    deletions: number;
+    diff: string | null;
+    file_path: string;
+    id: string;
+    is_included: boolean;
+    language: string | null;
+    source_event_id: string | null;
+  }>;
+  items: Array<{
+    files_changed: number;
+    id: string;
+    is_included: boolean;
+    item_order: number;
+    model_name: string | null;
+    prompt_text: string;
+    response_received_at: string | null;
+    response_text: string | null;
+    sequence: number;
+    source_event_id: string | null;
+    submitted_at: string | null;
+    tool_name: string | null;
+  }>;
+  notes: string | null;
+  source_end_event_id: string | null;
+  source_project_id: string | null;
+  source_session_id: string | null;
+  source_start_event_id: string | null;
+  start_sequence: number | null;
+};
+
 type GithubRepositoryOption = {
   id: number | string | null;
   default_branch: string;
@@ -237,6 +300,7 @@ const PROJECT_DETAIL_TAB_IDS = new Set<ProjectDetailTabId>([
   "files",
 ]);
 const SIDEBAR_ITEM_IDS = new Set<SidebarItemId>([
+  "community",
   "projects",
   "settings",
   "profile",
@@ -423,7 +487,7 @@ function readUrlNavigationState(): UrlNavigationState {
     activityNavigation: {
       selectedPromptId: params.get("prompt"),
       selectedSessionId: params.get("session"),
-      selectedSessionPromptId: params.get("turn"),
+      selectedSessionPromptId: params.get("prompt"),
       view: parseActivityViewId(params.get("activity")),
     },
     activeDetailTab: parseProjectDetailTabId(params.get("tab")),
@@ -475,7 +539,7 @@ function buildUrlNavigationSearch(state: UrlNavigationState) {
         state.activityNavigation.selectedSessionPromptId
       ) {
         params.set(
-          "turn",
+          "prompt",
           uuidToRouteKey(state.activityNavigation.selectedSessionPromptId) ??
             state.activityNavigation.selectedSessionPromptId,
         );
@@ -694,6 +758,7 @@ function emptyProjectDetailData(project: Project | null): ProjectDetailData {
     project: {
       description:
         "AI development workspace for prompts, code changes, context, and project memory.",
+      id: project?.id ?? "",
       name: project?.name ?? "Project",
       repositoryStatus: project?.githubUrl
         ? "Repository connected"
@@ -802,6 +867,7 @@ function projectDetailDataFromApi(
       description:
         payload.project.description ??
         "AI development workspace for prompts, code changes, context, and project memory.",
+      id: payload.project.id,
       name: payload.project.name || fallbackProject?.name || "Project",
       repositoryStatus: payload.project.repository_status,
       repositoryUrl: payload.project.repository_url ?? fallbackProject?.githubUrl,
@@ -1312,6 +1378,198 @@ function RepositoryConnector({
   );
 }
 
+function CommunityPage({
+  errorMessage,
+  flows,
+  isDetailLoading,
+  isLoading,
+  onReload,
+  onSelectFlow,
+  selectedFlow,
+}: {
+  errorMessage?: string | null;
+  flows: PublishedFlowSummary[];
+  isDetailLoading: boolean;
+  isLoading: boolean;
+  onReload: () => void;
+  onSelectFlow: (flowKey: string) => void;
+  selectedFlow: PublishedFlowDetailResponse | null;
+}) {
+  if (errorMessage && flows.length === 0) {
+    return (
+      <EmptyState
+        description={errorMessage}
+        eyebrow="Community"
+        icon={Share2}
+        title="Could not load prompt flows"
+      >
+        <button className="empty-state-button" onClick={onReload} type="button">
+          <RefreshCw aria-hidden="true" size={16} strokeWidth={1.5} />
+          <span>Retry</span>
+        </button>
+      </EmptyState>
+    );
+  }
+
+  if (isLoading && flows.length === 0) {
+    return (
+      <div className="inline-loading-status">
+        <RefreshCw
+          aria-hidden="true"
+          className="loading-spinner"
+          size={16}
+          strokeWidth={1.5}
+        />
+        <span>Loading prompt flows</span>
+      </div>
+    );
+  }
+
+  if (flows.length === 0) {
+    return (
+      <EmptyState
+        description="Shared session flows will appear here after publishing from AI Activity."
+        eyebrow="Community"
+        icon={Share2}
+        title="No prompt flows yet"
+      />
+    );
+  }
+
+  return (
+    <section className="community-layout" aria-label="Prompt flow community">
+      <div className="community-flow-list" aria-label="Published prompt flows">
+        {flows.map((flow) => (
+          <button
+            className="community-flow-card"
+            data-active={selectedFlow?.id === flow.id}
+            key={flow.id}
+            onClick={() => onSelectFlow(flow.slug)}
+            type="button"
+          >
+            <span className="community-flow-card-kicker">
+              {flow.tool_name ?? "PromptHub"} · {flow.visibility}
+            </span>
+            <strong>{flow.title}</strong>
+            {flow.summary ? <p>{flow.summary}</p> : null}
+            <div className="community-flow-meta">
+              <span>{flow.prompt_count} prompts</span>
+              <span>{flow.file_count} files</span>
+              <span>{flow.author.username}</span>
+            </div>
+            {flow.tags.length > 0 ? (
+              <div className="community-flow-tags">
+                {flow.tags.map((tag) => (
+                  <span key={`${flow.id}-${tag}`}>{tag}</span>
+                ))}
+              </div>
+            ) : null}
+          </button>
+        ))}
+      </div>
+
+      <aside className="community-flow-detail" aria-label="Prompt flow detail">
+        {isDetailLoading ? (
+          <div className="inline-loading-status">
+            <RefreshCw
+              aria-hidden="true"
+              className="loading-spinner"
+              size={16}
+              strokeWidth={1.5}
+            />
+            <span>Loading flow</span>
+          </div>
+        ) : selectedFlow ? (
+          <>
+            <div className="community-flow-detail-header">
+              <span>{selectedFlow.tool_name ?? "Prompt flow"}</span>
+              <h2>{selectedFlow.title}</h2>
+              {selectedFlow.summary ? <p>{selectedFlow.summary}</p> : null}
+            </div>
+
+            <dl className="community-flow-stats">
+              <div>
+                <dt>Prompts</dt>
+                <dd>{selectedFlow.prompt_count}</dd>
+              </div>
+              <div>
+                <dt>Files</dt>
+                <dd>{selectedFlow.file_count}</dd>
+              </div>
+              <div>
+                <dt>Author</dt>
+                <dd>{selectedFlow.author.username}</dd>
+              </div>
+            </dl>
+
+            {selectedFlow.context_summary ? (
+              <section className="community-flow-section">
+                <h3>Context</h3>
+                <p>{selectedFlow.context_summary}</p>
+              </section>
+            ) : null}
+
+            {selectedFlow.notes ? (
+              <section className="community-flow-section">
+                <h3>Content</h3>
+                <MarkdownContent
+                  className="community-markdown-content"
+                  value={selectedFlow.notes}
+                />
+              </section>
+            ) : null}
+
+            <section className="community-flow-section">
+              <h3>Prompt flow</h3>
+              <div className="community-flow-items">
+                {selectedFlow.items.map((item) => (
+                  <article className="community-flow-item" key={item.id}>
+                    <div className="community-flow-item-header">
+                      <span>Prompt {item.sequence}</span>
+                      <strong>{item.files_changed} files</strong>
+                    </div>
+                    <p>{item.prompt_text}</p>
+                    {item.response_text ? (
+                      <div className="community-flow-response">
+                        <span>AI response</span>
+                        <p>{item.response_text}</p>
+                      </div>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            {selectedFlow.files.length > 0 ? (
+              <section className="community-flow-section">
+                <h3>Linked files</h3>
+                <div className="community-flow-files">
+                  {selectedFlow.files.map((file) => (
+                    <div className="community-flow-file" key={file.id}>
+                      <strong>{file.file_path}</strong>
+                      <span>
+                        {file.change_type ?? "changed"} · +{file.additions} / -
+                        {file.deletions}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </>
+        ) : (
+          <EmptyState
+            description="Open a flow to read the selected session prompts and linked code changes."
+            eyebrow="Community"
+            icon={Share2}
+            title="Select a prompt flow"
+          />
+        )}
+      </aside>
+    </section>
+  );
+}
+
 function WorkspaceApp() {
   const initialNavigationState = useMemo(readUrlNavigationState, []);
   const [activeItem, setActiveItem] = useState<SidebarItemId>(
@@ -1343,6 +1601,17 @@ function WorkspaceApp() {
     null,
   );
   const [isProjectGithubFilesLoading, setIsProjectGithubFilesLoading] = useState(false);
+  const [publishedFlows, setPublishedFlows] = useState<PublishedFlowSummary[]>([]);
+  const [publishedFlowsError, setPublishedFlowsError] = useState<string | null>(null);
+  const [isPublishedFlowsLoading, setIsPublishedFlowsLoading] = useState(false);
+  const [selectedPublishedFlowKey, setSelectedPublishedFlowKey] =
+    useState<string | null>(null);
+  const [selectedPublishedFlow, setSelectedPublishedFlow] =
+    useState<PublishedFlowDetailResponse | null>(null);
+  const [publishedFlowDetailError, setPublishedFlowDetailError] =
+    useState<string | null>(null);
+  const [isPublishedFlowDetailLoading, setIsPublishedFlowDetailLoading] =
+    useState(false);
   const [repositoryFileContent, setRepositoryFileContent] =
     useState<RepositoryFileContent | null>(null);
   const [repositoryFileContentError, setRepositoryFileContentError] =
@@ -1393,9 +1662,11 @@ function WorkspaceApp() {
   const activeTitle =
     activeItem === "projects"
       ? "Projects"
-      : activeItem === "settings"
-        ? "Settings"
-        : "Profile";
+      : activeItem === "community"
+        ? "Community"
+        : activeItem === "settings"
+          ? "Settings"
+          : "Profile";
   const currentNavigationState: UrlNavigationState = {
     activityNavigation,
     activeDetailTab,
@@ -1661,6 +1932,114 @@ function WorkspaceApp() {
     }
   };
 
+  const loadPublishedFlows = async () => {
+    setIsPublishedFlowsLoading(true);
+    setPublishedFlowsError(null);
+    try {
+      const response = await fetch(`${API_URL}/api/published-flows`, {
+        credentials: "include",
+      });
+      if (response.status === 401) {
+        setAuthStatus("unauthenticated");
+        setCurrentUser(null);
+        setPublishedFlows([]);
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(`Prompt flows request failed with HTTP ${response.status}`);
+      }
+      const payload = (await response.json()) as PublishedFlowSummary[];
+      setPublishedFlows(payload);
+      if (!selectedPublishedFlowKey && payload.length > 0) {
+        setSelectedPublishedFlowKey(payload[0].slug);
+      }
+    } catch (error) {
+      setPublishedFlowsError(
+        error instanceof Error ? error.message : "Prompt flows request failed",
+      );
+      setPublishedFlows([]);
+    } finally {
+      setIsPublishedFlowsLoading(false);
+    }
+  };
+
+  const loadPublishedFlowDetail = async (flowKey: string) => {
+    setSelectedPublishedFlowKey(flowKey);
+    setSelectedPublishedFlow(null);
+    setPublishedFlowDetailError(null);
+    setIsPublishedFlowDetailLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/api/published-flows/${flowKey}`, {
+        credentials: "include",
+      });
+      if (response.status === 401) {
+        setAuthStatus("unauthenticated");
+        setCurrentUser(null);
+        setSelectedPublishedFlow(null);
+        return;
+      }
+      if (!response.ok) {
+        const detail = await response
+          .json()
+          .then((payload) =>
+            typeof payload?.detail === "string" ? payload.detail : null,
+          )
+          .catch(() => null);
+        throw new Error(detail ?? `Prompt flow request failed with HTTP ${response.status}`);
+      }
+      const payload = (await response.json()) as PublishedFlowDetailResponse;
+      setSelectedPublishedFlow(payload);
+    } catch (error) {
+      setPublishedFlowDetailError(
+        error instanceof Error ? error.message : "Prompt flow request failed",
+      );
+    } finally {
+      setIsPublishedFlowDetailLoading(false);
+    }
+  };
+
+  const publishPromptFlow = async (
+    payload: PromptFlowPublishPayload,
+  ): Promise<PublishedFlowDetailResponse> => {
+    const response = await fetch(`${API_URL}/api/published-flows`, {
+      body: JSON.stringify(payload),
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    if (response.status === 401) {
+      setAuthStatus("unauthenticated");
+      setCurrentUser(null);
+      throw new Error("Sign in again before publishing.");
+    }
+    if (!response.ok) {
+      const detail = await response
+        .json()
+        .then((errorPayload) =>
+          typeof errorPayload?.detail === "string" ? errorPayload.detail : null,
+        )
+        .catch(() => null);
+      throw new Error(detail ?? `Publish request failed with HTTP ${response.status}`);
+    }
+
+    const flow = (await response.json()) as PublishedFlowDetailResponse;
+    setPublishedFlows((current) => [
+      flow,
+      ...current.filter((item) => item.id !== flow.id),
+    ]);
+    setSelectedPublishedFlowKey(flow.slug);
+    setSelectedPublishedFlow(flow);
+    setPublishedFlowsError(null);
+    setPublishedFlowDetailError(null);
+    navigateWorkspace({
+      activeItem: "community",
+      repositoryFileContentPath: null,
+      selectedProjectId: null,
+      selectedProjectRouteKey: null,
+    });
+    return flow;
+  };
+
   const openRepositoryConnector = (projectId: string | null = null) => {
     setRepositoryConnectorProjectId(projectId);
     setRepositoryConnectorError(null);
@@ -1788,6 +2167,11 @@ function WorkspaceApp() {
     setProjectDetailError(null);
     setProjectGithubFiles(null);
     setProjectGithubFilesError(null);
+    setPublishedFlows([]);
+    setPublishedFlowsError(null);
+    setSelectedPublishedFlowKey(null);
+    setSelectedPublishedFlow(null);
+    setPublishedFlowDetailError(null);
     setRepositoryFileContent(null);
     setRepositoryFileContentError(null);
     setRepositoryFileContentPath(null);
@@ -1806,6 +2190,27 @@ function WorkspaceApp() {
   useEffect(() => {
     void loadSession();
   }, []);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated" || activeItem !== "community") {
+      return;
+    }
+    void loadPublishedFlows();
+  }, [activeItem, authStatus]);
+
+  useEffect(() => {
+    if (
+      authStatus !== "authenticated" ||
+      activeItem !== "community" ||
+      !selectedPublishedFlowKey
+    ) {
+      return;
+    }
+    if (selectedPublishedFlow?.slug === selectedPublishedFlowKey) {
+      return;
+    }
+    void loadPublishedFlowDetail(selectedPublishedFlowKey);
+  }, [activeItem, authStatus, selectedPublishedFlowKey]);
 
   useEffect(() => {
     writeUrlNavigationState(initialNavigationState, "replace");
@@ -2117,6 +2522,21 @@ function WorkspaceApp() {
             />
             Projects
           </button>
+          <button
+            aria-pressed={activeItem === "community"}
+            className="sidebar-item"
+            data-active={activeItem === "community"}
+            onClick={() => selectSidebarItem("community")}
+            type="button"
+          >
+            <Share2
+              aria-hidden="true"
+              className="sidebar-icon"
+              size={18}
+              strokeWidth={1.5}
+            />
+            Community
+          </button>
         </nav>
 
         <div className="sidebar-spacer" />
@@ -2180,6 +2600,7 @@ function WorkspaceApp() {
               isLoading={isProjectDetailLoading && projectDetail === null}
               onActivityNavigationChange={selectActivityNavigation}
               onConnectRepository={() => openRepositoryConnector(selectedProject.id)}
+              onPublishFlow={publishPromptFlow}
               onRepositoryFileSelect={selectRepositoryFile}
               onTabChange={selectProjectDetailTab}
               onRetry={() => {
@@ -2391,6 +2812,50 @@ function WorkspaceApp() {
                 </div>
               )}
             </section>
+          </>
+        ) : activeItem === "community" ? (
+          <>
+            <header className="page-header">
+              <div>
+                <h1>{activeTitle}</h1>
+              </div>
+              <div className="page-actions">
+                <button
+                  className="toolbar-button"
+                  disabled={isPublishedFlowsLoading}
+                  onClick={loadPublishedFlows}
+                  type="button"
+                >
+                  <RefreshCw
+                    aria-hidden="true"
+                    size={16}
+                    strokeWidth={1.5}
+                  />
+                  <span>{isPublishedFlowsLoading ? "Refreshing" : "Refresh"}</span>
+                </button>
+                <span className="status-pill">
+                  {publishedFlows.length} flows
+                </span>
+              </div>
+            </header>
+
+            {publishedFlowDetailError ? (
+              <div className="auth-message" data-error="true">
+                {publishedFlowDetailError}
+              </div>
+            ) : null}
+
+            <CommunityPage
+              errorMessage={publishedFlowsError}
+              flows={publishedFlows}
+              isDetailLoading={isPublishedFlowDetailLoading}
+              isLoading={isPublishedFlowsLoading}
+              onReload={loadPublishedFlows}
+              onSelectFlow={(flowKey) => {
+                void loadPublishedFlowDetail(flowKey);
+              }}
+              selectedFlow={selectedPublishedFlow}
+            />
           </>
         ) : (
           <>
