@@ -62,7 +62,7 @@ PROMPTHUB_SESSION_COOKIE_SAMESITE
 PROMPTHUB_OAUTH_STATE_COOKIE_NAME
 ```
 
-Browser reads require GitHub login and a valid PromptHub JWT session cookie. The session cookie is HttpOnly; JavaScript does not read the token directly.
+Browser reads require GitHub login and a valid PromptHub JWT session cookie. The session cookie is HttpOnly; JavaScript does not read the token directly. Set `PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS=15552000` for 180-day web sessions.
 
 If `PROMPTHUB_API_TOKEN` is set, `POST /api/events/batch` accepts that global `Authorization: Bearer <token>`. GitHub CLI login issues per-user collector tokens stored as hashes in `collector_tokens`. Web JWTs and collector tokens are intentionally separate.
 

@@ -99,6 +99,7 @@ class Settings:
     jwt_issuer: str = os.environ.get("PROMPTHUB_JWT_ISSUER", "prompthub")
     jwt_audience: str = os.environ.get("PROMPTHUB_JWT_AUDIENCE", "prompthub-web")
     access_token_ttl_seconds: int = field(
+        # Set PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS=15552000 for a 180-day web session.
         default_factory=lambda: _int_env("PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS", 3600)
     )
     session_cookie_name: str = os.environ.get("PROMPTHUB_SESSION_COOKIE_NAME", "prompthub_session")

@@ -221,6 +221,7 @@ export PROMPTHUB_RESPONSE_MAX_CHARS="50000"
 export PROMPTHUB_OAUTH_STATE_SECRET="replace-with-oauth-state-secret"
 export PROMPTHUB_JWT_SECRET="replace-with-jwt-secret"
 export PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS="3600"
+# export PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS="15552000" # 180-day web sessions
 ```
 
 Web users sign in through GitHub OAuth. The backend issues a short-lived HS256 JWT in an HttpOnly session cookie and requires it for browser reads such as `GET /api/events`.
