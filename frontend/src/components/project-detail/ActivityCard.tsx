@@ -169,6 +169,7 @@ export function PromptActivityCard({
 
 type PromptChangeDetailProps = {
   activity: PromptActivityItem | null;
+  onOpenSession?: (activity: PromptActivityItem) => void;
 };
 
 function diffLineKind(line: string) {
@@ -220,7 +221,10 @@ function DiffViewer({ patch }: { patch: string }) {
   );
 }
 
-export function PromptChangeDetail({ activity }: PromptChangeDetailProps) {
+export function PromptChangeDetail({
+  activity,
+  onOpenSession,
+}: PromptChangeDetailProps) {
   if (!activity) {
     return (
       <section
@@ -247,7 +251,18 @@ export function PromptChangeDetail({ activity }: PromptChangeDetailProps) {
           <span>Selected prompt</span>
           <h2 id="activity-detail-placeholder-title">Code changes</h2>
         </div>
-        <strong>{activity.filesChanged} files</strong>
+        <div className="bh-prompt-change-header-actions">
+          {onOpenSession ? (
+            <button
+              className="bh-header-action-button"
+              onClick={() => onOpenSession(activity)}
+              type="button"
+            >
+              View session
+            </button>
+          ) : null}
+          <strong>{activity.filesChanged} files</strong>
+        </div>
       </div>
 
       <div className="bh-prompt-change-summary">

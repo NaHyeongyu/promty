@@ -245,7 +245,18 @@ function ActivityPanel({
                 </div>
               )}
             </div>
-            <PromptChangeDetail activity={selectedPrompt} />
+            <PromptChangeDetail
+              activity={selectedPrompt}
+              onOpenSession={(activity) => {
+                updateActivityNavigation({
+                  selectedPromptId: null,
+                  selectedSessionId: activity.sessionId,
+                  selectedSessionPromptId: activity.id,
+                  view: "sessions",
+                });
+                setSessionConversationSearchQuery("");
+              }}
+            />
           </div>
         ) : (
           <EmptyState
