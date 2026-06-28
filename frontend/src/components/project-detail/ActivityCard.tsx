@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { ArrowRight } from "lucide-react";
 import type { ActivityItem, PromptActivityItem } from "./types";
 
 const PROMPT_PREVIEW_LINES = 10;
@@ -86,24 +85,28 @@ export function ActivityCard({
     <article
       className="bh-session-row"
       data-active={isSelected}
+      aria-pressed={isSelected}
       aria-label={`${activity.model} session`}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen?.();
+        }
+      }}
+      role="button"
+      tabIndex={0}
     >
       <div className="bh-session-row-main">
-        <strong>{activity.model}</strong>
+        <div className="bh-session-row-header">
+          <strong>{activity.model}</strong>
+          <span>Session {activity.id.slice(0, 8)}</span>
+        </div>
         <span>
           {activity.lastActivity} · {activity.prompts} prompts ·{" "}
           {activity.filesChanged} files
         </span>
       </div>
-
-      <button
-        className="bh-prompt-open-button"
-        onClick={onOpen}
-        type="button"
-      >
-        Open
-        <ArrowRight aria-hidden="true" size={15} strokeWidth={1.5} />
-      </button>
     </article>
   );
 }
@@ -112,12 +115,14 @@ type PromptActivityCardProps = {
   activity: PromptActivityItem;
   isSelected: boolean;
   onOpen: () => void;
+  turnLabel?: string;
 };
 
 export function PromptActivityCard({
   activity,
   isSelected,
   onOpen,
+  turnLabel,
 }: PromptActivityCardProps) {
   const truncatedLabel = promptTruncatedLabel(activity);
   const responseLimitLabel = responseTruncatedLabel(activity);
@@ -141,7 +146,7 @@ export function PromptActivityCard({
       <div className="bh-prompt-row-main">
         <div className="bh-prompt-row-header">
           <time>{activity.submittedAt}</time>
-          <span>{activity.sequence ? `#${activity.sequence}` : "Prompt"}</span>
+          {turnLabel ? <span>{turnLabel}</span> : null}
         </div>
         <div className="bh-prompt-row-meta" aria-label="Prompt metadata">
           <span className="bh-prompt-row-chip is-model">{activity.model}</span>
@@ -389,7 +394,10 @@ export function SessionDetail({ activity, prompts }: SessionDetailProps) {
             {prompts.map((prompt) => (
               <article className="bh-session-conversation-row" key={prompt.id}>
                 <div>
-                  <span>{prompt.submittedAt}</span>
+                  <div className="bh-session-conversation-meta">
+                    <span>Turn {prompt.sequence}</span>
+                    <time>{prompt.submittedAt}</time>
+                  </div>
                   <PromptText text={prompt.prompt} />
                   {prompt.response ? (
                     <div className="bh-session-response-preview">

@@ -4,7 +4,6 @@ import {
   ActivityCard,
   PromptActivityCard,
   PromptChangeDetail,
-  SessionDetail,
 } from "./ActivityCard";
 import { CodeViewer } from "./CodeViewer";
 import { EmptyState } from "./EmptyState";
@@ -62,7 +61,12 @@ function ActivityPanel({ data }: { data: ProjectDetailData }) {
   const [view, setView] = useState<"prompts" | "sessions">("prompts");
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [selectedSessionPromptId, setSelectedSessionPromptId] = useState<
+    string | null
+  >(null);
   const [promptSearchQuery, setPromptSearchQuery] = useState("");
+  const [sessionConversationSearchQuery, setSessionConversationSearchQuery] =
+    useState("");
   const hasPromptActivity = data.promptActivities.length > 0;
   const hasSessionActivity = data.activities.length > 0;
   const filteredPromptActivities = useMemo(() => {
@@ -87,8 +91,37 @@ function ActivityPanel({ data }: { data: ProjectDetailData }) {
   const selectedSessionPrompts = selectedSession
     ? data.promptActivities.filter(
         (activity) => activity.sessionId === selectedSession.id,
-      )
+      ).sort((first, second) => second.sequence - first.sequence)
     : [];
+  const filteredSessionPrompts = useMemo(() => {
+    const query = sessionConversationSearchQuery.trim().toLowerCase();
+
+    if (!query) {
+      return selectedSessionPrompts;
+    }
+
+    return selectedSessionPrompts.filter((activity) =>
+      [
+        activity.prompt,
+        activity.response ?? "",
+        activity.submittedAt,
+        `turn ${activity.sequence}`,
+        String(activity.sequence),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [selectedSessionPrompts, sessionConversationSearchQuery]);
+  const selectedSessionPrompt =
+    filteredSessionPrompts.find(
+      (activity) => activity.id === selectedSessionPromptId,
+    ) ??
+    filteredSessionPrompts[0] ??
+    null;
+  const sessionPromptCountLabel = sessionConversationSearchQuery.trim()
+    ? `${filteredSessionPrompts.length}/${selectedSessionPrompts.length} prompts`
+    : `${selectedSessionPrompts.length} prompts`;
 
   if (!hasPromptActivity && !hasSessionActivity) {
     return (
@@ -174,14 +207,78 @@ function ActivityPanel({ data }: { data: ProjectDetailData }) {
                 activity={activity}
                 isSelected={activity.id === selectedSession?.id}
                 key={activity.id}
-                onOpen={() => setSelectedSessionId(activity.id)}
+                onOpen={() => {
+                  setSelectedSessionId(activity.id);
+                  setSelectedSessionPromptId(null);
+                  setSessionConversationSearchQuery("");
+                }}
               />
             ))}
           </div>
-          <SessionDetail
-            activity={selectedSession}
-            prompts={selectedSessionPrompts}
-          />
+
+          <section
+            aria-labelledby="session-conversations-title"
+            className="bh-session-conversation-panel"
+          >
+            {selectedSession ? (
+              <>
+                <div className="bh-session-conversation-panel-header">
+                  <div>
+                    <span>Selected session</span>
+                    <h2 id="session-conversations-title">{selectedSession.model}</h2>
+                    <p>
+                      Session {selectedSession.id.slice(0, 8)} ·{" "}
+                      {selectedSession.lastActivity}
+                    </p>
+                  </div>
+                  <strong>{sessionPromptCountLabel}</strong>
+                </div>
+
+                <label className="bh-prompt-search">
+                  <Search aria-hidden="true" size={15} strokeWidth={1.7} />
+                  <input
+                    aria-label="Search conversations by text or date"
+                    onChange={(event) =>
+                      setSessionConversationSearchQuery(event.target.value)
+                    }
+                    placeholder="Search conversations or dates"
+                    type="search"
+                    value={sessionConversationSearchQuery}
+                  />
+                </label>
+
+                {selectedSessionPrompts.length > 0 ? (
+                  filteredSessionPrompts.length > 0 ? (
+                    <div className="bh-prompt-list">
+                      {filteredSessionPrompts.map((activity) => (
+                        <PromptActivityCard
+                          activity={activity}
+                          isSelected={activity.id === selectedSessionPrompt?.id}
+                          key={activity.id}
+                          onOpen={() => setSelectedSessionPromptId(activity.id)}
+                          turnLabel={`Turn ${activity.sequence}`}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="bh-prompt-search-empty">
+                      No conversations match this search.
+                    </div>
+                  )
+                ) : (
+                  <div className="bh-prompt-search-empty">
+                    No prompts were captured in this session.
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="bh-prompt-search-empty">
+                Select a session to inspect its conversations.
+              </div>
+            )}
+          </section>
+
+          <PromptChangeDetail activity={selectedSessionPrompt} />
         </div>
       ) : (
         <EmptyState
