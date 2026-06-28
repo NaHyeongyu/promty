@@ -102,6 +102,13 @@
   border-bottom: 1px solid var(--bh-color-border);
 }
 
+.bh-prompt-change-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--bh-space-2);
+}
+
 .bh-project-tab {
   display: inline-flex;
   align-items: center;

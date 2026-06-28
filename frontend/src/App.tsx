@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
+  BookOpen,
   Bot,
   Clock,
   ExternalLink,
@@ -32,11 +33,17 @@ import {
   type FileTreeNode,
   type ProjectDetailData,
   type ProjectDetailTabId,
+  type PromptActivityItem,
   type RepositoryFileContent,
 } from "./components/project-detail";
+import {
+  PromptHubDetailPage,
+  PromptHubListPage,
+  PromptPublishDrawer,
+} from "./components/prompt-hub";
 import "./App.css";
 
-type SidebarItemId = "projects" | "settings" | "profile";
+type SidebarItemId = "projects" | "prompt-hub" | "settings" | "profile";
 
 type Project = {
   id: string;
@@ -211,6 +218,7 @@ type UrlNavigationState = {
   repositoryFileContentPath: string | null;
   selectedProjectId: string | null;
   selectedProjectRouteKey: string | null;
+  selectedPromptHubSlug: string | null;
 };
 
 const API_URL = (
@@ -228,6 +236,7 @@ const DEFAULT_URL_NAVIGATION_STATE: UrlNavigationState = {
   repositoryFileContentPath: null,
   selectedProjectId: null,
   selectedProjectRouteKey: null,
+  selectedPromptHubSlug: null,
 };
 const ACTIVITY_VIEW_IDS = new Set<ActivityViewId>(["prompts", "sessions"]);
 const PROJECT_DETAIL_TAB_IDS = new Set<ProjectDetailTabId>([
@@ -238,6 +247,7 @@ const PROJECT_DETAIL_TAB_IDS = new Set<ProjectDetailTabId>([
 ]);
 const SIDEBAR_ITEM_IDS = new Set<SidebarItemId>([
   "projects",
+  "prompt-hub",
   "settings",
   "profile",
 ]);
@@ -246,6 +256,7 @@ const UUID_PATTERN =
 const PROJECT_ROUTE_KEY_PATTERN = /^[a-z0-9][a-z0-9-]{0,254}$/i;
 const UUID_ROUTE_KEY_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 const MAX_URL_FILE_PATH_LENGTH = 1024;
+const PROMPT_HUB_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,254}$/i;
 
 function sanitizeProjectId(value: string | null | undefined) {
   if (!value) {
@@ -261,6 +272,38 @@ function sanitizeProjectRouteKey(value: string | null | undefined) {
 
   const routeKey = value.trim().toLowerCase();
   return PROJECT_ROUTE_KEY_PATTERN.test(routeKey) ? routeKey : null;
+}
+
+function sanitizePromptHubSlug(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const slug = value.trim().toLowerCase();
+  return PROMPT_HUB_SLUG_PATTERN.test(slug) ? slug : null;
+}
+
+function promptHubRouteFromPath(pathname: string) {
+  const normalizedPath = pathname.replace(/\/+$/, "") || "/";
+  if (normalizedPath === "/prompt-hub") {
+    return {
+      isPromptHubRoute: true,
+      slug: null,
+    };
+  }
+
+  const match = normalizedPath.match(/^\/prompt-hub\/([^/]+)$/);
+  if (!match) {
+    return {
+      isPromptHubRoute: false,
+      slug: null,
+    };
+  }
+
+  return {
+    isPromptHubRoute: true,
+    slug: sanitizePromptHubSlug(decodeURIComponent(match[1])),
+  };
 }
 
 function uuidToRouteKey(value: string | null | undefined) {
@@ -376,6 +419,10 @@ function normalizeUrlNavigationState(
     activeItem === "projects" && hasSelectedProject && activeDetailTab === "files"
       ? sanitizeRepositoryFilePath(state.repositoryFileContentPath)
       : null;
+  const selectedPromptHubSlug =
+    activeItem === "prompt-hub"
+      ? sanitizePromptHubSlug(state.selectedPromptHubSlug)
+      : null;
   const activityView =
     activeItem === "projects" && hasSelectedProject && activeDetailTab === "ai-activity"
       ? state.activityNavigation?.view ??
@@ -413,10 +460,19 @@ function normalizeUrlNavigationState(
     repositoryFileContentPath,
     selectedProjectId,
     selectedProjectRouteKey,
+    selectedPromptHubSlug,
   };
 }
 
 function readUrlNavigationState(): UrlNavigationState {
+  const promptHubRoute = promptHubRouteFromPath(window.location.pathname);
+  if (promptHubRoute.isPromptHubRoute) {
+    return normalizeUrlNavigationState({
+      activeItem: "prompt-hub",
+      selectedPromptHubSlug: promptHubRoute.slug,
+    });
+  }
+
   const params = new URLSearchParams(window.location.search);
   const projectRouteKey = params.get("project");
   return normalizeUrlNavigationState({
@@ -431,13 +487,19 @@ function readUrlNavigationState(): UrlNavigationState {
     repositoryFileContentPath: params.get("file"),
     selectedProjectId: projectRouteKey,
     selectedProjectRouteKey: projectRouteKey,
+    selectedPromptHubSlug: params.get("prompt"),
   });
 }
 
 function buildUrlNavigationSearch(state: UrlNavigationState) {
   const params = new URLSearchParams();
 
-  if (state.activeItem !== "projects") {
+  if (state.activeItem === "prompt-hub") {
+    params.set("view", state.activeItem);
+    if (state.selectedPromptHubSlug) {
+      params.set("prompt", state.selectedPromptHubSlug);
+    }
+  } else if (state.activeItem !== "projects") {
     params.set("view", state.activeItem);
   } else if (state.selectedProjectRouteKey ?? state.selectedProjectId) {
     params.set("project", state.selectedProjectRouteKey ?? state.selectedProjectId ?? "");
@@ -487,12 +549,30 @@ function buildUrlNavigationSearch(state: UrlNavigationState) {
   return search ? `?${search}` : "";
 }
 
+function buildUrlNavigationPath(state: UrlNavigationState) {
+  if (state.activeItem !== "prompt-hub") {
+    return "/";
+  }
+
+  if (!state.selectedPromptHubSlug) {
+    return "/prompt-hub";
+  }
+
+  return `/prompt-hub/${encodeURIComponent(state.selectedPromptHubSlug)}`;
+}
+
+function buildUrlNavigationLocation(state: UrlNavigationState) {
+  const path = buildUrlNavigationPath(state);
+  const search = state.activeItem === "prompt-hub" ? "" : buildUrlNavigationSearch(state);
+  return `${path}${search}`;
+}
+
 function writeUrlNavigationState(
   state: UrlNavigationState,
   mode: UrlNavigationWriteMode,
 ) {
   const normalizedState = normalizeUrlNavigationState(state);
-  const nextUrl = `${window.location.pathname}${buildUrlNavigationSearch(normalizedState)}`;
+  const nextUrl = buildUrlNavigationLocation(normalizedState);
   const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
 
   if (nextUrl === currentUrl) {
@@ -507,9 +587,7 @@ function writeUrlNavigationState(
 }
 
 function currentWorkspaceReturnUrl() {
-  return `${window.location.origin}${window.location.pathname}${buildUrlNavigationSearch(
-    readUrlNavigationState(),
-  )}`;
+  return `${window.location.origin}${buildUrlNavigationLocation(readUrlNavigationState())}`;
 }
 
 function formatCompactNumber(value: number) {
@@ -1349,6 +1427,13 @@ function WorkspaceApp() {
     useState<string | null>(null);
   const [repositoryFileContentPath, setRepositoryFileContentPath] =
     useState<string | null>(initialNavigationState.repositoryFileContentPath);
+  const [selectedPromptHubSlug, setSelectedPromptHubSlug] = useState<string | null>(
+    initialNavigationState.selectedPromptHubSlug,
+  );
+  const [publishPromptActivity, setPublishPromptActivity] =
+    useState<PromptActivityItem | null>(null);
+  const [publishPromptProjectId, setPublishPromptProjectId] =
+    useState<string | null>(null);
   const [isRepositoryFileContentLoading, setIsRepositoryFileContentLoading] =
     useState(false);
   const [isRepositoryConnectorOpen, setIsRepositoryConnectorOpen] = useState(false);
@@ -1393,6 +1478,8 @@ function WorkspaceApp() {
   const activeTitle =
     activeItem === "projects"
       ? "Projects"
+      : activeItem === "prompt-hub"
+        ? "Prompt Hub"
       : activeItem === "settings"
         ? "Settings"
         : "Profile";
@@ -1403,6 +1490,7 @@ function WorkspaceApp() {
     repositoryFileContentPath,
     selectedProjectId,
     selectedProjectRouteKey,
+    selectedPromptHubSlug,
   };
   const projectRouteKey = (project: Project | null | undefined) =>
     sanitizeProjectRouteKey(project?.slug) ?? project?.id ?? null;
@@ -1448,6 +1536,7 @@ function WorkspaceApp() {
     setActiveDetailTab(nextState.activeDetailTab);
     setActivityNavigation(nextState.activityNavigation);
     setRepositoryFileContentPath(nextState.repositoryFileContentPath);
+    setSelectedPromptHubSlug(nextState.selectedPromptHubSlug);
 
     if (nextState.repositoryFileContentPath !== repositoryFileContentPath) {
       setRepositoryFileContent(null);
@@ -1799,6 +1888,9 @@ function WorkspaceApp() {
     setGithubRepositoryOptions([]);
     setGithubRepositoriesMessage(null);
     setGithubRepositoriesError(null);
+    setSelectedPromptHubSlug(null);
+    setPublishPromptActivity(null);
+    setPublishPromptProjectId(null);
     setAuthStatus("unauthenticated");
     writeUrlNavigationState(DEFAULT_URL_NAVIGATION_STATE, "replace");
   };
@@ -1820,11 +1912,14 @@ function WorkspaceApp() {
       setActiveDetailTab(nextState.activeDetailTab);
       setActivityNavigation(nextState.activityNavigation);
       setRepositoryFileContentPath(nextState.repositoryFileContentPath);
+      setSelectedPromptHubSlug(nextState.selectedPromptHubSlug);
       setIsRepositoryConnectorOpen(false);
       setRepositoryConnectorProjectId(null);
       setRepositoryConnectorError(null);
       setRepositoryUrlInput("");
       setRepositorySearchQuery("");
+      setPublishPromptActivity(null);
+      setPublishPromptProjectId(null);
     };
 
     window.addEventListener("popstate", handlePopState);
@@ -1972,6 +2067,8 @@ function WorkspaceApp() {
 
   const openProjectDetail = (projectId: string) => {
     closeRepositoryConnector();
+    setPublishPromptActivity(null);
+    setPublishPromptProjectId(null);
     navigateWorkspace({
       activeDetailTab: "overview",
       activeItem: "projects",
@@ -1981,6 +2078,8 @@ function WorkspaceApp() {
   };
   const closeProjectDetail = () => {
     closeRepositoryConnector();
+    setPublishPromptActivity(null);
+    setPublishPromptProjectId(null);
     navigateWorkspace({
       activeDetailTab: "overview",
       activeItem: "projects",
@@ -2002,12 +2101,49 @@ function WorkspaceApp() {
     }
 
     closeRepositoryConnector();
+    setPublishPromptActivity(null);
+    setPublishPromptProjectId(null);
     navigateWorkspace({
       activeDetailTab: "overview",
       activeItem: item,
       repositoryFileContentPath: null,
       selectedProjectId: null,
+      selectedPromptHubSlug: null,
     });
+  };
+  const openPromptHubPrompt = (slug: string) => {
+    closeRepositoryConnector();
+    setPublishPromptActivity(null);
+    setPublishPromptProjectId(null);
+    navigateWorkspace({
+      activeDetailTab: "overview",
+      activeItem: "prompt-hub",
+      repositoryFileContentPath: null,
+      selectedProjectId: null,
+      selectedPromptHubSlug: slug,
+    });
+  };
+  const closePromptHubPrompt = () => {
+    navigateWorkspace({
+      activeDetailTab: "overview",
+      activeItem: "prompt-hub",
+      repositoryFileContentPath: null,
+      selectedProjectId: null,
+      selectedPromptHubSlug: null,
+    });
+  };
+  const closePromptPublishDrawer = () => {
+    setPublishPromptActivity(null);
+    setPublishPromptProjectId(null);
+  };
+  const openPromptPublishDrawer = (activity: PromptActivityItem) => {
+    if (!selectedProjectId) {
+      return;
+    }
+
+    closeRepositoryConnector();
+    setPublishPromptActivity(activity);
+    setPublishPromptProjectId(selectedProjectId);
   };
   const selectProjectDetailTab = (tab: ProjectDetailTabId) => {
     navigateWorkspace({
@@ -2015,6 +2151,7 @@ function WorkspaceApp() {
       activeItem: "projects",
       repositoryFileContentPath:
         tab === "files" ? repositoryFileContentPath : null,
+      selectedPromptHubSlug: null,
     });
   };
   const selectRepositoryFile = (path: string) => {
@@ -2022,6 +2159,7 @@ function WorkspaceApp() {
       activeDetailTab: "files",
       activeItem: "projects",
       repositoryFileContentPath: path,
+      selectedPromptHubSlug: null,
     });
   };
   const selectActivityNavigation = (nextActivityNavigation: ActivityNavigationState) => {
@@ -2030,6 +2168,7 @@ function WorkspaceApp() {
       activeItem: "projects",
       activityNavigation: nextActivityNavigation,
       repositoryFileContentPath: null,
+      selectedPromptHubSlug: null,
     });
   };
 
@@ -2117,6 +2256,21 @@ function WorkspaceApp() {
             />
             Projects
           </button>
+          <button
+            aria-pressed={activeItem === "prompt-hub"}
+            className="sidebar-item"
+            data-active={activeItem === "prompt-hub"}
+            onClick={() => selectSidebarItem("prompt-hub")}
+            type="button"
+          >
+            <BookOpen
+              aria-hidden="true"
+              className="sidebar-icon"
+              size={18}
+              strokeWidth={1.5}
+            />
+            Prompt Hub
+          </button>
         </nav>
 
         <div className="sidebar-spacer" />
@@ -2124,22 +2278,6 @@ function WorkspaceApp() {
         <div className="sidebar-divider" />
 
         <div className="sidebar-footer">
-          <button
-            aria-pressed={activeItem === "profile"}
-            className="sidebar-item profile-item"
-            data-active={activeItem === "profile"}
-            onClick={() => selectSidebarItem("profile")}
-            type="button"
-          >
-            <User
-              aria-hidden="true"
-              className="sidebar-icon"
-              size={18}
-              strokeWidth={1.5}
-            />
-            <span>{currentUser?.username ?? "Profile"}</span>
-          </button>
-
           <button
             aria-pressed={activeItem === "settings"}
             className="sidebar-item"
@@ -2154,6 +2292,22 @@ function WorkspaceApp() {
               strokeWidth={1.5}
             />
             <span>Settings</span>
+          </button>
+
+          <button
+            aria-pressed={activeItem === "profile"}
+            className="sidebar-item profile-item"
+            data-active={activeItem === "profile"}
+            onClick={() => selectSidebarItem("profile")}
+            type="button"
+          >
+            <User
+              aria-hidden="true"
+              className="sidebar-icon"
+              size={18}
+              strokeWidth={1.5}
+            />
+            <span>{currentUser?.username ?? "Profile"}</span>
           </button>
 
           <button className="sidebar-item" onClick={logout} type="button">
@@ -2180,6 +2334,7 @@ function WorkspaceApp() {
               isLoading={isProjectDetailLoading && projectDetail === null}
               onActivityNavigationChange={selectActivityNavigation}
               onConnectRepository={() => openRepositoryConnector(selectedProject.id)}
+              onPublishPromptActivity={openPromptPublishDrawer}
               onRepositoryFileSelect={selectRepositoryFile}
               onTabChange={selectProjectDetailTab}
               onRetry={() => {
@@ -2392,6 +2547,15 @@ function WorkspaceApp() {
               )}
             </section>
           </>
+        ) : activeItem === "prompt-hub" ? (
+          selectedPromptHubSlug ? (
+            <PromptHubDetailPage
+              onBack={closePromptHubPrompt}
+              slug={selectedPromptHubSlug}
+            />
+          ) : (
+            <PromptHubListPage onOpenPrompt={openPromptHubPrompt} />
+          )
         ) : (
           <>
             <header className="page-header">
@@ -2453,6 +2617,18 @@ function WorkspaceApp() {
           </>
         )}
       </main>
+
+      {publishPromptActivity && publishPromptProjectId ? (
+        <PromptPublishDrawer
+          activity={publishPromptActivity}
+          onClose={closePromptPublishDrawer}
+          onPublished={(prompt) => {
+            closePromptPublishDrawer();
+            openPromptHubPrompt(prompt.slug);
+          }}
+          projectId={publishPromptProjectId}
+        />
+      ) : null}
     </div>
   );
 }

@@ -14,6 +14,7 @@ import { ProjectHeader } from "./ProjectHeader";
 import { ProjectTabs } from "./ProjectTabs";
 import type {
   ActivityNavigationState,
+  PromptActivityItem,
   ProjectDetailData,
   ProjectDetailTab,
   ProjectDetailTabId,
@@ -28,6 +29,7 @@ type ProjectDetailPageProps = {
   isLoading?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onConnectRepository?: () => void;
+  onPublishPromptActivity?: (activity: PromptActivityItem) => void;
   onRepositoryFileSelect?: (path: string) => void;
   onRetry?: () => void;
   onTabChange: (tabId: ProjectDetailTabId) => void;
@@ -71,10 +73,12 @@ function ActivityPanel({
   activityNavigation,
   data,
   onActivityNavigationChange,
+  onPublishPromptActivity,
 }: {
   activityNavigation?: ActivityNavigationState;
   data: ProjectDetailData;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
+  onPublishPromptActivity?: (activity: PromptActivityItem) => void;
 }) {
   const [localActivityNavigation, setLocalActivityNavigation] =
     useState<ActivityNavigationState>(defaultActivityNavigation);
@@ -245,7 +249,10 @@ function ActivityPanel({
                 </div>
               )}
             </div>
-            <PromptChangeDetail activity={selectedPrompt} />
+            <PromptChangeDetail
+              activity={selectedPrompt}
+              onPublish={onPublishPromptActivity}
+            />
           </div>
         ) : (
           <EmptyState
@@ -344,7 +351,10 @@ function ActivityPanel({
             )}
           </section>
 
-          <PromptChangeDetail activity={selectedSessionPrompt} />
+          <PromptChangeDetail
+            activity={selectedSessionPrompt}
+            onPublish={onPublishPromptActivity}
+          />
         </div>
       ) : (
         <EmptyState
@@ -456,6 +466,7 @@ function ProjectPanel({
   errorMessage,
   isLoading,
   onActivityNavigationChange,
+  onPublishPromptActivity,
   onRepositoryFileSelect,
   onRetry,
 }: {
@@ -465,6 +476,7 @@ function ProjectPanel({
   errorMessage?: string | null;
   isLoading?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
+  onPublishPromptActivity?: (activity: PromptActivityItem) => void;
   onRepositoryFileSelect?: (path: string) => void;
   onRetry?: () => void;
 }) {
@@ -504,6 +516,7 @@ function ProjectPanel({
         activityNavigation={activityNavigation}
         data={data}
         onActivityNavigationChange={onActivityNavigationChange}
+        onPublishPromptActivity={onPublishPromptActivity}
       />
     );
   }
@@ -533,6 +546,7 @@ export function ProjectDetailPage({
   isLoading,
   onActivityNavigationChange,
   onConnectRepository,
+  onPublishPromptActivity,
   onRepositoryFileSelect,
   onRetry,
   onTabChange,
@@ -567,6 +581,7 @@ export function ProjectDetailPage({
           errorMessage={errorMessage}
           isLoading={isLoading}
           onActivityNavigationChange={onActivityNavigationChange}
+          onPublishPromptActivity={onPublishPromptActivity}
           onRepositoryFileSelect={onRepositoryFileSelect}
           onRetry={onRetry}
         />

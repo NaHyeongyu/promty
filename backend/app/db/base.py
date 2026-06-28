@@ -8,6 +8,12 @@ from app.models.github_connections import GitHubConnection
 from app.models.project_files import ProjectFile
 from app.models.project_knowledge import ProjectKnowledgeResource
 from app.models.projects import Project
+from app.models.published_prompts import (
+    PublishedPrompt,
+    PublishedPromptComment,
+    PublishedPromptFile,
+    PublishedPromptReaction,
+)
 from app.models.sessions import Session
 from app.models.tokens import CollectorToken
 from app.models.users import User
@@ -22,6 +28,10 @@ __all__ = [
     "Project",
     "ProjectFile",
     "ProjectKnowledgeResource",
+    "PublishedPrompt",
+    "PublishedPromptComment",
+    "PublishedPromptFile",
+    "PublishedPromptReaction",
     "Session",
     "User",
 ]
