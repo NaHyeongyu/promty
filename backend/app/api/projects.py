@@ -266,6 +266,7 @@ def _project_summary(
 ) -> dict[str, Any]:
     return {
         "id": str(project.id),
+        "slug": project.slug,
         "name": project.name,
         "git_remote": project.git_remote,
         "github_url": _normalize_github_url(project.git_remote),
@@ -589,6 +590,7 @@ def read_project_detail(
     return {
         "project": {
             "id": str(project.id),
+            "slug": project.slug,
             "name": project.name,
             "description": project.description,
             "repository_status": "Repository connected"

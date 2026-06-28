@@ -4,6 +4,7 @@ __pycache__/
 .env
 .env.*
 node_modules/
+frontend/.vite/
 dist/
 build/
 .DS_Store

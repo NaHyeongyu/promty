@@ -8,6 +8,15 @@ export type ProjectDetailTab = {
   label: string;
 };
 
+export type ActivityViewId = "prompts" | "sessions";
+
+export type ActivityNavigationState = {
+  selectedPromptId: string | null;
+  selectedSessionId: string | null;
+  selectedSessionPromptId: string | null;
+  view: ActivityViewId;
+};
+
 export type ProjectHeaderProps = {
   name: string;
   description: string;

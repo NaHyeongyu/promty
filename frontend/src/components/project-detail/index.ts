@@ -8,7 +8,9 @@ export { ProjectDetailPage } from "./ProjectDetailPage";
 export { ProjectHeader } from "./ProjectHeader";
 export { ProjectTabs } from "./ProjectTabs";
 export type {
+  ActivityNavigationState,
   ActivityItem,
+  ActivityViewId,
   FileTreeNode,
   KnowledgeItem,
   OverviewItem,

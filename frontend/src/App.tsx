@@ -27,6 +27,8 @@ import {
 import { SiOpenai } from "react-icons/si";
 import {
   ProjectDetailPage,
+  type ActivityNavigationState,
+  type ActivityViewId,
   type FileTreeNode,
   type ProjectDetailData,
   type ProjectDetailTabId,
@@ -39,6 +41,7 @@ type SidebarItemId = "projects" | "settings" | "profile";
 type Project = {
   id: string;
   name: string;
+  slug?: string;
   latestTimestamp: string;
   latestUpdatedAt: string;
   sessions: number;
@@ -68,6 +71,7 @@ type EventRecord = {
 
 type ProjectSummary = {
   id: string;
+  slug?: string;
   name: string;
   git_remote: string | null;
   github_url: string | null;
@@ -142,6 +146,7 @@ type ProjectDetailApiResponse = {
     name: string;
     repository_status: string;
     repository_url: string | null;
+    slug?: string;
     updated_at: string | null;
   };
 };
@@ -197,10 +202,315 @@ type ProjectGithubFilesState = {
 };
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated" | "error";
+type UrlNavigationWriteMode = "push" | "replace";
+
+type UrlNavigationState = {
+  activityNavigation: ActivityNavigationState;
+  activeDetailTab: ProjectDetailTabId;
+  activeItem: SidebarItemId;
+  repositoryFileContentPath: string | null;
+  selectedProjectId: string | null;
+  selectedProjectRouteKey: string | null;
+};
 
 const API_URL = (
   import.meta.env.VITE_PROMPTHUB_API_URL ?? "http://127.0.0.1:8011"
 ).replace(/\/$/, "");
+const DEFAULT_URL_NAVIGATION_STATE: UrlNavigationState = {
+  activityNavigation: {
+    selectedPromptId: null,
+    selectedSessionId: null,
+    selectedSessionPromptId: null,
+    view: "prompts",
+  },
+  activeDetailTab: "overview",
+  activeItem: "projects",
+  repositoryFileContentPath: null,
+  selectedProjectId: null,
+  selectedProjectRouteKey: null,
+};
+const ACTIVITY_VIEW_IDS = new Set<ActivityViewId>(["prompts", "sessions"]);
+const PROJECT_DETAIL_TAB_IDS = new Set<ProjectDetailTabId>([
+  "overview",
+  "ai-activity",
+  "knowledge",
+  "files",
+]);
+const SIDEBAR_ITEM_IDS = new Set<SidebarItemId>([
+  "projects",
+  "settings",
+  "profile",
+]);
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const PROJECT_ROUTE_KEY_PATTERN = /^[a-z0-9][a-z0-9-]{0,254}$/i;
+const UUID_ROUTE_KEY_PATTERN = /^[A-Za-z0-9_-]{22}$/;
+const MAX_URL_FILE_PATH_LENGTH = 1024;
+
+function sanitizeProjectId(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+  return UUID_PATTERN.test(value) ? value : null;
+}
+
+function sanitizeProjectRouteKey(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const routeKey = value.trim().toLowerCase();
+  return PROJECT_ROUTE_KEY_PATTERN.test(routeKey) ? routeKey : null;
+}
+
+function uuidToRouteKey(value: string | null | undefined) {
+  const uuid = sanitizeProjectId(value);
+  if (!uuid) {
+    return null;
+  }
+
+  const bytes = uuid
+    .replace(/-/g, "")
+    .match(/.{1,2}/g)
+    ?.map((hex) => Number.parseInt(hex, 16));
+  if (!bytes || bytes.some((byte) => Number.isNaN(byte))) {
+    return null;
+  }
+
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function routeKeyToUuid(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const uuid = sanitizeProjectId(value);
+  if (uuid) {
+    return uuid;
+  }
+
+  if (!UUID_ROUTE_KEY_PATTERN.test(value)) {
+    return null;
+  }
+
+  try {
+    const binary = atob(value.replace(/-/g, "+").replace(/_/g, "/"));
+    if (binary.length !== 16) {
+      return null;
+    }
+
+    const hex = Array.from(binary, (character) =>
+      character.charCodeAt(0).toString(16).padStart(2, "0"),
+    ).join("");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(
+      12,
+      16,
+    )}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeRepositoryFilePath(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const path = value.trim();
+  if (
+    path.length === 0 ||
+    path.length > MAX_URL_FILE_PATH_LENGTH ||
+    path.startsWith("/") ||
+    path.includes("\\")
+  ) {
+    return null;
+  }
+
+  const segments = path.split("/");
+  if (segments.some((segment) => segment === "" || segment === "." || segment === "..")) {
+    return null;
+  }
+
+  return path;
+}
+
+function parseSidebarItemId(value: string | null): SidebarItemId {
+  return value && SIDEBAR_ITEM_IDS.has(value as SidebarItemId)
+    ? (value as SidebarItemId)
+    : "projects";
+}
+
+function parseProjectDetailTabId(value: string | null): ProjectDetailTabId {
+  return value && PROJECT_DETAIL_TAB_IDS.has(value as ProjectDetailTabId)
+    ? (value as ProjectDetailTabId)
+    : "overview";
+}
+
+function parseActivityViewId(value: string | null): ActivityViewId {
+  return value && ACTIVITY_VIEW_IDS.has(value as ActivityViewId)
+    ? (value as ActivityViewId)
+    : "prompts";
+}
+
+function normalizeUrlNavigationState(
+  state: Partial<UrlNavigationState>,
+): UrlNavigationState {
+  const activeItem = state.activeItem ?? DEFAULT_URL_NAVIGATION_STATE.activeItem;
+  const selectedProjectId =
+    activeItem === "projects" ? sanitizeProjectId(state.selectedProjectId) : null;
+  const selectedProjectRouteKey =
+    activeItem === "projects"
+      ? sanitizeProjectRouteKey(
+          state.selectedProjectRouteKey ?? state.selectedProjectId,
+        )
+      : null;
+  const hasSelectedProject = Boolean(selectedProjectId || selectedProjectRouteKey);
+  const activeDetailTab = hasSelectedProject
+    ? state.activeDetailTab ?? DEFAULT_URL_NAVIGATION_STATE.activeDetailTab
+    : DEFAULT_URL_NAVIGATION_STATE.activeDetailTab;
+  const repositoryFileContentPath =
+    activeItem === "projects" && hasSelectedProject && activeDetailTab === "files"
+      ? sanitizeRepositoryFilePath(state.repositoryFileContentPath)
+      : null;
+  const activityView =
+    activeItem === "projects" && hasSelectedProject && activeDetailTab === "ai-activity"
+      ? state.activityNavigation?.view ??
+        DEFAULT_URL_NAVIGATION_STATE.activityNavigation.view
+      : DEFAULT_URL_NAVIGATION_STATE.activityNavigation.view;
+  const activityNavigation: ActivityNavigationState = {
+    selectedPromptId:
+      activeItem === "projects" &&
+      hasSelectedProject &&
+      activeDetailTab === "ai-activity" &&
+      activityView === "prompts"
+        ? routeKeyToUuid(state.activityNavigation?.selectedPromptId)
+        : null,
+    selectedSessionId:
+      activeItem === "projects" &&
+      hasSelectedProject &&
+      activeDetailTab === "ai-activity" &&
+      activityView === "sessions"
+        ? routeKeyToUuid(state.activityNavigation?.selectedSessionId)
+        : null,
+    selectedSessionPromptId:
+      activeItem === "projects" &&
+      hasSelectedProject &&
+      activeDetailTab === "ai-activity" &&
+      activityView === "sessions"
+        ? routeKeyToUuid(state.activityNavigation?.selectedSessionPromptId)
+        : null,
+    view: activityView,
+  };
+
+  return {
+    activityNavigation,
+    activeDetailTab,
+    activeItem,
+    repositoryFileContentPath,
+    selectedProjectId,
+    selectedProjectRouteKey,
+  };
+}
+
+function readUrlNavigationState(): UrlNavigationState {
+  const params = new URLSearchParams(window.location.search);
+  const projectRouteKey = params.get("project");
+  return normalizeUrlNavigationState({
+    activityNavigation: {
+      selectedPromptId: params.get("prompt"),
+      selectedSessionId: params.get("session"),
+      selectedSessionPromptId: params.get("turn"),
+      view: parseActivityViewId(params.get("activity")),
+    },
+    activeDetailTab: parseProjectDetailTabId(params.get("tab")),
+    activeItem: parseSidebarItemId(params.get("view")),
+    repositoryFileContentPath: params.get("file"),
+    selectedProjectId: projectRouteKey,
+    selectedProjectRouteKey: projectRouteKey,
+  });
+}
+
+function buildUrlNavigationSearch(state: UrlNavigationState) {
+  const params = new URLSearchParams();
+
+  if (state.activeItem !== "projects") {
+    params.set("view", state.activeItem);
+  } else if (state.selectedProjectRouteKey ?? state.selectedProjectId) {
+    params.set("project", state.selectedProjectRouteKey ?? state.selectedProjectId ?? "");
+    params.set("tab", state.activeDetailTab);
+
+    if (state.activeDetailTab === "files" && state.repositoryFileContentPath) {
+      params.set("file", state.repositoryFileContentPath);
+    } else if (state.activeDetailTab === "ai-activity") {
+      params.set("activity", state.activityNavigation.view);
+
+      if (
+        state.activityNavigation.view === "prompts" &&
+        state.activityNavigation.selectedPromptId
+      ) {
+        params.set(
+          "prompt",
+          uuidToRouteKey(state.activityNavigation.selectedPromptId) ??
+            state.activityNavigation.selectedPromptId,
+        );
+      }
+
+      if (
+        state.activityNavigation.view === "sessions" &&
+        state.activityNavigation.selectedSessionId
+      ) {
+        params.set(
+          "session",
+          uuidToRouteKey(state.activityNavigation.selectedSessionId) ??
+            state.activityNavigation.selectedSessionId,
+        );
+      }
+
+      if (
+        state.activityNavigation.view === "sessions" &&
+        state.activityNavigation.selectedSessionPromptId
+      ) {
+        params.set(
+          "turn",
+          uuidToRouteKey(state.activityNavigation.selectedSessionPromptId) ??
+            state.activityNavigation.selectedSessionPromptId,
+        );
+      }
+    }
+  }
+
+  const search = params.toString();
+  return search ? `?${search}` : "";
+}
+
+function writeUrlNavigationState(
+  state: UrlNavigationState,
+  mode: UrlNavigationWriteMode,
+) {
+  const normalizedState = normalizeUrlNavigationState(state);
+  const nextUrl = `${window.location.pathname}${buildUrlNavigationSearch(normalizedState)}`;
+  const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+  if (nextUrl === currentUrl) {
+    return;
+  }
+
+  window.history[mode === "replace" ? "replaceState" : "pushState"](
+    { buildhubNavigation: normalizedState },
+    "",
+    nextUrl,
+  );
+}
+
+function currentWorkspaceReturnUrl() {
+  return `${window.location.origin}${window.location.pathname}${buildUrlNavigationSearch(
+    readUrlNavigationState(),
+  )}`;
+}
 
 function formatCompactNumber(value: number) {
   return Intl.NumberFormat("en", {
@@ -307,6 +617,7 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
       summaryEventCount?: number;
       summarySessionCount?: number;
       sessions: Set<string>;
+      slug?: string;
     }
   >();
 
@@ -321,6 +632,7 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
       summaryEventCount: summary.events,
       summarySessionCount: summary.sessions,
       sessions: new Set<string>(),
+      slug: summary.slug,
     });
   }
 
@@ -357,6 +669,7 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
   return Array.from(grouped, ([id, value]) => ({
     id,
     name: value.name,
+    slug: value.slug ?? id,
     latestTimestamp: value.latestTimestamp,
     latestUpdatedAt: formatTimestamp(value.latestTimestamp),
     sessions: value.summarySessionCount ?? value.sessions.size,
@@ -530,7 +843,7 @@ function repositoryFileContentFromApi(
 
 function githubRepositoryConnectUrl() {
   return `${API_URL}/api/auth/github/web/start?${new URLSearchParams({
-    return_to: window.location.href,
+    return_to: currentWorkspaceReturnUrl(),
   })}`;
 }
 
@@ -622,7 +935,7 @@ function WebLoginPage({
   errorMessage: string | null;
   isError?: boolean;
 }) {
-  const returnTo = `${window.location.origin}/`;
+  const returnTo = currentWorkspaceReturnUrl();
   const loginUrl = `${API_URL}/api/auth/github/web/start?${new URLSearchParams({
     return_to: returnTo,
   }).toString()}`;
@@ -1000,16 +1313,25 @@ function RepositoryConnector({
 }
 
 function WorkspaceApp() {
-  const [activeItem, setActiveItem] = useState<SidebarItemId>("projects");
+  const initialNavigationState = useMemo(readUrlNavigationState, []);
+  const [activeItem, setActiveItem] = useState<SidebarItemId>(
+    initialNavigationState.activeItem,
+  );
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
-    null,
+    initialNavigationState.selectedProjectId,
+  );
+  const [selectedProjectRouteKey, setSelectedProjectRouteKey] = useState<string | null>(
+    initialNavigationState.selectedProjectRouteKey,
   );
   const [activeDetailTab, setActiveDetailTab] =
-    useState<ProjectDetailTabId>("overview");
+    useState<ProjectDetailTabId>(initialNavigationState.activeDetailTab);
+  const [activityNavigation, setActivityNavigation] =
+    useState<ActivityNavigationState>(initialNavigationState.activityNavigation);
   const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [projectSummaries, setProjectSummaries] = useState<ProjectSummary[]>([]);
+  const [hasLoadedWorkspaceData, setHasLoadedWorkspaceData] = useState(false);
   const [isEventsLoading, setIsEventsLoading] = useState(false);
   const [isProjectDetailLoading, setIsProjectDetailLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -1026,7 +1348,7 @@ function WorkspaceApp() {
   const [repositoryFileContentError, setRepositoryFileContentError] =
     useState<string | null>(null);
   const [repositoryFileContentPath, setRepositoryFileContentPath] =
-    useState<string | null>(null);
+    useState<string | null>(initialNavigationState.repositoryFileContentPath);
   const [isRepositoryFileContentLoading, setIsRepositoryFileContentLoading] =
     useState(false);
   const [isRepositoryConnectorOpen, setIsRepositoryConnectorOpen] = useState(false);
@@ -1074,6 +1396,67 @@ function WorkspaceApp() {
       : activeItem === "settings"
         ? "Settings"
         : "Profile";
+  const currentNavigationState: UrlNavigationState = {
+    activityNavigation,
+    activeDetailTab,
+    activeItem,
+    repositoryFileContentPath,
+    selectedProjectId,
+    selectedProjectRouteKey,
+  };
+  const projectRouteKey = (project: Project | null | undefined) =>
+    sanitizeProjectRouteKey(project?.slug) ?? project?.id ?? null;
+  const projectMatchesRouteKey = (project: Project, routeKey: string) =>
+    projectRouteKey(project) === routeKey || project.id === routeKey;
+
+  const navigateWorkspace = (
+    state: Partial<UrlNavigationState>,
+    mode: UrlNavigationWriteMode = "push",
+  ) => {
+    const requestedProjectId =
+      state.selectedProjectId === undefined
+        ? currentNavigationState.selectedProjectId
+        : state.selectedProjectId;
+    const requestedProject =
+      requestedProjectId === null
+        ? null
+        : projects.find((project) => project.id === requestedProjectId) ?? null;
+    const requestedProjectRouteKey = Object.prototype.hasOwnProperty.call(
+      state,
+      "selectedProjectRouteKey",
+    )
+      ? state.selectedProjectRouteKey
+      : undefined;
+    const fallbackProjectRouteKey =
+      requestedProjectId === null
+        ? null
+        : projectRouteKey(requestedProject) ??
+          requestedProjectId ??
+          currentNavigationState.selectedProjectRouteKey;
+    const nextState = normalizeUrlNavigationState({
+      ...currentNavigationState,
+      ...state,
+      selectedProjectRouteKey:
+        requestedProjectRouteKey !== undefined
+          ? requestedProjectRouteKey
+          : fallbackProjectRouteKey,
+    });
+
+    setActiveItem(nextState.activeItem);
+    setSelectedProjectId(nextState.selectedProjectId);
+    setSelectedProjectRouteKey(nextState.selectedProjectRouteKey);
+    setActiveDetailTab(nextState.activeDetailTab);
+    setActivityNavigation(nextState.activityNavigation);
+    setRepositoryFileContentPath(nextState.repositoryFileContentPath);
+
+    if (nextState.repositoryFileContentPath !== repositoryFileContentPath) {
+      setRepositoryFileContent(null);
+      setRepositoryFileContentError(null);
+      setIsRepositoryFileContentLoading(false);
+    }
+
+    writeUrlNavigationState(nextState, mode);
+  };
 
   const loadProjectDetail = async (
     projectId: string,
@@ -1238,6 +1621,7 @@ function WorkspaceApp() {
 
   const loadEvents = async () => {
     setIsEventsLoading(true);
+    setHasLoadedWorkspaceData(false);
     setErrorMessage(null);
     try {
       const response = await fetch(`${API_URL}/api/events?limit=500`, {
@@ -1248,6 +1632,7 @@ function WorkspaceApp() {
         setCurrentUser(null);
         setEvents([]);
         setProjectSummaries([]);
+        setHasLoadedWorkspaceData(false);
         return;
       }
       if (!response.ok) {
@@ -1263,9 +1648,11 @@ function WorkspaceApp() {
       const projectPayload = (await projectsResponse.json()) as ProjectSummary[];
       setEvents(payload);
       setProjectSummaries(projectPayload);
+      setHasLoadedWorkspaceData(true);
       setAuthStatus("authenticated");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Events request failed");
+      setHasLoadedWorkspaceData(true);
       setAuthStatus((status) =>
         status === "loading" ? "error" : status,
       );
@@ -1331,9 +1718,13 @@ function WorkspaceApp() {
       const project = (await response.json()) as ProjectSummary;
       closeRepositoryConnector();
       await loadEvents();
-      setActiveItem("projects");
-      setSelectedProjectId(project.id);
-      setActiveDetailTab("files");
+      navigateWorkspace({
+        activeDetailTab: "files",
+        activeItem: "projects",
+        repositoryFileContentPath: null,
+        selectedProjectId: project.id,
+        selectedProjectRouteKey: project.slug ?? project.id,
+      });
       setProjectDetail(null);
       setProjectGithubFiles(null);
       setRepositoryFileContent(null);
@@ -1352,6 +1743,7 @@ function WorkspaceApp() {
 
   const loadSession = async () => {
     setAuthStatus("loading");
+    setHasLoadedWorkspaceData(false);
     setErrorMessage(null);
     try {
       const response = await fetch(`${API_URL}/api/auth/me`, {
@@ -1362,6 +1754,7 @@ function WorkspaceApp() {
         setCurrentUser(null);
         setEvents([]);
         setProjectSummaries([]);
+        setHasLoadedWorkspaceData(false);
         return;
       }
       if (!response.ok) {
@@ -1385,7 +1778,12 @@ function WorkspaceApp() {
     setCurrentUser(null);
     setEvents([]);
     setProjectSummaries([]);
+    setHasLoadedWorkspaceData(false);
     setSelectedProjectId(null);
+    setSelectedProjectRouteKey(null);
+    setActiveItem("projects");
+    setActiveDetailTab("overview");
+    setActivityNavigation(DEFAULT_URL_NAVIGATION_STATE.activityNavigation);
     setProjectDetail(null);
     setProjectDetailError(null);
     setProjectGithubFiles(null);
@@ -1402,6 +1800,7 @@ function WorkspaceApp() {
     setGithubRepositoriesMessage(null);
     setGithubRepositoriesError(null);
     setAuthStatus("unauthenticated");
+    writeUrlNavigationState(DEFAULT_URL_NAVIGATION_STATE, "replace");
   };
 
   useEffect(() => {
@@ -1409,13 +1808,106 @@ function WorkspaceApp() {
   }, []);
 
   useEffect(() => {
-    if (selectedProjectId && !projects.some((project) => project.id === selectedProjectId)) {
-      setSelectedProjectId(null);
-    }
-  }, [projects, selectedProjectId]);
+    writeUrlNavigationState(initialNavigationState, "replace");
+  }, [initialNavigationState]);
 
   useEffect(() => {
-    if (!selectedProjectId || activeItem !== "projects") {
+    const handlePopState = () => {
+      const nextState = readUrlNavigationState();
+      setActiveItem(nextState.activeItem);
+      setSelectedProjectId(nextState.selectedProjectId);
+      setSelectedProjectRouteKey(nextState.selectedProjectRouteKey);
+      setActiveDetailTab(nextState.activeDetailTab);
+      setActivityNavigation(nextState.activityNavigation);
+      setRepositoryFileContentPath(nextState.repositoryFileContentPath);
+      setIsRepositoryConnectorOpen(false);
+      setRepositoryConnectorProjectId(null);
+      setRepositoryConnectorError(null);
+      setRepositoryUrlInput("");
+      setRepositorySearchQuery("");
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (!hasLoadedWorkspaceData || activeItem !== "projects") {
+      return;
+    }
+
+    if (!selectedProjectId && selectedProjectRouteKey) {
+      const resolvedProject = projects.find((project) =>
+        projectMatchesRouteKey(project, selectedProjectRouteKey),
+      );
+
+      if (resolvedProject) {
+        navigateWorkspace(
+          {
+            selectedProjectId: resolvedProject.id,
+            selectedProjectRouteKey: projectRouteKey(resolvedProject),
+          },
+          "replace",
+        );
+        return;
+      }
+
+      navigateWorkspace(
+        {
+          activeDetailTab: "overview",
+          activeItem: "projects",
+          repositoryFileContentPath: null,
+          selectedProjectId: null,
+          selectedProjectRouteKey: null,
+        },
+        "replace",
+      );
+      return;
+    }
+
+    if (!selectedProjectId) {
+      return;
+    }
+
+    const resolvedProject =
+      projects.find((project) => project.id === selectedProjectId) ??
+      (selectedProjectRouteKey
+        ? projects.find((project) =>
+            projectMatchesRouteKey(project, selectedProjectRouteKey),
+          )
+        : null);
+    if (!resolvedProject) {
+      navigateWorkspace(
+        {
+          activeDetailTab: "overview",
+          activeItem: "projects",
+          repositoryFileContentPath: null,
+          selectedProjectId: null,
+          selectedProjectRouteKey: null,
+        },
+        "replace",
+      );
+      return;
+    }
+
+    const resolvedProjectRouteKey = projectRouteKey(resolvedProject);
+    if (
+      resolvedProjectRouteKey &&
+      (selectedProjectId !== resolvedProject.id ||
+        selectedProjectRouteKey !== resolvedProjectRouteKey)
+    ) {
+      navigateWorkspace(
+        {
+          selectedProjectId: resolvedProject.id,
+          selectedProjectRouteKey: resolvedProjectRouteKey,
+        },
+        "replace",
+      );
+    }
+  }, [activeItem, hasLoadedWorkspaceData, projects, selectedProjectId, selectedProjectRouteKey]);
+
+  useEffect(() => {
+    if (activeItem !== "projects" || (!selectedProjectId && !selectedProjectRouteKey)) {
       setProjectDetail(null);
       setProjectDetailError(null);
       setProjectGithubFiles(null);
@@ -1429,29 +1921,72 @@ function WorkspaceApp() {
       return;
     }
 
+    if (!selectedProjectId) {
+      setProjectDetail(null);
+      setProjectDetailError(null);
+      setProjectGithubFiles(null);
+      setProjectGithubFilesError(null);
+      setRepositoryFileContent(null);
+      setRepositoryFileContentError(null);
+      setIsProjectDetailLoading(false);
+      setIsProjectGithubFilesLoading(false);
+      setIsRepositoryFileContentLoading(false);
+      return;
+    }
+
     const detailController = new AbortController();
     const githubFilesController = new AbortController();
     setProjectDetail(null);
     setProjectGithubFiles(null);
     setRepositoryFileContent(null);
     setRepositoryFileContentError(null);
-    setRepositoryFileContentPath(null);
     void loadProjectDetail(selectedProjectId, selectedProject, detailController.signal);
     void loadProjectGithubFiles(selectedProjectId, githubFilesController.signal);
     return () => {
       detailController.abort();
       githubFilesController.abort();
     };
-  }, [activeItem, selectedProjectId]);
+  }, [activeItem, selectedProjectId, selectedProjectRouteKey]);
+
+  useEffect(() => {
+    if (
+      !selectedProjectId ||
+      activeItem !== "projects" ||
+      activeDetailTab !== "files" ||
+      !repositoryFileContentPath
+    ) {
+      setRepositoryFileContent(null);
+      setRepositoryFileContentError(null);
+      setIsRepositoryFileContentLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    void loadRepositoryFileContent(
+      selectedProjectId,
+      repositoryFileContentPath,
+      controller.signal,
+    );
+    return () => controller.abort();
+  }, [activeDetailTab, activeItem, repositoryFileContentPath, selectedProjectId]);
 
   const openProjectDetail = (projectId: string) => {
     closeRepositoryConnector();
-    setSelectedProjectId(projectId);
-    setActiveDetailTab("overview");
+    navigateWorkspace({
+      activeDetailTab: "overview",
+      activeItem: "projects",
+      repositoryFileContentPath: null,
+      selectedProjectId: projectId,
+    });
   };
   const closeProjectDetail = () => {
-    setSelectedProjectId(null);
-    setActiveDetailTab("overview");
+    closeRepositoryConnector();
+    navigateWorkspace({
+      activeDetailTab: "overview",
+      activeItem: "projects",
+      repositoryFileContentPath: null,
+      selectedProjectId: null,
+    });
     setProjectDetail(null);
     setProjectDetailError(null);
     setProjectGithubFiles(null);
@@ -1461,11 +1996,41 @@ function WorkspaceApp() {
     setRepositoryFileContentPath(null);
   };
   const selectSidebarItem = (item: SidebarItemId) => {
-    setActiveItem(item);
-
-    if (item !== "projects" || selectedProjectId) {
+    if (item === "projects" && selectedProjectId) {
       closeProjectDetail();
+      return;
     }
+
+    closeRepositoryConnector();
+    navigateWorkspace({
+      activeDetailTab: "overview",
+      activeItem: item,
+      repositoryFileContentPath: null,
+      selectedProjectId: null,
+    });
+  };
+  const selectProjectDetailTab = (tab: ProjectDetailTabId) => {
+    navigateWorkspace({
+      activeDetailTab: tab,
+      activeItem: "projects",
+      repositoryFileContentPath:
+        tab === "files" ? repositoryFileContentPath : null,
+    });
+  };
+  const selectRepositoryFile = (path: string) => {
+    navigateWorkspace({
+      activeDetailTab: "files",
+      activeItem: "projects",
+      repositoryFileContentPath: path,
+    });
+  };
+  const selectActivityNavigation = (nextActivityNavigation: ActivityNavigationState) => {
+    navigateWorkspace({
+      activeDetailTab: "ai-activity",
+      activeItem: "projects",
+      activityNavigation: nextActivityNavigation,
+      repositoryFileContentPath: null,
+    });
   };
 
   if (authStatus === "loading") {
@@ -1608,15 +2173,15 @@ function WorkspaceApp() {
           <>
             {repositoryConnector}
             <ProjectDetailPage
+              activityNavigation={activityNavigation}
               activeTab={activeDetailTab}
               data={selectedProjectDetailData ?? emptyProjectDetailData(selectedProject)}
               errorMessage={projectDetailError}
               isLoading={isProjectDetailLoading && projectDetail === null}
+              onActivityNavigationChange={selectActivityNavigation}
               onConnectRepository={() => openRepositoryConnector(selectedProject.id)}
-              onRepositoryFileSelect={(path) => {
-                void loadRepositoryFileContent(selectedProject.id, path);
-              }}
-              onTabChange={setActiveDetailTab}
+              onRepositoryFileSelect={selectRepositoryFile}
+              onTabChange={selectProjectDetailTab}
               onRetry={() => {
                 void loadProjectDetail(selectedProject.id, selectedProject);
                 void loadProjectGithubFiles(selectedProject.id);

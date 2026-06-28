@@ -13,6 +13,7 @@ import { OverviewCard } from "./OverviewCard";
 import { ProjectHeader } from "./ProjectHeader";
 import { ProjectTabs } from "./ProjectTabs";
 import type {
+  ActivityNavigationState,
   ProjectDetailData,
   ProjectDetailTab,
   ProjectDetailTabId,
@@ -20,14 +21,23 @@ import type {
 import "./project-detail.css";
 
 type ProjectDetailPageProps = {
+  activityNavigation?: ActivityNavigationState;
   activeTab: ProjectDetailTabId;
   data: ProjectDetailData;
   errorMessage?: string | null;
   isLoading?: boolean;
+  onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onConnectRepository?: () => void;
   onRepositoryFileSelect?: (path: string) => void;
   onRetry?: () => void;
   onTabChange: (tabId: ProjectDetailTabId) => void;
+};
+
+const defaultActivityNavigation: ActivityNavigationState = {
+  selectedPromptId: null,
+  selectedSessionId: null,
+  selectedSessionPromptId: null,
+  view: "prompts",
 };
 
 const projectTabs: ProjectDetailTab[] = [
@@ -57,16 +67,40 @@ function OverviewPanel({ data }: { data: ProjectDetailData }) {
   );
 }
 
-function ActivityPanel({ data }: { data: ProjectDetailData }) {
-  const [view, setView] = useState<"prompts" | "sessions">("prompts");
-  const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [selectedSessionPromptId, setSelectedSessionPromptId] = useState<
-    string | null
-  >(null);
+function ActivityPanel({
+  activityNavigation,
+  data,
+  onActivityNavigationChange,
+}: {
+  activityNavigation?: ActivityNavigationState;
+  data: ProjectDetailData;
+  onActivityNavigationChange?: (state: ActivityNavigationState) => void;
+}) {
+  const [localActivityNavigation, setLocalActivityNavigation] =
+    useState<ActivityNavigationState>(defaultActivityNavigation);
   const [promptSearchQuery, setPromptSearchQuery] = useState("");
   const [sessionConversationSearchQuery, setSessionConversationSearchQuery] =
     useState("");
+  const currentActivityNavigation =
+    activityNavigation ?? localActivityNavigation;
+  const updateActivityNavigation = (state: Partial<ActivityNavigationState>) => {
+    const nextActivityNavigation = {
+      ...currentActivityNavigation,
+      ...state,
+    };
+
+    if (onActivityNavigationChange) {
+      onActivityNavigationChange(nextActivityNavigation);
+      return;
+    }
+
+    setLocalActivityNavigation(nextActivityNavigation);
+  };
+  const view = currentActivityNavigation.view;
+  const selectedPromptId = currentActivityNavigation.selectedPromptId;
+  const selectedSessionId = currentActivityNavigation.selectedSessionId;
+  const selectedSessionPromptId =
+    currentActivityNavigation.selectedSessionPromptId;
   const hasPromptActivity = data.promptActivities.length > 0;
   const hasSessionActivity = data.activities.length > 0;
   const filteredPromptActivities = useMemo(() => {
@@ -140,7 +174,14 @@ function ActivityPanel({ data }: { data: ProjectDetailData }) {
           aria-selected={view === "prompts"}
           className="bh-activity-view-tab"
           data-active={view === "prompts"}
-          onClick={() => setView("prompts")}
+          onClick={() =>
+            updateActivityNavigation({
+              selectedPromptId: null,
+              selectedSessionId: null,
+              selectedSessionPromptId: null,
+              view: "prompts",
+            })
+          }
           role="tab"
           type="button"
         >
@@ -150,7 +191,14 @@ function ActivityPanel({ data }: { data: ProjectDetailData }) {
           aria-selected={view === "sessions"}
           className="bh-activity-view-tab"
           data-active={view === "sessions"}
-          onClick={() => setView("sessions")}
+          onClick={() =>
+            updateActivityNavigation({
+              selectedPromptId: null,
+              selectedSessionId: null,
+              selectedSessionPromptId: null,
+              view: "sessions",
+            })
+          }
           role="tab"
           type="button"
         >
@@ -180,7 +228,14 @@ function ActivityPanel({ data }: { data: ProjectDetailData }) {
                       activity={activity}
                       isSelected={activity.id === selectedPrompt?.id}
                       key={activity.id}
-                      onOpen={() => setSelectedPromptId(activity.id)}
+                      onOpen={() =>
+                        updateActivityNavigation({
+                          selectedPromptId: activity.id,
+                          selectedSessionId: null,
+                          selectedSessionPromptId: null,
+                          view: "prompts",
+                        })
+                      }
                     />
                   ))}
                 </div>
@@ -208,8 +263,12 @@ function ActivityPanel({ data }: { data: ProjectDetailData }) {
                 isSelected={activity.id === selectedSession?.id}
                 key={activity.id}
                 onOpen={() => {
-                  setSelectedSessionId(activity.id);
-                  setSelectedSessionPromptId(null);
+                  updateActivityNavigation({
+                    selectedPromptId: null,
+                    selectedSessionId: activity.id,
+                    selectedSessionPromptId: null,
+                    view: "sessions",
+                  });
                   setSessionConversationSearchQuery("");
                 }}
               />
@@ -255,7 +314,14 @@ function ActivityPanel({ data }: { data: ProjectDetailData }) {
                           activity={activity}
                           isSelected={activity.id === selectedSessionPrompt?.id}
                           key={activity.id}
-                          onOpen={() => setSelectedSessionPromptId(activity.id)}
+                          onOpen={() =>
+                            updateActivityNavigation({
+                              selectedPromptId: null,
+                              selectedSessionId: selectedSession?.id ?? null,
+                              selectedSessionPromptId: activity.id,
+                              view: "sessions",
+                            })
+                          }
                           turnLabel={`Turn ${activity.sequence}`}
                         />
                       ))}
@@ -384,17 +450,21 @@ function FilesPanel({
 }
 
 function ProjectPanel({
+  activityNavigation,
   activeTab,
   data,
   errorMessage,
   isLoading,
+  onActivityNavigationChange,
   onRepositoryFileSelect,
   onRetry,
 }: {
+  activityNavigation?: ActivityNavigationState;
   activeTab: ProjectDetailTabId;
   data: ProjectDetailData;
   errorMessage?: string | null;
   isLoading?: boolean;
+  onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onRepositoryFileSelect?: (path: string) => void;
   onRetry?: () => void;
 }) {
@@ -429,7 +499,13 @@ function ProjectPanel({
   }
 
   if (activeTab === "ai-activity") {
-    return <ActivityPanel data={data} />;
+    return (
+      <ActivityPanel
+        activityNavigation={activityNavigation}
+        data={data}
+        onActivityNavigationChange={onActivityNavigationChange}
+      />
+    );
   }
 
   if (activeTab === "knowledge") {
@@ -450,10 +526,12 @@ function ProjectPanel({
 }
 
 export function ProjectDetailPage({
+  activityNavigation,
   activeTab,
   data,
   errorMessage,
   isLoading,
+  onActivityNavigationChange,
   onConnectRepository,
   onRepositoryFileSelect,
   onRetry,
@@ -483,10 +561,12 @@ export function ProjectDetailPage({
         role="tabpanel"
       >
         <ProjectPanel
+          activityNavigation={activityNavigation}
           activeTab={activeTab}
           data={data}
           errorMessage={errorMessage}
           isLoading={isLoading}
+          onActivityNavigationChange={onActivityNavigationChange}
           onRepositoryFileSelect={onRepositoryFileSelect}
           onRetry={onRetry}
         />
