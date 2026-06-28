@@ -142,6 +142,11 @@ def _build_file_tree(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "children": {},
                 },
             )
+            if node.get("type") != "folder":
+                node["type"] = "folder"
+                node["children"] = {}
+            if not isinstance(node.get("children"), dict):
+                node["children"] = {}
             current = node["children"]
         return current
 

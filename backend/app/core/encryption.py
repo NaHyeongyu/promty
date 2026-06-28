@@ -9,13 +9,24 @@ from typing import Any
 from cryptography.exceptions import InvalidTag
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from fastapi import HTTPException, status
 
 from app.core.config import settings
 
 ENCRYPTED_TEXT_MARKER = "__buildhub_encrypted_text__"
 ENCRYPTED_TEXT_PREFIX = "bhenc:v1:"
 APP_TEXT_ALGORITHM = "AES-256-GCM"
+
+
+class EncryptionError(RuntimeError):
+    pass
+
+
+class EncryptionConfigurationError(EncryptionError):
+    pass
+
+
+class EncryptionDecryptionError(EncryptionError):
+    pass
 
 
 def _github_token_secret() -> str:
@@ -26,10 +37,7 @@ def _github_token_secret() -> str:
         or settings.api_token
     )
     if not secret:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="GitHub token encryption key is not configured",
-        )
+        raise EncryptionConfigurationError("GitHub token encryption key is not configured")
     return secret
 
 
@@ -46,9 +54,8 @@ def decrypt_github_token(value: str) -> str:
     try:
         return _fernet().decrypt(value.encode("ascii")).decode("utf-8")
     except InvalidToken as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="GitHub token encryption key cannot decrypt stored token",
+        raise EncryptionDecryptionError(
+            "GitHub token encryption key cannot decrypt stored token"
         ) from exc
 
 
@@ -65,10 +72,7 @@ def _app_encryption_secret() -> str:
     secrets = _app_encryption_secrets()
     secret = secrets[0] if secrets else None
     if not secret:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Application encryption key is not configured",
-        )
+        raise EncryptionConfigurationError("Application encryption key is not configured")
     return secret
 
 
@@ -98,10 +102,9 @@ def _aad(purpose: str) -> bytes:
     return f"buildhub:{purpose}".encode("utf-8")
 
 
-def _encryption_error() -> HTTPException:
-    return HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail="Application encryption key cannot decrypt stored data",
+def _encryption_error() -> EncryptionDecryptionError:
+    return EncryptionDecryptionError(
+        "Application encryption key cannot decrypt stored data"
     )
 
 

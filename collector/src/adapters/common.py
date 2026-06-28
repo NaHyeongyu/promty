@@ -76,7 +76,19 @@ def normalize_event_payload(
 ):
     payloads = payload_views(raw_payload)
     cwd = first_string(payloads, WORKSPACE_KEYS)
-    git = git_context(cwd)
+
+    class LazyGitContext(dict[str, str]):
+        def __init__(self) -> None:
+            super().__init__()
+            self._loaded = False
+
+        def get(self, key: str, default: str | None = None) -> str | None:
+            if not self._loaded:
+                self.update(git_context(cwd))
+                self._loaded = True
+            return super().get(key, default)
+
+    git = LazyGitContext()
 
     if event_type == "SessionStarted":
         return SessionStartedPayload(
