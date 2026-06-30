@@ -41,6 +41,11 @@ SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bghp_[A-Za-z0-9_]{20,}\b"), "[redacted-github-token]"),
     (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"), "[redacted-github-token]"),
     (re.compile(r"/Users/[^/\s]+"), "/Users/[local-user]"),
+    (re.compile(r"/home/[^/\s]+"), "/home/[local-user]"),
+    (
+        re.compile(r"(?i)\b([A-Z]:)[\\/]+Users[\\/]+[^\\/\s]+"),
+        r"\1\\Users\\[local-user]",
+    ),
 )
 
 LANGUAGE_BY_EXTENSION = {
@@ -256,6 +261,31 @@ def _session_events(
     }
 
 
+def _events_for_sessions(
+    db: Session,
+    *,
+    project_id: UUID,
+    session_ids: set[UUID],
+) -> tuple[dict[UUID, list[Event]], dict[UUID, dict[str, Any]]]:
+    if not session_ids:
+        return {}, {}
+
+    events = list(
+        db.execute(
+            select(Event)
+            .where(Event.project_id == project_id, Event.session_id.in_(list(session_ids)))
+            .order_by(Event.session_id, Event.created_at, Event.sequence)
+        ).scalars()
+    )
+    events_by_session: dict[UUID, list[Event]] = {}
+    payloads = {
+        event.id: decrypt_event_payload(event.event_type, event.payload) for event in events
+    }
+    for event in events:
+        events_by_session.setdefault(event.session_id, []).append(event)
+    return events_by_session, payloads
+
+
 def _prompt_responses(
     events: list[Event],
     payloads: dict[UUID, dict[str, Any]],
@@ -301,14 +331,16 @@ def _prompt_file_changes(
     project_id: UUID,
 ) -> dict[str, list[dict[str, Any]]]:
     prompt_changes: dict[str, list[dict[str, Any]]] = {}
+    prompt_event_uuids = [UUID(prompt_event_id) for prompt_event_id in prompt_event_ids]
+    if not prompt_event_uuids:
+        return prompt_changes
+
     patch_rows = list(
         db.execute(
             select(CodeChangePatch)
             .where(
                 CodeChangePatch.project_id == project_id,
-                CodeChangePatch.prompt_event_id.in_(
-                    [UUID(prompt_event_id) for prompt_event_id in prompt_event_ids]
-                ),
+                CodeChangePatch.prompt_event_id.in_(prompt_event_uuids),
             )
             .order_by(CodeChangePatch.created_at, CodeChangePatch.path)
         ).scalars()
@@ -471,15 +503,15 @@ def create_published_flow(
             for event in selected_events
             if event.session_id is not None
         }
+        events_by_session, payloads = _events_for_sessions(
+            db,
+            project_id=project.id,
+            session_ids=session_ids,
+        )
         for selected_session_id in session_ids:
-            session_events, session_payloads = _session_events(
-                db,
-                project_id=project.id,
-                session_id=selected_session_id,
-            )
+            session_events = events_by_session.get(selected_session_id, [])
             events.extend(session_events)
-            payloads.update(session_payloads)
-            responses.update(_prompt_responses(session_events, session_payloads))
+            responses.update(_prompt_responses(session_events, payloads))
         for event in selected_events:
             if event.id not in payloads:
                 payloads[event.id] = decrypt_event_payload(event.event_type, event.payload)

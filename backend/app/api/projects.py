@@ -541,17 +541,29 @@ def read_project_detail(
         key=lambda item: item["last_activity_at"],
         reverse=True,
     )
+    prompt_events_for_detail = [
+        event for event in events if event.event_type == "PromptSubmitted"
+    ][:100]
+    prompt_event_ids_for_detail = {event.id for event in prompt_events_for_detail}
+    prompt_event_id_values = list(prompt_event_ids_for_detail)
+    prompt_event_id_strings = {
+        str(prompt_event_id) for prompt_event_id in prompt_event_ids_for_detail
+    }
 
     prompt_changes: dict[str, list[dict[str, Any]]] = {}
-    patch_rows = list(
-        db.execute(
-            select(CodeChangePatch)
-            .where(
-                CodeChangePatch.project_id == project.id,
-                CodeChangePatch.prompt_event_id.is_not(None),
-            )
-            .order_by(CodeChangePatch.created_at.desc(), CodeChangePatch.path)
-        ).scalars()
+    patch_rows = (
+        list(
+            db.execute(
+                select(CodeChangePatch)
+                .where(
+                    CodeChangePatch.project_id == project.id,
+                    CodeChangePatch.prompt_event_id.in_(prompt_event_id_values),
+                )
+                .order_by(CodeChangePatch.created_at.desc(), CodeChangePatch.path)
+            ).scalars()
+        )
+        if prompt_event_id_values
+        else []
     )
     for patch in patch_rows:
         if patch.prompt_event_id is None:
@@ -565,7 +577,10 @@ def read_project_detail(
             continue
         payload = event_payloads[event.id]
         prompt_event_id = payload.get("prompt_event_id")
-        if not isinstance(prompt_event_id, str) or not prompt_event_id:
+        if (
+            not isinstance(prompt_event_id, str)
+            or prompt_event_id not in prompt_event_id_strings
+        ):
             continue
         if prompt_event_id in prompt_changes:
             continue
@@ -622,9 +637,8 @@ def read_project_detail(
             "session_id": str(event.session_id),
             "submitted_at": _iso(event.created_at),
         }
-        for event in events
-        if event.event_type == "PromptSubmitted"
-    ][:100]
+        for event in prompt_events_for_detail
+    ]
 
     active_files = list(
         db.execute(

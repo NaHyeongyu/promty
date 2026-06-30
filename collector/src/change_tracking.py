@@ -14,13 +14,9 @@ from typing import Any
 from uuid import uuid4
 
 from events import BaseEvent
+from file_lock import locked_file
 from git_context import normalize_github_url
 from payloads import TURN_ID_KEYS, get_first_value
-
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - non-POSIX fallback
-    fcntl = None
 
 DEFAULT_CHANGE_BASELINE_PATH = Path(
     os.environ.get("PROMPTHUB_CHANGE_BASELINE_PATH", "~/.prompthub/change-baselines.json")
@@ -677,15 +673,8 @@ class ChangeBaselineStore:
 
     @contextmanager
     def _locked(self):
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.lock_path.open("a", encoding="utf-8") as lock_file:
-            if fcntl is not None:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                if fcntl is not None:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        with locked_file(self.lock_path):
+            yield
 
     def _read(self) -> dict[str, Any]:
         if not self.path.exists():

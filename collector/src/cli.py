@@ -494,8 +494,20 @@ def _git_root(path: str | Path | None = None) -> Path:
     return Path(result.stdout.strip()).resolve()
 
 
-def _default_hook_command_prefix() -> str:
-    return f"{shlex.quote(sys.executable)} {shlex.quote(str(Path(__file__).resolve()))}"
+def _default_hook_python_command() -> str:
+    configured = os.environ.get("PROMPTHUB_HOOK_PYTHON")
+    if configured:
+        return configured
+    return "py -3" if os.name == "nt" else "python3"
+
+
+def _default_hook_command_prefix(repo_root: Path) -> str:
+    cli_path = Path(__file__).resolve()
+    try:
+        cli_path = cli_path.relative_to(repo_root)
+    except ValueError:
+        cli_path = Path("collector/src/cli.py")
+    return f"{_default_hook_python_command()} {shlex.quote(cli_path.as_posix())}"
 
 
 def _read_hooks_config(path: Path) -> dict[str, Any]:
@@ -563,7 +575,7 @@ def install_hooks(args: argparse.Namespace) -> int:
     hooks_path = repo_root / ".codex" / "hooks.json"
     hooks_path.parent.mkdir(parents=True, exist_ok=True)
     config = _read_hooks_config(hooks_path)
-    command_prefix = args.hook_command or _default_hook_command_prefix()
+    command_prefix = args.hook_command or _default_hook_command_prefix(repo_root)
     results: list[str] = []
 
     for spec in CODEX_HOOKS:

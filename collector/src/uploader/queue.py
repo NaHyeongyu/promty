@@ -8,11 +8,7 @@ from typing import Any
 from uuid import uuid4
 
 from events import BaseEvent
-
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - non-POSIX fallback
-    fcntl = None
+from file_lock import locked_file
 
 DEFAULT_QUEUE_ROOT = Path(
     os.environ.get("PROMPTHUB_QUEUE_DIR", "~/.prompthub/events")
@@ -112,18 +108,23 @@ class JSONLQueue:
                     remaining.append(line)
 
         tmp_path = queue_file.with_suffix(f"{queue_file.suffix}.{uuid4()}.tmp")
-        with tmp_path.open("w", encoding="utf-8") as file:
-            file.writelines(remaining)
-        tmp_path.replace(queue_file)
+        if remaining:
+            with tmp_path.open("w", encoding="utf-8") as file:
+                file.writelines(remaining)
+            tmp_path.replace(queue_file)
+            return
+
+        try:
+            queue_file.unlink()
+        except OSError:
+            pass
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
 
     @contextmanager
     def _locked(self):
-        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with self.lock_path.open("a", encoding="utf-8") as lock_file:
-            if fcntl is not None:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                if fcntl is not None:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        with locked_file(self.lock_path):
+            yield

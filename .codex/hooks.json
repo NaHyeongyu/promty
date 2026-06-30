@@ -4,7 +4,7 @@
       {
         "hooks": [
           {
-            "command": "/Users/nahyeongyu/Desktop/development/PromptHub/.venv/bin/python /Users/nahyeongyu/Desktop/development/PromptHub/collector/src/cli.py capture-changes --tool codex-cli",
+            "command": "python3 collector/src/cli.py capture-changes --tool codex-cli",
             "statusMessage": "Capturing PromptHub file changes",
             "timeout": 10,
             "type": "command"
@@ -16,7 +16,7 @@
       {
         "hooks": [
           {
-            "command": "/Users/nahyeongyu/Desktop/development/PromptHub/.venv/bin/python /Users/nahyeongyu/Desktop/development/PromptHub/collector/src/cli.py capture --tool codex-cli",
+            "command": "python3 collector/src/cli.py capture --tool codex-cli",
             "statusMessage": "Capturing PromptHub event",
             "timeout": 5,
             "type": "command"
