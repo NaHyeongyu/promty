@@ -1,4 +1,4 @@
-# BuildHub Design System
+# Promty Design System
 
 Version: 1.0  
 Status: source of truth for frontend UI work
@@ -9,7 +9,7 @@ Before making frontend UI changes, read this document first.
 
 Frontend implementation should use the tokens in `frontend/src/tokens.css`. If a design decision changes a token, update this document and the token file together.
 
-BuildHub is a professional developer tool for observing, debugging, and understanding AI sessions. It is not a marketing website. The interface exists to support the workflow, not to become the focus.
+Promty is a professional developer tool for observing, debugging, and understanding AI sessions. It is not a marketing website. The interface exists to support the workflow, not to become the focus.
 
 ## Philosophy
 
@@ -64,7 +64,7 @@ Everything else should visually recede.
 
 UI font: `Geist`
 
-Use Geist for every UI element:
+Use Geist for general UI elements:
 
 - Heading
 - Body
@@ -89,6 +89,29 @@ Use Geist Mono only for:
 - Terminal output
 
 Never mix multiple UI fonts.
+
+Brand accent font: `Commit Mono`, with `JetBrains Mono` and the code font stack as fallbacks.
+
+Use the brand accent font sparingly for developer-facing emphasis:
+
+- Promty wordmark and brand lockups
+- Compact status pills and count pills
+- Model badges and metadata chips
+- Overview metric values
+- Community flow kickers
+- Prompt row metadata chips
+- Short technical labels that should feel like code-adjacent UI
+
+Do not use the brand accent font for:
+
+- Body copy
+- Long prompt text
+- Markdown content
+- Form inputs and textareas
+- Primary navigation labels other than the Promty wordmark
+- Full buttons unless the button is a compact metadata control
+
+The brand accent font should add a precise developer-tool texture without making the app feel like a terminal. If a section already contains code, JSON, diffs, or long technical text, keep that content on the code font and use the brand accent only for surrounding labels or metrics.
 
 ### Font Weights
 
@@ -126,7 +149,7 @@ Code     150%
 
 ## Color
 
-BuildHub is primarily monochrome. Colors communicate meaning and never exist for decoration.
+Promty is primarily monochrome. Colors communicate meaning and never exist for decoration.
 
 Color usage ratio:
 
@@ -267,7 +290,7 @@ Never center long text. Never randomly offset elements.
 
 ## Information Density
 
-BuildHub is a productivity tool. Optimize for useful information density with clear organization.
+Promty is a productivity tool. Optimize for useful information density with clear organization.
 
 Avoid:
 
@@ -487,7 +510,7 @@ Large   12px
 Max     16px
 ```
 
-Never exceed `16px`. Rounded interfaces do not match BuildHub.
+Never exceed `16px`. Rounded interfaces do not match Promty.
 
 Shadows are allowed only for:
 

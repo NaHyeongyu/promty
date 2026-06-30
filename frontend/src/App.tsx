@@ -1389,55 +1389,69 @@ function EmptyState({
   );
 }
 
-function LoadingCascadeSurface({
-  className,
-  label,
-  variant,
-}: {
-  className?: string;
-  label: string;
-  variant:
-    | "community-detail"
-    | "community-list"
-    | "projects"
-    | "repository";
-}) {
-  const classNames = [
-    "loading-cascade-surface",
-    `loading-cascade-surface-${variant}`,
-    "loading-cascade",
-    className,
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  return (
-    <div
-      aria-busy="true"
-      aria-label={label}
-      aria-live="polite"
-      className={classNames}
-      data-loading="true"
-      role="status"
-    >
-      <span className="loading-cascade-label">{label}</span>
-    </div>
-  );
-}
-
 function ProjectGridSkeleton() {
   return (
-    <LoadingCascadeSurface label="Loading projects" variant="projects" />
+    <div
+      aria-label="Loading projects"
+      aria-live="polite"
+      className="projects-grid project-grid-skeleton"
+      role="status"
+    >
+      {Array.from({ length: 8 }, (_, index) => (
+        <article
+          aria-hidden="true"
+          className="project-card project-card-skeleton"
+          key={index}
+        >
+          <div className="project-card-header">
+            <span className="skeleton-line skeleton-line-title" />
+            <span className="skeleton-pill" />
+          </div>
+
+          <div className="skeleton-stack">
+            <span className="skeleton-line skeleton-line-sm" />
+            <span className="skeleton-line skeleton-line-md" />
+          </div>
+
+          <div className="project-stats skeleton-stats">
+            <span />
+            <span />
+            <span />
+          </div>
+
+          <div className="skeleton-badge-row">
+            <span />
+            <span />
+            <span />
+          </div>
+        </article>
+      ))}
+    </div>
   );
 }
 
 function RepositoryOptionsSkeleton() {
   return (
-    <LoadingCascadeSurface
-      className="repository-option-list"
-      label="Loading GitHub repositories"
-      variant="repository"
-    />
+    <div
+      aria-label="Loading GitHub repositories"
+      aria-live="polite"
+      className="repository-option-list repository-option-list-skeleton"
+      role="status"
+    >
+      {Array.from({ length: 5 }).map((_, index) => (
+        <div className="repository-option repository-option-skeleton" key={index}>
+          <span className="repository-option-main">
+            <span className="skeleton-line skeleton-line-title" />
+            <span className="skeleton-line skeleton-line-md" />
+          </span>
+          <span className="repository-option-meta">
+            <span className="skeleton-pill skeleton-pill-count" />
+            <span className="skeleton-pill" />
+            <span className="skeleton-pill skeleton-pill-action" />
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -1654,19 +1668,25 @@ function CommunityPageSkeleton() {
     <section
       aria-label="Loading community"
       aria-live="polite"
-      className="community-layout"
+      className="community-layout community-layout-skeleton"
+      role="status"
     >
       <div className="community-flow-list">
-        <LoadingCascadeSurface
-          label="Loading community flows"
-          variant="community-list"
-        />
+        {Array.from({ length: 5 }).map((_, index) => (
+          <article className="community-flow-card community-flow-card-skeleton" key={index}>
+            <span className="skeleton-line skeleton-line-sm" />
+            <span className="skeleton-line skeleton-line-title" />
+            <span className="skeleton-line skeleton-line-md" />
+            <div className="skeleton-badge-row">
+              <span />
+              <span />
+              <span />
+            </div>
+          </article>
+        ))}
       </div>
       <aside className="community-flow-detail" aria-label="Loading prompt flow detail">
-        <LoadingCascadeSurface
-          label="Loading prompt flow detail"
-          variant="community-detail"
-        />
+        <CommunityFlowDetailSkeleton />
       </aside>
     </section>
   );
@@ -1674,10 +1694,34 @@ function CommunityPageSkeleton() {
 
 function CommunityFlowDetailSkeleton() {
   return (
-    <LoadingCascadeSurface
-      label="Loading prompt flow detail"
-      variant="community-detail"
-    />
+    <div className="community-flow-detail-skeleton">
+      <div className="community-flow-detail-header">
+        <div className="community-flow-detail-titlebar">
+          <span className="skeleton-line skeleton-line-sm" />
+          <span className="skeleton-pill skeleton-pill-action" />
+        </div>
+        <span className="skeleton-line skeleton-line-section" />
+        <span className="skeleton-line skeleton-line-description" />
+      </div>
+      <div className="community-flow-stats skeleton-stats">
+        <span />
+        <span />
+        <span />
+      </div>
+      <div className="community-flow-section">
+        <span className="skeleton-line skeleton-line-title" />
+        <span className="skeleton-line skeleton-line-md" />
+        <span className="skeleton-line skeleton-line-description" />
+      </div>
+      <div className="community-flow-items">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <article className="community-flow-item community-flow-item-skeleton" key={index}>
+            <span className="skeleton-line skeleton-line-md" />
+            <span className="skeleton-line skeleton-line-description" />
+          </article>
+        ))}
+      </div>
+    </div>
   );
 }
 

@@ -968,25 +968,177 @@ function ProjectDetailLoadingSkeleton({
 }: {
   activeTab: ProjectDetailTabId;
 }) {
-  const loadingLabelByTab: Record<ProjectDetailTabId, string> = {
-    "ai-activity": "Loading AI activity",
-    files: "Loading repository files",
-    knowledge: "Loading knowledge",
-    overview: "Loading project overview",
-  };
+  if (activeTab === "ai-activity") {
+    return (
+      <section
+        aria-label="Loading AI activity"
+        aria-live="polite"
+        className="bh-detail-skeleton bh-detail-skeleton-activity"
+        role="status"
+      >
+        <div className="bh-activity-view-tabs bh-activity-view-tabs-skeleton">
+          <span className="skeleton-pill skeleton-pill-action" />
+          <span className="skeleton-pill skeleton-pill-action" />
+        </div>
 
-  const loadingLabel = loadingLabelByTab[activeTab];
+        <div className="bh-prompt-activity-layout">
+          <div className="bh-prompt-sidebar">
+            <div className="bh-prompt-search bh-prompt-search-skeleton">
+              <span className="skeleton-icon" />
+              <span className="skeleton-line skeleton-line-md" />
+            </div>
+
+            <div className="bh-prompt-list">
+              {Array.from({ length: 7 }).map((_, index) => (
+                <article className="bh-prompt-row bh-prompt-row-skeleton" key={index}>
+                  <div className="bh-prompt-row-main">
+                    <div className="bh-prompt-row-header">
+                      <span className="skeleton-line skeleton-line-sm" />
+                      <span className="skeleton-line skeleton-line-sm" />
+                    </div>
+                    <div className="bh-prompt-row-meta">
+                      <span className="skeleton-pill" />
+                      <span className="skeleton-pill" />
+                    </div>
+                    <div className="bh-prompt-text">
+                      <span className="skeleton-line skeleton-line-md" />
+                      <span className="skeleton-line skeleton-line-description" />
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <div className="bh-prompt-change-detail bh-prompt-change-detail-skeleton">
+            <div className="bh-prompt-change-header">
+              <div>
+                <span className="skeleton-line skeleton-line-title" />
+                <span className="skeleton-line skeleton-line-md" />
+              </div>
+              <span className="skeleton-pill skeleton-pill-action" />
+            </div>
+            <div className="bh-prompt-change-summary">
+              <span className="skeleton-line skeleton-line-section" />
+              <span className="skeleton-line skeleton-line-description" />
+              <span className="skeleton-line skeleton-line-md" />
+            </div>
+            <div className="bh-prompt-change-list">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <span className="skeleton-line skeleton-code-line" key={index} />
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (activeTab === "files") {
+    return (
+      <section
+        aria-label="Loading repository files"
+        aria-live="polite"
+        className="bh-detail-skeleton bh-detail-skeleton-files"
+        role="status"
+      >
+        <div className="bh-files-layout">
+          {Array.from({ length: 2 }).map((_, sectionIndex) => (
+            <section className="bh-files-section" key={sectionIndex}>
+              <div className="bh-files-section-header">
+                <span className="skeleton-line skeleton-line-section" />
+                <span className="skeleton-line skeleton-line-description" />
+              </div>
+              <div
+                className={
+                  sectionIndex === 0
+                    ? "bh-detail-skeleton-tree"
+                    : "bh-detail-skeleton-code"
+                }
+              >
+                {Array.from({ length: sectionIndex === 0 ? 10 : 14 }).map((_, index) => (
+                  <span
+                    className={
+                      sectionIndex === 0
+                        ? index % 3 === 0
+                          ? "skeleton-line skeleton-line-md"
+                          : "skeleton-line skeleton-line-sm"
+                        : "skeleton-line skeleton-code-line"
+                    }
+                    key={index}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  if (activeTab === "knowledge") {
+    return (
+      <section
+        aria-label="Loading knowledge"
+        aria-live="polite"
+        className="bh-detail-skeleton bh-detail-skeleton-knowledge"
+        role="status"
+      >
+        {Array.from({ length: 6 }).map((_, index) => (
+          <article className="bh-detail-skeleton-card" key={index}>
+            <span className="skeleton-line skeleton-line-title" />
+            <span className="skeleton-line skeleton-line-md" />
+            <span className="skeleton-pill" />
+          </article>
+        ))}
+      </section>
+    );
+  }
 
   return (
     <section
-      aria-busy="true"
-      aria-label={loadingLabel}
+      aria-label="Loading project overview"
       aria-live="polite"
-      className={`bh-detail-loading-surface bh-detail-loading-surface-${activeTab} loading-cascade`}
-      data-loading="true"
+      className="bh-detail-skeleton bh-detail-skeleton-overview"
       role="status"
     >
-      <span className="bh-loading-cascade-label">{loadingLabel}</span>
+      <div className="bh-detail-skeleton-hero">
+        <div>
+          <span className="skeleton-line skeleton-line-heading" />
+          <span className="skeleton-line skeleton-line-description" />
+        </div>
+        <div className="skeleton-badge-row">
+          <span />
+          <span />
+          <span />
+        </div>
+      </div>
+      <div className="bh-detail-skeleton-stats">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index}>
+            <span className="skeleton-line skeleton-line-title" />
+            <span className="skeleton-line skeleton-line-sm" />
+          </div>
+        ))}
+      </div>
+      <div className="bh-detail-skeleton-split">
+        <div className="bh-detail-skeleton-panel">
+          <span className="skeleton-line skeleton-line-section" />
+          {Array.from({ length: 5 }).map((_, index) => (
+            <span className="skeleton-line skeleton-line-md" key={index} />
+          ))}
+        </div>
+        <div className="bh-detail-skeleton-panel">
+          <span className="skeleton-line skeleton-line-section" />
+          {Array.from({ length: 4 }).map((_, index) => (
+            <span className="skeleton-line skeleton-line-md" key={index} />
+          ))}
+        </div>
+      </div>
+      <div className="bh-detail-skeleton-community">
+        <span className="skeleton-line skeleton-line-section" />
+        <span className="skeleton-line skeleton-line-description" />
+      </div>
     </section>
   );
 }
@@ -1643,13 +1795,27 @@ function FilesPanel({
             aria-busy="true"
             aria-label="Loading GitHub repository files"
             aria-live="polite"
-            className="bh-repository-browser-loading loading-cascade"
-            data-loading="true"
+            className="bh-repository-browser bh-repository-browser-skeleton"
             role="status"
           >
-            <span className="bh-loading-cascade-label">
-              Loading GitHub repository files
-            </span>
+            <div className="bh-detail-skeleton-tree">
+              {Array.from({ length: 10 }).map((_, index) => (
+                <span
+                  className={
+                    index % 3 === 0
+                      ? "skeleton-line skeleton-line-md"
+                      : "skeleton-line skeleton-line-sm"
+                  }
+                  key={index}
+                />
+              ))}
+            </div>
+            <div className="bh-detail-skeleton-code">
+              <span className="skeleton-line skeleton-line-title" />
+              {Array.from({ length: 14 }).map((_, index) => (
+                <span className="skeleton-line skeleton-code-line" key={index} />
+              ))}
+            </div>
           </div>
         ) : data.repositoryFiles.length > 0 ? (
           <div className="bh-repository-browser">

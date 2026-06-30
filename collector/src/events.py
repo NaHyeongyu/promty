@@ -106,7 +106,6 @@ class ResponseReceivedPayload(PayloadBase):
     response_source: str | None = None
     transcript_path: str | None = None
     turn_id: str | int | None = None
-    tokens: int | None = None
     duration_ms: int | None = None
     success: bool | None = None
     model: str | None = None

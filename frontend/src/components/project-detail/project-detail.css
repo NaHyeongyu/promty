@@ -563,7 +563,10 @@
 .bh-detail-skeleton-code,
 .bh-detail-skeleton-community,
 .bh-detail-skeleton-card,
-.bh-detail-skeleton-row {
+.bh-detail-skeleton-row,
+.bh-prompt-row-skeleton,
+.bh-repository-browser-skeleton,
+.bh-code-viewer-skeleton {
   animation: skeleton-enter 420ms var(--bh-ease-out) both;
 }
 
@@ -618,35 +621,6 @@
 
 .bh-detail-skeleton-code {
   gap: var(--bh-space-2);
-}
-
-.bh-detail-loading-surface {
-  display: grid;
-  min-width: 0;
-  min-height: clamp(560px, 72vh, 820px);
-  place-items: center;
-  overflow: clip;
-  border: 1px solid var(--bh-card-border);
-  border-radius: var(--bh-radius-md);
-  background: var(--bh-card-bg);
-}
-
-.bh-detail-loading-surface-ai-activity {
-  min-height: clamp(620px, 76vh, 880px);
-}
-
-.bh-detail-loading-surface-files {
-  min-height: clamp(620px, 76vh, 880px);
-}
-
-.bh-loading-cascade-label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  white-space: nowrap;
 }
 
 .bh-code-viewer-skeleton {
@@ -918,6 +892,14 @@
   outline-offset: 2px;
 }
 
+.bh-prompt-search-skeleton {
+  pointer-events: none;
+}
+
+.bh-prompt-search-skeleton .skeleton-line {
+  width: 100%;
+}
+
 .bh-prompt-search input {
   width: 100%;
   min-width: 0;
@@ -1033,6 +1015,23 @@
 }
 
 .bh-prompt-row-main {
+  gap: var(--bh-space-2);
+}
+
+.bh-prompt-row-skeleton,
+.bh-prompt-change-detail-skeleton,
+.bh-repository-browser-skeleton {
+  pointer-events: none;
+}
+
+.bh-prompt-row-skeleton .bh-prompt-row-header .skeleton-line {
+  max-width: 46%;
+}
+
+.bh-prompt-row-skeleton .bh-prompt-text,
+.bh-prompt-change-detail-skeleton .bh-prompt-change-list,
+.bh-prompt-change-detail-skeleton .bh-prompt-change-summary {
+  display: grid;
   gap: var(--bh-space-2);
 }
 
@@ -1889,16 +1888,6 @@ button.bh-file-tree-row:focus-visible {
   align-items: start;
 }
 
-.bh-repository-browser-loading {
-  display: grid;
-  min-height: clamp(420px, 58vh, 680px);
-  place-items: center;
-  overflow: clip;
-  border: 1px solid var(--bh-card-border);
-  border-radius: var(--bh-radius-md);
-  background: var(--bh-card-bg);
-}
-
 .bh-share-overlay {
   position: fixed;
   inset: 0;
@@ -2402,12 +2391,6 @@ button.bh-file-tree-row:focus-visible {
   border: 1px solid var(--bh-card-border);
   border-radius: var(--bh-radius-md);
   background: var(--bh-card-bg);
-}
-
-.bh-code-viewer-loading-surface {
-  display: grid;
-  min-height: clamp(420px, 58vh, 680px);
-  place-items: center;
 }
 
 .bh-code-viewer-empty {

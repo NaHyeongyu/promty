@@ -26,6 +26,7 @@ MAX_TAGS = 12
 MAX_TAG_LENGTH = 40
 MAX_TITLE_LENGTH = 255
 VALID_FLOW_STATUSES = {"archived", "draft", "published"}
+VALID_CREATE_FLOW_STATUSES = {"draft", "published"}
 VALID_FLOW_VISIBILITIES = {"private", "public", "unlisted"}
 
 SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
@@ -366,6 +367,51 @@ def _can_read_flow(flow: PublishedFlow, current_user: User) -> bool:
     return flow.status == "published" and flow.visibility in {"public", "unlisted"}
 
 
+def _flow_by_key(db: Session, flow_key: str) -> PublishedFlow | None:
+    try:
+        flow_id = UUID(flow_key)
+    except ValueError:
+        flow_id = None
+
+    statement = select(PublishedFlow)
+    if flow_id is not None:
+        statement = statement.where(PublishedFlow.id == flow_id)
+    else:
+        statement = statement.where(PublishedFlow.slug == flow_key)
+    return db.scalar(statement)
+
+
+def _flow_for_owner(db: Session, *, current_user: User, flow_key: str) -> PublishedFlow:
+    flow = _flow_by_key(db, flow_key)
+    if flow is None or flow.author_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Published flow not found",
+        )
+    return flow
+
+
+def _optional_redacted_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    return _redact_text(stripped) if stripped else None
+
+
+def _apply_flow_status(flow: PublishedFlow, status_value: str) -> None:
+    if status_value not in VALID_FLOW_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid status",
+        )
+
+    flow.status = status_value
+    if status_value == "published" and flow.published_at is None:
+        flow.published_at = utc_now()
+    if status_value == "draft":
+        flow.published_at = None
+
+
 def create_published_flow(
     db: Session,
     *,
@@ -385,7 +431,7 @@ def create_published_flow(
 ) -> dict[str, Any]:
     if visibility not in VALID_FLOW_VISIBILITIES:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid visibility")
-    if status_value not in VALID_FLOW_STATUSES:
+    if status_value not in VALID_CREATE_FLOW_STATUSES:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid status")
 
     project = _project_for_user(db, project_id, current_user)
@@ -596,6 +642,79 @@ def create_published_flow(
 
     saved_flow = get_published_flow(db, flow_key=str(flow.id), current_user=current_user)
     return saved_flow
+
+
+def update_published_flow(
+    db: Session,
+    *,
+    context_summary: str | None,
+    current_user: User,
+    fields: set[str],
+    flow_key: str,
+    notes: str | None,
+    status_value: str | None,
+    summary: str | None,
+    tags: list[str] | None,
+    title: str | None,
+    visibility: str | None,
+) -> dict[str, Any]:
+    flow = _flow_for_owner(db, current_user=current_user, flow_key=flow_key)
+
+    if "title" in fields:
+        next_title = (title or "").strip()
+        if not next_title:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Title is required",
+            )
+        flow.title = next_title[:MAX_TITLE_LENGTH]
+    if "summary" in fields:
+        flow.summary = _optional_redacted_text(summary)
+    if "context_summary" in fields:
+        flow.context_summary = _optional_redacted_text(context_summary)
+    if "notes" in fields:
+        flow.notes = _optional_redacted_text(notes)
+    if "tags" in fields:
+        flow.tags = _normalize_tags(tags or [])
+    if "visibility" in fields:
+        if visibility not in VALID_FLOW_VISIBILITIES:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid visibility",
+            )
+        flow.visibility = visibility
+    if "status" in fields:
+        if status_value is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid status",
+            )
+        _apply_flow_status(flow, status_value)
+
+    flow.updated_at = utc_now()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Published flow could not be updated because it conflicts with existing data.",
+        ) from exc
+
+    return get_published_flow(db, flow_key=str(flow.id), current_user=current_user)
+
+
+def archive_published_flow(
+    db: Session,
+    *,
+    current_user: User,
+    flow_key: str,
+) -> dict[str, Any]:
+    flow = _flow_for_owner(db, current_user=current_user, flow_key=flow_key)
+    _apply_flow_status(flow, "archived")
+    flow.updated_at = utc_now()
+    db.commit()
+    return get_published_flow(db, flow_key=str(flow.id), current_user=current_user)
 
 
 def list_published_flows(

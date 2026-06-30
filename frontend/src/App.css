@@ -1409,8 +1409,8 @@ h1 {
   display: block;
   overflow: hidden;
   border-radius: var(--bh-radius-sm);
-  background: var(--bh-color-surface-hover);
-  animation: loading-pulse 1.6s ease-in-out infinite;
+  background: color-mix(in srgb, var(--bh-color-surface-hover) 78%, transparent);
+  animation: loading-pulse 1.8s ease-in-out infinite;
 }
 
 .skeleton-icon {
@@ -1418,8 +1418,8 @@ h1 {
   height: var(--bh-icon-size-md);
   flex: 0 0 auto;
   border-radius: var(--bh-radius-sm);
-  background: var(--bh-color-surface-hover);
-  animation: loading-pulse 1.6s ease-in-out infinite;
+  background: color-mix(in srgb, var(--bh-color-surface-hover) 78%, transparent);
+  animation: loading-pulse 1.8s ease-in-out infinite;
 }
 
 .skeleton-line-nav {
@@ -1494,7 +1494,7 @@ h1 {
 .skeleton-stats span {
   min-height: 48px;
   border: 1px solid var(--bh-color-border);
-  background: var(--bh-color-surface-secondary);
+  background: color-mix(in srgb, var(--bh-color-surface-secondary) 82%, transparent);
 }
 
 .skeleton-badge-row {
@@ -1520,7 +1520,6 @@ h1 {
 
 .loading-cascade[data-loading="true"] {
   position: relative;
-  overflow: clip;
 }
 
 .loading-cascade[data-loading="true"]::before,
@@ -1529,77 +1528,34 @@ h1 {
   z-index: 8;
   pointer-events: none;
   content: "";
-  inset: 0;
 }
 
 .loading-cascade[data-loading="true"]::before {
-  background: color-mix(in srgb, var(--bh-color-surface) 38%, transparent);
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: color-mix(in srgb, var(--bh-color-text-primary) 9%, transparent);
 }
 
 .loading-cascade[data-loading="true"]::after {
-  background:
-    linear-gradient(
-      180deg,
-      transparent 0%,
-      color-mix(in srgb, var(--bh-color-text-primary) 7%, transparent) 12%,
-      transparent 24%
-    ),
-    repeating-linear-gradient(
-      180deg,
-      transparent 0,
-      transparent 34px,
-      color-mix(in srgb, var(--bh-color-text-primary) 4%, transparent) 35px,
-      transparent 37px
-    );
-  animation: loading-cascade-sweep 1.25s var(--bh-ease-out) infinite;
-  transform: translateY(-45%);
+  top: 0;
+  left: 0;
+  width: min(220px, 36%);
+  height: 2px;
+  background: color-mix(in srgb, var(--bh-color-text-primary) 48%, transparent);
+  animation: loading-refresh-bar 1.15s var(--bh-ease-out) infinite;
+  transform: translateX(-100%);
 }
 
-@keyframes loading-cascade-sweep {
+@keyframes loading-refresh-bar {
   from {
-    transform: translateY(-45%);
+    transform: translateX(-100%);
   }
 
   to {
-    transform: translateY(45%);
+    transform: translateX(320%);
   }
-}
-
-.loading-cascade-surface {
-  display: grid;
-  min-width: 0;
-  place-items: center;
-  overflow: clip;
-  border: 1px solid var(--bh-color-border);
-  border-radius: var(--bh-radius-md);
-  background: var(--bh-card-bg);
-}
-
-.loading-cascade-surface-projects {
-  min-height: clamp(420px, 58vh, 680px);
-}
-
-.loading-cascade-surface-repository {
-  min-height: 336px;
-}
-
-.loading-cascade-surface-community-list {
-  min-height: clamp(460px, 62vh, 720px);
-}
-
-.loading-cascade-surface-community-detail {
-  min-height: clamp(460px, 62vh, 720px);
-  width: 100%;
-}
-
-.loading-cascade-label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  white-space: nowrap;
 }
 
 .repository-option-list-skeleton,

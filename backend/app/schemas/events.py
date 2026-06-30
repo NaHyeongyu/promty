@@ -59,7 +59,6 @@ class ResponseReceivedPayload(PayloadModel):
     response_source: str | None = None
     transcript_path: str | None = None
     turn_id: str | int | None = None
-    tokens: int | None = None
     duration_ms: int | None = None
     success: bool | None = None
     model: str | None = None
@@ -109,6 +108,7 @@ EventPayload = Union[
     CommitCreatedPayload,
     SessionEndedPayload,
 ]
+LEGACY_USAGE_KEYS = frozenset(("tokens", "total_tokens"))
 PAYLOAD_BY_EVENT_TYPE: dict[str, type[PayloadModel]] = {
     "SessionStarted": SessionStartedPayload,
     "PromptSubmitted": PromptSubmittedPayload,
@@ -135,7 +135,12 @@ class EventCreate(BaseModel):
         event_type = values.get("event_type")
         payload_model = PAYLOAD_BY_EVENT_TYPE.get(event_type)
         if payload_model is not None and isinstance(values.get("payload"), dict):
-            values["payload"] = payload_model(**values["payload"])
+            payload = {
+                key: value
+                for key, value in values["payload"].items()
+                if key not in LEGACY_USAGE_KEYS
+            }
+            values["payload"] = payload_model(**payload)
         return values
 
     @validator("timestamp")

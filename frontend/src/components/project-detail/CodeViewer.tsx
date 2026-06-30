@@ -33,13 +33,21 @@ export function CodeViewer({
         aria-label={`Loading ${selectedPath ?? "repository file"}`}
         aria-live="polite"
         aria-busy="true"
-        className="bh-code-viewer bh-code-viewer-loading-surface loading-cascade"
-        data-loading="true"
+        className="bh-code-viewer bh-code-viewer-skeleton"
         role="status"
       >
-        <span className="bh-loading-cascade-label">
-          Loading {selectedPath ?? "repository file"}
-        </span>
+        <header className="bh-code-viewer-header">
+          <div>
+            <span className="skeleton-line skeleton-line-title" />
+            <span className="skeleton-line skeleton-line-md" />
+          </div>
+          <span className="skeleton-pill" />
+        </header>
+        <div className="bh-code-skeleton-lines">
+          {Array.from({ length: 14 }).map((_, index) => (
+            <span className="skeleton-line skeleton-code-line" key={index} />
+          ))}
+        </div>
       </section>
     );
   }

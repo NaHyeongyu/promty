@@ -125,7 +125,6 @@ def normalize_event_payload(
     if event_type == "ResponseReceived":
         return ResponseReceivedPayload(
             **response_payload_fields(raw_payload),
-            tokens=first_int(payloads, ("tokens", "total_tokens")),
             duration_ms=first_int(payloads, ("duration_ms", "elapsed_ms")),
             success=first_bool(payloads, ("success", "ok")),
             model=first_string(payloads, ("model", "model_name")),

@@ -154,7 +154,6 @@ Payload model: `ResponseReceivedPayload`
   "response_source": "transcript",
   "transcript_path": "...",
   "turn_id": "tool-turn-id",
-  "tokens": 1350,
   "duration_ms": 4210,
   "success": true,
   "model": "claude-sonnet-4",
