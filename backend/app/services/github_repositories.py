@@ -353,7 +353,7 @@ def read_github_repository_tree(db: DBSession, *, project: Project, user: User) 
     default_branch = repository.get("default_branch")
     branch = default_branch if isinstance(default_branch, str) and default_branch else project.default_branch
     tree_payload = _github_request(
-        f"/repos/{owner}/{repo}/git/trees/{branch}?recursive=1",
+        f"/repos/{owner}/{repo}/git/trees/{parse.quote(branch, safe='')}?recursive=1",
         token=token,
     )
     tree = tree_payload.get("tree")
