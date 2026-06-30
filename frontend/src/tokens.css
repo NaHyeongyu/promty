@@ -1,0 +1,150 @@
+:root {
+  /* Typography */
+  --bh-font-ui:
+    "Geist", "Geist Sans", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  --bh-font-code:
+    "Geist Mono", ui-monospace, SFMono-Regular, "SF Mono", Consolas,
+    "Liberation Mono", Menlo, monospace;
+  --bh-font-brand: "Commit Mono", "JetBrains Mono", var(--bh-font-code);
+
+  --bh-font-weight-light: 300;
+  --bh-font-weight-regular: 400;
+  --bh-font-weight-label: 500;
+  --bh-font-weight-section: 600;
+  --bh-font-weight-page: 700;
+
+  --bh-font-size-display: 36px;
+  --bh-font-size-h1: 30px;
+  --bh-font-size-h2: 24px;
+  --bh-font-size-h3: 20px;
+  --bh-font-size-title: 18px;
+  --bh-font-size-body: 14px;
+  --bh-font-size-small: 13px;
+  --bh-font-size-caption: 12px;
+  --bh-font-size-code: 13px;
+
+  --bh-line-height-heading: 1.2;
+  --bh-line-height-body: 1.5;
+  --bh-line-height-code: 1.5;
+
+  /* Brand */
+  --bh-color-primary: #6b7b93;
+  --bh-color-primary-hover: #7b8ca6;
+  --bh-color-primary-active: #5b6a81;
+  --bh-color-primary-subtle: #222830;
+  --bh-color-primary-border: #3c4656;
+
+  /* Neutral */
+  --bh-color-background: #09090b;
+  --bh-color-surface: #111113;
+  --bh-color-surface-secondary: #17181c;
+  --bh-color-surface-hover: #1e2127;
+  --bh-color-border: #2a2f38;
+  --bh-color-border-hover: #3a414d;
+
+  /* Text */
+  --bh-color-text-primary: #fafafa;
+  --bh-color-text-secondary: #c4cad4;
+  --bh-color-text-muted: #9aa3b2;
+  --bh-color-text-disabled: #6b7280;
+
+  /* Semantic */
+  --bh-color-success: #22c55e;
+  --bh-color-success-subtle: rgb(34 197 94 / 12%);
+  --bh-color-warning: #f59e0b;
+  --bh-color-warning-subtle: rgb(245 158 11 / 12%);
+  --bh-color-danger: #ef4444;
+  --bh-color-danger-subtle: rgb(239 68 68 / 12%);
+  --bh-color-info: #38bdf8;
+  --bh-color-info-subtle: rgb(56 189 248 / 12%);
+
+  /* Events */
+  --bh-color-event-prompt: var(--bh-color-primary);
+  --bh-color-event-response: var(--bh-color-success);
+  --bh-color-event-file: var(--bh-color-warning);
+  --bh-color-event-system: var(--bh-color-text-muted);
+  --bh-color-event-error: var(--bh-color-danger);
+  --bh-color-event-tool: var(--bh-color-primary);
+
+  /* Components */
+  --bh-button-primary-bg: var(--bh-color-primary);
+  --bh-button-primary-bg-hover: var(--bh-color-primary-hover);
+  --bh-button-primary-bg-active: var(--bh-color-primary-active);
+  --bh-button-primary-text: #ffffff;
+  --bh-button-secondary-bg: transparent;
+  --bh-button-secondary-border: var(--bh-color-border);
+  --bh-button-secondary-text: var(--bh-color-text-primary);
+  --bh-button-ghost-bg: transparent;
+  --bh-button-ghost-text: var(--bh-color-text-secondary);
+
+  --bh-sidebar-bg: var(--bh-color-background);
+  --bh-sidebar-item-selected-bg: var(--bh-color-primary-subtle);
+  --bh-sidebar-icon: var(--bh-color-text-muted);
+  --bh-sidebar-icon-active: var(--bh-color-primary);
+
+  --bh-card-bg: var(--bh-color-surface);
+  --bh-card-border: var(--bh-color-border);
+  --bh-card-bg-hover: var(--bh-color-surface-hover);
+
+  --bh-input-bg: var(--bh-color-background);
+  --bh-input-border: var(--bh-color-border);
+  --bh-input-border-focus: var(--bh-color-primary);
+  --bh-input-border-error: var(--bh-color-danger);
+  --bh-input-placeholder: var(--bh-color-text-muted);
+
+  --bh-table-header-bg: var(--bh-color-surface-secondary);
+  --bh-table-row-hover-bg: var(--bh-color-surface-hover);
+  --bh-table-row-selected-bg: var(--bh-color-primary-subtle);
+
+  --bh-badge-neutral-bg: var(--bh-color-surface-secondary);
+  --bh-badge-neutral-text: var(--bh-color-text-secondary);
+  --bh-badge-primary-bg: var(--bh-color-primary-subtle);
+  --bh-badge-primary-text: var(--bh-color-primary);
+  --bh-badge-success-bg: var(--bh-color-success-subtle);
+  --bh-badge-success-text: var(--bh-color-success);
+  --bh-badge-warning-bg: var(--bh-color-warning-subtle);
+  --bh-badge-warning-text: var(--bh-color-warning);
+  --bh-badge-danger-bg: var(--bh-color-danger-subtle);
+  --bh-badge-danger-text: var(--bh-color-danger);
+
+  /* Radius */
+  --bh-radius-sm: 6px;
+  --bh-radius-md: 8px;
+  --bh-radius-lg: 12px;
+  --bh-radius-max: 16px;
+
+  /* Spacing */
+  --bh-space-1: 4px;
+  --bh-space-2: 8px;
+  --bh-space-3: 12px;
+  --bh-space-4: 16px;
+  --bh-space-5: 20px;
+  --bh-space-6: 24px;
+  --bh-space-8: 32px;
+  --bh-space-10: 40px;
+  --bh-space-12: 48px;
+  --bh-space-16: 64px;
+  --bh-space-20: 80px;
+  --bh-space-24: 96px;
+
+  /* Motion */
+  --bh-duration-fast: 150ms;
+  --bh-duration-normal: 200ms;
+  --bh-duration-slow: 250ms;
+  --bh-ease-out: ease-out;
+
+  /* Icons */
+  --bh-icon-stroke-width: 1.5;
+  --bh-icon-size-sm: 16px;
+  --bh-icon-size-md: 18px;
+  --bh-icon-size-lg: 20px;
+  --bh-icon-size-xl: 24px;
+
+  /* Accessibility */
+  --bh-interactive-min-size: 40px;
+
+  /* Elevation */
+  --bh-shadow-none: none;
+  --bh-shadow-overlay: 0 16px 40px rgb(0 0 0 / 36%);
+}

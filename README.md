@@ -50,6 +50,32 @@ prompthub/
 
 The collector receives hook JSON through stdin and normalizes each tool payload into a PromptHub Event.
 
+User-facing setup flow:
+
+```bash
+python3 collector/src/cli.py init \
+  --app-url http://127.0.0.1:5173 \
+  --api-url http://127.0.0.1:8011
+```
+
+`init` opens the PromptHub login page, uses GitHub sign-in to receive a collector token, writes local PromptHub config, installs Codex hooks, and starts the uploader in the background.
+
+If the local repository has a GitHub `origin` remote, PromptHub automatically links the captured project to that GitHub repository:
+
+```bash
+git remote add origin git@github.com:OWNER/REPO.git
+```
+
+Supported remote formats include `git@github.com:OWNER/REPO.git`, `ssh://git@github.com/OWNER/REPO.git`, and `https://github.com/OWNER/REPO.git`.
+
+The production packaging target is:
+
+```bash
+npx @prompthub/cli init
+```
+
+The local CLI commands are already split so that packaging can wrap the same flow.
+
 Supported tools:
 
 ```text
@@ -57,6 +83,15 @@ claude-code
 codex-cli
 cursor
 gemini-cli
+```
+
+Current validation status:
+
+```text
+codex-cli   adapter + repo hook + real payload path validated
+claude-code adapter scaffolded, end-to-end hook validation pending
+cursor      adapter scaffolded, end-to-end hook validation pending
+gemini-cli  adapter scaffolded, end-to-end hook validation pending
 ```
 
 Supported event types:
@@ -88,16 +123,48 @@ Capture a non-prompt event:
 python3 collector/src/cli.py capture --tool codex-cli --event-type FilesChanged
 ```
 
+Capture code changes at the end of a Codex turn:
+
+```bash
+python3 collector/src/cli.py capture-changes --tool codex-cli
+```
+
+Install or repair Codex hooks without logging in:
+
+```bash
+python3 collector/src/cli.py install-hooks --tool codex-cli
+```
+
+Run local diagnostics:
+
+```bash
+python3 collector/src/cli.py doctor
+```
+
 Upload queued events:
 
 ```bash
 python3 collector/src/cli.py upload --api-url http://localhost:8000
 ```
 
-By default, queued events are stored at:
+Run the uploader in the background for near-real-time sync:
+
+```bash
+python3 collector/src/cli.py upload --api-url http://localhost:8000 --watch --interval 2
+```
+
+By default, queued events are stored by project and session at:
 
 ```text
-~/.prompthub/events.jsonl
+~/.prompthub/events/<project_id>/<session_id>/events.jsonl
+```
+
+If `PROMPTHUB_QUEUE_PATH` or `--queue-path` is set, the collector uses that single JSONL file instead. The uploader also reads the legacy `~/.prompthub/events.jsonl` queue if it exists.
+
+Prompt baselines for git-backed change tracking are stored at:
+
+```text
+~/.prompthub/change-baselines.json
 ```
 
 ## Backend
@@ -137,6 +204,44 @@ GET  /health
 
 The backend persists events to PostgreSQL through SQLAlchemy and Alembic.
 
+Optional ingest security:
+
+```bash
+export PROMPTHUB_API_TOKEN="replace-with-local-secret"
+export PROMPTHUB_CORS_ORIGINS="http://127.0.0.1:5173,http://localhost:5173"
+export PROMPTHUB_API_PUBLIC_URL="https://api.prompthub.example"
+export PROMPTHUB_APP_URL="https://app.prompthub.example"
+export PROMPTHUB_GITHUB_CLIENT_ID="github-oauth-client-id"
+export PROMPTHUB_GITHUB_CLIENT_SECRET="github-oauth-client-secret"
+export PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_KEY="replace-with-github-token-encryption-secret"
+export PROMPTHUB_APP_ENCRYPTION_KEY="replace-with-app-data-encryption-secret"
+export PROMPTHUB_APP_ENCRYPTION_KEY_ID="local"
+export PROMPTHUB_PROMPT_MAX_CHARS="50000"
+export PROMPTHUB_RESPONSE_MAX_CHARS="50000"
+export PROMPTHUB_OAUTH_STATE_SECRET="replace-with-oauth-state-secret"
+export PROMPTHUB_JWT_SECRET="replace-with-jwt-secret"
+export PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS="3600"
+# export PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS="15552000" # 180-day web sessions
+```
+
+Web users sign in through GitHub OAuth. The backend issues a short-lived HS256 JWT in an HttpOnly session cookie and requires it for browser reads such as `GET /api/events`.
+
+Prompt text, AI response text, and unified diff patch text are encrypted at rest with application-level encryption. Project/session IDs, timestamps, file paths, line counts, and status metadata remain queryable for sorting and filtering. Prompt and response text are capped before encryption and default to 50,000 characters.
+
+Collectors do not use the web JWT. CLI login issues a separate per-user collector token stored as a hash in PostgreSQL. `POST /api/events/batch` accepts that collector token as `Authorization: Bearer <token>`. `PROMPTHUB_API_TOKEN` remains available as an optional local/global ingest token.
+
+The web OAuth flow uses a signed state value plus a short-lived HttpOnly nonce cookie to reduce login CSRF risk.
+
+GitHub OAuth endpoints:
+
+```text
+GET /api/auth/github/start
+GET /api/auth/github/web/start
+GET /api/auth/github/callback
+GET /api/auth/me
+POST /api/auth/logout
+```
+
 See [Event Specification v1](docs/event-spec-v1.md) for the normalized event contract.
 
 See [Development Guidelines](docs/development-guidelines.md) for branch, commit, and module rules.
@@ -146,6 +251,8 @@ See [Artifact Model Draft](docs/artifact-model.md) for the future artifact archi
 See [Codex Hook Verification](docs/codex-hook-verification.md) for the first hook smoke path.
 
 See [Database](docs/database.md) for the PostgreSQL schema and migration commands.
+
+See [Project Status](docs/project-status.md) for the current implementation snapshot and local runbook.
 
 Start the local PostgreSQL service:
 

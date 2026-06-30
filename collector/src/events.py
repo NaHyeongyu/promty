@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 import os
+from pathlib import Path
 from typing import Any, Literal
 from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
@@ -72,6 +73,8 @@ class PayloadBase:
 class SessionStartedPayload(PayloadBase):
     cwd: str | None = None
     branch: str | None = None
+    git_remote: str | None = None
+    github_url: str | None = None
     model: str | None = None
     permission_mode: str | None = None
     session_id: str | None = None
@@ -87,6 +90,8 @@ class PromptSubmittedPayload(PayloadBase):
     turn_id: str | int | None = None
     session_id: str | None = None
     branch: str | None = None
+    git_remote: str | None = None
+    github_url: str | None = None
     hook_event_name: str | None = None
     approval_policy: str | None = None
     sandbox_mode: str | None = None
@@ -94,7 +99,13 @@ class PromptSubmittedPayload(PayloadBase):
 
 @dataclass(slots=True)
 class ResponseReceivedPayload(PayloadBase):
-    tokens: int | None = None
+    response: str | None = None
+    response_truncated: bool = False
+    response_original_length: int | None = None
+    response_storage_limit: int | None = None
+    response_source: str | None = None
+    transcript_path: str | None = None
+    turn_id: str | int | None = None
     duration_ms: int | None = None
     success: bool | None = None
     model: str | None = None
@@ -106,6 +117,19 @@ class FilesChangedPayload(PayloadBase):
     files: list[str] = field(default_factory=list)
     cwd: str | None = None
     session_id: str | None = None
+    prompt_event_id: str | None = None
+    turn_id: str | int | None = None
+    git_root: str | None = None
+    branch: str | None = None
+    git_remote: str | None = None
+    github_url: str | None = None
+    base_commit: str | None = None
+    head_commit: str | None = None
+    baseline_captured_at: str | None = None
+    detected_at: str | None = None
+    source: str | None = None
+    summary: dict[str, Any] | None = None
+    changes: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -113,6 +137,8 @@ class CommitCreatedPayload(PayloadBase):
     hash: str | None = None
     message: str | None = None
     branch: str | None = None
+    git_remote: str | None = None
+    github_url: str | None = None
     cwd: str | None = None
     session_id: str | None = None
 
@@ -190,6 +216,22 @@ def stable_uuid(namespace_name: str, value: Any) -> str:
     return str(uuid5(namespace, str(value)))
 
 
+def find_project_root(path_value: Any) -> str:
+    path = Path(str(path_value)).expanduser()
+    if not path.exists():
+        return str(path_value)
+    try:
+        candidate = path if path.is_dir() else path.parent
+        candidate = candidate.resolve()
+    except OSError:
+        return str(path_value)
+
+    for current in (candidate, *candidate.parents):
+        if (current / ".git").exists():
+            return str(current)
+    return str(candidate)
+
+
 def resolve_project_id(raw_payload: dict[str, Any], event_payload: dict[str, Any]) -> str:
     explicit_project_id = (
         coerce_uuid(raw_payload.get("project_id"))
@@ -205,7 +247,7 @@ def resolve_project_id(raw_payload: dict[str, Any], event_payload: dict[str, Any
         or raw_payload.get("workspace")
         or os.getcwd()
     )
-    return stable_uuid("prompthub.project", project_seed)
+    return stable_uuid("prompthub.project", find_project_root(project_seed))
 
 
 def resolve_session_id(

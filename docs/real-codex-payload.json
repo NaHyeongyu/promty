@@ -1,10 +1,10 @@
 {
-  "cwd": "/Users/nahyeongyu/Desktop/development/PromptHub",
+  "cwd": "/Users/local-user/development/PromptHub",
   "hook_event_name": "UserPromptSubmit",
   "model": "gpt-5.5",
   "permission_mode": "default",
   "prompt": "real codex hook payload capture test",
   "session_id": "019f04cd-422c-7290-9fba-275f826c6062",
-  "transcript_path": "/Users/nahyeongyu/.codex/sessions/2026/06/27/rollout-2026-06-27T02-39-48-019f04cd-422c-7290-9fba-275f826c6062.jsonl",
+  "transcript_path": "/Users/local-user/.codex/sessions/2026/06/27/rollout-2026-06-27T02-39-48-019f04cd-422c-7290-9fba-275f826c6062.jsonl",
   "turn_id": "019f04cf-4dd3-7471-831f-e4da5e605283"
 }

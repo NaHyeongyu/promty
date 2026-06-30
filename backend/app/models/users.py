@@ -31,3 +31,14 @@ class User(Base):
 
     devices = relationship("Device", back_populates="user", cascade="all, delete-orphan")
     projects = relationship("Project", back_populates="owner", cascade="all, delete-orphan")
+    collector_tokens = relationship(
+        "CollectorToken",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    github_connection = relationship(
+        "GitHubConnection",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal, Union
 from uuid import UUID
 
-from pydantic import BaseModel, Field, root_validator
+from pydantic import BaseModel, Field, root_validator, validator
 
 SupportedTool = Literal["claude-code", "codex-cli", "cursor", "gemini-cli"]
 EventType = Literal[
@@ -25,6 +25,8 @@ class PayloadModel(BaseModel):
 class SessionStartedPayload(PayloadModel):
     cwd: str | None = None
     branch: str | None = None
+    git_remote: str | None = None
+    github_url: str | None = None
     model: str | None = None
     permission_mode: str | None = None
     session_id: str | None = None
@@ -32,6 +34,9 @@ class SessionStartedPayload(PayloadModel):
 
 class PromptSubmittedPayload(PayloadModel):
     prompt: str
+    prompt_truncated: bool = False
+    prompt_original_length: int | None = None
+    prompt_storage_limit: int | None = None
     cwd: str | None = None
     model: str | None = None
     permission_mode: str | None = None
@@ -39,13 +44,21 @@ class PromptSubmittedPayload(PayloadModel):
     turn_id: str | int | None = None
     session_id: str | None = None
     branch: str | None = None
+    git_remote: str | None = None
+    github_url: str | None = None
     hook_event_name: str | None = None
     approval_policy: str | None = None
     sandbox_mode: str | None = None
 
 
 class ResponseReceivedPayload(PayloadModel):
-    tokens: int | None = None
+    response: str | None = None
+    response_truncated: bool = False
+    response_original_length: int | None = None
+    response_storage_limit: int | None = None
+    response_source: str | None = None
+    transcript_path: str | None = None
+    turn_id: str | int | None = None
     duration_ms: int | None = None
     success: bool | None = None
     model: str | None = None
@@ -56,12 +69,27 @@ class FilesChangedPayload(PayloadModel):
     files: list[str] = Field(default_factory=list)
     cwd: str | None = None
     session_id: str | None = None
+    prompt_event_id: str | None = None
+    turn_id: str | int | None = None
+    git_root: str | None = None
+    branch: str | None = None
+    git_remote: str | None = None
+    github_url: str | None = None
+    base_commit: str | None = None
+    head_commit: str | None = None
+    baseline_captured_at: str | None = None
+    detected_at: str | None = None
+    source: str | None = None
+    summary: dict | None = None
+    changes: list[dict] = Field(default_factory=list)
 
 
 class CommitCreatedPayload(PayloadModel):
     hash: str | None = None
     message: str | None = None
     branch: str | None = None
+    git_remote: str | None = None
+    github_url: str | None = None
     cwd: str | None = None
     session_id: str | None = None
 
@@ -80,6 +108,7 @@ EventPayload = Union[
     CommitCreatedPayload,
     SessionEndedPayload,
 ]
+LEGACY_USAGE_KEYS = frozenset(("tokens", "total_tokens"))
 PAYLOAD_BY_EVENT_TYPE: dict[str, type[PayloadModel]] = {
     "SessionStarted": SessionStartedPayload,
     "PromptSubmitted": PromptSubmittedPayload,
@@ -92,10 +121,10 @@ PAYLOAD_BY_EVENT_TYPE: dict[str, type[PayloadModel]] = {
 
 class EventCreate(BaseModel):
     id: UUID
-    schema_version: int = 1
+    schema_version: int = Field(default=1, ge=1)
     project_id: UUID
     session_id: UUID
-    sequence: int
+    sequence: int = Field(gt=0)
     tool: SupportedTool
     event_type: EventType
     timestamp: datetime
@@ -106,8 +135,19 @@ class EventCreate(BaseModel):
         event_type = values.get("event_type")
         payload_model = PAYLOAD_BY_EVENT_TYPE.get(event_type)
         if payload_model is not None and isinstance(values.get("payload"), dict):
-            values["payload"] = payload_model(**values["payload"])
+            payload = {
+                key: value
+                for key, value in values["payload"].items()
+                if key not in LEGACY_USAGE_KEYS
+            }
+            values["payload"] = payload_model(**payload)
         return values
+
+    @validator("timestamp")
+    def require_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("timestamp must be timezone-aware")
+        return value
 
     class Config:
         extra = "forbid"
@@ -118,7 +158,7 @@ class EventRead(EventCreate):
 
 
 class EventBatchCreate(BaseModel):
-    events: list[EventCreate]
+    events: list[EventCreate] = Field(..., min_items=1, max_items=500)
 
 
 class EventBatchResponse(BaseModel):

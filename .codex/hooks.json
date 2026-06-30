@@ -1,13 +1,25 @@
 {
   "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "python3 collector/src/cli.py capture-changes --tool codex-cli",
+            "statusMessage": "Capturing PromptHub file changes",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/collector/src/cli.py\" capture --tool codex-cli",
+            "command": "python3 collector/src/cli.py capture --tool codex-cli",
+            "statusMessage": "Capturing PromptHub event",
             "timeout": 5,
-            "statusMessage": "Capturing PromptHub event"
+            "type": "command"
           }
         ]
       }

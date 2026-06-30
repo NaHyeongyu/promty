@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 from uuid import NAMESPACE_DNS, UUID, uuid5
 
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session as DBSession
 
 from app.models.events import Event
@@ -11,8 +12,20 @@ from app.models.projects import Project
 from app.models.sessions import Session
 from app.models.users import User
 from app.schemas.events import EventCreate, EventRead
+from app.services.event_payload_security import (
+    apply_event_storage_policy,
+    decrypt_event_payload,
+    encrypt_event_payload,
+)
+from app.services.project_resources import sync_project_resources_from_event
 
 SYSTEM_USER_ID = uuid5(NAMESPACE_DNS, "prompthub.system_user")
+
+
+class EventIngestConflict(ValueError):
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+        self.detail = detail
 
 
 def _dump_model(value):
@@ -34,6 +47,10 @@ def _project_name(event: EventCreate) -> str:
     return f"Project {str(event.project_id)[:8]}"
 
 
+def _project_git_remote(event: EventCreate) -> str | None:
+    return _payload_value(event, "github_url") or _payload_value(event, "git_remote")
+
+
 def _ensure_system_user(db: DBSession) -> User:
     user = db.get(User, SYSTEM_USER_ID)
     if user is not None:
@@ -51,21 +68,36 @@ def _ensure_system_user(db: DBSession) -> User:
     return user
 
 
-def _ensure_project(db: DBSession, event: EventCreate) -> Project:
+def _ensure_project_owner(project: Project, owner: User | None) -> None:
+    if owner is None:
+        return
+    if project.owner_id == owner.id:
+        return
+    if project.owner_id == SYSTEM_USER_ID:
+        project.owner_id = owner.id
+        return
+    raise EventIngestConflict("Event project_id belongs to a different user")
+
+
+def _ensure_project(db: DBSession, event: EventCreate, owner: User | None = None) -> Project:
     project = db.get(Project, event.project_id)
     if project is not None:
+        _ensure_project_owner(project, owner)
+        git_remote = _project_git_remote(event)
+        if git_remote and not project.git_remote:
+            project.git_remote = git_remote
         return project
 
-    owner = _ensure_system_user(db)
+    project_owner = owner or _ensure_system_user(db)
     branch = _payload_value(event, "branch") or "main"
     project = Project(
         id=event.project_id,
-        owner_id=owner.id,
+        owner_id=project_owner.id,
         name=_project_name(event),
         slug=f"project-{str(event.project_id)[:8]}",
         description=None,
         visibility="private",
-        git_remote=None,
+        git_remote=_project_git_remote(event),
         local_path_hash=None,
         default_branch=branch,
     )
@@ -74,13 +106,21 @@ def _ensure_project(db: DBSession, event: EventCreate) -> Project:
     return project
 
 
-def _ensure_session(db: DBSession, event: EventCreate) -> Session:
+def _ensure_session(db: DBSession, event: EventCreate, owner: User | None = None) -> Session:
     session = db.get(Session, event.session_id)
     if session is not None:
+        if session.project_id != event.project_id:
+            raise EventIngestConflict(
+                "Event session_id belongs to a different project_id"
+            )
+        project = db.get(Project, event.project_id)
+        if project is None:
+            raise EventIngestConflict("Event project_id does not exist")
+        _ensure_project_owner(project, owner)
         _apply_session_metadata(session, event)
         return session
 
-    project = _ensure_project(db, event)
+    project = _ensure_project(db, event, owner)
     session = Session(
         id=event.session_id,
         project_id=project.id,
@@ -124,41 +164,99 @@ def _to_read_model(event: Event) -> EventRead:
         tool=event.tool,
         event_type=event.event_type,
         timestamp=event.created_at,
-        payload=event.payload,
+        payload=decrypt_event_payload(event.event_type, event.payload),
     )
 
 
-def add_events(db: DBSession, events: list[EventCreate]) -> list[str]:
+def _event_values(event: EventCreate, payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "project_id": event.project_id,
+        "session_id": event.session_id,
+        "sequence": event.sequence,
+        "schema_version": event.schema_version,
+        "tool": event.tool,
+        "event_type": event.event_type,
+        "payload": payload,
+        "created_at": event.timestamp,
+    }
+
+
+def _stored_event_values(event: Event) -> dict[str, Any]:
+    payload = apply_event_storage_policy(
+        event.event_type,
+        decrypt_event_payload(event.event_type, event.payload),
+    )
+    return {
+        "project_id": event.project_id,
+        "session_id": event.session_id,
+        "sequence": event.sequence,
+        "schema_version": event.schema_version,
+        "tool": event.tool,
+        "event_type": event.event_type,
+        "payload": payload,
+        "created_at": event.created_at,
+    }
+
+
+def _ensure_replayed_event_matches(
+    existing: Event,
+    incoming: EventCreate,
+    payload: dict[str, Any],
+) -> None:
+    if _stored_event_values(existing) == _event_values(incoming, payload):
+        return
+
+    raise EventIngestConflict("Event id already exists with different content")
+
+
+def _ensure_sequence_available(db: DBSession, event: EventCreate) -> None:
+    existing = db.execute(
+        select(Event.id).where(
+            Event.project_id == event.project_id,
+            Event.session_id == event.session_id,
+            Event.sequence == event.sequence,
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise EventIngestConflict(
+            "Event sequence already exists for this project_id/session_id"
+        )
+
+
+def add_events(
+    db: DBSession,
+    events: list[EventCreate],
+    *,
+    owner: User | None = None,
+) -> list[str]:
     event_ids: list[str] = []
 
     for event in events:
-        _ensure_session(db, event)
-        payload = _dump_model(event.payload)
+        payload = apply_event_storage_policy(event.event_type, _dump_model(event.payload))
+        storage_payload = encrypt_event_payload(event.event_type, payload)
         existing = db.get(Event, event.id)
 
-        if existing is None:
-            db.add(
-                Event(
-                    id=event.id,
-                    project_id=event.project_id,
-                    session_id=event.session_id,
-                    sequence=event.sequence,
-                    schema_version=event.schema_version,
-                    tool=event.tool,
-                    event_type=event.event_type,
-                    payload=payload,
-                    created_at=event.timestamp,
-                )
-            )
-        else:
-            existing.project_id = event.project_id
-            existing.session_id = event.session_id
-            existing.sequence = event.sequence
-            existing.schema_version = event.schema_version
-            existing.tool = event.tool
-            existing.event_type = event.event_type
-            existing.payload = payload
-            existing.created_at = event.timestamp
+        if existing is not None:
+            _ensure_replayed_event_matches(existing, event, payload)
+            event_ids.append(str(event.id))
+            continue
+
+        _ensure_session(db, event, owner)
+        _ensure_sequence_available(db, event)
+        event_row = Event(
+            id=event.id,
+            project_id=event.project_id,
+            session_id=event.session_id,
+            sequence=event.sequence,
+            schema_version=event.schema_version,
+            tool=event.tool,
+            event_type=event.event_type,
+            payload=storage_payload,
+            created_at=event.timestamp,
+        )
+        db.add(event_row)
+        db.flush()
+        sync_project_resources_from_event(db, event_row, payload)
 
         event_ids.append(str(event.id))
 
@@ -166,10 +264,26 @@ def add_events(db: DBSession, events: list[EventCreate]) -> list[str]:
     return event_ids
 
 
-def list_recent_events(db: DBSession, limit: int = 100) -> list[EventRead]:
+def list_recent_events(
+    db: DBSession,
+    *,
+    owner: User,
+    project_id: UUID | None = None,
+    session_id: UUID | None = None,
+    event_type: str | None = None,
+    limit: int = 100,
+) -> list[EventRead]:
+    query = select(Event).join(Project, Event.project_id == Project.id).where(
+        Project.owner_id == owner.id
+    )
+    if project_id is not None:
+        query = query.where(Event.project_id == project_id)
+    if session_id is not None:
+        query = query.where(Event.session_id == session_id)
+    if event_type is not None:
+        query = query.where(Event.event_type == event_type)
+
     rows = db.execute(
-        select(Event)
-        .order_by(Event.project_id, Event.session_id, Event.sequence)
-        .limit(limit)
+        query.order_by(desc(Event.created_at), desc(Event.sequence)).limit(limit)
     ).scalars()
     return [_to_read_model(event) for event in rows]
