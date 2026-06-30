@@ -33,6 +33,7 @@ export type OverviewItem = {
   title: string;
   value: string;
   description?: string;
+  href?: string;
   actions?: string[];
 };
 
@@ -146,6 +147,7 @@ export type ProjectDetailData = {
   repositoryFileSelectedPath?: string | null;
   repositoryFiles: FileTreeNode[];
   repositoryFilesConnectUrl?: string;
+  repositoryFilesLoading?: boolean;
   repositoryFilesMessage?: string;
   repositoryFilesRepository?: string;
   repositoryFilesStatus?: string;

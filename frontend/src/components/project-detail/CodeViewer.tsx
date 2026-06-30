@@ -27,14 +27,19 @@ export function CodeViewer({
   isLoading,
   selectedPath,
 }: CodeViewerProps) {
-  if (isLoading) {
+  if (isLoading && !content?.content) {
     return (
-      <section className="bh-code-viewer bh-code-viewer-empty">
-        <FileCode aria-hidden="true" size={18} strokeWidth={1.5} />
-        <div>
-          <h2>Loading file</h2>
-          <p>{selectedPath ?? "Repository file"}</p>
-        </div>
+      <section
+        aria-label={`Loading ${selectedPath ?? "repository file"}`}
+        aria-live="polite"
+        aria-busy="true"
+        className="bh-code-viewer bh-code-viewer-loading-surface loading-cascade"
+        data-loading="true"
+        role="status"
+      >
+        <span className="bh-loading-cascade-label">
+          Loading {selectedPath ?? "repository file"}
+        </span>
       </section>
     );
   }
@@ -67,7 +72,12 @@ export function CodeViewer({
   const byteLabel = formatBytes(content.size);
 
   return (
-    <section className="bh-code-viewer" aria-labelledby="repository-code-title">
+    <section
+      aria-busy={isLoading || undefined}
+      aria-labelledby="repository-code-title"
+      className="bh-code-viewer loading-cascade"
+      data-loading={isLoading ? "true" : undefined}
+    >
       <header className="bh-code-viewer-header">
         <div>
           <h2 id="repository-code-title">{content.name ?? content.path}</h2>

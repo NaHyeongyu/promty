@@ -1,13 +1,16 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
+  Archive,
   ArrowRight,
   Bot,
+  Check,
   Clock,
   ExternalLink,
   Folder,
   GitBranch,
   Link,
   LogOut,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
@@ -164,6 +167,7 @@ type ProjectDetailApiResponse = {
     tracked_files: number;
   };
   project: {
+    created_at?: string | null;
     default_branch: string;
     description: string | null;
     id: string;
@@ -172,6 +176,7 @@ type ProjectDetailApiResponse = {
     repository_url: string | null;
     slug?: string;
     updated_at: string | null;
+    visibility?: string | null;
   };
 };
 
@@ -257,6 +262,16 @@ type PublishedFlowDetailResponse = PublishedFlowSummary & {
   start_sequence: number | null;
 };
 
+type PublishedFlowUpdatePayload = {
+  context_summary?: string | null;
+  notes?: string | null;
+  status?: "archived" | "draft" | "published";
+  summary?: string | null;
+  tags?: string[];
+  title?: string;
+  visibility?: "private" | "public" | "unlisted";
+};
+
 type GithubRepositoryOption = {
   id: number | string | null;
   default_branch: string;
@@ -299,6 +314,8 @@ type UrlNavigationState = {
 const API_URL = (
   import.meta.env.VITE_PROMPTHUB_API_URL ?? "http://127.0.0.1:8011"
 ).replace(/\/$/, "");
+const BRAND_NAME = "Promty";
+const BRAND_LOGO_SRC = "/promty.svg";
 const DEFAULT_URL_NAVIGATION_STATE: UrlNavigationState = {
   activityNavigation: {
     selectedPromptId: null,
@@ -615,8 +632,67 @@ function formatTimestamp(value: string) {
   }).format(date);
 }
 
+function formatDate(value: string | null | undefined, fallback = "Not available") {
+  if (!value) {
+    return fallback;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return Intl.DateTimeFormat("en", {
+    dateStyle: "medium",
+  }).format(date);
+}
+
 function formatOptionalTimestamp(value: string | null | undefined, fallback = "No activity") {
   return value ? formatTimestamp(value) : fallback;
+}
+
+function formatRelativeTimestamp(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  const timestamp = date.getTime();
+  if (Number.isNaN(timestamp)) {
+    return null;
+  }
+
+  const diff = timestamp - Date.now();
+  const divisions: Array<{ amount: number; unit: Intl.RelativeTimeFormatUnit }> = [
+    { amount: 1000 * 60 * 60 * 24 * 365, unit: "year" },
+    { amount: 1000 * 60 * 60 * 24 * 30, unit: "month" },
+    { amount: 1000 * 60 * 60 * 24 * 7, unit: "week" },
+    { amount: 1000 * 60 * 60 * 24, unit: "day" },
+    { amount: 1000 * 60 * 60, unit: "hour" },
+    { amount: 1000 * 60, unit: "minute" },
+  ];
+  const formatter = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+  const absoluteDiff = Math.abs(diff);
+  const division =
+    divisions.find((item) => absoluteDiff >= item.amount) ??
+    ({ amount: 1000, unit: "second" } satisfies {
+      amount: number;
+      unit: Intl.RelativeTimeFormatUnit;
+    });
+
+  return formatter.format(Math.round(diff / division.amount), division.unit);
+}
+
+function formatLabelValue(value: string | null | undefined, fallback = "Not available") {
+  if (!value?.trim()) {
+    return fallback;
+  }
+
+  return value
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function getStringPayloadValue(
@@ -806,27 +882,29 @@ function emptyProjectDetailData(project: Project | null): ProjectDetailData {
   };
 }
 
+function projectDetailUrl(projectKey: string) {
+  const params = new URLSearchParams({
+    project: projectKey,
+    tab: "overview",
+  });
+  return `${window.location.origin}/?${params.toString()}`;
+}
+
 function projectDetailDataFromApi(
   payload: ProjectDetailApiResponse,
   fallbackProject: Project | null,
 ): ProjectDetailData {
   const models = payload.metrics.connected_models;
-  const tools = payload.metrics.connected_tools ?? [];
   const community = payload.community;
   const totalPrompts =
     payload.metrics.total_prompts ?? payload.prompt_activities?.length ?? 0;
-  const runtimeValue =
-    tools.length === 1
-      ? tools[0]
-      : tools.length > 1
-        ? `${tools.length} tools`
-        : "Tool unknown";
-  const runtimeDescription =
-    models.length === 1
-      ? `Model ${models[0]}`
-      : models.length > 1
-        ? `Models ${models.join(", ")}`
-        : "Model metadata not captured";
+  const projectDescription =
+    payload.project.description ??
+    "AI development workspace for prompts, code changes, context, and project memory.";
+  const repositoryUrl = payload.project.repository_url ?? fallbackProject?.githubUrl;
+  const projectUrl = projectDetailUrl(
+    payload.project.slug ?? payload.project.id ?? fallbackProject?.id ?? "",
+  );
 
   return {
     activities: payload.activities.map((activity) => ({
@@ -902,49 +980,76 @@ function projectDetailDataFromApi(
     })),
     overview: [
       {
-        title: "Repository",
-        value: payload.metrics.repository_connected ? "Connected" : "Not connected",
-        description: `Default branch ${payload.project.default_branch}`,
+        title: "Repository URL",
+        value: repositoryUrl ?? "Not connected",
+        description: repositoryUrl
+          ? `Default branch ${payload.project.default_branch}`
+          : "Connect a GitHub repository to browse source files.",
+        href: repositoryUrl ?? undefined,
       },
       {
-        title: "AI Runtime",
-        value: runtimeValue,
-        description: runtimeDescription,
+        title: "Project URL",
+        value: projectUrl,
+        description: `${BRAND_NAME} project detail page`,
+        href: projectUrl,
+      },
+      {
+        title: "Description",
+        value: projectDescription,
+      },
+      {
+        title: "Default Branch",
+        value: payload.project.default_branch || "Not available",
+      },
+      {
+        title: "Visibility",
+        value: formatLabelValue(payload.project.visibility, "Private"),
+      },
+      {
+        title: "AI Models",
+        value: models.length > 0 ? models.join(", ") : "Not captured",
+      },
+      {
+        title: "Activities",
+        value: formatCompactNumber(payload.metrics.total_events),
+      },
+      {
+        title: "Sessions",
+        value: formatCompactNumber(payload.metrics.total_sessions),
+      },
+      {
+        title: "Prompts",
+        value: formatCompactNumber(totalPrompts),
+      },
+      {
+        title: "Created",
+        value: formatDate(payload.project.created_at),
+        description: formatRelativeTimestamp(payload.project.created_at) ?? "Not available",
       },
       {
         title: "Last Activity",
-        value: formatOptionalTimestamp(payload.metrics.latest_activity_at),
-        description: "Latest AI interaction",
+        value: formatDate(payload.metrics.latest_activity_at, "No activity"),
+        description:
+          formatRelativeTimestamp(payload.metrics.latest_activity_at) ?? "No activity",
       },
       {
-        title: "Total AI Sessions",
-        value: formatCompactNumber(payload.metrics.total_sessions),
-        description: "Across this workspace",
+        title: "Last Published Prompt",
+        value: formatDate(community?.latest_flow_at, "No published prompts"),
+        description:
+          formatRelativeTimestamp(community?.latest_flow_at) ?? "No published prompts",
       },
       {
-        title: "Total Prompts",
-        value: formatCompactNumber(totalPrompts),
-        description: "Captured prompt submissions",
-      },
-      {
-        title: "Total Events",
-        value: formatCompactNumber(payload.metrics.total_events),
-        description: "Prompts, responses, file changes",
-      },
-      {
-        title: "Last Modified",
-        value: formatOptionalTimestamp(payload.metrics.last_modified_at, "Unknown"),
-        description: `${formatCompactNumber(payload.metrics.tracked_files)} tracked files`,
+        title: "Repository Connected",
+        value: repositoryUrl ? "Connected" : "Not connected",
+        description: repositoryUrl ? "Connection date not tracked" : "No repository",
       },
     ],
     project: {
-      description:
-        payload.project.description ??
-        "AI development workspace for prompts, code changes, context, and project memory.",
+      description: projectDescription,
       id: payload.project.id,
       name: payload.project.name || fallbackProject?.name || "Project",
       repositoryStatus: payload.project.repository_status,
-      repositoryUrl: payload.project.repository_url ?? fallbackProject?.githubUrl,
+      repositoryUrl,
     },
     repositoryFiles: [],
     repositoryFilesMessage: payload.project.repository_url
@@ -1010,6 +1115,28 @@ function GitHubIcon() {
   return <SimpleBrandIcon icon={siGithub} name="github" />;
 }
 
+function BrandLogo({ className = "" }: { className?: string }) {
+  const classNames = ["brand-logo", className].filter(Boolean).join(" ");
+
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      className={classNames}
+      src={BRAND_LOGO_SRC}
+    />
+  );
+}
+
+function BrandLockup() {
+  return (
+    <>
+      <BrandLogo className="is-sidebar" />
+      <strong>{BRAND_NAME}</strong>
+    </>
+  );
+}
+
 function CliLoginPage() {
   const params = new URLSearchParams(window.location.search);
   const redirectUri = params.get("redirect_uri") ?? "";
@@ -1031,14 +1158,14 @@ function CliLoginPage() {
     <main className="cli-login-shell">
       <section className="cli-login-panel" aria-labelledby="cli-login-title">
         <div className="cli-login-kicker">
-          <Terminal aria-hidden="true" size={16} strokeWidth={1.5} />
-          PromptHub CLI
+          <BrandLogo className="is-kicker" />
+          {BRAND_NAME} CLI
         </div>
 
         <div className="cli-login-copy">
           <h1 id="cli-login-title">Connect your GitHub account</h1>
           <p>
-            PromptHub uses GitHub sign-in to issue a local collector token for
+            {BRAND_NAME} uses GitHub sign-in to issue a local collector token for
             this machine.
           </p>
         </div>
@@ -1061,7 +1188,7 @@ function CliLoginPage() {
 
         <div className="cli-login-footer">
           <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.5} />
-          <span>Only a PromptHub collector token is returned to your terminal.</span>
+          <span>Only a {BRAND_NAME} collector token is returned to your terminal.</span>
         </div>
       </section>
     </main>
@@ -1084,13 +1211,13 @@ function WebLoginPage({
     <main className="cli-login-shell">
       <section className="cli-login-panel" aria-labelledby="web-login-title">
         <div className="cli-login-kicker">
-          <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.5} />
-          PromptHub
+          <BrandLogo className="is-kicker" />
+          {BRAND_NAME}
         </div>
 
         <div className="cli-login-copy">
           <h1 id="web-login-title">Sign in with GitHub</h1>
-          <p>Open your PromptHub workspace and recent AI development activity.</p>
+          <p>Open your {BRAND_NAME} workspace and recent AI development activity.</p>
         </div>
 
         {errorMessage ? (
@@ -1113,22 +1240,36 @@ function LoadingScreen() {
   return (
     <div
       aria-busy="true"
-      aria-label="Loading PromptHub workspace"
+      aria-label={`Loading ${BRAND_NAME} workspace`}
       aria-live="polite"
       className="app-shell"
       role="status"
     >
       <aside className="sidebar" aria-hidden="true">
         <div className="sidebar-header">
-          <strong>BuildHub</strong>
+          <BrandLockup />
         </div>
 
         <div className="sidebar-divider" />
 
         <nav className="sidebar-nav" aria-label="Loading navigation">
-          <div className="sidebar-item sidebar-item-skeleton">
-            <span className="skeleton-icon" />
-            <span className="skeleton-line skeleton-line-nav" />
+          <div className="sidebar-item sidebar-item-loading">
+            <Folder
+              aria-hidden="true"
+              className="sidebar-icon"
+              size={18}
+              strokeWidth={1.5}
+            />
+            <span>Projects</span>
+          </div>
+          <div className="sidebar-item sidebar-item-loading">
+            <Share2
+              aria-hidden="true"
+              className="sidebar-icon"
+              size={18}
+              strokeWidth={1.5}
+            />
+            <span>Community</span>
           </div>
         </nav>
 
@@ -1136,37 +1277,46 @@ function LoadingScreen() {
         <div className="sidebar-divider" />
 
         <div className="sidebar-footer">
-          <div className="sidebar-item sidebar-item-skeleton">
-            <span className="skeleton-icon" />
-            <span className="skeleton-line skeleton-line-nav" />
+          <div className="sidebar-item sidebar-item-loading">
+            <User
+              aria-hidden="true"
+              className="sidebar-icon"
+              size={18}
+              strokeWidth={1.5}
+            />
+            <span>Profile</span>
           </div>
-          <div className="sidebar-item sidebar-item-skeleton">
-            <span className="skeleton-icon" />
-            <span className="skeleton-line skeleton-line-nav" />
+          <div className="sidebar-item sidebar-item-loading">
+            <Settings
+              aria-hidden="true"
+              className="sidebar-icon"
+              size={18}
+              strokeWidth={1.5}
+            />
+            <span>Settings</span>
           </div>
         </div>
       </aside>
 
       <main className="page">
         <header className="page-header">
-          <div className="page-title-loading">
-            <span className="skeleton-line skeleton-line-heading" />
+          <div>
+            <h1>Projects</h1>
           </div>
           <div className="page-actions">
-            <span className="skeleton-pill skeleton-pill-action" />
-            <span className="skeleton-pill skeleton-pill-count" />
+            <button className="toolbar-button" disabled type="button">
+              <RefreshCw aria-hidden="true" size={16} strokeWidth={1.5} />
+              <span>Refresh</span>
+            </button>
+            <span className="status-pill">Loading</span>
           </div>
         </header>
 
         <section className="projects-section" aria-labelledby="loading-projects-title">
           <div className="section-header">
-            <div className="section-copy-loading">
-              <h2 id="loading-projects-title">
-                <span className="skeleton-line skeleton-line-section" />
-              </h2>
-              <p>
-                <span className="skeleton-line skeleton-line-description" />
-              </p>
+            <div>
+              <h2 id="loading-projects-title">Active projects</h2>
+              <p>Recent AI workspaces and connected repository context.</p>
             </div>
           </div>
 
@@ -1239,44 +1389,55 @@ function EmptyState({
   );
 }
 
-function ProjectGridSkeleton() {
+function LoadingCascadeSurface({
+  className,
+  label,
+  variant,
+}: {
+  className?: string;
+  label: string;
+  variant:
+    | "community-detail"
+    | "community-list"
+    | "projects"
+    | "repository";
+}) {
+  const classNames = [
+    "loading-cascade-surface",
+    `loading-cascade-surface-${variant}`,
+    "loading-cascade",
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <div
-      aria-label="Loading projects"
+      aria-busy="true"
+      aria-label={label}
       aria-live="polite"
-      className="projects-grid project-grid-skeleton"
+      className={classNames}
+      data-loading="true"
       role="status"
     >
-      {Array.from({ length: 8 }, (_, index) => (
-        <article
-          aria-hidden="true"
-          className="project-card project-card-skeleton"
-          key={index}
-        >
-          <div className="project-card-header">
-            <span className="skeleton-line skeleton-line-title" />
-            <span className="skeleton-pill" />
-          </div>
-
-          <div className="skeleton-stack">
-            <span className="skeleton-line skeleton-line-sm" />
-            <span className="skeleton-line skeleton-line-md" />
-          </div>
-
-          <div className="project-stats skeleton-stats">
-            <span />
-            <span />
-            <span />
-          </div>
-
-          <div className="skeleton-badge-row">
-            <span />
-            <span />
-            <span />
-          </div>
-        </article>
-      ))}
+      <span className="loading-cascade-label">{label}</span>
     </div>
+  );
+}
+
+function ProjectGridSkeleton() {
+  return (
+    <LoadingCascadeSurface label="Loading projects" variant="projects" />
+  );
+}
+
+function RepositoryOptionsSkeleton() {
+  return (
+    <LoadingCascadeSurface
+      className="repository-option-list"
+      label="Loading GitHub repositories"
+      variant="repository"
+    />
   );
 }
 
@@ -1325,7 +1486,7 @@ function RepositoryConnector({
           <h2 id="repository-connector-title">Connect Repository</h2>
           <p>
             {mode === "create"
-              ? "Create a BuildHub project from a GitHub repository."
+              ? `Create a ${BRAND_NAME} project from a GitHub repository.`
               : `Connect a GitHub repository to ${targetProjectName ?? "this project"}.`}
           </p>
         </div>
@@ -1405,18 +1566,14 @@ function RepositoryConnector({
           </div>
         ) : null}
 
-        {isLoadingRepositories ? (
-          <div className="inline-loading-status">
-            <RefreshCw
-              aria-hidden="true"
-              className="loading-spinner"
-              size={16}
-              strokeWidth={1.5}
-            />
-            <span>Loading GitHub repositories</span>
-          </div>
+        {isLoadingRepositories && repositories.length === 0 ? (
+          <RepositoryOptionsSkeleton />
         ) : repositories.length > 0 ? (
-          <div className="repository-option-list">
+          <div
+            aria-busy={isLoadingRepositories || undefined}
+            className="repository-option-list loading-cascade"
+            data-loading={isLoadingRepositories ? "true" : undefined}
+          >
             {repositories.map((repository) => (
               <button
                 className="repository-option"
@@ -1452,23 +1609,162 @@ function RepositoryConnector({
   );
 }
 
+type CommunityFlowEditState = {
+  contextSummary: string;
+  notes: string;
+  status: "archived" | "draft" | "published";
+  summary: string;
+  tags: string;
+  title: string;
+  visibility: "private" | "public" | "unlisted";
+};
+
+function communityFlowEditState(flow: PublishedFlowDetailResponse): CommunityFlowEditState {
+  return {
+    contextSummary: flow.context_summary ?? "",
+    notes: flow.notes ?? "",
+    status:
+      flow.status === "archived" || flow.status === "draft"
+        ? flow.status
+        : "published",
+    summary: flow.summary ?? "",
+    tags: flow.tags.join(", "),
+    title: flow.title,
+    visibility:
+      flow.visibility === "private" || flow.visibility === "unlisted"
+        ? flow.visibility
+        : "public",
+  };
+}
+
+function nullableText(value: string) {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function splitTagsInput(value: string) {
+  return value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function CommunityPageSkeleton() {
+  return (
+    <section
+      aria-label="Loading community"
+      aria-live="polite"
+      className="community-layout"
+    >
+      <div className="community-flow-list">
+        <LoadingCascadeSurface
+          label="Loading community flows"
+          variant="community-list"
+        />
+      </div>
+      <aside className="community-flow-detail" aria-label="Loading prompt flow detail">
+        <LoadingCascadeSurface
+          label="Loading prompt flow detail"
+          variant="community-detail"
+        />
+      </aside>
+    </section>
+  );
+}
+
+function CommunityFlowDetailSkeleton() {
+  return (
+    <LoadingCascadeSurface
+      label="Loading prompt flow detail"
+      variant="community-detail"
+    />
+  );
+}
+
 function CommunityPage({
   errorMessage,
   flows,
   isDetailLoading,
   isLoading,
+  isSaving,
+  onArchiveFlow,
   onReload,
   onSelectFlow,
+  onUpdateFlow,
   selectedFlow,
 }: {
   errorMessage?: string | null;
   flows: PublishedFlowSummary[];
   isDetailLoading: boolean;
   isLoading: boolean;
+  isSaving: boolean;
+  onArchiveFlow: (flowKey: string) => Promise<PublishedFlowDetailResponse>;
   onReload: () => void;
   onSelectFlow: (flowKey: string) => void;
+  onUpdateFlow: (
+    flowKey: string,
+    payload: PublishedFlowUpdatePayload,
+  ) => Promise<PublishedFlowDetailResponse>;
   selectedFlow: PublishedFlowDetailResponse | null;
 }) {
+  const [editState, setEditState] = useState<CommunityFlowEditState | null>(
+    selectedFlow ? communityFlowEditState(selectedFlow) : null,
+  );
+  const [isEditing, setIsEditing] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setEditState(selectedFlow ? communityFlowEditState(selectedFlow) : null);
+    setIsEditing(false);
+    setSaveError(null);
+  }, [selectedFlow?.id]);
+
+  const submitEdit = async () => {
+    if (!selectedFlow || !editState) {
+      return;
+    }
+    const nextTitle = editState.title.trim();
+    if (!nextTitle) {
+      setSaveError("Title is required");
+      return;
+    }
+
+    setSaveError(null);
+    try {
+      const updatedFlow = await onUpdateFlow(selectedFlow.slug, {
+        context_summary: nullableText(editState.contextSummary),
+        notes: nullableText(editState.notes),
+        status: editState.status,
+        summary: nullableText(editState.summary),
+        tags: splitTagsInput(editState.tags),
+        title: nextTitle,
+        visibility: editState.visibility,
+      });
+      setEditState(communityFlowEditState(updatedFlow));
+      setIsEditing(false);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Flow update failed");
+    }
+  };
+
+  const archiveSelectedFlow = async () => {
+    if (!selectedFlow || !window.confirm("Archive this prompt flow?")) {
+      return;
+    }
+    setSaveError(null);
+    try {
+      const updatedFlow = await onArchiveFlow(selectedFlow.slug);
+      setEditState(communityFlowEditState(updatedFlow));
+      setIsEditing(false);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Flow archive failed");
+    }
+  };
+
+  if (isLoading && flows.length === 0) {
+    return <CommunityPageSkeleton />;
+  }
+
   if (errorMessage && flows.length === 0) {
     return (
       <EmptyState
@@ -1485,20 +1781,6 @@ function CommunityPage({
     );
   }
 
-  if (isLoading && flows.length === 0) {
-    return (
-      <div className="inline-loading-status">
-        <RefreshCw
-          aria-hidden="true"
-          className="loading-spinner"
-          size={16}
-          strokeWidth={1.5}
-        />
-        <span>Loading prompt flows</span>
-      </div>
-    );
-  }
-
   if (flows.length === 0) {
     return (
       <EmptyState
@@ -1511,7 +1793,12 @@ function CommunityPage({
   }
 
   return (
-    <section className="community-layout" aria-label="Prompt flow community">
+    <section
+      aria-busy={isLoading || undefined}
+      aria-label="Prompt flow community"
+      className="community-layout loading-cascade"
+      data-loading={isLoading ? "true" : undefined}
+    >
       <div className="community-flow-list" aria-label="Published prompt flows">
         {flows.map((flow) => (
           <button
@@ -1522,7 +1809,7 @@ function CommunityPage({
             type="button"
           >
             <span className="community-flow-card-kicker">
-              {flow.tool_name ?? "PromptHub"} · {flow.visibility}
+              {flow.tool_name ?? BRAND_NAME} · {flow.visibility}
             </span>
             <strong>{flow.title}</strong>
             {flow.summary ? <p>{flow.summary}</p> : null}
@@ -1542,21 +1829,51 @@ function CommunityPage({
         ))}
       </div>
 
-      <aside className="community-flow-detail" aria-label="Prompt flow detail">
-        {isDetailLoading ? (
-          <div className="inline-loading-status">
-            <RefreshCw
-              aria-hidden="true"
-              className="loading-spinner"
-              size={16}
-              strokeWidth={1.5}
-            />
-            <span>Loading flow</span>
-          </div>
+      <aside
+        aria-busy={isDetailLoading || undefined}
+        aria-label="Prompt flow detail"
+        className="community-flow-detail loading-cascade"
+        data-loading={isDetailLoading && selectedFlow ? "true" : undefined}
+      >
+        {isDetailLoading && !selectedFlow ? (
+          <CommunityFlowDetailSkeleton />
         ) : selectedFlow ? (
           <>
             <div className="community-flow-detail-header">
-              <span>{selectedFlow.tool_name ?? "Prompt flow"}</span>
+              <div className="community-flow-detail-titlebar">
+                <span>{selectedFlow.tool_name ?? "Prompt flow"}</span>
+                {selectedFlow.is_owner ? (
+                  <div className="community-flow-owner-actions">
+                    <button
+                      className="toolbar-button"
+                      disabled={isSaving}
+                      onClick={() => {
+                        setIsEditing((current) => !current);
+                        setSaveError(null);
+                      }}
+                      type="button"
+                    >
+                      {isEditing ? (
+                        <X aria-hidden="true" size={15} strokeWidth={1.5} />
+                      ) : (
+                        <Pencil aria-hidden="true" size={15} strokeWidth={1.5} />
+                      )}
+                      <span>{isEditing ? "Cancel" : "Edit"}</span>
+                    </button>
+                    <button
+                      className="toolbar-button"
+                      disabled={isSaving || selectedFlow.status === "archived"}
+                      onClick={() => {
+                        void archiveSelectedFlow();
+                      }}
+                      type="button"
+                    >
+                      <Archive aria-hidden="true" size={15} strokeWidth={1.5} />
+                      <span>Archive</span>
+                    </button>
+                  </div>
+                ) : null}
+              </div>
               <h2>{selectedFlow.title}</h2>
               {selectedFlow.summary ? <p>{selectedFlow.summary}</p> : null}
             </div>
@@ -1575,6 +1892,156 @@ function CommunityPage({
                 <dd>{selectedFlow.author.username}</dd>
               </div>
             </dl>
+
+            {isEditing && selectedFlow.is_owner && editState ? (
+              <section className="community-flow-editor">
+                <label>
+                  <span>Title</span>
+                  <input
+                    maxLength={255}
+                    onChange={(event) =>
+                      setEditState((current) =>
+                        current
+                          ? { ...current, title: event.target.value }
+                          : current,
+                      )
+                    }
+                    value={editState.title}
+                  />
+                </label>
+                <label>
+                  <span>Summary</span>
+                  <textarea
+                    maxLength={2000}
+                    onChange={(event) =>
+                      setEditState((current) =>
+                        current
+                          ? { ...current, summary: event.target.value }
+                          : current,
+                      )
+                    }
+                    rows={3}
+                    value={editState.summary}
+                  />
+                </label>
+                <label>
+                  <span>Context</span>
+                  <textarea
+                    maxLength={4000}
+                    onChange={(event) =>
+                      setEditState((current) =>
+                        current
+                          ? { ...current, contextSummary: event.target.value }
+                          : current,
+                      )
+                    }
+                    rows={3}
+                    value={editState.contextSummary}
+                  />
+                </label>
+                <label>
+                  <span>Content</span>
+                  <textarea
+                    maxLength={4000}
+                    onChange={(event) =>
+                      setEditState((current) =>
+                        current
+                          ? { ...current, notes: event.target.value }
+                          : current,
+                      )
+                    }
+                    rows={8}
+                    value={editState.notes}
+                  />
+                </label>
+                <div className="community-flow-editor-row">
+                  <label>
+                    <span>Tags</span>
+                    <input
+                      onChange={(event) =>
+                        setEditState((current) =>
+                          current
+                            ? { ...current, tags: event.target.value }
+                            : current,
+                        )
+                      }
+                      value={editState.tags}
+                    />
+                  </label>
+                  <label>
+                    <span>Visibility</span>
+                    <select
+                      onChange={(event) =>
+                        setEditState((current) =>
+                          current
+                            ? {
+                                ...current,
+                                visibility: event.target
+                                  .value as CommunityFlowEditState["visibility"],
+                              }
+                            : current,
+                        )
+                      }
+                      value={editState.visibility}
+                    >
+                      <option value="public">Public</option>
+                      <option value="unlisted">Unlisted</option>
+                      <option value="private">Private</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Status</span>
+                    <select
+                      onChange={(event) =>
+                        setEditState((current) =>
+                          current
+                            ? {
+                                ...current,
+                                status: event.target
+                                  .value as CommunityFlowEditState["status"],
+                              }
+                            : current,
+                        )
+                      }
+                      value={editState.status}
+                    >
+                      <option value="published">Published</option>
+                      <option value="draft">Draft</option>
+                      <option value="archived">Archived</option>
+                    </select>
+                  </label>
+                </div>
+                {saveError ? (
+                  <div className="community-flow-error">{saveError}</div>
+                ) : null}
+                <div className="community-flow-editor-actions">
+                  <button
+                    className="toolbar-button"
+                    disabled={isSaving}
+                    onClick={() => {
+                      setEditState(communityFlowEditState(selectedFlow));
+                      setIsEditing(false);
+                      setSaveError(null);
+                    }}
+                    type="button"
+                  >
+                    <X aria-hidden="true" size={15} strokeWidth={1.5} />
+                    <span>Cancel</span>
+                  </button>
+                  <button
+                    className="community-flow-save-button"
+                    disabled={isSaving}
+                    onClick={() => {
+                      void submitEdit();
+                    }}
+                    type="button"
+                  >
+                    <Check aria-hidden="true" size={15} strokeWidth={1.5} />
+                    <span>{isSaving ? "Saving" : "Save changes"}</span>
+                  </button>
+                </div>
+              </section>
+            ) : null}
 
             {selectedFlow.context_summary ? (
               <section className="community-flow-section">
@@ -1686,6 +2153,7 @@ function WorkspaceApp() {
     useState<string | null>(null);
   const [isPublishedFlowDetailLoading, setIsPublishedFlowDetailLoading] =
     useState(false);
+  const [isPublishedFlowSaving, setIsPublishedFlowSaving] = useState(false);
   const [repositoryFileContent, setRepositoryFileContent] =
     useState<RepositoryFileContent | null>(null);
   const [repositoryFileContentError, setRepositoryFileContentError] =
@@ -2072,6 +2540,17 @@ function WorkspaceApp() {
     }
   };
 
+  const applyPublishedFlowUpdate = (flow: PublishedFlowDetailResponse) => {
+    setPublishedFlows((current) => {
+      const next = current.map((item) => (item.id === flow.id ? flow : item));
+      return next.some((item) => item.id === flow.id) ? next : [flow, ...current];
+    });
+    setSelectedPublishedFlowKey(flow.slug);
+    setSelectedPublishedFlow(flow);
+    setPublishedFlowsError(null);
+    setPublishedFlowDetailError(null);
+  };
+
   const publishPromptFlow = async (
     payload: PromptFlowPublishPayload,
   ): Promise<PublishedFlowDetailResponse> => {
@@ -2097,14 +2576,7 @@ function WorkspaceApp() {
     }
 
     const flow = (await response.json()) as PublishedFlowDetailResponse;
-    setPublishedFlows((current) => [
-      flow,
-      ...current.filter((item) => item.id !== flow.id),
-    ]);
-    setSelectedPublishedFlowKey(flow.slug);
-    setSelectedPublishedFlow(flow);
-    setPublishedFlowsError(null);
-    setPublishedFlowDetailError(null);
+    applyPublishedFlowUpdate(flow);
     navigateWorkspace({
       activeItem: "community",
       repositoryFileContentPath: null,
@@ -2112,6 +2584,79 @@ function WorkspaceApp() {
       selectedProjectRouteKey: null,
     });
     return flow;
+  };
+
+  const updatePublishedFlow = async (
+    flowKey: string,
+    payload: PublishedFlowUpdatePayload,
+  ): Promise<PublishedFlowDetailResponse> => {
+    setIsPublishedFlowSaving(true);
+    try {
+      const response = await fetch(
+        `${API_URL}/api/published-flows/${encodeURIComponent(flowKey)}`,
+        {
+          body: JSON.stringify(payload),
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          method: "PATCH",
+        },
+      );
+      if (response.status === 401) {
+        setAuthStatus("unauthenticated");
+        setCurrentUser(null);
+        throw new Error("Sign in again before saving.");
+      }
+      if (!response.ok) {
+        const detail = await response
+          .json()
+          .then((errorPayload) =>
+            typeof errorPayload?.detail === "string" ? errorPayload.detail : null,
+          )
+          .catch(() => null);
+        throw new Error(detail ?? `Update request failed with HTTP ${response.status}`);
+      }
+
+      const flow = (await response.json()) as PublishedFlowDetailResponse;
+      applyPublishedFlowUpdate(flow);
+      return flow;
+    } finally {
+      setIsPublishedFlowSaving(false);
+    }
+  };
+
+  const archivePublishedFlow = async (
+    flowKey: string,
+  ): Promise<PublishedFlowDetailResponse> => {
+    setIsPublishedFlowSaving(true);
+    try {
+      const response = await fetch(
+        `${API_URL}/api/published-flows/${encodeURIComponent(flowKey)}/archive`,
+        {
+          credentials: "include",
+          method: "POST",
+        },
+      );
+      if (response.status === 401) {
+        setAuthStatus("unauthenticated");
+        setCurrentUser(null);
+        throw new Error("Sign in again before archiving.");
+      }
+      if (!response.ok) {
+        const detail = await response
+          .json()
+          .then((errorPayload) =>
+            typeof errorPayload?.detail === "string" ? errorPayload.detail : null,
+          )
+          .catch(() => null);
+        throw new Error(detail ?? `Archive request failed with HTTP ${response.status}`);
+      }
+
+      const flow = (await response.json()) as PublishedFlowDetailResponse;
+      applyPublishedFlowUpdate(flow);
+      return flow;
+    } finally {
+      setIsPublishedFlowSaving(false);
+    }
   };
 
   const openRepositoryConnector = (projectId: string | null = null) => {
@@ -2535,6 +3080,7 @@ function WorkspaceApp() {
           repositoryFileSelectedPath: repositoryFileContentPath,
           repositoryFiles: projectGithubFiles?.files ?? [],
           repositoryFilesConnectUrl: githubRepositoryConnectUrl(),
+          repositoryFilesLoading: isProjectGithubFilesLoading,
           repositoryFilesMessage: isProjectGithubFilesLoading
             ? "Loading GitHub repository files."
             : projectGithubFilesError ??
@@ -2575,7 +3121,7 @@ function WorkspaceApp() {
     <div className="app-shell">
       <aside className="sidebar" aria-label="Primary navigation">
         <div className="sidebar-header">
-          <strong>BuildHub</strong>
+          <BrandLockup />
         </div>
 
         <div className="sidebar-divider" />
@@ -2672,6 +3218,7 @@ function WorkspaceApp() {
               data={selectedProjectDetailData ?? emptyProjectDetailData(selectedProject)}
               errorMessage={projectDetailError}
               isLoading={isProjectDetailLoading && projectDetail === null}
+              isRefreshing={isProjectDetailLoading && projectDetail !== null}
               onActivityNavigationChange={selectActivityNavigation}
               onConnectRepository={() => openRepositoryConnector(selectedProject.id)}
               onPublishFlow={publishPromptFlow}
@@ -2763,7 +3310,7 @@ function WorkspaceApp() {
                 </EmptyState>
               ) : projects.length === 0 ? (
                 <EmptyState
-                  description="PromptHub is ready for the first collector upload from this workspace."
+                  description={`${BRAND_NAME} is ready for the first collector upload from this workspace.`}
                   eyebrow="Waiting for data"
                   icon={Terminal}
                   title="No events yet"
@@ -2785,7 +3332,11 @@ function WorkspaceApp() {
                   </div>
                 </EmptyState>
               ) : (
-                <div className="projects-grid">
+                <div
+                  aria-busy={isEventsLoading || undefined}
+                  className="projects-grid loading-cascade"
+                  data-loading={isEventsLoading ? "true" : undefined}
+                >
                   {projects.map((project) => (
                   <article
                     aria-label={`Open ${project.name} details`}
@@ -2928,10 +3479,13 @@ function WorkspaceApp() {
               flows={publishedFlows}
               isDetailLoading={isPublishedFlowDetailLoading}
               isLoading={isPublishedFlowsLoading}
+              isSaving={isPublishedFlowSaving}
+              onArchiveFlow={archivePublishedFlow}
               onReload={loadPublishedFlows}
               onSelectFlow={(flowKey) => {
                 void loadPublishedFlowDetail(flowKey);
               }}
+              onUpdateFlow={updatePublishedFlow}
               selectedFlow={selectedPublishedFlow}
             />
           </>

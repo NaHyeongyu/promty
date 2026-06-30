@@ -172,9 +172,6 @@ export function PromptActivityCard({
           {selectedShareLabel ? (
             <span className="bh-prompt-row-chip is-share">{selectedShareLabel}</span>
           ) : null}
-          {activity.response ? (
-            <span className="bh-prompt-row-chip is-response">Response</span>
-          ) : null}
           {truncatedLabel ? (
             <span className="bh-prompt-row-chip">{truncatedLabel}</span>
           ) : null}

@@ -16,7 +16,6 @@ import { CodeViewer } from "./CodeViewer";
 import { EmptyState } from "./EmptyState";
 import { FileTree } from "./FileTree";
 import { KnowledgeCard } from "./KnowledgeCard";
-import { OverviewCard } from "./OverviewCard";
 import { ProjectHeader } from "./ProjectHeader";
 import { ProjectTabs } from "./ProjectTabs";
 import type {
@@ -38,6 +37,7 @@ type ProjectDetailPageProps = {
   data: ProjectDetailData;
   errorMessage?: string | null;
   isLoading?: boolean;
+  isRefreshing?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onConnectRepository?: () => void;
   onRepositoryFileSelect?: (path: string) => void;
@@ -85,12 +85,11 @@ function shareSelectionTitle(
   return promptRangeLabel(prompts);
 }
 
-function compactLabel(value: string) {
-  return value
-    .split(/[-_\s]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+function overviewCompactNumber(value: number) {
+  return Intl.NumberFormat("en", {
+    maximumFractionDigits: 1,
+    notation: "compact",
+  }).format(value);
 }
 
 function tagsFromPrompts(prompts: PromptActivityItem[]) {
@@ -589,11 +588,6 @@ function PromptFlowShareDrawer({
                                 {selectedLabel}
                               </span>
                             ) : null}
-                            {prompt.response ? (
-                              <span className="bh-prompt-row-chip is-response">
-                                Response
-                              </span>
-                            ) : null}
                           </div>
                           <div className="bh-prompt-text">
                             <p>{prompt.prompt}</p>
@@ -788,11 +782,17 @@ function PromptFlowShareDrawer({
   );
 }
 
-function OverviewPanel({ data }: { data: ProjectDetailData }) {
+function OverviewPanel({
+  data,
+  onPublishLatestActivity,
+}: {
+  data: ProjectDetailData;
+  onPublishLatestActivity: () => void;
+}) {
   if (data.overview.length === 0) {
     return (
       <EmptyState
-        description="Project metadata will appear after BuildHub receives project activity."
+        description="Project metadata will appear after Promty receives project activity."
         icon={BookOpen}
         title="No overview data yet"
       />
@@ -800,104 +800,194 @@ function OverviewPanel({ data }: { data: ProjectDetailData }) {
   }
 
   const overviewItems = new Map(data.overview.map((item) => [item.title, item]));
-  const snapshotItems = [
-    overviewItems.get("Repository"),
-    overviewItems.get("AI Runtime"),
+  const repositoryUrlItem = overviewItems.get("Repository URL");
+  const projectUrlItem = overviewItems.get("Project URL");
+  const descriptionItem = overviewItems.get("Description");
+  const modelItem = overviewItems.get("AI Models");
+  const connectedModels =
+    modelItem?.value && modelItem.value !== "Not captured"
+      ? modelItem.value.split(",").map((model) => model.trim()).filter(Boolean)
+      : [];
+  const repositoryStatusLabel = data.project.repositoryUrl
+    ? "Repository Connected"
+    : "Repository Not Connected";
+  const filesChanged = data.activities.reduce(
+    (total, activity) => total + activity.filesChanged,
+    0,
+  );
+  const statisticItems = [
+    { label: "Activities", value: overviewItems.get("Activities")?.value ?? "0" },
+    { label: "Prompts", value: overviewItems.get("Prompts")?.value ?? "0" },
+    { label: "Files Changed", value: overviewCompactNumber(filesChanged) },
+    {
+      label: "Published Prompts",
+      value: overviewCompactNumber(data.community.publishedFlows),
+    },
+  ];
+  const projectItems = [
+    repositoryUrlItem,
+    projectUrlItem,
+    descriptionItem,
+    overviewItems.get("Default Branch"),
+    overviewItems.get("Visibility"),
+  ].filter((item): item is OverviewItem => Boolean(item));
+  const timelineItems = [
+    overviewItems.get("Created"),
     overviewItems.get("Last Activity"),
+    overviewItems.get("Last Published Prompt"),
+    overviewItems.get("Repository Connected"),
   ].filter((item): item is OverviewItem => Boolean(item));
-  const totalItems = [
-    overviewItems.get("Total AI Sessions"),
-    overviewItems.get("Total Prompts"),
-    overviewItems.get("Total Events"),
-    overviewItems.get("Last Modified"),
-  ].filter((item): item is OverviewItem => Boolean(item));
-  const community = data.community;
-  const recentFlows = community.recentFlows;
+  const communityMetrics = [
+    {
+      label: "Published Prompts",
+      value: overviewCompactNumber(data.community.publishedFlows),
+    },
+    { label: "Total Views", value: "0" },
+    { label: "Bookmarks", value: "0" },
+    { label: "Average Rating", value: "N/A" },
+  ];
+  const hasPublishedPrompts = data.community.publishedFlows > 0;
 
   return (
-    <div className="bh-overview-layout">
-      <section className="bh-overview-section" aria-labelledby="project-snapshot-title">
-        <div className="bh-overview-section-header">
-          <div>
-            <span>Overview</span>
-            <h2 id="project-snapshot-title">Project snapshot</h2>
+    <div className="bh-overview-dashboard">
+      <section className="bh-overview-hero" aria-labelledby="project-detail-title">
+        <div className="bh-overview-hero-main">
+          <h1 id="project-detail-title">{data.project.name}</h1>
+          <p>{descriptionItem?.value ?? data.project.description}</p>
+        </div>
+
+        <div className="bh-overview-hero-meta" aria-label="Project repository and models">
+          <span className="bh-overview-status-badge">{repositoryStatusLabel}</span>
+          <div className="bh-overview-model-badges" aria-label="Connected models">
+            {connectedModels.length > 0 ? (
+              connectedModels.map((model) => (
+                <span className="bh-overview-model-badge" key={model}>
+                  {model}
+                </span>
+              ))
+            ) : (
+              <span className="bh-overview-model-badge is-muted">No models captured</span>
+            )}
           </div>
-          <strong>{data.project.repositoryStatus}</strong>
         </div>
+      </section>
 
-        <div className="bh-overview-grid">
-          {snapshotItems.map((item) => (
-            <OverviewCard item={item} key={item.title} />
-          ))}
-        </div>
-
-        <dl className="bh-overview-totals" aria-label="Project activity totals">
-          {totalItems.map((item) => (
-            <div key={item.title}>
-              <dt>{item.title.replace("Total ", "")}</dt>
+      <section className="bh-overview-statistics" aria-label="Project statistics">
+        <dl>
+          {statisticItems.map((item) => (
+            <div key={item.label}>
               <dd>{item.value}</dd>
-              {item.description ? <span>{item.description}</span> : null}
+              <dt>{item.label}</dt>
             </div>
           ))}
         </dl>
       </section>
 
-      <section className="bh-overview-section" aria-labelledby="community-status-title">
-        <div className="bh-overview-section-header">
+      <div className="bh-overview-content-grid">
+        <section className="bh-overview-panel" aria-labelledby="project-identity-title">
+          <h2 id="project-identity-title">Project</h2>
+          <dl className="bh-overview-info-list">
+            {projectItems.map((item) => (
+              <div key={item.title}>
+                <dt>{item.title}</dt>
+                <dd>
+                  {item.href ? (
+                    <a href={item.href} rel="noreferrer" target="_blank">
+                      {item.value}
+                    </a>
+                  ) : (
+                    item.value
+                  )}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+
+        <section className="bh-overview-panel" aria-labelledby="project-timeline-title">
+          <h2 id="project-timeline-title">Timeline</h2>
+          <dl className="bh-overview-timeline">
+            {timelineItems.map((item) => (
+              <div key={item.title}>
+                <dt>{item.title}</dt>
+                <dd>{item.value}</dd>
+                {item.description ? <span>{item.description}</span> : null}
+              </div>
+            ))}
+          </dl>
+        </section>
+      </div>
+
+      <section className="bh-overview-community" aria-labelledby="project-community-title">
+        <div className="bh-overview-community-header">
           <div>
-            <span>Community</span>
-            <h2 id="community-status-title">Shared flows</h2>
+            <h2 id="project-community-title">Community</h2>
+            <p>Share useful AI workflows from this project with other builders.</p>
           </div>
-          <strong>{community.totalFlows} total</strong>
+          <button
+            className="bh-overview-primary-button"
+            onClick={onPublishLatestActivity}
+            type="button"
+          >
+            Publish Latest Activity
+          </button>
         </div>
 
-        <dl className="bh-overview-community-stats" aria-label="Community sharing status">
-          <div>
-            <dt>Published</dt>
-            <dd>{community.publishedFlows}</dd>
-          </div>
-          <div>
-            <dt>Drafts</dt>
-            <dd>{community.draftFlows}</dd>
-          </div>
-          <div>
-            <dt>Latest</dt>
-            <dd>{community.latestFlowAt ?? "No shares"}</dd>
-          </div>
+        <dl className="bh-overview-community-metrics">
+          {communityMetrics.map((item) => (
+            <div key={item.label}>
+              <dd>{item.value}</dd>
+              <dt>{item.label}</dt>
+            </div>
+          ))}
         </dl>
 
-        {recentFlows.length > 0 ? (
-          <div className="bh-overview-flow-list" aria-label="Recent shared flows">
-            {recentFlows.map((flow) => (
-              <article className="bh-overview-flow-row" key={flow.id}>
-                <div>
-                  <span>
-                    {compactLabel(flow.status)} · {compactLabel(flow.visibility)}
-                  </span>
-                  <strong>{flow.title}</strong>
-                  {flow.summary ? <p>{flow.summary}</p> : null}
-                </div>
-                <dl>
-                  <div>
-                    <dt>Prompts</dt>
-                    <dd>{flow.promptCount}</dd>
-                  </div>
-                  <div>
-                    <dt>Files</dt>
-                    <dd>{flow.fileCount}</dd>
-                  </div>
-                </dl>
+        {hasPublishedPrompts ? (
+          <div className="bh-overview-community-list">
+            {data.community.recentFlows.map((flow) => (
+              <article className="bh-overview-community-row" key={flow.id}>
+                <strong>{flow.title}</strong>
+                {flow.summary ? <p>{flow.summary}</p> : null}
+                <span>{flow.updatedAt ?? flow.publishedAt ?? "Unknown"}</span>
               </article>
             ))}
           </div>
         ) : (
           <div className="bh-overview-community-empty">
-            <strong>No shared flows yet</strong>
-            <span>Published prompt flows from this project will appear here.</span>
+            <strong>No published prompts yet.</strong>
+            <span>Share your best AI workflow with the community.</span>
           </div>
         )}
       </section>
     </div>
+  );
+}
+
+function ProjectDetailLoadingSkeleton({
+  activeTab,
+}: {
+  activeTab: ProjectDetailTabId;
+}) {
+  const loadingLabelByTab: Record<ProjectDetailTabId, string> = {
+    "ai-activity": "Loading AI activity",
+    files: "Loading repository files",
+    knowledge: "Loading knowledge",
+    overview: "Loading project overview",
+  };
+
+  const loadingLabel = loadingLabelByTab[activeTab];
+
+  return (
+    <section
+      aria-busy="true"
+      aria-label={loadingLabel}
+      aria-live="polite"
+      className={`bh-detail-loading-surface bh-detail-loading-surface-${activeTab} loading-cascade`}
+      data-loading="true"
+      role="status"
+    >
+      <span className="bh-loading-cascade-label">{loadingLabel}</span>
+    </section>
   );
 }
 
@@ -1526,7 +1616,7 @@ function FilesPanel({
       <section className="bh-files-section" aria-labelledby="tracked-files-title">
         <div className="bh-files-section-header">
           <h2 id="tracked-files-title">Tracked changes</h2>
-          <p>Files captured from BuildHub collector events.</p>
+          <p>Files captured from Promty collector events.</p>
         </div>
         {data.files.length > 0 ? (
           <FileTree label="Tracked project files" nodes={data.files} />
@@ -1548,7 +1638,20 @@ function FilesPanel({
               : "Repository tree from GitHub OAuth access."}
           </p>
         </div>
-        {data.repositoryFiles.length > 0 ? (
+        {data.repositoryFilesLoading && data.repositoryFiles.length === 0 ? (
+          <div
+            aria-busy="true"
+            aria-label="Loading GitHub repository files"
+            aria-live="polite"
+            className="bh-repository-browser-loading loading-cascade"
+            data-loading="true"
+            role="status"
+          >
+            <span className="bh-loading-cascade-label">
+              Loading GitHub repository files
+            </span>
+          </div>
+        ) : data.repositoryFiles.length > 0 ? (
           <div className="bh-repository-browser">
             <FileTree
               label="GitHub repository files"
@@ -1595,6 +1698,7 @@ function ProjectPanel({
   onPublishFlow,
   onRepositoryFileSelect,
   onRetry,
+  onTabChange,
 }: {
   activityNavigation?: ActivityNavigationState;
   activeTab: ProjectDetailTabId;
@@ -1605,7 +1709,12 @@ function ProjectPanel({
   onPublishFlow?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
   onRepositoryFileSelect?: (path: string) => void;
   onRetry?: () => void;
+  onTabChange: (tabId: ProjectDetailTabId) => void;
 }) {
+  if (isLoading) {
+    return <ProjectDetailLoadingSkeleton activeTab={activeTab} />;
+  }
+
   if (errorMessage) {
     return (
       <EmptyState
@@ -1622,18 +1731,13 @@ function ProjectPanel({
     );
   }
 
-  if (isLoading) {
+  if (activeTab === "overview") {
     return (
-      <EmptyState
-        description="Loading the latest project metadata, AI activity, knowledge, and tracked files."
-        icon={Activity}
-        title="Loading project detail"
+      <OverviewPanel
+        data={data}
+        onPublishLatestActivity={() => onTabChange("ai-activity")}
       />
     );
-  }
-
-  if (activeTab === "overview") {
-    return <OverviewPanel data={data} />;
   }
 
   if (activeTab === "ai-activity") {
@@ -1670,6 +1774,7 @@ export function ProjectDetailPage({
   data,
   errorMessage,
   isLoading,
+  isRefreshing,
   onActivityNavigationChange,
   onConnectRepository,
   onPublishFlow,
@@ -1677,15 +1782,19 @@ export function ProjectDetailPage({
   onRetry,
   onTabChange,
 }: ProjectDetailPageProps) {
+  const showProjectHeader = activeTab !== "overview";
+
   return (
     <section className="bh-project-detail" aria-labelledby="project-detail-title">
-      <ProjectHeader
-        description={data.project.description}
-        name={data.project.name}
-        onConnectRepository={data.project.repositoryUrl ? undefined : onConnectRepository}
-        repositoryStatus={data.project.repositoryStatus}
-        repositoryUrl={data.project.repositoryUrl}
-      />
+      {showProjectHeader ? (
+        <ProjectHeader
+          description={data.project.description}
+          name={data.project.name}
+          onConnectRepository={data.project.repositoryUrl ? undefined : onConnectRepository}
+          repositoryStatus={data.project.repositoryStatus}
+          repositoryUrl={data.project.repositoryUrl}
+        />
+      ) : null}
 
       <ProjectTabs
         activeTab={activeTab}
@@ -1696,7 +1805,9 @@ export function ProjectDetailPage({
 
       <div
         aria-labelledby={`project-tab-${activeTab}`}
-        className="bh-project-panel"
+        aria-busy={isRefreshing || undefined}
+        className="bh-project-panel loading-cascade"
+        data-loading={isRefreshing ? "true" : undefined}
         id={`project-panel-${activeTab}`}
         role="tabpanel"
       >
@@ -1710,6 +1821,7 @@ export function ProjectDetailPage({
           onPublishFlow={onPublishFlow}
           onRepositoryFileSelect={onRepositoryFileSelect}
           onRetry={onRetry}
+          onTabChange={onTabChange}
         />
       </div>
     </section>
