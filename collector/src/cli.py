@@ -153,7 +153,7 @@ def _has_project_context(payload: dict[str, Any]) -> bool:
 
 
 def _normalize_required_tool(args: argparse.Namespace) -> SupportedTool:
-    tool = args.source or args.tool
+    tool = args.tool or args.source
     if not tool:
         raise ValueError("Expected --tool")
     return normalize_tool(tool)
