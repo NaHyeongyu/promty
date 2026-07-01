@@ -6,6 +6,13 @@ import {
   type KeyboardEvent,
 } from "react";
 import { Activity, BookOpen, Check, Search, Share2, X } from "lucide-react";
+import {
+  siClaude,
+  siCursor,
+  siGooglegemini,
+  type SimpleIcon,
+} from "simple-icons";
+import { SiOpenai } from "react-icons/si";
 import { MarkdownContent } from "../MarkdownContent";
 import {
   ActivityCard,
@@ -26,6 +33,7 @@ import type {
   ProjectDetailData,
   ProjectDetailTab,
   ProjectDetailTabId,
+  ProjectHeaderProjectOption,
   PromptActivityItem,
   PromptFlowPublishPayload,
 } from "./types";
@@ -40,10 +48,13 @@ type ProjectDetailPageProps = {
   isRefreshing?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onConnectRepository?: () => void;
+  onOpenAllProjects?: () => void;
+  onProjectSelect?: (projectId: string) => void;
   onRepositoryFileSelect?: (path: string) => void;
   onPublishFlow?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
   onRetry?: () => void;
   onTabChange: (tabId: ProjectDetailTabId) => void;
+  projectOptions?: ProjectHeaderProjectOption[];
 };
 
 const defaultActivityNavigation: ActivityNavigationState = {
@@ -60,6 +71,13 @@ const projectTabs: ProjectDetailTab[] = [
   { id: "files", label: "Files" },
 ];
 
+type OverviewModelBadge = {
+  aiName: string;
+  brand: "claude" | "cursor" | "gemini" | "openai";
+  icon?: SimpleIcon;
+  modelName: string;
+};
+
 function promptTitle(prompt: string) {
   return prompt.split(/\r?\n/)[0]?.trim().replace(/\s+/g, " ") || "Prompt flow";
 }
@@ -73,6 +91,79 @@ function promptRangeLabel(prompts: PromptActivityItem[]) {
   return first.id === last.id
     ? `Prompt ${first.sequence}`
     : `Prompts ${first.sequence}-${last.sequence}`;
+}
+
+function modelSuffix(modelName: string, aiName: string) {
+  return modelName
+    .replace(new RegExp(`^${aiName}\\b`, "i"), "")
+    .replace(/^[-\s:/]+/, "")
+    .trim();
+}
+
+function overviewModelBadge(modelName: string): OverviewModelBadge {
+  const normalizedModelName = modelName.trim();
+  const modelKey = normalizedModelName.toLowerCase();
+
+  if (modelKey.includes("claude")) {
+    return {
+      aiName: "Claude",
+      brand: "claude",
+      icon: siClaude,
+      modelName: modelSuffix(normalizedModelName, "Claude") || "Code",
+    };
+  }
+
+  if (modelKey.includes("cursor")) {
+    return {
+      aiName: "Cursor",
+      brand: "cursor",
+      icon: siCursor,
+      modelName: modelSuffix(normalizedModelName, "Cursor") || "AI",
+    };
+  }
+
+  if (modelKey.includes("gemini")) {
+    return {
+      aiName: "Gemini",
+      brand: "gemini",
+      icon: siGooglegemini,
+      modelName: modelSuffix(normalizedModelName, "Gemini") || "CLI",
+    };
+  }
+
+  return {
+    aiName: "OpenAI",
+    brand: "openai",
+    modelName:
+      normalizedModelName.replace(/^openai[-\s:/]*/i, "").trim() ||
+      normalizedModelName ||
+      "Model",
+  };
+}
+
+function OverviewModelBadge({ model }: { model: string }) {
+  const badge = overviewModelBadge(model);
+
+  return (
+    <span className="bh-overview-model-badge" data-brand={badge.brand}>
+      {badge.icon ? (
+        <svg
+          aria-hidden="true"
+          className="bh-overview-model-icon"
+          role="img"
+          viewBox="0 0 24 24"
+        >
+          <path d={badge.icon.path} />
+        </svg>
+      ) : (
+        <SiOpenai aria-hidden="true" className="bh-overview-model-icon" />
+      )}
+      <span className="bh-overview-model-copy">
+        <strong>{badge.aiName}</strong>
+        <span>{badge.modelName}</span>
+      </span>
+    </span>
+  );
 }
 
 function shareSelectionTitle(
@@ -808,9 +899,6 @@ function OverviewPanel({
     modelItem?.value && modelItem.value !== "Not captured"
       ? modelItem.value.split(",").map((model) => model.trim()).filter(Boolean)
       : [];
-  const repositoryStatusLabel = data.project.repositoryUrl
-    ? "Repository Connected"
-    : "Repository Not Connected";
   const filesChanged = data.activities.reduce(
     (total, activity) => total + activity.filesChanged,
     0,
@@ -850,20 +938,12 @@ function OverviewPanel({
 
   return (
     <div className="bh-overview-dashboard">
-      <section className="bh-overview-hero" aria-labelledby="project-detail-title">
-        <div className="bh-overview-hero-main">
-          <h1 id="project-detail-title">{data.project.name}</h1>
-          <p>{descriptionItem?.value ?? data.project.description}</p>
-        </div>
-
-        <div className="bh-overview-hero-meta" aria-label="Project repository and models">
-          <span className="bh-overview-status-badge">{repositoryStatusLabel}</span>
+      <section className="bh-overview-meta-strip" aria-label="Project metadata">
+        <div className="bh-overview-hero-meta" aria-label="Connected models">
           <div className="bh-overview-model-badges" aria-label="Connected models">
             {connectedModels.length > 0 ? (
               connectedModels.map((model) => (
-                <span className="bh-overview-model-badge" key={model}>
-                  {model}
-                </span>
+                <OverviewModelBadge key={model} model={model} />
               ))
             ) : (
               <span className="bh-overview-model-badge is-muted">No models captured</span>
@@ -1102,11 +1182,7 @@ function ProjectDetailLoadingSkeleton({
       className="bh-detail-skeleton bh-detail-skeleton-overview"
       role="status"
     >
-      <div className="bh-detail-skeleton-hero">
-        <div>
-          <span className="skeleton-line skeleton-line-heading" />
-          <span className="skeleton-line skeleton-line-description" />
-        </div>
+      <div className="bh-overview-meta-strip bh-overview-meta-strip-skeleton">
         <div className="skeleton-badge-row">
           <span />
           <span />
@@ -1943,24 +2019,27 @@ export function ProjectDetailPage({
   isRefreshing,
   onActivityNavigationChange,
   onConnectRepository,
+  onOpenAllProjects,
   onPublishFlow,
+  onProjectSelect,
   onRepositoryFileSelect,
   onRetry,
   onTabChange,
+  projectOptions = [],
 }: ProjectDetailPageProps) {
-  const showProjectHeader = activeTab !== "overview";
-
   return (
     <section className="bh-project-detail" aria-labelledby="project-detail-title">
-      {showProjectHeader ? (
-        <ProjectHeader
-          description={data.project.description}
-          name={data.project.name}
-          onConnectRepository={data.project.repositoryUrl ? undefined : onConnectRepository}
-          repositoryStatus={data.project.repositoryStatus}
-          repositoryUrl={data.project.repositoryUrl}
-        />
-      ) : null}
+      <ProjectHeader
+        description={data.project.description}
+        name={data.project.name}
+        onConnectRepository={data.project.repositoryUrl ? undefined : onConnectRepository}
+        onOpenAllProjects={onOpenAllProjects}
+        onProjectSelect={onProjectSelect}
+        projectOptions={projectOptions}
+        repositoryStatus={data.project.repositoryStatus}
+        repositoryUrl={data.project.repositoryUrl}
+        selectedProjectId={data.project.id}
+      />
 
       <ProjectTabs
         activeTab={activeTab}

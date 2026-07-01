@@ -38,6 +38,7 @@ import {
   type PublishedFlowDetail,
   type ProjectDetailData,
   type ProjectDetailTabId,
+  type ProjectHeaderProjectOption,
   type PromptFlowPublishPayload,
   type RepositoryFileContent,
 } from "./components/project-detail";
@@ -2229,6 +2230,15 @@ function WorkspaceApp() {
     () => projectsFromEvents(events, projectSummaries),
     [events, projectSummaries],
   );
+  const projectHeaderOptions = useMemo<ProjectHeaderProjectOption[]>(
+    () =>
+      projects.map((project) => ({
+        id: project.id,
+        latestUpdatedAt: project.latestUpdatedAt,
+        name: project.name,
+      })),
+    [projects],
+  );
   const selectedProject =
     projects.find((project) => project.id === selectedProjectId) ?? null;
   const repositoryConnectorProject =
@@ -3047,6 +3057,26 @@ function WorkspaceApp() {
       selectedProjectId: projectId,
     });
   };
+  const switchProjectDetail = (projectId: string) => {
+    if (projectId === selectedProjectId) {
+      return;
+    }
+
+    closeRepositoryConnector();
+    setProjectDetail(null);
+    setProjectDetailError(null);
+    setProjectGithubFiles(null);
+    setProjectGithubFilesError(null);
+    setRepositoryFileContent(null);
+    setRepositoryFileContentError(null);
+    navigateWorkspace({
+      activeDetailTab,
+      activeItem: "projects",
+      activityNavigation: DEFAULT_URL_NAVIGATION_STATE.activityNavigation,
+      repositoryFileContentPath: null,
+      selectedProjectId: projectId,
+    });
+  };
   const closeProjectDetail = () => {
     closeRepositoryConnector();
     navigateWorkspace({
@@ -3265,9 +3295,12 @@ function WorkspaceApp() {
               isRefreshing={isProjectDetailLoading && projectDetail !== null}
               onActivityNavigationChange={selectActivityNavigation}
               onConnectRepository={() => openRepositoryConnector(selectedProject.id)}
+              onOpenAllProjects={closeProjectDetail}
               onPublishFlow={publishPromptFlow}
+              onProjectSelect={switchProjectDetail}
               onRepositoryFileSelect={selectRepositoryFile}
               onTabChange={selectProjectDetailTab}
+              projectOptions={projectHeaderOptions}
               onRetry={() => {
                 void loadProjectDetail(selectedProject.id, selectedProject);
                 void loadProjectGithubFiles(selectedProject.id);
