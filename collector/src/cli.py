@@ -60,6 +60,28 @@ CODEX_HOOKS: tuple[dict[str, Any], ...] = (
         "statusMessage": "Capturing PromptHub AI activity",
     },
 )
+CLAUDE_HOOKS: tuple[dict[str, Any], ...] = (
+    {
+        "event": "SessionStart",
+        "subcommand": "capture --event-type SessionStarted",
+        "timeout": 5,
+    },
+    {
+        "event": "UserPromptSubmit",
+        "subcommand": "capture",
+        "timeout": 5,
+    },
+    {
+        "event": "Stop",
+        "subcommand": "capture-changes",
+        "timeout": 10,
+    },
+    {
+        "event": "SessionEnd",
+        "subcommand": "capture --event-type SessionEnded",
+        "timeout": 5,
+    },
+)
 LOGIN_CALLBACK_HTML = """<!doctype html>
 <html lang="en">
   <head>
@@ -131,7 +153,7 @@ def _has_project_context(payload: dict[str, Any]) -> bool:
 
 
 def _normalize_required_tool(args: argparse.Namespace) -> SupportedTool:
-    tool = args.tool or args.source
+    tool = args.source or args.tool
     if not tool:
         raise ValueError("Expected --tool")
     return normalize_tool(tool)
@@ -501,12 +523,13 @@ def _default_hook_python_command() -> str:
     return "py -3" if os.name == "nt" else "python3"
 
 
-def _default_hook_command_prefix(repo_root: Path) -> str:
+def _default_hook_command_prefix(repo_root: Path, *, absolute: bool = False) -> str:
     cli_path = Path(__file__).resolve()
-    try:
-        cli_path = cli_path.relative_to(repo_root)
-    except ValueError:
-        cli_path = Path("collector/src/cli.py")
+    if not absolute:
+        try:
+            cli_path = cli_path.relative_to(repo_root)
+        except ValueError:
+            cli_path = Path("collector/src/cli.py")
     return f"{_default_hook_python_command()} {shlex.quote(cli_path.as_posix())}"
 
 
@@ -530,11 +553,15 @@ def _is_prompthub_hook(hook: dict[str, Any], subcommand: str) -> bool:
     return (
         hook.get("type") == "command"
         and subcommand in command
-        and ("prompthub" in command.lower() or "PromptHub" in status_message)
+        and (
+            "prompthub" in command.lower()
+            or "collector/src/cli.py" in command
+            or "PromptHub" in status_message
+        )
     )
 
 
-def _upsert_codex_hook(
+def _upsert_command_hook(
     config: dict[str, Any],
     *,
     event: str,
@@ -566,16 +593,21 @@ def _upsert_codex_hook(
     return "installed"
 
 
-def install_hooks(args: argparse.Namespace) -> int:
-    normalized_tool = _normalize_required_tool(args)
-    if normalized_tool != "codex-cli":
-        raise ValueError("install-hooks currently supports codex-cli")
+def _write_hooks_config(path: Path, config: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as file:
+        json.dump(config, file, ensure_ascii=False, indent=2, sort_keys=True)
+        file.write("\n")
 
-    repo_root = _git_root(args.repo_root)
+
+def _install_codex_hooks(
+    *,
+    command_prefix: str,
+    normalized_tool: SupportedTool,
+    repo_root: Path,
+) -> int:
     hooks_path = repo_root / ".codex" / "hooks.json"
-    hooks_path.parent.mkdir(parents=True, exist_ok=True)
     config = _read_hooks_config(hooks_path)
-    command_prefix = args.hook_command or _default_hook_command_prefix(repo_root)
     results: list[str] = []
 
     for spec in CODEX_HOOKS:
@@ -586,7 +618,7 @@ def install_hooks(args: argparse.Namespace) -> int:
             "timeout": spec["timeout"],
             "statusMessage": spec["statusMessage"],
         }
-        result = _upsert_codex_hook(
+        result = _upsert_command_hook(
             config,
             event=spec["event"],
             hook=hook,
@@ -594,15 +626,67 @@ def install_hooks(args: argparse.Namespace) -> int:
         )
         results.append(f"{spec['event']}: {result}")
 
-    with hooks_path.open("w", encoding="utf-8") as file:
-        json.dump(config, file, ensure_ascii=False, indent=2, sort_keys=True)
-        file.write("\n")
-
+    _write_hooks_config(hooks_path, config)
     print(f"Codex hooks ready: {hooks_path}")
     for result in results:
         print(f"- {result}")
     print("Open Codex /hooks and trust this repository's PromptHub hooks.")
     return 0
+
+
+def _install_claude_hooks(
+    *,
+    command_prefix: str,
+    normalized_tool: SupportedTool,
+    repo_root: Path,
+) -> int:
+    settings_path = repo_root / ".claude" / "settings.local.json"
+    config = _read_hooks_config(settings_path)
+    results: list[str] = []
+
+    for spec in CLAUDE_HOOKS:
+        command = f"{command_prefix} {spec['subcommand']} --tool {normalized_tool}"
+        hook = {
+            "type": "command",
+            "command": command,
+            "timeout": spec["timeout"],
+        }
+        result = _upsert_command_hook(
+            config,
+            event=spec["event"],
+            hook=hook,
+            subcommand=spec["subcommand"],
+        )
+        results.append(f"{spec['event']}: {result}")
+
+    _write_hooks_config(settings_path, config)
+    print(f"Claude hooks ready: {settings_path}")
+    for result in results:
+        print(f"- {result}")
+    print("Claude Code will run these PromptHub hooks from this repository.")
+    return 0
+
+
+def install_hooks(args: argparse.Namespace) -> int:
+    normalized_tool = _normalize_required_tool(args)
+    repo_root = _git_root(args.repo_root)
+    command_prefix = args.hook_command or _default_hook_command_prefix(
+        repo_root,
+        absolute=normalized_tool == "claude-code",
+    )
+    if normalized_tool == "codex-cli":
+        return _install_codex_hooks(
+            command_prefix=command_prefix,
+            normalized_tool=normalized_tool,
+            repo_root=repo_root,
+        )
+    if normalized_tool == "claude-code":
+        return _install_claude_hooks(
+            command_prefix=command_prefix,
+            normalized_tool=normalized_tool,
+            repo_root=repo_root,
+        )
+    raise ValueError("install-hooks currently supports codex-cli and claude-code")
 
 
 def _pid_is_running(pid: int) -> bool:
@@ -676,16 +760,26 @@ def _health_status(api_url: str, timeout: float) -> tuple[bool, str]:
 
 
 def _hook_status(repo_root: Path, tool: SupportedTool) -> tuple[bool, str]:
-    hooks_path = repo_root / ".codex" / "hooks.json"
+    if tool == "codex-cli":
+        hooks_path = repo_root / ".codex" / "hooks.json"
+        specs = CODEX_HOOKS
+        success = "installed; Codex trust must be confirmed in /hooks"
+    elif tool == "claude-code":
+        hooks_path = repo_root / ".claude" / "settings.local.json"
+        specs = CLAUDE_HOOKS
+        success = "installed in .claude/settings.local.json"
+    else:
+        return False, f"{tool} hooks are not supported"
+
     if not hooks_path.exists():
-        return False, "missing .codex/hooks.json"
+        return False, f"missing {hooks_path.relative_to(repo_root)}"
     try:
         config = _read_hooks_config(hooks_path)
     except Exception as exc:
         return False, str(exc)
 
     hooks_by_event = config.get("hooks", {})
-    for spec in CODEX_HOOKS:
+    for spec in specs:
         groups = hooks_by_event.get(spec["event"], [])
         found = False
         if isinstance(groups, list):
@@ -703,7 +797,7 @@ def _hook_status(repo_root: Path, tool: SupportedTool) -> tuple[bool, str]:
                     break
         if not found:
             return False, f"missing {spec['event']} {tool} hook"
-    return True, "installed; Codex trust must be confirmed in /hooks"
+    return True, success
 
 
 def _queue_status(queue_path: str | None) -> tuple[bool, str]:
@@ -721,10 +815,11 @@ def doctor(args: argparse.Namespace) -> int:
     token = resolve_token(args.token, args.config_path)
     config = read_config(args.config_path)
     repo_root = _git_root(args.repo_root)
+    normalized_tool = normalize_tool(args.tool)
     checks: list[tuple[str, bool, str]] = []
     checks.append(("config", bool(config), str(args.config_path or "~/.prompthub/config.json")))
     checks.append(("login", token is not None, "token saved" if token else "not logged in"))
-    checks.append(("hooks", *_hook_status(repo_root, "codex-cli")))
+    checks.append(("hooks", *_hook_status(repo_root, normalized_tool)))
     checks.append(("queue", *_queue_status(args.queue_path)))
     checks.append(("backend", *_health_status(api_url, args.timeout)))
     pid_path = Path(args.pid_path).expanduser() if args.pid_path else DEFAULT_UPLOADER_PID_PATH
@@ -772,7 +867,7 @@ def init(args: argparse.Namespace) -> int:
         login(login_args)
 
     install_args = argparse.Namespace(
-        tool="codex-cli",
+        tool=args.tool,
         source=None,
         repo_root=args.repo_root,
         hook_command=args.hook_command,
@@ -893,7 +988,7 @@ def build_parser() -> argparse.ArgumentParser:
     install_hooks_parser.add_argument("--repo-root")
     install_hooks_parser.add_argument(
         "--hook-command",
-        help="Command prefix that Codex should call before the hook subcommand.",
+        help="Command prefix that the AI tool should call before the hook subcommand.",
     )
     install_hooks_parser.set_defaults(func=install_hooks)
 
@@ -914,6 +1009,11 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument("--repo-root")
     doctor_parser.add_argument("--timeout", type=float, default=3)
     doctor_parser.add_argument("--token")
+    doctor_parser.add_argument(
+        "--tool",
+        choices=sorted(TOOL_ALIASES),
+        default="codex-cli",
+    )
     doctor_parser.set_defaults(func=doctor)
 
     init_parser = subparsers.add_parser("init")
@@ -930,6 +1030,11 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--skip-login", action="store_true")
     init_parser.add_argument("--skip-uploader", action="store_true")
     init_parser.add_argument("--token")
+    init_parser.add_argument(
+        "--tool",
+        choices=sorted(TOOL_ALIASES),
+        default="codex-cli",
+    )
     init_parser.add_argument("--username")
     init_parser.add_argument("--upload-interval", type=float, default=2)
     init_parser.set_defaults(func=init)

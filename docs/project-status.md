@@ -98,7 +98,7 @@ Validation status:
 
 ```text
 codex-cli   validated with the repo-local Codex hooks
-claude-code adapter exists, hook installation and real payload validation pending
+claude-code adapter and repo-local hook installer exist, real payload validation pending
 cursor      adapter exists, hook installation and real payload validation pending
 gemini-cli  adapter exists, hook installation and real payload validation pending
 ```
@@ -113,13 +113,17 @@ Implemented commands:
 python3 collector/src/cli.py init
 python3 collector/src/cli.py login
 python3 collector/src/cli.py install-hooks --tool codex-cli
+python3 collector/src/cli.py install-hooks --tool claude-code
 python3 collector/src/cli.py capture --tool codex-cli
+python3 collector/src/cli.py capture --tool claude-code
 python3 collector/src/cli.py capture-changes --tool codex-cli
+python3 collector/src/cli.py capture-changes --tool claude-code
 python3 collector/src/cli.py capture-raw --output docs/real-codex-payload.json
 python3 collector/src/cli.py upload --api-url http://127.0.0.1:8011
 python3 collector/src/cli.py upload --api-url http://127.0.0.1:8011 --watch --interval 2
 python3 collector/src/cli.py start-uploader
 python3 collector/src/cli.py doctor
+python3 collector/src/cli.py doctor --tool claude-code
 ```
 
 Collector responsibilities currently implemented:
@@ -138,7 +142,7 @@ ack uploaded events from the queue
 retry uploads in watch mode without blocking hooks
 open PromptHub login from the terminal
 store local API URL/token config at ~/.prompthub/config.json
-install or repair repo-local Codex hooks
+install or repair repo-local Codex and Claude Code hooks
 start the uploader as a background process
 diagnose login, hooks, queue, backend, and uploader status
 ```
