@@ -20,13 +20,23 @@ export type ActivityNavigationState = {
 export type ProjectHeaderProps = {
   name: string;
   description: string;
+  onOpenAllProjects?: () => void;
   onConnectRepository?: () => void;
+  onProjectSelect?: (projectId: string) => void;
+  projectOptions?: ProjectHeaderProjectOption[];
   repositoryStatus: string;
   repositoryUrl?: string;
+  selectedProjectId?: string;
 };
 
 export type ProjectDetailProject = ProjectHeaderProps & {
   id: string;
+};
+
+export type ProjectHeaderProjectOption = {
+  id: string;
+  latestUpdatedAt?: string;
+  name: string;
 };
 
 export type OverviewItem = {

@@ -89,7 +89,7 @@ Current validation status:
 
 ```text
 codex-cli   adapter + repo hook + real payload path validated
-claude-code adapter scaffolded, end-to-end hook validation pending
+claude-code adapter + repo hook installer implemented, real payload validation pending
 cursor      adapter scaffolded, end-to-end hook validation pending
 gemini-cli  adapter scaffolded, end-to-end hook validation pending
 ```
@@ -129,16 +129,34 @@ Capture code changes at the end of a Codex turn:
 python3 collector/src/cli.py capture-changes --tool codex-cli
 ```
 
+Capture code changes at the end of a Claude Code turn:
+
+```bash
+python3 collector/src/cli.py capture-changes --tool claude-code
+```
+
 Install or repair Codex hooks without logging in:
 
 ```bash
 python3 collector/src/cli.py install-hooks --tool codex-cli
 ```
 
+Install or repair Claude Code hooks without logging in:
+
+```bash
+python3 collector/src/cli.py install-hooks --tool claude-code
+```
+
 Run local diagnostics:
 
 ```bash
 python3 collector/src/cli.py doctor
+```
+
+Run Claude Code diagnostics:
+
+```bash
+python3 collector/src/cli.py doctor --tool claude-code
 ```
 
 Upload queued events:

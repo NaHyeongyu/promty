@@ -23,6 +23,7 @@ export type {
   ProjectDetailProject,
   ProjectDetailTab,
   ProjectDetailTabId,
+  ProjectHeaderProjectOption,
   ProjectHeaderProps,
   RepositoryFileContent,
 } from "./types";

@@ -24,7 +24,7 @@
 .cli-login-kicker {
   display: inline-flex;
   align-items: center;
-  gap: var(--bh-space-2);
+  gap: var(--bh-space-1);
   width: fit-content;
   min-height: 28px;
   border: 1px solid var(--bh-color-border);
@@ -384,7 +384,7 @@
 .sidebar-header {
   display: flex;
   align-items: center;
-  gap: var(--bh-space-2);
+  gap: var(--bh-space-1);
   min-height: 64px;
   padding: 0 var(--bh-space-4);
 }

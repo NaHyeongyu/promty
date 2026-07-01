@@ -18,6 +18,7 @@ RESPONSE_KEYS = (
     "response",
     "assistant_response",
     "assistant_message",
+    "last_assistant_message",
     "answer",
     "completion",
     "output",

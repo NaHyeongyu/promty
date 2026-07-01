@@ -32,6 +32,9 @@ from payloads import (
 from response_capture import response_payload_fields
 
 EXTERNAL_EVENT_ALIASES: dict[str, EventType] = {
+    "SessionStart": "SessionStarted",
+    "SessionEnd": "SessionEnded",
+    "Stop": "ResponseReceived",
     "UserPromptSubmit": "PromptSubmitted",
     "user_prompt_submit": "PromptSubmitted",
     "prompt_sent": "PromptSubmitted",

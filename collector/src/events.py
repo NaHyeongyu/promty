@@ -32,6 +32,9 @@ SUPPORTED_EVENT_TYPES: tuple[EventType, ...] = (
     "SessionEnded",
 )
 EVENT_TYPE_ALIASES: dict[str, EventType] = {
+    "SessionStart": "SessionStarted",
+    "SessionEnd": "SessionEnded",
+    "Stop": "ResponseReceived",
     "SESSION_STARTED": "SessionStarted",
     "PROMPT_SENT": "PromptSubmitted",
     "PROMPT_RESPONSE": "ResponseReceived",
