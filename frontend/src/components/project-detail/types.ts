@@ -172,6 +172,28 @@ export type PromptFlowPublishPayload = {
   visibility: "private" | "public" | "unlisted";
 };
 
+export type PromptFlowUpdatePayload = {
+  context_summary?: string | null;
+  notes?: string | null;
+  status?: "archived" | "draft" | "published";
+  summary?: string | null;
+  tags?: string[];
+  title?: string;
+  visibility?: "private" | "public" | "unlisted";
+};
+
+export type PublishedFlowAsset = {
+  alt_text?: string | null;
+  byte_size: number;
+  content_type: string;
+  created_at: string | null;
+  file_name: string;
+  id: string;
+  markdown: string;
+  sha256: string;
+  url: string;
+};
+
 export type PublishedFlowDetail = {
   id: string;
   slug: string;
@@ -181,4 +203,5 @@ export type PublishedFlowDetail = {
   status: string;
   prompt_count: number;
   file_count: number;
+  assets?: PublishedFlowAsset[];
 };

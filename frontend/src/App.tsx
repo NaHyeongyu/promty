@@ -1,4 +1,11 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  type ChangeEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Archive,
   ArrowRight,
@@ -8,6 +15,7 @@ import {
   ExternalLink,
   Folder,
   GitBranch,
+  ImagePlus,
   Link,
   LogOut,
   Pencil,
@@ -22,24 +30,23 @@ import {
   X,
 } from "lucide-react";
 import {
-  siClaudecode,
-  siCursor,
   siGithub,
-  siGooglegemini,
   type SimpleIcon,
 } from "simple-icons";
-import { SiOpenai } from "react-icons/si";
 import { MarkdownContent } from "./components/MarkdownContent";
 import {
+  AiModelBadge,
   ProjectDetailPage,
   type ActivityNavigationState,
   type ActivityViewId,
   type FileTreeNode,
+  type PublishedFlowAsset,
   type PublishedFlowDetail,
   type ProjectDetailData,
   type ProjectDetailTabId,
   type ProjectHeaderProjectOption,
   type PromptFlowPublishPayload,
+  type PromptFlowUpdatePayload,
   type RepositoryFileContent,
 } from "./components/project-detail";
 import "./App.css";
@@ -221,6 +228,7 @@ type PublishedFlowSummary = PublishedFlowDetail & {
 };
 
 type PublishedFlowDetailResponse = PublishedFlowSummary & {
+  assets: PublishedFlowAsset[];
   context_summary: string | null;
   end_sequence: number | null;
   files: Array<{
@@ -254,16 +262,6 @@ type PublishedFlowDetailResponse = PublishedFlowSummary & {
   source_session_id: string | null;
   source_start_event_id: string | null;
   start_sequence: number | null;
-};
-
-type PublishedFlowUpdatePayload = {
-  context_summary?: string | null;
-  notes?: string | null;
-  status?: "archived" | "draft" | "published";
-  summary?: string | null;
-  tags?: string[];
-  title?: string;
-  visibility?: "private" | "public" | "unlisted";
 };
 
 type GithubRepositoryOption = {
@@ -1324,30 +1322,6 @@ function LoadingScreen() {
   );
 }
 
-function ModelIcon({ model }: { model: string }) {
-  const modelKey = model.toLowerCase();
-
-  if (modelKey.includes("claude")) {
-    return <SimpleBrandIcon icon={siClaudecode} name="claude-code" />;
-  }
-
-  if (modelKey.includes("cursor")) {
-    return <SimpleBrandIcon icon={siCursor} name="cursor" />;
-  }
-
-  if (modelKey.includes("gemini")) {
-    return <SimpleBrandIcon icon={siGooglegemini} name="gemini" />;
-  }
-
-  return (
-    <SiOpenai
-      aria-hidden="true"
-      className="brand-icon"
-      data-brand="codex"
-    />
-  );
-}
-
 function EmptyState({
   children,
   description,
@@ -1722,6 +1696,7 @@ function CommunityPage({
   onReload,
   onSelectFlow,
   onUpdateFlow,
+  onUploadAsset,
   selectedFlow,
 }: {
   errorMessage?: string | null;
@@ -1734,21 +1709,86 @@ function CommunityPage({
   onSelectFlow: (flowKey: string) => void;
   onUpdateFlow: (
     flowKey: string,
-    payload: PublishedFlowUpdatePayload,
+    payload: PromptFlowUpdatePayload,
   ) => Promise<PublishedFlowDetailResponse>;
+  onUploadAsset?: (
+    flowKey: string,
+    file: File,
+    altText?: string,
+  ) => Promise<PublishedFlowAsset>;
   selectedFlow: PublishedFlowDetailResponse | null;
 }) {
+  const editAssetInputRef = useRef<HTMLInputElement | null>(null);
+  const editNotesRef = useRef<HTMLTextAreaElement | null>(null);
   const [editState, setEditState] = useState<CommunityFlowEditState | null>(
     selectedFlow ? communityFlowEditState(selectedFlow) : null,
   );
   const [isEditing, setIsEditing] = useState(false);
+  const [isEditAssetUploading, setIsEditAssetUploading] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     setEditState(selectedFlow ? communityFlowEditState(selectedFlow) : null);
     setIsEditing(false);
+    setIsEditAssetUploading(false);
     setSaveError(null);
   }, [selectedFlow?.id]);
+
+  const insertMarkdownIntoEditNotes = (markdown: string) => {
+    setEditState((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const textarea = editNotesRef.current;
+      const selectionStart = textarea?.selectionStart ?? current.notes.length;
+      const selectionEnd = textarea?.selectionEnd ?? current.notes.length;
+      const beforeSelection = current.notes.slice(0, selectionStart);
+      const afterSelection = current.notes.slice(selectionEnd);
+      const needsLeadingBreak =
+        beforeSelection.length > 0 && !beforeSelection.endsWith("\n\n");
+      const needsTrailingBreak =
+        afterSelection.length > 0 && !afterSelection.startsWith("\n\n");
+      const textToInsert = `${needsLeadingBreak ? "\n\n" : ""}${markdown}${
+        needsTrailingBreak ? "\n\n" : ""
+      }`;
+      const nextNotes = `${beforeSelection}${textToInsert}${afterSelection}`;
+      const nextCursorPosition = selectionStart + textToInsert.length;
+
+      window.requestAnimationFrame(() => {
+        editNotesRef.current?.focus();
+        editNotesRef.current?.setSelectionRange(
+          nextCursorPosition,
+          nextCursorPosition,
+        );
+      });
+
+      return { ...current, notes: nextNotes };
+    });
+  };
+
+  const handleEditAssetInputChange = async (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0] ?? null;
+    input.value = "";
+    if (!file || !selectedFlow || !onUploadAsset) {
+      return;
+    }
+
+    setSaveError(null);
+    setIsEditAssetUploading(true);
+    try {
+      const altText = file.name.replace(/\.[^.]+$/, "").trim() || file.name;
+      const asset = await onUploadAsset(selectedFlow.slug, file, altText);
+      insertMarkdownIntoEditNotes(asset.markdown);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Image upload failed");
+    } finally {
+      setIsEditAssetUploading(false);
+    }
+  };
 
   const submitEdit = async () => {
     if (!selectedFlow || !editState) {
@@ -1839,8 +1879,12 @@ function CommunityPage({
             onClick={() => onSelectFlow(flow.slug)}
             type="button"
           >
-            <span className="community-flow-card-kicker">
-              {flow.tool_name ?? BRAND_NAME} · {flow.visibility}
+            <span className="community-flow-card-kicker" aria-label="Flow AI and visibility">
+              <AiModelBadge
+                className="is-compact"
+                model={flow.model_name ?? flow.tool_name ?? "AI"}
+              />
+              <span className="community-flow-visibility">{flow.visibility}</span>
             </span>
             <strong>{flow.title}</strong>
             {flow.summary ? <p>{flow.summary}</p> : null}
@@ -1872,7 +1916,10 @@ function CommunityPage({
           <>
             <div className="community-flow-detail-header">
               <div className="community-flow-detail-titlebar">
-                <span>{selectedFlow.tool_name ?? "Prompt flow"}</span>
+                <AiModelBadge
+                  className="is-compact"
+                  model={selectedFlow.model_name ?? selectedFlow.tool_name ?? "AI"}
+                />
                 {selectedFlow.is_owner ? (
                   <div className="community-flow-owner-actions">
                     <button
@@ -1970,10 +2017,41 @@ function CommunityPage({
                     value={editState.contextSummary}
                   />
                 </label>
-                <label>
-                  <span>Content</span>
+                <div className="community-flow-editor-field">
+                  <div className="community-flow-editor-field-header">
+                    <span>Content</span>
+                    {onUploadAsset ? (
+                      <>
+                        <input
+                          accept="image/gif,image/jpeg,image/png,image/webp"
+                          className="bh-visually-hidden"
+                          onChange={(event) => {
+                            void handleEditAssetInputChange(event);
+                          }}
+                          ref={editAssetInputRef}
+                          type="file"
+                        />
+                        <button
+                          className="toolbar-button"
+                          disabled={
+                            isSaving ||
+                            isEditAssetUploading ||
+                            selectedFlow.status === "archived"
+                          }
+                          onClick={() => editAssetInputRef.current?.click()}
+                          type="button"
+                        >
+                          <ImagePlus aria-hidden="true" size={15} strokeWidth={1.5} />
+                          <span>
+                            {isEditAssetUploading ? "Uploading" : "Image"}
+                          </span>
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
                   <textarea
-                    maxLength={4000}
+                    ref={editNotesRef}
+                    maxLength={20000}
                     onChange={(event) =>
                       setEditState((current) =>
                         current
@@ -1984,7 +2062,7 @@ function CommunityPage({
                     rows={8}
                     value={editState.notes}
                   />
-                </label>
+                </div>
                 <div className="community-flow-editor-row">
                   <label>
                     <span>Tags</span>
@@ -2098,6 +2176,10 @@ function CommunityPage({
                   <article className="community-flow-item" key={item.id}>
                     <div className="community-flow-item-header">
                       <span>Prompt {item.sequence}</span>
+                      <AiModelBadge
+                        className="is-compact"
+                        model={item.model_name ?? item.tool_name ?? "AI"}
+                      />
                       <strong>{item.files_changed} files</strong>
                     </div>
                     <p>{item.prompt_text}</p>
@@ -2626,9 +2708,43 @@ function WorkspaceApp() {
     return flow;
   };
 
+  const savePromptFlowDraft = async (
+    payload: PromptFlowPublishPayload,
+  ): Promise<PublishedFlowDetailResponse> => {
+    setIsPublishedFlowSaving(true);
+    try {
+      const response = await fetch(`${API_URL}/api/published-flows`, {
+        body: JSON.stringify({ ...payload, status: "draft" }),
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      if (response.status === 401) {
+        setAuthStatus("unauthenticated");
+        setCurrentUser(null);
+        throw new Error("Sign in again before saving.");
+      }
+      if (!response.ok) {
+        const detail = await response
+          .json()
+          .then((errorPayload) =>
+            typeof errorPayload?.detail === "string" ? errorPayload.detail : null,
+          )
+          .catch(() => null);
+        throw new Error(detail ?? `Draft request failed with HTTP ${response.status}`);
+      }
+
+      const flow = (await response.json()) as PublishedFlowDetailResponse;
+      applyPublishedFlowUpdate(flow);
+      return flow;
+    } finally {
+      setIsPublishedFlowSaving(false);
+    }
+  };
+
   const updatePublishedFlow = async (
     flowKey: string,
-    payload: PublishedFlowUpdatePayload,
+    payload: PromptFlowUpdatePayload,
   ): Promise<PublishedFlowDetailResponse> => {
     setIsPublishedFlowSaving(true);
     try {
@@ -2662,6 +2778,43 @@ function WorkspaceApp() {
     } finally {
       setIsPublishedFlowSaving(false);
     }
+  };
+
+  const uploadPublishedFlowAsset = async (
+    flowKey: string,
+    file: File,
+    altText?: string,
+  ): Promise<PublishedFlowAsset> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (altText?.trim()) {
+      formData.append("alt_text", altText.trim());
+    }
+
+    const response = await fetch(
+      `${API_URL}/api/published-flows/${encodeURIComponent(flowKey)}/assets`,
+      {
+        body: formData,
+        credentials: "include",
+        method: "POST",
+      },
+    );
+    if (response.status === 401) {
+      setAuthStatus("unauthenticated");
+      setCurrentUser(null);
+      throw new Error("Sign in again before uploading images.");
+    }
+    if (!response.ok) {
+      const detail = await response
+        .json()
+        .then((errorPayload) =>
+          typeof errorPayload?.detail === "string" ? errorPayload.detail : null,
+        )
+        .catch(() => null);
+      throw new Error(detail ?? `Image upload failed with HTTP ${response.status}`);
+    }
+
+    return (await response.json()) as PublishedFlowAsset;
   };
 
   const archivePublishedFlow = async (
@@ -3285,7 +3438,10 @@ function WorkspaceApp() {
               onPublishFlow={publishPromptFlow}
               onProjectSelect={switchProjectDetail}
               onRepositoryFileSelect={selectRepositoryFile}
+              onSaveFlowDraft={savePromptFlowDraft}
               onTabChange={selectProjectDetailTab}
+              onUpdateFlow={updatePublishedFlow}
+              onUploadFlowAsset={uploadPublishedFlowAsset}
               projectOptions={projectHeaderOptions}
               onRetry={() => {
                 void loadProjectDetail(selectedProject.id, selectedProject);
@@ -3487,12 +3643,9 @@ function WorkspaceApp() {
                       </span>
                       <div className="model-list">
                         {project.models.length > 0 ? project.models.map((model) => (
-                          <span className="model-badge" key={model}>
-                            <ModelIcon model={model} />
-                            {model}
-                          </span>
+                          <AiModelBadge className="is-compact" key={model} model={model} />
                         )) : (
-                          <span className="model-badge" data-muted="true">
+                          <span className="ai-model-badge is-compact is-muted">
                             Model unknown
                           </span>
                         )}
@@ -3549,6 +3702,7 @@ function WorkspaceApp() {
                 void loadPublishedFlowDetail(flowKey);
               }}
               onUpdateFlow={updatePublishedFlow}
+              onUploadAsset={uploadPublishedFlowAsset}
               selectedFlow={selectedPublishedFlow}
             />
           </>

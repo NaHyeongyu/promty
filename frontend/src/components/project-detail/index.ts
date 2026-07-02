@@ -1,4 +1,5 @@
 export { ActivityCard, PromptActivityCard } from "./ActivityCard";
+export { AiModelBadge } from "./AiModelBadge";
 export { CodeViewer } from "./CodeViewer";
 export { EmptyState } from "./EmptyState";
 export { FileTree } from "./FileTree";
@@ -12,9 +13,11 @@ export type {
   ActivityViewId,
   FileTreeNode,
   OverviewItem,
+  PublishedFlowAsset,
   PublishedFlowDetail,
   PromptActivityItem,
   PromptFlowPublishPayload,
+  PromptFlowUpdatePayload,
   ProjectCommunityFlow,
   ProjectCommunityStatus,
   ProjectDetailData,

@@ -92,6 +92,12 @@ class PublishedFlow(Base):
         cascade="all, delete-orphan",
         order_by="PublishedFlowFile.file_path",
     )
+    assets = relationship(
+        "PublishedFlowAsset",
+        back_populates="published_flow",
+        cascade="all, delete-orphan",
+        order_by="PublishedFlowAsset.created_at",
+    )
     comments = relationship(
         "PublishedFlowComment",
         back_populates="published_flow",
@@ -170,6 +176,35 @@ class PublishedFlowFile(Base):
 
     published_flow = relationship("PublishedFlow", back_populates="files")
     source_event = relationship("Event")
+
+
+class PublishedFlowAsset(Base):
+    __tablename__ = "published_flow_assets"
+    __table_args__ = (
+        CheckConstraint("byte_size > 0", name="ck_published_flow_assets_byte_size"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    published_flow_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("published_flows.id", ondelete="CASCADE"),
+        index=True,
+    )
+    author_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        index=True,
+    )
+    file_name: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(64))
+    byte_size: Mapped[int] = mapped_column(Integer)
+    storage_key: Mapped[str] = mapped_column(String(1024), unique=True)
+    sha256: Mapped[str] = mapped_column(String(64))
+    alt_text: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    published_flow = relationship("PublishedFlow", back_populates="assets")
+    author = relationship("User")
 
 
 class PublishedFlowComment(Base):

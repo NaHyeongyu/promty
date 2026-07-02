@@ -9,6 +9,7 @@ from app.models.project_files import ProjectFile
 from app.models.projects import Project
 from app.models.published_flows import (
     PublishedFlow,
+    PublishedFlowAsset,
     PublishedFlowComment,
     PublishedFlowFile,
     PublishedFlowItem,
@@ -28,6 +29,7 @@ __all__ = [
     "Project",
     "ProjectFile",
     "PublishedFlow",
+    "PublishedFlowAsset",
     "PublishedFlowComment",
     "PublishedFlowFile",
     "PublishedFlowItem",

@@ -344,6 +344,19 @@ Rules:
 
 Use surface depth instead of elevation.
 
+### AI And Model Badges
+
+AI provider/model badges must use the shared `AiModelBadge` component and its `ai-model-badge` styles. Do not create page-specific AI badges for Overview, AI Activity, Community, or project cards.
+
+Use AI/model badges for:
+
+- Connected model lists
+- Prompt row metadata
+- Session or flow metadata
+- Published community flow cards and detail headers
+
+Keep adjacent state such as visibility, prompt count, and file count as separate compact chips. Do not merge non-AI state into the AI badge.
+
 ### Tables
 
 Tables are first-class components.

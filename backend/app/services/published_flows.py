@@ -1,20 +1,28 @@
 from __future__ import annotations
 
+import hashlib
+from pathlib import Path
 import re
 from datetime import datetime, timezone
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
 from sqlalchemy import desc, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.config import settings
 from app.core.encryption import maybe_decrypt_app_text_from_string
 from app.models.code_change_patches import CodeChangePatch
 from app.models.events import Event
 from app.models.projects import Project
-from app.models.published_flows import PublishedFlow, PublishedFlowFile, PublishedFlowItem
+from app.models.published_flows import (
+    PublishedFlow,
+    PublishedFlowAsset,
+    PublishedFlowFile,
+    PublishedFlowItem,
+)
 from app.models.sessions import Session as PromptSession
 from app.models.users import User
 from app.services.event_payload_security import (
@@ -28,6 +36,12 @@ MAX_TITLE_LENGTH = 255
 VALID_FLOW_STATUSES = {"archived", "draft", "published"}
 VALID_CREATE_FLOW_STATUSES = {"draft", "published"}
 VALID_FLOW_VISIBILITIES = {"private", "public", "unlisted"}
+ASSET_CONTENT_TYPES = {
+    "image/gif": ".gif",
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+}
 
 SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
@@ -131,6 +145,48 @@ def _normalize_tags(tags: list[str]) -> list[str]:
         if len(normalized) >= MAX_TAGS:
             break
     return normalized
+
+
+def _asset_root() -> Path:
+    return Path(settings.published_flow_asset_root).expanduser().resolve()
+
+
+def _asset_path(storage_key: str) -> Path:
+    root = _asset_root()
+    path = (root / storage_key).resolve()
+    if root != path and root not in path.parents:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Published flow asset path is invalid",
+        )
+    return path
+
+
+def _sniff_image_content_type(content: bytes) -> str | None:
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if content.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if content.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if len(content) >= 12 and content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def _safe_file_name(value: str | None, content_type: str) -> str:
+    fallback = f"image{ASSET_CONTENT_TYPES[content_type]}"
+    if not value:
+        return fallback
+    name = Path(value).name.strip().replace("\x00", "")
+    if not name or name in {".", ".."}:
+        return fallback
+    return name[:255]
+
+
+def _markdown_alt_text(value: str | None, fallback: str) -> str:
+    raw = (value or fallback).strip() or "Image"
+    return raw.replace("\n", " ").replace("\r", " ").replace("[", "(").replace("]", ")")[:255]
 
 
 def _slugify(value: str) -> str:
@@ -749,6 +805,149 @@ def archive_published_flow(
     return get_published_flow(db, flow_key=str(flow.id), current_user=current_user)
 
 
+def serialize_flow_asset(flow: PublishedFlow, asset: PublishedFlowAsset) -> dict[str, Any]:
+    url = (
+        f"{settings.api_public_url.rstrip('/')}"
+        f"/api/published-flows/{flow.slug}/assets/{asset.id}"
+    )
+    alt_text = _markdown_alt_text(asset.alt_text, asset.file_name)
+    return {
+        "alt_text": asset.alt_text,
+        "byte_size": asset.byte_size,
+        "content_type": asset.content_type,
+        "created_at": _iso(asset.created_at),
+        "file_name": asset.file_name,
+        "id": str(asset.id),
+        "markdown": f"![{alt_text}]({url})",
+        "sha256": asset.sha256,
+        "url": url,
+    }
+
+
+def create_published_flow_asset(
+    db: Session,
+    *,
+    alt_text: str | None,
+    content: bytes,
+    content_type: str | None,
+    current_user: User,
+    file_name: str | None,
+    flow_key: str,
+) -> dict[str, Any]:
+    flow = _flow_for_owner(db, current_user=current_user, flow_key=flow_key)
+    if flow.status == "archived":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Archived prompt flows cannot accept new assets",
+        )
+
+    max_bytes = max(settings.published_flow_asset_max_bytes, 1)
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Image file is empty",
+        )
+    if len(content) > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Image file must be {max_bytes} bytes or smaller",
+        )
+
+    detected_content_type = _sniff_image_content_type(content)
+    if detected_content_type is None:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Only PNG, JPEG, WEBP, and GIF images are supported",
+        )
+    declared_content_type = (content_type or "").split(";", 1)[0].strip().lower()
+    if declared_content_type and declared_content_type not in {
+        "application/octet-stream",
+        detected_content_type,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Image content type does not match the uploaded file",
+        )
+
+    asset_id = uuid4()
+    extension = ASSET_CONTENT_TYPES[detected_content_type]
+    storage_key = f"{flow.id}/{asset_id}{extension}"
+    path = _asset_path(storage_key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+
+    cleaned_alt_text = _optional_redacted_text(alt_text) if alt_text else None
+    asset = PublishedFlowAsset(
+        alt_text=cleaned_alt_text[:255] if cleaned_alt_text else None,
+        author_id=current_user.id,
+        byte_size=len(content),
+        content_type=detected_content_type,
+        file_name=_safe_file_name(file_name, detected_content_type),
+        id=asset_id,
+        published_flow_id=flow.id,
+        sha256=hashlib.sha256(content).hexdigest(),
+        storage_key=storage_key,
+    )
+    db.add(asset)
+    flow.updated_at = utc_now()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Image asset could not be saved because it conflicts with existing data.",
+        ) from exc
+    except Exception:
+        db.rollback()
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        raise
+
+    return serialize_flow_asset(flow, asset)
+
+
+def get_published_flow_asset(
+    db: Session,
+    *,
+    asset_id: UUID,
+    current_user: User,
+    flow_key: str,
+) -> tuple[PublishedFlowAsset, Path]:
+    flow = _flow_by_key(db, flow_key)
+    if flow is None or not _can_read_flow(flow, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Published flow not found",
+        )
+
+    asset = db.scalar(
+        select(PublishedFlowAsset).where(
+            PublishedFlowAsset.id == asset_id,
+            PublishedFlowAsset.published_flow_id == flow.id,
+        )
+    )
+    if asset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Image asset not found",
+        )
+
+    path = _asset_path(asset.storage_key)
+    if not path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Image asset file not found",
+        )
+    return asset, path
+
+
 def list_published_flows(
     db: Session,
     *,
@@ -791,6 +990,7 @@ def get_published_flow(
         flow_id = None
 
     statement = select(PublishedFlow).options(
+        selectinload(PublishedFlow.assets),
         selectinload(PublishedFlow.author),
         selectinload(PublishedFlow.files),
         selectinload(PublishedFlow.items),
@@ -842,6 +1042,10 @@ def serialize_flow_detail(flow: PublishedFlow, *, current_user: User) -> dict[st
         {
             "context_summary": flow.context_summary,
             "end_sequence": flow.end_sequence,
+            "assets": [
+                serialize_flow_asset(flow, asset)
+                for asset in flow.assets
+            ],
             "files": [
                 {
                     "additions": file.additions,
