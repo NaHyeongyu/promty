@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -239,11 +240,13 @@ function focusableModalElements(root: HTMLElement) {
 function MarkdownEditor({
   insertRequest,
   onChange,
+  onInsertHandled,
   placeholder,
   value,
 }: {
   insertRequest?: MarkdownInsertRequest | null;
   onChange: (value: string) => void;
+  onInsertHandled?: (insertRequestId: number) => void;
   placeholder: string;
   value: string;
 }) {
@@ -411,7 +414,8 @@ function MarkdownEditor({
       selection: { anchor: selection.from + textToInsert.length },
     });
     editorView.focus();
-  }, [editorReadyVersion, insertRequest]);
+    onInsertHandled?.(insertRequest.id);
+  }, [editorReadyVersion, insertRequest, onInsertHandled]);
 
   return <div className="bh-markdown-editor" ref={editorElementRef} />;
 }
@@ -672,6 +676,11 @@ function PromptFlowShareDrawer({
       setIsAssetUploading(false);
     }
   };
+  const handleInsertHandled = useCallback((insertRequestId: number) => {
+    setInsertRequest((currentRequest) =>
+      currentRequest?.id === insertRequestId ? null : currentRequest,
+    );
+  }, []);
 
   const handleModalKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") {
@@ -925,6 +934,7 @@ function PromptFlowShareDrawer({
                   <MarkdownEditor
                     insertRequest={insertRequest}
                     onChange={setContent}
+                    onInsertHandled={handleInsertHandled}
                     placeholder={editorPlaceholder}
                     value={content}
                   />

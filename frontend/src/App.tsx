@@ -337,6 +337,7 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PROJECT_ROUTE_KEY_PATTERN = /^[a-z0-9][a-z0-9-]{0,254}$/i;
 const UUID_ROUTE_KEY_PATTERN = /^[A-Za-z0-9_-]{22}$/;
+const ACTIVITY_ROUTE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 const MAX_URL_FILE_PATH_LENGTH = 1024;
 
 function sanitizeProjectId(value: string | null | undefined) {
@@ -405,6 +406,23 @@ function routeKeyToUuid(value: string | null | undefined) {
   } catch {
     return null;
   }
+}
+
+function sanitizeActivityRouteId(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const routeId = value.trim();
+  return ACTIVITY_ROUTE_ID_PATTERN.test(routeId) ? routeId : null;
+}
+
+function activityIdToRouteKey(value: string | null | undefined) {
+  return uuidToRouteKey(value) ?? sanitizeActivityRouteId(value);
+}
+
+function activityRouteKeyToId(value: string | null | undefined) {
+  return routeKeyToUuid(value) ?? sanitizeActivityRouteId(value);
 }
 
 function sanitizeRepositoryFilePath(value: string | null | undefined) {
@@ -479,21 +497,21 @@ function normalizeUrlNavigationState(
       hasSelectedProject &&
       activeDetailTab === "ai-activity" &&
       activityView === "prompts"
-        ? routeKeyToUuid(state.activityNavigation?.selectedPromptId)
+        ? activityRouteKeyToId(state.activityNavigation?.selectedPromptId)
         : null,
     selectedSessionId:
       activeItem === "projects" &&
       hasSelectedProject &&
       activeDetailTab === "ai-activity" &&
       activityView === "sessions"
-        ? routeKeyToUuid(state.activityNavigation?.selectedSessionId)
+        ? activityRouteKeyToId(state.activityNavigation?.selectedSessionId)
         : null,
     selectedSessionPromptId:
       activeItem === "projects" &&
       hasSelectedProject &&
       activeDetailTab === "ai-activity" &&
       activityView === "sessions"
-        ? routeKeyToUuid(state.activityNavigation?.selectedSessionPromptId)
+        ? activityRouteKeyToId(state.activityNavigation?.selectedSessionPromptId)
         : null,
     view: activityView,
   };
@@ -546,7 +564,7 @@ function buildUrlNavigationSearch(state: UrlNavigationState) {
       ) {
         params.set(
           "prompt",
-          uuidToRouteKey(state.activityNavigation.selectedPromptId) ??
+          activityIdToRouteKey(state.activityNavigation.selectedPromptId) ??
             state.activityNavigation.selectedPromptId,
         );
       }
@@ -557,7 +575,7 @@ function buildUrlNavigationSearch(state: UrlNavigationState) {
       ) {
         params.set(
           "session",
-          uuidToRouteKey(state.activityNavigation.selectedSessionId) ??
+          activityIdToRouteKey(state.activityNavigation.selectedSessionId) ??
             state.activityNavigation.selectedSessionId,
         );
       }
@@ -568,7 +586,7 @@ function buildUrlNavigationSearch(state: UrlNavigationState) {
       ) {
         params.set(
           "prompt",
-          uuidToRouteKey(state.activityNavigation.selectedSessionPromptId) ??
+          activityIdToRouteKey(state.activityNavigation.selectedSessionPromptId) ??
             state.activityNavigation.selectedSessionPromptId,
         );
       }
