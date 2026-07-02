@@ -526,8 +526,7 @@
 .bh-overview-flow-row dt,
 .bh-activity-card-header span,
 .bh-activity-meta dt,
-.bh-activity-stats dt,
-.bh-knowledge-card span {
+.bh-activity-stats dt {
   color: var(--bh-color-text-muted);
   font-size: var(--bh-font-size-caption);
   font-weight: var(--bh-font-weight-label);
@@ -754,8 +753,7 @@
   gap: var(--bh-space-2);
 }
 
-.bh-detail-skeleton-stats,
-.bh-detail-skeleton-knowledge {
+.bh-detail-skeleton-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--bh-space-4);
@@ -1948,52 +1946,6 @@
   line-height: var(--bh-line-height-body);
 }
 
-.bh-knowledge-list {
-  display: grid;
-  overflow: hidden;
-  border: 1px solid var(--bh-card-border);
-  border-radius: var(--bh-radius-md);
-  background: var(--bh-card-bg);
-}
-
-.bh-knowledge-card {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  min-height: 58px;
-  align-items: center;
-  gap: var(--bh-space-3);
-  border-bottom: 1px solid var(--bh-color-border);
-  padding: 0 var(--bh-space-4);
-}
-
-.bh-knowledge-card:last-child {
-  border-bottom: 0;
-}
-
-.bh-knowledge-card div {
-  display: grid;
-  min-width: 0;
-  gap: var(--bh-space-1);
-}
-
-.bh-knowledge-card strong {
-  overflow: hidden;
-  color: var(--bh-color-text-primary);
-  font-size: var(--bh-font-size-body);
-  font-weight: var(--bh-font-weight-section);
-  line-height: var(--bh-line-height-heading);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.bh-knowledge-card time {
-  color: var(--bh-color-text-muted);
-  font-family: var(--bh-font-code);
-  font-size: var(--bh-font-size-caption);
-  line-height: var(--bh-line-height-code);
-  white-space: nowrap;
-}
-
 .bh-file-tree {
   overflow: hidden;
   border: 1px solid var(--bh-card-border);
@@ -2754,8 +2706,7 @@ button.bh-file-tree-row:focus-visible {
 
   .bh-overview-statistics dl,
   .bh-overview-community-metrics,
-  .bh-detail-skeleton-stats,
-  .bh-detail-skeleton-knowledge {
+  .bh-detail-skeleton-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -2796,7 +2747,6 @@ button.bh-file-tree-row:focus-visible {
   .bh-detail-skeleton-hero,
   .bh-detail-skeleton-split,
   .bh-detail-skeleton-stats,
-  .bh-detail-skeleton-knowledge,
   .bh-activity-meta,
   .bh-activity-stats,
   .bh-prompt-activity-meta {
@@ -2878,14 +2828,6 @@ button.bh-file-tree-row:focus-visible {
     justify-content: flex-start;
   }
 
-  .bh-knowledge-card {
-    grid-template-columns: auto minmax(0, 1fr);
-    padding-block: var(--bh-space-3);
-  }
-
-  .bh-knowledge-card time {
-    grid-column: 2;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

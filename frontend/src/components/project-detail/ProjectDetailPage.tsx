@@ -22,7 +22,6 @@ import {
 import { CodeViewer } from "./CodeViewer";
 import { EmptyState } from "./EmptyState";
 import { FileTree } from "./FileTree";
-import { KnowledgeCard } from "./KnowledgeCard";
 import { ProjectHeader } from "./ProjectHeader";
 import { ProjectTabs } from "./ProjectTabs";
 import type {
@@ -67,7 +66,6 @@ const defaultActivityNavigation: ActivityNavigationState = {
 const projectTabs: ProjectDetailTab[] = [
   { id: "overview", label: "Overview" },
   { id: "ai-activity", label: "AI Activity" },
-  { id: "knowledge", label: "Knowledge" },
   { id: "files", label: "Files" },
 ];
 
@@ -1156,25 +1154,6 @@ function ProjectDetailLoadingSkeleton({
     );
   }
 
-  if (activeTab === "knowledge") {
-    return (
-      <section
-        aria-label="Loading knowledge"
-        aria-live="polite"
-        className="bh-detail-skeleton bh-detail-skeleton-knowledge"
-        role="status"
-      >
-        {Array.from({ length: 6 }).map((_, index) => (
-          <article className="bh-detail-skeleton-card" key={index}>
-            <span className="skeleton-line skeleton-line-title" />
-            <span className="skeleton-line skeleton-line-md" />
-            <span className="skeleton-pill" />
-          </article>
-        ))}
-      </section>
-    );
-  }
-
   return (
     <section
       aria-label="Loading project overview"
@@ -1812,26 +1791,6 @@ function ActivityPanel({
   );
 }
 
-function KnowledgePanel({ data }: { data: ProjectDetailData }) {
-  if (data.knowledge.length === 0) {
-    return (
-      <EmptyState
-        description="README, rules, architecture notes, and memory resources will appear after related files are tracked."
-        icon={BookOpen}
-        title="No knowledge resources yet"
-      />
-    );
-  }
-
-  return (
-    <div className="bh-knowledge-list">
-      {data.knowledge.map((item) => (
-        <KnowledgeCard item={item} key={item.title} />
-      ))}
-    </div>
-  );
-}
-
 function FilesPanel({
   data,
   onRepositoryFileSelect,
@@ -1991,10 +1950,6 @@ function ProjectPanel({
         onPublishFlow={onPublishFlow}
       />
     );
-  }
-
-  if (activeTab === "knowledge") {
-    return <KnowledgePanel data={data} />;
   }
 
   if (activeTab === "files") {

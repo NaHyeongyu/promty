@@ -2,7 +2,6 @@ export { ActivityCard, PromptActivityCard } from "./ActivityCard";
 export { CodeViewer } from "./CodeViewer";
 export { EmptyState } from "./EmptyState";
 export { FileTree } from "./FileTree";
-export { KnowledgeCard } from "./KnowledgeCard";
 export { OverviewCard } from "./OverviewCard";
 export { ProjectDetailPage } from "./ProjectDetailPage";
 export { ProjectHeader } from "./ProjectHeader";
@@ -12,7 +11,6 @@ export type {
   ActivityItem,
   ActivityViewId,
   FileTreeNode,
-  KnowledgeItem,
   OverviewItem,
   PublishedFlowDetail,
   PromptActivityItem,

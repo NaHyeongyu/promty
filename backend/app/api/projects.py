@@ -16,7 +16,6 @@ from app.db.session import get_db
 from app.models.code_change_patches import CodeChangePatch
 from app.models.events import Event
 from app.models.project_files import ProjectFile
-from app.models.project_knowledge import ProjectKnowledgeResource
 from app.models.projects import Project
 from app.models.published_flows import PublishedFlow
 from app.models.sessions import Session as PromptSession
@@ -650,17 +649,6 @@ def read_project_detail(
             .order_by(ProjectFile.path)
         ).scalars()
     )
-    knowledge_resources = list(
-        db.execute(
-            select(ProjectKnowledgeResource)
-            .where(
-                ProjectKnowledgeResource.project_id == project.id,
-                ProjectKnowledgeResource.status != "deleted",
-            )
-            .order_by(desc(ProjectKnowledgeResource.updated_at))
-        ).scalars()
-    )
-
     last_modified_at = max((file.changed_at for file in active_files), default=None)
 
     return {
@@ -722,16 +710,6 @@ def read_project_detail(
             for activity in activities[:50]
         ],
         "prompt_activities": prompt_activities,
-        "knowledge": [
-            {
-                "id": str(resource.id),
-                "title": resource.title,
-                "file_type": resource.file_type,
-                "updated_at": _iso(resource.updated_at),
-                "source_path": resource.source_path,
-            }
-            for resource in knowledge_resources
-        ],
         "files": _build_file_tree([file.path for file in active_files]),
     }
 

@@ -1,7 +1,7 @@
 import type { ComponentType, ReactNode } from "react";
 import type { LucideProps } from "lucide-react";
 
-export type ProjectDetailTabId = "overview" | "ai-activity" | "knowledge" | "files";
+export type ProjectDetailTabId = "overview" | "ai-activity" | "files";
 
 export type ProjectDetailTab = {
   id: ProjectDetailTabId;
@@ -111,12 +111,6 @@ export type PromptActivityItem = {
   submittedAt: string;
 };
 
-export type KnowledgeItem = {
-  title: string;
-  fileType: string;
-  updatedAt: string;
-};
-
 export type FileTreeNode = {
   name: string;
   path?: string;
@@ -147,7 +141,6 @@ export type ProjectDetailData = {
   activities: ActivityItem[];
   community: ProjectCommunityStatus;
   files: FileTreeNode[];
-  knowledge: KnowledgeItem[];
   overview: OverviewItem[];
   promptActivities: PromptActivityItem[];
   project: ProjectDetailProject;

@@ -51,8 +51,3 @@ class Project(Base):
         back_populates="project",
         cascade="all, delete-orphan",
     )
-    knowledge_resources = relationship(
-        "ProjectKnowledgeResource",
-        back_populates="project",
-        cascade="all, delete-orphan",
-    )

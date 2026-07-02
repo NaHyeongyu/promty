@@ -149,13 +149,6 @@ type ProjectDetailApiResponse = {
     submitted_at: string | null;
   }>;
   files: FileTreeNode[];
-  knowledge: Array<{
-    file_type: string;
-    id: string;
-    source_path: string | null;
-    title: string;
-    updated_at: string | null;
-  }>;
   metrics: {
     connected_models: string[];
     connected_tools?: string[];
@@ -334,7 +327,6 @@ const ACTIVITY_VIEW_IDS = new Set<ActivityViewId>(["prompts", "sessions"]);
 const PROJECT_DETAIL_TAB_IDS = new Set<ProjectDetailTabId>([
   "overview",
   "ai-activity",
-  "knowledge",
   "files",
 ]);
 const SIDEBAR_ITEM_IDS = new Set<SidebarItemId>([
@@ -863,7 +855,6 @@ function emptyProjectDetailData(project: Project | null): ProjectDetailData {
       totalFlows: 0,
     },
     files: [],
-    knowledge: [],
     overview: [],
     promptActivities: [],
     project: {
@@ -974,11 +965,6 @@ function projectDetailDataFromApi(
       totalFlows: community?.total_flows ?? 0,
     },
     files: payload.files,
-    knowledge: payload.knowledge.map((item) => ({
-      fileType: item.file_type,
-      title: item.title,
-      updatedAt: formatOptionalTimestamp(item.updated_at, "Unknown"),
-    })),
     overview: [
       {
         title: "Repository URL",
