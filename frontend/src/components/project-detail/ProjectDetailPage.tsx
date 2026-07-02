@@ -239,12 +239,14 @@ function focusableModalElements(root: HTMLElement) {
 
 function MarkdownEditor({
   insertRequest,
+  onInsertHandled,
   onChange,
   onInsertHandled,
   placeholder,
   value,
 }: {
   insertRequest?: MarkdownInsertRequest | null;
+  onInsertHandled?: (id: number) => void;
   onChange: (value: string) => void;
   onInsertHandled?: (insertRequestId: number) => void;
   placeholder: string;

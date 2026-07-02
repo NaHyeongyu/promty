@@ -860,10 +860,10 @@ def create_published_flow_asset(
             detail="Only PNG, JPEG, WEBP, and GIF images are supported",
         )
     declared_content_type = (content_type or "").split(";", 1)[0].strip().lower()
-    if declared_content_type and declared_content_type not in {
-        "application/octet-stream",
-        detected_content_type,
-    }:
+    expected_content_types = {detected_content_type, "application/octet-stream"}
+    if detected_content_type == "image/jpeg":
+        expected_content_types.add("image/jpg")
+    if declared_content_type and declared_content_type not in expected_content_types:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="Image content type does not match the uploaded file",
