@@ -814,12 +814,17 @@ def doctor(args: argparse.Namespace) -> int:
     api_url = resolve_api_url(args.api_url, args.config_path)
     token = resolve_token(args.token, args.config_path)
     config = read_config(args.config_path)
-    repo_root = _git_root(args.repo_root)
     normalized_tool = normalize_tool(args.tool)
+    try:
+        repo_root = _git_root(args.repo_root)
+        hooks_status = _hook_status(repo_root, normalized_tool)
+    except Exception as exc:
+        hooks_status = (False, f"git root error: {exc}")
+
     checks: list[tuple[str, bool, str]] = []
     checks.append(("config", bool(config), str(args.config_path or "~/.prompthub/config.json")))
     checks.append(("login", token is not None, "token saved" if token else "not logged in"))
-    checks.append(("hooks", *_hook_status(repo_root, normalized_tool)))
+    checks.append(("hooks", *hooks_status))
     checks.append(("queue", *_queue_status(args.queue_path)))
     checks.append(("backend", *_health_status(api_url, args.timeout)))
     pid_path = Path(args.pid_path).expanduser() if args.pid_path else DEFAULT_UPLOADER_PID_PATH

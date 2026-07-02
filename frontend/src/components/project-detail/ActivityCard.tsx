@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Share2 } from "lucide-react";
+import { AiModelBadge } from "./AiModelBadge";
 import type { ActivityItem, PromptActivityItem } from "./types";
 
 const PROMPT_PREVIEW_LINES = 10;
@@ -84,6 +85,16 @@ function shareStateLabel(state: PromptActivityCardProps["shareState"]) {
   return null;
 }
 
+type WorkType = "brainstorming" | "work";
+
+function workTypeForFiles(filesChanged: number): WorkType {
+  return filesChanged > 0 ? "work" : "brainstorming";
+}
+
+function workTypeLabel(workType: WorkType) {
+  return workType === "work" ? "Work" : "Brainstorming";
+}
+
 type ActivityCardProps = {
   activity: ActivityItem;
   isSelected?: boolean;
@@ -95,6 +106,8 @@ export function ActivityCard({
   isSelected = false,
   onOpen,
 }: ActivityCardProps) {
+  const workType = workTypeForFiles(activity.filesChanged);
+
   return (
     <article
       className="bh-session-row"
@@ -114,8 +127,11 @@ export function ActivityCard({
       <div className="bh-session-row-main">
         <div className="bh-session-row-header">
           <strong>{activity.model}</strong>
-          <span>Session {activity.id.slice(0, 8)}</span>
+          <span className="bh-work-type-badge" data-work-type={workType}>
+            {workTypeLabel(workType)}
+          </span>
         </div>
+        <span>Session {activity.id.slice(0, 8)}</span>
         <span>
           {activity.lastActivity} · {activity.prompts} prompts ·{" "}
           {activity.filesChanged} files
@@ -143,6 +159,7 @@ export function PromptActivityCard({
   const truncatedLabel = promptTruncatedLabel(activity);
   const responseLimitLabel = responseTruncatedLabel(activity);
   const selectedShareLabel = shareStateLabel(shareState);
+  const workType = workTypeForFiles(activity.filesChanged);
 
   return (
     <article
@@ -167,7 +184,10 @@ export function PromptActivityCard({
           {promptLabel ? <span>{promptLabel}</span> : null}
         </div>
         <div className="bh-prompt-row-meta" aria-label="Prompt metadata">
-          <span className="bh-prompt-row-chip is-model">{activity.model}</span>
+          <AiModelBadge className="is-compact" model={activity.model} />
+          <span className="bh-work-type-badge" data-work-type={workType}>
+            {workTypeLabel(workType)}
+          </span>
           <span className="bh-prompt-row-chip">{activity.filesChanged} files</span>
           {selectedShareLabel ? (
             <span className="bh-prompt-row-chip is-share">{selectedShareLabel}</span>
@@ -187,7 +207,6 @@ export function PromptActivityCard({
 
 type PromptChangeDetailProps = {
   activity: PromptActivityItem | null;
-  onOpenSession?: (activity: PromptActivityItem) => void;
   onSharePrompt?: (activity: PromptActivityItem) => void;
 };
 
@@ -242,7 +261,6 @@ function DiffViewer({ patch }: { patch: string }) {
 
 export function PromptChangeDetail({
   activity,
-  onOpenSession,
   onSharePrompt,
 }: PromptChangeDetailProps) {
   if (!activity) {
@@ -280,15 +298,6 @@ export function PromptChangeDetail({
             >
               <Share2 aria-hidden="true" size={15} strokeWidth={1.5} />
               <span>Share prompt</span>
-            </button>
-          ) : null}
-          {onOpenSession ? (
-            <button
-              className="bh-header-action-button"
-              onClick={() => onOpenSession(activity)}
-              type="button"
-            >
-              View session
             </button>
           ) : null}
           <strong>{activity.filesChanged} files</strong>

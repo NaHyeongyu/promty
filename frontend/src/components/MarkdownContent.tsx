@@ -6,11 +6,40 @@ type MarkdownContentProps = {
   value: string;
 };
 
+function safeImageSrc(value: string) {
+  try {
+    const parsed = new URL(value, window.location.origin);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return parsed.href;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 function renderInlineMarkdown(text: string) {
-  const segments = text.split(/(`[^`]+`)/g);
+  const segments = text.split(/(!\[[^\]]*]\([^)]+\)|`[^`]+`)/g);
   return segments.map((segment, index) => {
     if (segment.startsWith("`") && segment.endsWith("`") && segment.length > 1) {
       return <code key={`${segment}-${index}`}>{segment.slice(1, -1)}</code>;
+    }
+    const image = segment.match(/^!\[([^\]]*)]\(([^)]+)\)$/);
+    if (image) {
+      const src = safeImageSrc(image[2].trim());
+      if (!src) {
+        return <span key={`${segment}-${index}`}>{image[1] || "Image"}</span>;
+      }
+      return (
+        <img
+          alt={image[1].trim()}
+          className="markdown-image"
+          key={`${segment}-${index}`}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          src={src}
+        />
+      );
     }
     return <span key={`${segment}-${index}`}>{segment}</span>;
   });

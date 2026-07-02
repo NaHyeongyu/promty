@@ -3,6 +3,7 @@ import { ChevronDown, ExternalLink, Folder, GitBranch, Link, Search } from "luci
 import type { ProjectHeaderProps } from "./types";
 
 export function ProjectHeader({
+  description,
   name,
   onOpenAllProjects,
   onConnectRepository,
@@ -65,7 +66,9 @@ export function ProjectHeader({
       <div className="bh-project-header-copy">
         <div className="bh-project-title-row">
           <div className="bh-project-name-switcher" ref={switcherRef}>
-            <h1 id="project-detail-title">{name}</h1>
+            <h1 id="project-detail-title" title={name}>
+              {name}
+            </h1>
             {canSwitchProjects ? (
               <>
                 <button
@@ -103,6 +106,7 @@ export function ProjectHeader({
                       <Search aria-hidden="true" size={14} strokeWidth={1.7} />
                       <input
                         aria-label="Search projects"
+                        autoFocus
                         onChange={(event) => setProjectSearchQuery(event.target.value)}
                         placeholder="Search projects"
                         type="search"
@@ -143,6 +147,7 @@ export function ProjectHeader({
             ) : null}
           </div>
         </div>
+        {description ? <p>{description}</p> : null}
       </div>
 
       <div className="bh-project-header-actions">

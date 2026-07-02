@@ -3,15 +3,19 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, validator
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.security import require_web_user
 from app.db.session import get_db
 from app.models.users import User
 from app.services.published_flows import (
     archive_published_flow,
+    create_published_flow_asset,
+    get_published_flow_asset,
     create_published_flow,
     get_published_flow,
     list_published_flows,
@@ -24,7 +28,7 @@ router = APIRouter(prefix="/api/published-flows", tags=["published-flows"])
 class PublishedFlowCreateRequest(BaseModel):
     context_summary: str | None = Field(default=None, max_length=4000)
     end_prompt_event_id: UUID | None = None
-    notes: str | None = Field(default=None, max_length=4000)
+    notes: str | None = Field(default=None, max_length=20000)
     prompt_event_ids: list[UUID] | None = None
     project_id: UUID
     session_id: UUID | None = None
@@ -63,7 +67,7 @@ class PublishedFlowCreateRequest(BaseModel):
 
 class PublishedFlowUpdateRequest(BaseModel):
     context_summary: str | None = Field(default=None, max_length=4000)
-    notes: str | None = Field(default=None, max_length=4000)
+    notes: str | None = Field(default=None, max_length=20000)
     status: str | None = None
     summary: str | None = Field(default=None, max_length=2000)
     tags: list[str] | None = None
@@ -168,3 +172,48 @@ def archive_flow(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     return archive_published_flow(db, current_user=current_user, flow_key=flow_key)
+
+
+@router.post("/{flow_key}/assets")
+async def upload_flow_asset(
+    flow_key: str,
+    alt_text: str | None = Form(default=None, max_length=255),
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_web_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    max_bytes = max(settings.published_flow_asset_max_bytes, 1)
+    content = await file.read(max_bytes + 1)
+    return create_published_flow_asset(
+        db,
+        alt_text=alt_text,
+        content=content,
+        content_type=file.content_type,
+        current_user=current_user,
+        file_name=file.filename,
+        flow_key=flow_key,
+    )
+
+
+@router.get("/{flow_key}/assets/{asset_id}")
+def read_flow_asset(
+    flow_key: str,
+    asset_id: UUID,
+    current_user: User = Depends(require_web_user),
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    asset, path = get_published_flow_asset(
+        db,
+        asset_id=asset_id,
+        current_user=current_user,
+        flow_key=flow_key,
+    )
+    return FileResponse(
+        path,
+        filename=asset.file_name,
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            "X-Content-Type-Options": "nosniff",
+        },
+        media_type=asset.content_type,
+    )

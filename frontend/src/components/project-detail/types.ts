@@ -1,7 +1,7 @@
 import type { ComponentType, ReactNode } from "react";
 import type { LucideProps } from "lucide-react";
 
-export type ProjectDetailTabId = "overview" | "ai-activity" | "knowledge" | "files";
+export type ProjectDetailTabId = "overview" | "ai-activity" | "files";
 
 export type ProjectDetailTab = {
   id: ProjectDetailTabId;
@@ -111,12 +111,6 @@ export type PromptActivityItem = {
   submittedAt: string;
 };
 
-export type KnowledgeItem = {
-  title: string;
-  fileType: string;
-  updatedAt: string;
-};
-
 export type FileTreeNode = {
   name: string;
   path?: string;
@@ -147,7 +141,6 @@ export type ProjectDetailData = {
   activities: ActivityItem[];
   community: ProjectCommunityStatus;
   files: FileTreeNode[];
-  knowledge: KnowledgeItem[];
   overview: OverviewItem[];
   promptActivities: PromptActivityItem[];
   project: ProjectDetailProject;
@@ -179,6 +172,28 @@ export type PromptFlowPublishPayload = {
   visibility: "private" | "public" | "unlisted";
 };
 
+export type PromptFlowUpdatePayload = {
+  context_summary?: string | null;
+  notes?: string | null;
+  status?: "archived" | "draft" | "published";
+  summary?: string | null;
+  tags?: string[];
+  title?: string;
+  visibility?: "private" | "public" | "unlisted";
+};
+
+export type PublishedFlowAsset = {
+  alt_text?: string | null;
+  byte_size: number;
+  content_type: string;
+  created_at: string | null;
+  file_name: string;
+  id: string;
+  markdown: string;
+  sha256: string;
+  url: string;
+};
+
 export type PublishedFlowDetail = {
   id: string;
   slug: string;
@@ -188,4 +203,5 @@ export type PublishedFlowDetail = {
   status: string;
   prompt_count: number;
   file_count: number;
+  assets?: PublishedFlowAsset[];
 };

@@ -1,34 +1,30 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  type ChangeEvent,
   type KeyboardEvent,
 } from "react";
-import { Activity, BookOpen, Check, Search, Share2, X } from "lucide-react";
-import {
-  siClaude,
-  siCursor,
-  siGooglegemini,
-  type SimpleIcon,
-} from "simple-icons";
-import { SiOpenai } from "react-icons/si";
+import { Activity, BookOpen, Check, ImagePlus, Search, Share2, X } from "lucide-react";
 import { MarkdownContent } from "../MarkdownContent";
 import {
   ActivityCard,
   PromptActivityCard,
   PromptChangeDetail,
 } from "./ActivityCard";
+import { AiModelBadge } from "./AiModelBadge";
 import { CodeViewer } from "./CodeViewer";
 import { EmptyState } from "./EmptyState";
 import { FileTree } from "./FileTree";
-import { KnowledgeCard } from "./KnowledgeCard";
 import { ProjectHeader } from "./ProjectHeader";
 import { ProjectTabs } from "./ProjectTabs";
 import type {
   ActivityNavigationState,
   ActivityItem,
   OverviewItem,
+  PublishedFlowAsset,
   PublishedFlowDetail,
   ProjectDetailData,
   ProjectDetailTab,
@@ -36,6 +32,7 @@ import type {
   ProjectHeaderProjectOption,
   PromptActivityItem,
   PromptFlowPublishPayload,
+  PromptFlowUpdatePayload,
 } from "./types";
 import "./project-detail.css";
 
@@ -52,6 +49,16 @@ type ProjectDetailPageProps = {
   onProjectSelect?: (projectId: string) => void;
   onRepositoryFileSelect?: (path: string) => void;
   onPublishFlow?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
+  onSaveFlowDraft?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
+  onUpdateFlow?: (
+    flowKey: string,
+    payload: PromptFlowUpdatePayload,
+  ) => Promise<PublishedFlowDetail>;
+  onUploadFlowAsset?: (
+    flowKey: string,
+    file: File,
+    altText?: string,
+  ) => Promise<PublishedFlowAsset>;
   onRetry?: () => void;
   onTabChange: (tabId: ProjectDetailTabId) => void;
   projectOptions?: ProjectHeaderProjectOption[];
@@ -67,16 +74,8 @@ const defaultActivityNavigation: ActivityNavigationState = {
 const projectTabs: ProjectDetailTab[] = [
   { id: "overview", label: "Overview" },
   { id: "ai-activity", label: "AI Activity" },
-  { id: "knowledge", label: "Knowledge" },
   { id: "files", label: "Files" },
 ];
-
-type OverviewModelBadge = {
-  aiName: string;
-  brand: "claude" | "cursor" | "gemini" | "openai";
-  icon?: SimpleIcon;
-  modelName: string;
-};
 
 function promptTitle(prompt: string) {
   return prompt.split(/\r?\n/)[0]?.trim().replace(/\s+/g, " ") || "Prompt flow";
@@ -91,79 +90,6 @@ function promptRangeLabel(prompts: PromptActivityItem[]) {
   return first.id === last.id
     ? `Prompt ${first.sequence}`
     : `Prompts ${first.sequence}-${last.sequence}`;
-}
-
-function modelSuffix(modelName: string, aiName: string) {
-  return modelName
-    .replace(new RegExp(`^${aiName}\\b`, "i"), "")
-    .replace(/^[-\s:/]+/, "")
-    .trim();
-}
-
-function overviewModelBadge(modelName: string): OverviewModelBadge {
-  const normalizedModelName = modelName.trim();
-  const modelKey = normalizedModelName.toLowerCase();
-
-  if (modelKey.includes("claude")) {
-    return {
-      aiName: "Claude",
-      brand: "claude",
-      icon: siClaude,
-      modelName: modelSuffix(normalizedModelName, "Claude") || "Code",
-    };
-  }
-
-  if (modelKey.includes("cursor")) {
-    return {
-      aiName: "Cursor",
-      brand: "cursor",
-      icon: siCursor,
-      modelName: modelSuffix(normalizedModelName, "Cursor") || "AI",
-    };
-  }
-
-  if (modelKey.includes("gemini")) {
-    return {
-      aiName: "Gemini",
-      brand: "gemini",
-      icon: siGooglegemini,
-      modelName: modelSuffix(normalizedModelName, "Gemini") || "CLI",
-    };
-  }
-
-  return {
-    aiName: "OpenAI",
-    brand: "openai",
-    modelName:
-      normalizedModelName.replace(/^openai[-\s:/]*/i, "").trim() ||
-      normalizedModelName ||
-      "Model",
-  };
-}
-
-function OverviewModelBadge({ model }: { model: string }) {
-  const badge = overviewModelBadge(model);
-
-  return (
-    <span className="bh-overview-model-badge" data-brand={badge.brand}>
-      {badge.icon ? (
-        <svg
-          aria-hidden="true"
-          className="bh-overview-model-icon"
-          role="img"
-          viewBox="0 0 24 24"
-        >
-          <path d={badge.icon.path} />
-        </svg>
-      ) : (
-        <SiOpenai aria-hidden="true" className="bh-overview-model-icon" />
-      )}
-      <span className="bh-overview-model-copy">
-        <strong>{badge.aiName}</strong>
-        <span>{badge.modelName}</span>
-      </span>
-    </span>
-  );
 }
 
 function shareSelectionTitle(
@@ -181,6 +107,63 @@ function overviewCompactNumber(value: number) {
     maximumFractionDigits: 1,
     notation: "compact",
   }).format(value);
+}
+
+type WorkType = "brainstorming" | "work";
+type WorkTypeFilter = "all" | WorkType;
+
+const workTypeFilterOptions: Array<{ id: WorkTypeFilter; label: string }> = [
+  { id: "all", label: "All" },
+  { id: "brainstorming", label: "Brainstorming" },
+  { id: "work", label: "Work" },
+];
+
+function workTypeForFiles(filesChanged: number): WorkType {
+  return filesChanged > 0 ? "work" : "brainstorming";
+}
+
+function workTypeCounts<T extends { filesChanged: number }>(
+  items: T[],
+): Record<WorkTypeFilter, number> {
+  const counts: Record<WorkTypeFilter, number> = {
+    all: items.length,
+    brainstorming: 0,
+    work: 0,
+  };
+
+  for (const item of items) {
+    counts[workTypeForFiles(item.filesChanged)] += 1;
+  }
+
+  return counts;
+}
+
+function WorkTypeFilterControl({
+  ariaLabel,
+  counts,
+  onChange,
+  value,
+}: {
+  ariaLabel: string;
+  counts: Record<WorkTypeFilter, number>;
+  onChange: (value: WorkTypeFilter) => void;
+  value: WorkTypeFilter;
+}) {
+  return (
+    <div className="bh-work-type-filter" role="group" aria-label={ariaLabel}>
+      {workTypeFilterOptions.map((option) => (
+        <button
+          data-active={value === option.id}
+          key={option.id}
+          onClick={() => onChange(option.id)}
+          type="button"
+        >
+          <span>{option.label}</span>
+          <strong>{counts[option.id]}</strong>
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function tagsFromPrompts(prompts: PromptActivityItem[]) {
@@ -213,12 +196,25 @@ type MarkdownEditorView = {
   destroy: () => void;
   dispatch: (transaction: {
     changes: { from: number; insert: string; to: number };
+    selection?: { anchor: number };
   }) => void;
+  focus: () => void;
   state: {
     doc: {
       toString: () => string;
     };
+    selection: {
+      main: {
+        from: number;
+        to: number;
+      };
+    };
   };
+};
+
+type MarkdownInsertRequest = {
+  id: number;
+  text: string;
 };
 
 const MODAL_FOCUSABLE_SELECTOR = [
@@ -242,18 +238,26 @@ function focusableModalElements(root: HTMLElement) {
 }
 
 function MarkdownEditor({
+  insertRequest,
+  onInsertHandled,
   onChange,
+  onInsertHandled,
   placeholder,
   value,
 }: {
+  insertRequest?: MarkdownInsertRequest | null;
+  onInsertHandled?: (id: number) => void;
   onChange: (value: string) => void;
+  onInsertHandled?: (insertRequestId: number) => void;
   placeholder: string;
   value: string;
 }) {
   const editorElementRef = useRef<HTMLDivElement | null>(null);
   const editorViewRef = useRef<MarkdownEditorView | null>(null);
+  const lastInsertRequestIdRef = useRef<number | null>(null);
   const onChangeRef = useRef(onChange);
   const valueRef = useRef(value);
+  const [editorReadyVersion, setEditorReadyVersion] = useState(0);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -344,6 +348,7 @@ function MarkdownEditor({
       });
 
       editorViewRef.current = mountedEditorView;
+      setEditorReadyVersion((version) => version + 1);
     }
 
     void mountEditor();
@@ -376,6 +381,44 @@ function MarkdownEditor({
     });
   }, [value]);
 
+  useEffect(() => {
+    if (
+      !insertRequest ||
+      lastInsertRequestIdRef.current === insertRequest.id
+    ) {
+      return;
+    }
+
+    const editorView = editorViewRef.current;
+    if (!editorView) {
+      return;
+    }
+
+    lastInsertRequestIdRef.current = insertRequest.id;
+    const currentValue = editorView.state.doc.toString();
+    const selection = editorView.state.selection.main;
+    const beforeSelection = currentValue.slice(0, selection.from);
+    const afterSelection = currentValue.slice(selection.to);
+    const needsLeadingBreak =
+      beforeSelection.length > 0 && !beforeSelection.endsWith("\n\n");
+    const needsTrailingBreak =
+      afterSelection.length > 0 && !afterSelection.startsWith("\n\n");
+    const textToInsert = `${needsLeadingBreak ? "\n\n" : ""}${
+      insertRequest.text
+    }${needsTrailingBreak ? "\n\n" : ""}`;
+
+    editorView.dispatch({
+      changes: {
+        from: selection.from,
+        insert: textToInsert,
+        to: selection.to,
+      },
+      selection: { anchor: selection.from + textToInsert.length },
+    });
+    editorView.focus();
+    onInsertHandled?.(insertRequest.id);
+  }, [editorReadyVersion, insertRequest, onInsertHandled]);
+
   return <div className="bh-markdown-editor" ref={editorElementRef} />;
 }
 
@@ -383,7 +426,10 @@ function PromptFlowShareDrawer({
   data,
   onClose,
   onPublishFlow,
+  onSaveFlowDraft,
   onSelectPrompt,
+  onUpdateFlow,
+  onUploadFlowAsset,
   prompts,
   scope,
   session,
@@ -393,7 +439,17 @@ function PromptFlowShareDrawer({
   data: ProjectDetailData;
   onClose: () => void;
   onPublishFlow?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
+  onSaveFlowDraft?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
   onSelectPrompt: (prompt: PromptActivityItem) => void;
+  onUpdateFlow?: (
+    flowKey: string,
+    payload: PromptFlowUpdatePayload,
+  ) => Promise<PublishedFlowDetail>;
+  onUploadFlowAsset?: (
+    flowKey: string,
+    file: File,
+    altText?: string,
+  ) => Promise<PublishedFlowAsset>;
   prompts: PromptActivityItem[];
   scope: "project" | "session";
   session: ActivityItem | null;
@@ -403,6 +459,7 @@ function PromptFlowShareDrawer({
   ) => "end" | "range" | "start" | undefined;
 }) {
   const modalElementRef = useRef<HTMLElement | null>(null);
+  const assetInputRef = useRef<HTMLInputElement | null>(null);
   const orderedPrompts = useMemo(
     () =>
       [...prompts].sort((first, second) => {
@@ -464,7 +521,12 @@ function PromptFlowShareDrawer({
     useState<PromptFlowPublishPayload["visibility"]>("public");
   const [publishIntent, setPublishIntent] =
     useState<PromptFlowPublishPayload["status"] | null>(null);
+  const [draftFlow, setDraftFlow] = useState<PublishedFlowDetail | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [assetUploadError, setAssetUploadError] = useState<string | null>(null);
+  const [isAssetUploading, setIsAssetUploading] = useState(false);
+  const [insertRequest, setInsertRequest] =
+    useState<MarkdownInsertRequest | null>(null);
 
   useEffect(() => {
     const previousActiveElement =
@@ -495,7 +557,10 @@ function PromptFlowShareDrawer({
     setContent("");
     setEditorMode("write");
     setShareStep("select");
+    setDraftFlow(null);
     setErrorMessage(null);
+    setAssetUploadError(null);
+    setInsertRequest(null);
   }, [defaultContext, defaultSummary, defaultTitle, selectionKey]);
 
   const canContinue = orderedPrompts.length > 0;
@@ -506,14 +571,9 @@ function PromptFlowShareDrawer({
     title.trim().length > 0;
   const isSubmitting = publishIntent !== null;
 
-  const submitFlow = (status: PromptFlowPublishPayload["status"]) => {
-    if (!onPublishFlow || orderedPrompts.length === 0 || !title.trim()) {
-      return;
-    }
-
-    setPublishIntent(status);
-    setErrorMessage(null);
-    void onPublishFlow({
+  const buildFlowPayload = (
+    status: PromptFlowPublishPayload["status"],
+  ): PromptFlowPublishPayload => ({
       context_summary: contextSummary.trim() || null,
       end_prompt_event_id:
         scope === "session" ? orderedPrompts[orderedPrompts.length - 1].id : null,
@@ -531,7 +591,54 @@ function PromptFlowShareDrawer({
         .filter(Boolean),
       title: title.trim(),
       visibility,
-    })
+    });
+
+  const ensureDraftFlow = async () => {
+    if (draftFlow) {
+      return draftFlow;
+    }
+    if (!onSaveFlowDraft) {
+      throw new Error("Draft save is not available.");
+    }
+    if (orderedPrompts.length === 0 || !title.trim()) {
+      throw new Error("Select prompts and add a title before uploading images.");
+    }
+
+    const flow = await onSaveFlowDraft(buildFlowPayload("draft"));
+    setDraftFlow(flow);
+    return flow;
+  };
+
+  const submitFlow = (status: PromptFlowPublishPayload["status"]) => {
+    if (orderedPrompts.length === 0 || !title.trim()) {
+      return;
+    }
+
+    setPublishIntent(status);
+    setErrorMessage(null);
+
+    const saveFlow = draftFlow && onUpdateFlow
+      ? onUpdateFlow(draftFlow.slug, {
+          context_summary: contextSummary.trim() || null,
+          notes: content.trim() || null,
+          status,
+          summary: summary.trim() || null,
+          tags: tags
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean),
+          title: title.trim(),
+          visibility,
+        })
+      : onPublishFlow?.(buildFlowPayload(status));
+
+    if (!saveFlow) {
+      setPublishIntent(null);
+      setErrorMessage("Flow publishing is not available.");
+      return;
+    }
+
+    void saveFlow
       .then(() => {
         onClose();
       })
@@ -544,6 +651,39 @@ function PromptFlowShareDrawer({
         setPublishIntent(null);
       });
   };
+
+  const handleAssetInputChange = async (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0] ?? null;
+    input.value = "";
+    if (!file || !onUploadFlowAsset) {
+      return;
+    }
+
+    setAssetUploadError(null);
+    setIsAssetUploading(true);
+    try {
+      const flow = await ensureDraftFlow();
+      const altText = file.name.replace(/\.[^.]+$/, "").trim() || file.name;
+      const asset = await onUploadFlowAsset(flow.slug, file, altText);
+      setEditorMode("write");
+      setInsertRequest({ id: Date.now(), text: asset.markdown });
+    } catch (error) {
+      setAssetUploadError(
+        error instanceof Error ? error.message : "Image upload failed.",
+      );
+    } finally {
+      setIsAssetUploading(false);
+    }
+  };
+  const handleInsertHandled = useCallback((insertRequestId: number) => {
+    setInsertRequest((currentRequest) =>
+      currentRequest?.id === insertRequestId ? null : currentRequest,
+    );
+  }, []);
+
   const handleModalKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") {
       event.preventDefault();
@@ -668,9 +808,7 @@ function PromptFlowShareDrawer({
                             className="bh-prompt-row-meta"
                             aria-label="Prompt metadata"
                           >
-                            <span className="bh-prompt-row-chip is-model">
-                              {prompt.model}
-                            </span>
+                            <AiModelBadge className="is-compact" model={prompt.model} />
                             <span className="bh-prompt-row-chip">
                               {prompt.filesChanged} files
                             </span>
@@ -745,34 +883,60 @@ function PromptFlowShareDrawer({
               <div className="bh-share-editor-field">
                 <div className="bh-share-editor-header">
                   <span>Content</span>
-                  <div
-                    className="bh-share-editor-tabs"
-                    role="tablist"
-                    aria-label="Markdown editor mode"
-                  >
-                    <button
-                      aria-selected={editorMode === "write"}
-                      data-active={editorMode === "write"}
-                      onClick={() => setEditorMode("write")}
-                      role="tab"
-                      type="button"
+                  <div className="bh-share-editor-tools">
+                    {onUploadFlowAsset ? (
+                      <>
+                        <input
+                          accept="image/gif,image/jpeg,image/png,image/webp"
+                          className="bh-visually-hidden"
+                          onChange={(event) => {
+                            void handleAssetInputChange(event);
+                          }}
+                          ref={assetInputRef}
+                          type="file"
+                        />
+                        <button
+                          className="bh-share-editor-image-button"
+                          disabled={isSubmitting || isAssetUploading || !canPublish}
+                          onClick={() => assetInputRef.current?.click()}
+                          type="button"
+                        >
+                          <ImagePlus aria-hidden="true" size={15} strokeWidth={1.5} />
+                          <span>{isAssetUploading ? "Uploading" : "Image"}</span>
+                        </button>
+                      </>
+                    ) : null}
+                    <div
+                      className="bh-share-editor-tabs"
+                      role="tablist"
+                      aria-label="Markdown editor mode"
                     >
-                      Write
-                    </button>
-                    <button
-                      aria-selected={editorMode === "preview"}
-                      data-active={editorMode === "preview"}
-                      onClick={() => setEditorMode("preview")}
-                      role="tab"
-                      type="button"
-                    >
-                      Preview
-                    </button>
+                      <button
+                        aria-selected={editorMode === "write"}
+                        data-active={editorMode === "write"}
+                        onClick={() => setEditorMode("write")}
+                        role="tab"
+                        type="button"
+                      >
+                        Write
+                      </button>
+                      <button
+                        aria-selected={editorMode === "preview"}
+                        data-active={editorMode === "preview"}
+                        onClick={() => setEditorMode("preview")}
+                        role="tab"
+                        type="button"
+                      >
+                        Preview
+                      </button>
+                    </div>
                   </div>
                 </div>
                 {editorMode === "write" ? (
                   <MarkdownEditor
+                    insertRequest={insertRequest}
                     onChange={setContent}
+                    onInsertHandled={handleInsertHandled}
                     placeholder={editorPlaceholder}
                     value={content}
                   />
@@ -836,6 +1000,9 @@ function PromptFlowShareDrawer({
 
               {errorMessage ? (
                 <div className="bh-share-error">{errorMessage}</div>
+              ) : null}
+              {assetUploadError ? (
+                <div className="bh-share-error">{assetUploadError}</div>
               ) : null}
 
               <div className="bh-share-actions">
@@ -943,10 +1110,10 @@ function OverviewPanel({
           <div className="bh-overview-model-badges" aria-label="Connected models">
             {connectedModels.length > 0 ? (
               connectedModels.map((model) => (
-                <OverviewModelBadge key={model} model={model} />
+                <AiModelBadge className="is-overview" key={model} model={model} />
               ))
             ) : (
-              <span className="bh-overview-model-badge is-muted">No models captured</span>
+              <span className="ai-model-badge is-muted">No models captured</span>
             )}
           </div>
         </div>
@@ -1156,25 +1323,6 @@ function ProjectDetailLoadingSkeleton({
     );
   }
 
-  if (activeTab === "knowledge") {
-    return (
-      <section
-        aria-label="Loading knowledge"
-        aria-live="polite"
-        className="bh-detail-skeleton bh-detail-skeleton-knowledge"
-        role="status"
-      >
-        {Array.from({ length: 6 }).map((_, index) => (
-          <article className="bh-detail-skeleton-card" key={index}>
-            <span className="skeleton-line skeleton-line-title" />
-            <span className="skeleton-line skeleton-line-md" />
-            <span className="skeleton-pill" />
-          </article>
-        ))}
-      </section>
-    );
-  }
-
   return (
     <section
       aria-label="Loading project overview"
@@ -1224,17 +1372,34 @@ function ActivityPanel({
   data,
   onActivityNavigationChange,
   onPublishFlow,
+  onSaveFlowDraft,
+  onUpdateFlow,
+  onUploadFlowAsset,
 }: {
   activityNavigation?: ActivityNavigationState;
   data: ProjectDetailData;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onPublishFlow?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
+  onSaveFlowDraft?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
+  onUpdateFlow?: (
+    flowKey: string,
+    payload: PromptFlowUpdatePayload,
+  ) => Promise<PublishedFlowDetail>;
+  onUploadFlowAsset?: (
+    flowKey: string,
+    file: File,
+    altText?: string,
+  ) => Promise<PublishedFlowAsset>;
 }) {
   const [localActivityNavigation, setLocalActivityNavigation] =
     useState<ActivityNavigationState>(defaultActivityNavigation);
   const [promptSearchQuery, setPromptSearchQuery] = useState("");
+  const [promptWorkTypeFilter, setPromptWorkTypeFilter] =
+    useState<WorkTypeFilter>("all");
   const [sessionConversationSearchQuery, setSessionConversationSearchQuery] =
     useState("");
+  const [sessionWorkTypeFilter, setSessionWorkTypeFilter] =
+    useState<WorkTypeFilter>("all");
   const [shareScope, setShareScope] = useState<"project" | "session">("session");
   const [shareModeSessionId, setShareModeSessionId] = useState<string | null>(null);
   const [shareProjectPromptIds, setShareProjectPromptIds] = useState<string[]>([]);
@@ -1263,24 +1428,50 @@ function ActivityPanel({
     currentActivityNavigation.selectedSessionPromptId;
   const hasPromptActivity = data.promptActivities.length > 0;
   const hasSessionActivity = data.activities.length > 0;
+  const promptWorkTypeCounts = useMemo(
+    () => workTypeCounts(data.promptActivities),
+    [data.promptActivities],
+  );
+  const sessionWorkTypeCounts = useMemo(
+    () => workTypeCounts(data.activities),
+    [data.activities],
+  );
   const filteredPromptActivities = useMemo(() => {
     const query = promptSearchQuery.trim().toLowerCase();
 
-    if (!query) {
-      return data.promptActivities;
-    }
+    return data.promptActivities.filter((activity) => {
+      if (
+        promptWorkTypeFilter !== "all" &&
+        workTypeForFiles(activity.filesChanged) !== promptWorkTypeFilter
+      ) {
+        return false;
+      }
 
-    return data.promptActivities.filter((activity) =>
-      `${activity.prompt} ${activity.submittedAt}`.toLowerCase().includes(query),
-    );
-  }, [data.promptActivities, promptSearchQuery]);
+      if (!query) {
+        return true;
+      }
+
+      return `${activity.prompt} ${activity.submittedAt}`
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [data.promptActivities, promptSearchQuery, promptWorkTypeFilter]);
   const selectedPrompt =
     filteredPromptActivities.find((activity) => activity.id === selectedPromptId) ??
     filteredPromptActivities[0] ??
     null;
+  const filteredSessions = useMemo(() => {
+    if (sessionWorkTypeFilter === "all") {
+      return data.activities;
+    }
+
+    return data.activities.filter(
+      (activity) => workTypeForFiles(activity.filesChanged) === sessionWorkTypeFilter,
+    );
+  }, [data.activities, sessionWorkTypeFilter]);
   const selectedSession =
-    data.activities.find((activity) => activity.id === selectedSessionId) ??
-    data.activities[0] ??
+    filteredSessions.find((activity) => activity.id === selectedSessionId) ??
+    filteredSessions[0] ??
     null;
   const selectedSessionPrompts = useMemo(
     () =>
@@ -1541,6 +1732,9 @@ function ActivityPanel({
           data-active={view === "sessions"}
           onClick={() => {
             const promptSessionTarget = view === "prompts" ? selectedPrompt : null;
+            if (promptSessionTarget) {
+              setSessionWorkTypeFilter("all");
+            }
             updateActivityNavigation({
               selectedPromptId: null,
               selectedSessionId:
@@ -1572,6 +1766,12 @@ function ActivityPanel({
                   value={promptSearchQuery}
                 />
               </label>
+              <WorkTypeFilterControl
+                ariaLabel="Filter prompts by activity type"
+                counts={promptWorkTypeCounts}
+                onChange={setPromptWorkTypeFilter}
+                value={promptWorkTypeFilter}
+              />
 
               {filteredPromptActivities.length > 0 ? (
                 <div className="bh-prompt-list">
@@ -1599,15 +1799,6 @@ function ActivityPanel({
             </div>
             <PromptChangeDetail
               activity={selectedPrompt}
-              onOpenSession={(activity) => {
-                updateActivityNavigation({
-                  selectedPromptId: null,
-                  selectedSessionId: activity.sessionId,
-                  selectedSessionPromptId: activity.id,
-                  view: "sessions",
-                });
-                setSessionConversationSearchQuery("");
-              }}
               onSharePrompt={startProjectShareFromPrompt}
             />
           </div>
@@ -1621,27 +1812,39 @@ function ActivityPanel({
       ) : hasSessionActivity ? (
         <div className="bh-activity-session-layout" role="tabpanel">
           <div className="bh-activity-list">
-            {data.activities.map((activity) => (
-              <ActivityCard
-                activity={activity}
-                isSelected={activity.id === selectedSession?.id}
-                key={activity.id}
-                onOpen={() => {
-                  const latestPromptInSession =
-                    data.promptActivities
-                      .filter((prompt) => prompt.sessionId === activity.id)
-                      .sort((first, second) => second.sequence - first.sequence)[0] ??
-                    null;
-                  updateActivityNavigation({
-                    selectedPromptId: null,
-                    selectedSessionId: activity.id,
-                    selectedSessionPromptId: latestPromptInSession?.id ?? null,
-                    view: "sessions",
-                  });
-                  setSessionConversationSearchQuery("");
-                }}
-              />
-            ))}
+            <WorkTypeFilterControl
+              ariaLabel="Filter sessions by activity type"
+              counts={sessionWorkTypeCounts}
+              onChange={setSessionWorkTypeFilter}
+              value={sessionWorkTypeFilter}
+            />
+            {filteredSessions.length > 0 ? (
+              filteredSessions.map((activity) => (
+                <ActivityCard
+                  activity={activity}
+                  isSelected={activity.id === selectedSession?.id}
+                  key={activity.id}
+                  onOpen={() => {
+                    const latestPromptInSession =
+                      data.promptActivities
+                        .filter((prompt) => prompt.sessionId === activity.id)
+                        .sort((first, second) => second.sequence - first.sequence)[0] ??
+                      null;
+                    updateActivityNavigation({
+                      selectedPromptId: null,
+                      selectedSessionId: activity.id,
+                      selectedSessionPromptId: latestPromptInSession?.id ?? null,
+                      view: "sessions",
+                    });
+                    setSessionConversationSearchQuery("");
+                  }}
+                />
+              ))
+            ) : (
+              <div className="bh-prompt-search-empty">
+                No sessions match this filter.
+              </div>
+            )}
           </div>
 
           <section
@@ -1800,6 +2003,9 @@ function ActivityPanel({
           onClose={() => setIsShareDrawerOpen(false)}
           onSelectPrompt={selectSharePrompt}
           onPublishFlow={onPublishFlow}
+          onSaveFlowDraft={onSaveFlowDraft}
+          onUpdateFlow={onUpdateFlow}
+          onUploadFlowAsset={onUploadFlowAsset}
           prompts={selectedSharePrompts}
           scope={shareScope}
           session={shareSession}
@@ -1808,26 +2014,6 @@ function ActivityPanel({
         />
       ) : null}
 
-    </div>
-  );
-}
-
-function KnowledgePanel({ data }: { data: ProjectDetailData }) {
-  if (data.knowledge.length === 0) {
-    return (
-      <EmptyState
-        description="README, rules, architecture notes, and memory resources will appear after related files are tracked."
-        icon={BookOpen}
-        title="No knowledge resources yet"
-      />
-    );
-  }
-
-  return (
-    <div className="bh-knowledge-list">
-      {data.knowledge.map((item) => (
-        <KnowledgeCard item={item} key={item.title} />
-      ))}
     </div>
   );
 }
@@ -1938,6 +2124,9 @@ function ProjectPanel({
   isLoading,
   onActivityNavigationChange,
   onPublishFlow,
+  onSaveFlowDraft,
+  onUpdateFlow,
+  onUploadFlowAsset,
   onRepositoryFileSelect,
   onRetry,
   onTabChange,
@@ -1949,6 +2138,16 @@ function ProjectPanel({
   isLoading?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onPublishFlow?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
+  onSaveFlowDraft?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
+  onUpdateFlow?: (
+    flowKey: string,
+    payload: PromptFlowUpdatePayload,
+  ) => Promise<PublishedFlowDetail>;
+  onUploadFlowAsset?: (
+    flowKey: string,
+    file: File,
+    altText?: string,
+  ) => Promise<PublishedFlowAsset>;
   onRepositoryFileSelect?: (path: string) => void;
   onRetry?: () => void;
   onTabChange: (tabId: ProjectDetailTabId) => void;
@@ -1989,12 +2188,11 @@ function ProjectPanel({
         data={data}
         onActivityNavigationChange={onActivityNavigationChange}
         onPublishFlow={onPublishFlow}
+        onSaveFlowDraft={onSaveFlowDraft}
+        onUpdateFlow={onUpdateFlow}
+        onUploadFlowAsset={onUploadFlowAsset}
       />
     );
-  }
-
-  if (activeTab === "knowledge") {
-    return <KnowledgePanel data={data} />;
   }
 
   if (activeTab === "files") {
@@ -2024,7 +2222,10 @@ export function ProjectDetailPage({
   onProjectSelect,
   onRepositoryFileSelect,
   onRetry,
+  onSaveFlowDraft,
   onTabChange,
+  onUpdateFlow,
+  onUploadFlowAsset,
   projectOptions = [],
 }: ProjectDetailPageProps) {
   return (
@@ -2064,6 +2265,9 @@ export function ProjectDetailPage({
           isLoading={isLoading}
           onActivityNavigationChange={onActivityNavigationChange}
           onPublishFlow={onPublishFlow}
+          onSaveFlowDraft={onSaveFlowDraft}
+          onUpdateFlow={onUpdateFlow}
+          onUploadFlowAsset={onUploadFlowAsset}
           onRepositoryFileSelect={onRepositoryFileSelect}
           onRetry={onRetry}
           onTabChange={onTabChange}

@@ -92,6 +92,13 @@ class Settings:
     response_max_chars: int = field(
         default_factory=lambda: _int_env("PROMPTHUB_RESPONSE_MAX_CHARS", 50000)
     )
+    published_flow_asset_root: str = os.environ.get(
+        "PROMPTHUB_PUBLISHED_FLOW_ASSET_ROOT",
+        "~/.prompthub/published-flow-assets",
+    )
+    published_flow_asset_max_bytes: int = field(
+        default_factory=lambda: _int_env("PROMPTHUB_PUBLISHED_FLOW_ASSET_MAX_BYTES", 5_242_880)
+    )
     oauth_state_secret: str | None = field(
         default_factory=lambda: _optional_env("PROMPTHUB_OAUTH_STATE_SECRET")
     )
