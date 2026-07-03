@@ -966,6 +966,7 @@
   gap: var(--bh-space-4);
 }
 
+.bh-activity-layout[data-view="prompts"],
 .bh-activity-layout[data-view="sessions"] {
   height: 100%;
   grid-template-rows: auto minmax(0, 1fr);
@@ -1104,6 +1105,7 @@
   gap: var(--bh-space-4);
 }
 
+.bh-activity-layout[data-view="prompts"] .bh-prompt-activity-layout,
 .bh-activity-layout[data-view="sessions"] .bh-activity-session-layout {
   min-height: 0;
   align-items: stretch;
@@ -1124,6 +1126,13 @@
   gap: var(--bh-space-3);
 }
 
+.bh-activity-layout[data-view="prompts"] .bh-prompt-sidebar {
+  min-height: 0;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  align-content: stretch;
+  overflow: hidden;
+}
+
 .bh-activity-layout[data-view="sessions"] .bh-activity-list,
 .bh-activity-layout[data-view="sessions"] .bh-session-conversation-panel {
   min-height: 0;
@@ -1132,6 +1141,7 @@
   overflow: hidden;
 }
 
+.bh-latest-prompt-list,
 .bh-session-list,
 .bh-session-prompt-list {
   display: grid;
@@ -1143,6 +1153,8 @@
   scrollbar-gutter: stable;
 }
 
+.bh-activity-layout[data-view="prompts"] .bh-prompt-activity-layout > .bh-prompt-change-detail,
+.bh-activity-layout[data-view="prompts"] .bh-prompt-activity-layout > .bh-activity-detail-placeholder,
 .bh-activity-layout[data-view="sessions"] .bh-activity-session-layout > .bh-prompt-change-detail,
 .bh-activity-layout[data-view="sessions"] .bh-activity-session-layout > .bh-activity-detail-placeholder {
   position: static;
@@ -3134,7 +3146,10 @@ button.bh-file-tree-row:focus-visible {
     grid-template-columns: 1fr;
   }
 
+  .bh-activity-layout[data-view="prompts"],
   .bh-activity-layout[data-view="sessions"],
+  .bh-activity-layout[data-view="prompts"] .bh-prompt-activity-layout,
+  .bh-activity-layout[data-view="prompts"] .bh-prompt-sidebar,
   .bh-activity-layout[data-view="sessions"] .bh-activity-session-layout,
   .bh-activity-layout[data-view="sessions"] .bh-activity-list,
   .bh-activity-layout[data-view="sessions"] .bh-session-conversation-panel {
@@ -3143,6 +3158,7 @@ button.bh-file-tree-row:focus-visible {
     overflow: visible;
   }
 
+  .bh-latest-prompt-list,
   .bh-session-list,
   .bh-session-prompt-list {
     overflow: visible;

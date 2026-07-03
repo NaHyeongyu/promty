@@ -1834,29 +1834,31 @@ function ActivityPanel({
                 value={promptWorkTypeFilter}
               />
 
-              {filteredPromptActivities.length > 0 ? (
-                <div className="bh-prompt-list">
-                  {filteredPromptActivities.map((activity) => (
-                    <PromptActivityCard
-                      activity={activity}
-                      isSelected={activity.id === selectedPrompt?.id}
-                      key={activity.id}
-                      onOpen={() =>
-                        updateActivityNavigation({
-                          selectedPromptId: activity.id,
-                          selectedSessionId: null,
-                          selectedSessionPromptId: null,
-                          view: "prompts",
-                        })
-                      }
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="bh-prompt-search-empty">
-                  No prompts match this search.
-                </div>
-              )}
+              <div className="bh-latest-prompt-list">
+                {filteredPromptActivities.length > 0 ? (
+                  <div className="bh-prompt-list">
+                    {filteredPromptActivities.map((activity) => (
+                      <PromptActivityCard
+                        activity={activity}
+                        isSelected={activity.id === selectedPrompt?.id}
+                        key={activity.id}
+                        onOpen={() =>
+                          updateActivityNavigation({
+                            selectedPromptId: activity.id,
+                            selectedSessionId: null,
+                            selectedSessionPromptId: null,
+                            view: "prompts",
+                          })
+                        }
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="bh-prompt-search-empty">
+                    No prompts match this search.
+                  </div>
+                )}
+              </div>
             </div>
             {/* Community sharing is paused for now; share handler intentionally omitted. */}
             <PromptChangeDetail activity={selectedPrompt} />
