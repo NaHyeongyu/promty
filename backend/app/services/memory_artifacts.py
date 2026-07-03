@@ -1,0 +1,460 @@
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import desc, func, select
+from sqlalchemy.orm import Session as DBSession
+
+from app.models.artifact_generation_jobs import ArtifactGenerationJob
+from app.models.artifacts import Artifact
+from app.models.events import Event
+from app.models.projects import Project
+from app.models.sessions import Session
+from app.services.event_payload_security import decrypt_event_payload
+
+MEMORY_ARTIFACT_TYPE = "MemoryTask"
+LOCAL_MEMORY_GENERATOR = "local-session-v1"
+SESSION_IDLE_COMPLETE_AFTER = timedelta(minutes=45)
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _iso(value: datetime | None) -> str | None:
+    return value.isoformat() if value else None
+
+
+def _string_or_none(value: Any) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _truncate(value: str, limit: int = 220) -> str:
+    cleaned = " ".join(value.split())
+    return cleaned if len(cleaned) <= limit else f"{cleaned[: limit - 3].rstrip()}..."
+
+
+def _payload(event: Event) -> dict[str, Any]:
+    return decrypt_event_payload(event.event_type, event.payload)
+
+
+def _event_model(event: Event, payload: dict[str, Any]) -> str | None:
+    model = _string_or_none(payload.get("model"))
+    return model if model and model.lower() not in {event.tool, "codex", "cursor"} else None
+
+
+def _changed_files_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    files: list[dict[str, Any]] = []
+    changes = payload.get("changes")
+    if isinstance(changes, list):
+        for change in changes:
+            if not isinstance(change, dict):
+                continue
+            path = _string_or_none(change.get("path"))
+            if not path:
+                continue
+            files.append(
+                {
+                    "additions": change.get("additions")
+                    if isinstance(change.get("additions"), int)
+                    else change.get("insertions_delta")
+                    if isinstance(change.get("insertions_delta"), int)
+                    else None,
+                    "deletions": change.get("deletions")
+                    if isinstance(change.get("deletions"), int)
+                    else change.get("deletions_delta")
+                    if isinstance(change.get("deletions_delta"), int)
+                    else None,
+                    "path": path,
+                    "status": _string_or_none(change.get("status")) or "changed",
+                }
+            )
+        return files
+
+    raw_files = payload.get("files")
+    if isinstance(raw_files, list):
+        return [
+            {"additions": None, "deletions": None, "path": path, "status": "changed"}
+            for path in raw_files
+            if isinstance(path, str) and path
+        ]
+    return []
+
+
+def _dedupe_files(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: dict[str, dict[str, Any]] = {}
+    for file in files:
+        path = file["path"]
+        current = merged.setdefault(
+            path,
+            {
+                "additions": 0,
+                "deletions": 0,
+                "path": path,
+                "status": file.get("status") or "changed",
+            },
+        )
+        current["status"] = file.get("status") or current["status"]
+        if isinstance(file.get("additions"), int):
+            current["additions"] += file["additions"]
+        if isinstance(file.get("deletions"), int):
+            current["deletions"] += file["deletions"]
+
+    return [
+        {
+            **file,
+            "additions": file["additions"] if file["additions"] > 0 else None,
+            "deletions": file["deletions"] if file["deletions"] > 0 else None,
+        }
+        for file in sorted(merged.values(), key=lambda item: item["path"])
+    ]
+
+
+def _tags_for_session(
+    *,
+    changed_files: list[dict[str, Any]],
+    model: str | None,
+    tool: str,
+) -> list[str]:
+    tags = {"memory", tool}
+    if model:
+        tags.add(model.lower().replace(" ", "-"))
+    for file in changed_files[:20]:
+        path = file["path"]
+        if "." in path:
+            tags.add(path.rsplit(".", 1)[1].lower())
+    return sorted(tags)[:12]
+
+
+def _title_from_session(
+    *,
+    commits: list[dict[str, str | None]],
+    prompts: list[dict[str, Any]],
+    project: Project,
+) -> str:
+    for commit in commits:
+        message = _string_or_none(commit.get("message"))
+        if message:
+            return _truncate(message.splitlines()[0], 120)
+    for prompt in prompts:
+        prompt_text = _string_or_none(prompt.get("prompt"))
+        if prompt_text:
+            return _truncate(prompt_text.splitlines()[0], 120)
+    return f"{project.name} development session"
+
+
+def _build_memory_payload(db: DBSession, session: Session) -> dict[str, Any]:
+    project = session.project or db.get(Project, session.project_id)
+    events = list(
+        db.execute(
+            select(Event)
+            .where(Event.project_id == session.project_id, Event.session_id == session.id)
+            .order_by(Event.sequence, Event.created_at)
+        ).scalars()
+    )
+    payloads = [(event, _payload(event)) for event in events]
+    prompt_events = [
+        {"id": str(event.id), "prompt": _string_or_none(payload.get("prompt"))}
+        for event, payload in payloads
+        if event.event_type == "PromptSubmitted"
+    ]
+    response_count = sum(1 for event, _ in payloads if event.event_type == "ResponseReceived")
+    commits = [
+        {
+            "hash": _string_or_none(payload.get("hash")),
+            "message": _string_or_none(payload.get("message")),
+        }
+        for event, payload in payloads
+        if event.event_type == "CommitCreated"
+    ]
+    changed_files = _dedupe_files(
+        [
+            file
+            for event, payload in payloads
+            if event.event_type == "FilesChanged"
+            for file in _changed_files_from_payload(payload)
+        ]
+    )
+    first_event = events[0] if events else None
+    last_event = events[-1] if events else None
+    model = next(
+        (
+            model
+            for event, payload in payloads
+            if (model := _event_model(event, payload)) is not None
+        ),
+        session.model,
+    )
+    title = _title_from_session(commits=commits, prompts=prompt_events, project=project)
+    file_count = len(changed_files)
+    prompt_count = len(prompt_events)
+    summary = (
+        f"{prompt_count} prompts and {response_count} AI responses were captured"
+        f" in this session, touching {file_count} files."
+    )
+    reason = (
+        _truncate(prompt_events[0]["prompt"], 480)
+        if prompt_events and prompt_events[0]["prompt"]
+        else "Promty captured this session as project memory from development events."
+    )
+    outcome = (
+        f"Latest commit: {_truncate(commits[-1]['message'] or commits[-1]['hash'] or 'unknown', 240)}"
+        if commits
+        else f"{file_count} files changed and {prompt_count} prompts recorded."
+    )
+
+    return {
+        "changed_files": changed_files[:100],
+        "commit_sha": commits[-1]["hash"] if commits else None,
+        "event_count": len(events),
+        "first_event_id": str(first_event.id) if first_event else None,
+        "generator": LOCAL_MEMORY_GENERATOR,
+        "last_event_id": str(last_event.id) if last_event else None,
+        "model": model,
+        "outcome": outcome,
+        "prompt_event_ids": [prompt["id"] for prompt in prompt_events],
+        "reason": reason,
+        "summary": summary,
+        "tags": _tags_for_session(
+            changed_files=changed_files,
+            model=model,
+            tool=session.tool,
+        ),
+        "title": title,
+        "tool": session.tool,
+    }
+
+
+def session_completion_state(db: DBSession, session: Session) -> dict[str, Any]:
+    latest_event_at = db.scalar(
+        select(func.max(Event.created_at)).where(
+            Event.project_id == session.project_id,
+            Event.session_id == session.id,
+        )
+    )
+    if session.ended_at is not None:
+        return {
+            "completed": True,
+            "completed_at": session.ended_at,
+            "reason": "explicit",
+        }
+    if latest_event_at and latest_event_at <= utc_now() - SESSION_IDLE_COMPLETE_AFTER:
+        return {
+            "completed": True,
+            "completed_at": latest_event_at,
+            "reason": "idle_timeout",
+        }
+    return {
+        "completed": False,
+        "completed_at": None,
+        "reason": "open",
+    }
+
+
+def complete_session_if_ready(
+    db: DBSession,
+    session: Session,
+    *,
+    force: bool = False,
+) -> dict[str, Any]:
+    state = session_completion_state(db, session)
+    if state["completed"]:
+        if session.ended_at is None:
+            session.ended_at = state["completed_at"]
+            db.flush()
+        return state
+    if not force:
+        return state
+
+    latest_event_at = db.scalar(
+        select(func.max(Event.created_at)).where(
+            Event.project_id == session.project_id,
+            Event.session_id == session.id,
+        )
+    )
+    session.ended_at = latest_event_at or utc_now()
+    db.flush()
+    return {
+        "completed": True,
+        "completed_at": session.ended_at,
+        "reason": "manual",
+    }
+
+
+def create_artifact_generation_job(
+    db: DBSession,
+    *,
+    project_id: UUID,
+    reason: str,
+    session_id: UUID,
+) -> ArtifactGenerationJob:
+    job = ArtifactGenerationJob(
+        project_id=project_id,
+        session_id=session_id,
+        reason=reason,
+        status="pending",
+        generator=LOCAL_MEMORY_GENERATOR,
+    )
+    db.add(job)
+    db.flush()
+    return job
+
+
+def run_artifact_generation_job(
+    db: DBSession,
+    job: ArtifactGenerationJob,
+) -> ArtifactGenerationJob:
+    job.status = "running"
+    job.updated_at = utc_now()
+    db.flush()
+
+    try:
+        session = db.get(Session, job.session_id)
+        if session is None:
+            raise ValueError("Session not found")
+        artifact = generate_memory_artifact_for_session(db, session)
+        job.artifact_id = artifact.id
+        job.status = "succeeded"
+        job.completed_at = utc_now()
+        job.error = None
+    except Exception as exc:
+        job.status = "failed"
+        job.error = str(exc)
+        job.completed_at = utc_now()
+    finally:
+        job.updated_at = utc_now()
+        db.flush()
+
+    return job
+
+
+def generate_memory_artifact_for_session(
+    db: DBSession,
+    session: Session,
+) -> Artifact:
+    payload = _build_memory_payload(db, session)
+    artifact = db.execute(
+        select(Artifact).where(
+            Artifact.project_id == session.project_id,
+            Artifact.session_id == session.id,
+            Artifact.type == MEMORY_ARTIFACT_TYPE,
+        )
+    ).scalar_one_or_none()
+    if artifact is None:
+        artifact = Artifact(
+            project_id=session.project_id,
+            session_id=session.id,
+            event_id=UUID(payload["last_event_id"]) if payload["last_event_id"] else None,
+            type=MEMORY_ARTIFACT_TYPE,
+            title=payload["title"],
+            storage_key=f"memory/session/{session.id}",
+        )
+        db.add(artifact)
+
+    artifact.schema_version = 1
+    artifact.event_id = UUID(payload["last_event_id"]) if payload["last_event_id"] else None
+    artifact.title = payload["title"]
+    artifact.summary = payload["summary"]
+    artifact.reason = payload["reason"]
+    artifact.outcome = payload["outcome"]
+    artifact.tags = payload["tags"]
+    artifact.changed_files = payload["changed_files"]
+    artifact.prompt_event_ids = payload["prompt_event_ids"]
+    artifact.commit_sha = payload["commit_sha"]
+    artifact.model = payload["model"]
+    artifact.generator = payload["generator"]
+    artifact.metadata_ = {
+        "event_count": payload["event_count"],
+        "first_event_id": payload["first_event_id"],
+        "last_event_id": payload["last_event_id"],
+        "tool": payload["tool"],
+    }
+    artifact.updated_at = utc_now()
+    db.flush()
+    return artifact
+
+
+def create_and_run_session_memory_job(
+    db: DBSession,
+    *,
+    project_id: UUID,
+    reason: str,
+    session_id: UUID,
+) -> ArtifactGenerationJob:
+    job = create_artifact_generation_job(
+        db,
+        project_id=project_id,
+        reason=reason,
+        session_id=session_id,
+    )
+    return run_artifact_generation_job(db, job)
+
+
+def list_project_memory_artifacts(
+    db: DBSession,
+    *,
+    limit: int = 20,
+    project_id: UUID,
+) -> list[Artifact]:
+    return list(
+        db.execute(
+            select(Artifact)
+            .where(Artifact.project_id == project_id, Artifact.type == MEMORY_ARTIFACT_TYPE)
+            .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
+            .limit(limit)
+        ).scalars()
+    )
+
+
+def serialize_memory_artifact(artifact: Artifact) -> dict[str, Any]:
+    return {
+        "changed_files": artifact.changed_files,
+        "commit_sha": artifact.commit_sha,
+        "created_at": _iso(artifact.created_at),
+        "generator": artifact.generator,
+        "id": str(artifact.id),
+        "model": artifact.model,
+        "outcome": artifact.outcome,
+        "prompt_event_ids": artifact.prompt_event_ids,
+        "reason": artifact.reason,
+        "session_id": str(artifact.session_id) if artifact.session_id else None,
+        "summary": artifact.summary,
+        "tags": artifact.tags,
+        "title": artifact.title,
+        "type": artifact.type,
+        "updated_at": _iso(artifact.updated_at),
+    }
+
+
+def serialize_memory_artifact_summary(artifact: Artifact) -> dict[str, Any]:
+    return {
+        "changed_file_count": len(artifact.changed_files or []),
+        "created_at": _iso(artifact.created_at),
+        "generator": artifact.generator,
+        "id": str(artifact.id),
+        "model": artifact.model,
+        "outcome": artifact.outcome,
+        "session_id": str(artifact.session_id) if artifact.session_id else None,
+        "summary": artifact.summary,
+        "tags": artifact.tags,
+        "title": artifact.title,
+        "updated_at": _iso(artifact.updated_at),
+    }
+
+
+def serialize_generation_job(job: ArtifactGenerationJob) -> dict[str, Any]:
+    return {
+        "artifact_id": str(job.artifact_id) if job.artifact_id else None,
+        "completed_at": _iso(job.completed_at),
+        "created_at": _iso(job.created_at),
+        "error": job.error,
+        "generator": job.generator,
+        "id": str(job.id),
+        "project_id": str(job.project_id),
+        "reason": job.reason,
+        "session_id": str(job.session_id),
+        "status": job.status,
+        "updated_at": _iso(job.updated_at),
+    }

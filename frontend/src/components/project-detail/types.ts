@@ -68,6 +68,26 @@ export type ProjectCommunityStatus = {
   totalFlows: number;
 };
 
+export type ProjectMemoryArtifact = {
+  changedFileCount: number;
+  createdAt: string | null;
+  generator: string | null;
+  id: string;
+  model: string | null;
+  outcome: string | null;
+  sessionId: string | null;
+  summary: string | null;
+  tags: string[];
+  title: string;
+  updatedAt: string | null;
+};
+
+export type ProjectMemoryStatus = {
+  latestArtifactAt: string | null;
+  recentArtifacts: ProjectMemoryArtifact[];
+  totalArtifacts: number;
+};
+
 export type ActivityItem = {
   id: string;
   model: string;
@@ -141,6 +161,7 @@ export type ProjectDetailData = {
   activities: ActivityItem[];
   community: ProjectCommunityStatus;
   files: FileTreeNode[];
+  memory: ProjectMemoryStatus;
   overview: OverviewItem[];
   promptActivities: PromptActivityItem[];
   project: ProjectDetailProject;

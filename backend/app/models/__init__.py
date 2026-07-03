@@ -1,3 +1,4 @@
+from app.models.artifact_generation_jobs import ArtifactGenerationJob
 from app.models.artifacts import Artifact
 from app.models.code_change_patches import CodeChangePatch
 from app.models.devices import Device
@@ -19,6 +20,7 @@ from app.models.users import User
 
 __all__ = [
     "Artifact",
+    "ArtifactGenerationJob",
     "CodeChangePatch",
     "CollectorToken",
     "Device",

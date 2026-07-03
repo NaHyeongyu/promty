@@ -283,12 +283,44 @@ ended_at is null or ended_at >= started_at
 
 ```text
 id UUID PK
+schema_version int
 project_id UUID FK -> projects.id on delete cascade
+session_id UUID nullable FK -> sessions.id on delete set null
 event_id UUID nullable FK -> events.id on delete set null
 type string
 title string
+summary text nullable
+reason text nullable
+outcome text nullable
 storage_key string
+tags JSONB array
+changed_files JSONB array
+prompt_event_ids JSONB array
+commit_sha string nullable
+model string nullable
+generator string nullable
+metadata JSONB object
 created_at timestamptz
+updated_at timestamptz
+```
+
+`MemoryTask` artifacts are generated from completed sessions and form Promty's project memory layer.
+
+### artifact_generation_jobs
+
+```text
+id UUID PK
+project_id UUID FK -> projects.id on delete cascade
+session_id UUID FK -> sessions.id on delete cascade
+artifact_id UUID nullable FK -> artifacts.id on delete set null
+status pending/running/succeeded/failed
+reason string
+generator string
+error text nullable
+metadata JSONB object
+created_at timestamptz
+updated_at timestamptz
+completed_at timestamptz nullable
 ```
 
 ## Current Ingest Behavior
@@ -328,3 +360,5 @@ Future authentication and device registration work should replace the system use
 `0002_event_security_indexes` adds event sequence uniqueness, event check constraints, session time ordering, latest/event-type/session query indexes, and a JSONB GIN index for future payload filtering.
 
 `0003_collector_tokens` adds hashed per-user collector tokens for CLI login and upload authentication.
+
+`0011_promty_memory_artifacts` extends artifacts for generated project memory and adds artifact generation jobs.

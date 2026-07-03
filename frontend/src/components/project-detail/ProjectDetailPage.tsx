@@ -45,6 +45,7 @@ type ProjectDetailPageProps = {
   isRefreshing?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onConnectRepository?: () => void;
+  onGenerateSessionMemory?: (sessionId: string) => Promise<void>;
   onOpenAllProjects?: () => void;
   onProjectSelect?: (projectId: string) => void;
   onRepositoryFileSelect?: (path: string) => void;
@@ -1235,11 +1236,14 @@ function PromptFlowShareDrawer({
 
 function OverviewPanel({
   data,
-  onPublishLatestActivity,
+  onGenerateSessionMemory,
 }: {
   data: ProjectDetailData;
-  onPublishLatestActivity: () => void;
+  onGenerateSessionMemory?: (sessionId: string) => Promise<void>;
 }) {
+  const [isGeneratingMemory, setIsGeneratingMemory] = useState(false);
+  const [memoryError, setMemoryError] = useState<string | null>(null);
+
   if (data.overview.length === 0) {
     return (
       <EmptyState
@@ -1263,10 +1267,12 @@ function OverviewPanel({
     (total, activity) => total + activity.filesChanged,
     0,
   );
+  const latestActivity = data.activities[0] ?? null;
   const statisticItems = [
     { label: "Activities", value: overviewItems.get("Activities")?.value ?? "0" },
     { label: "Prompts", value: overviewItems.get("Prompts")?.value ?? "0" },
     { label: "Files Changed", value: overviewCompactNumber(filesChanged) },
+    { label: "Memory", value: overviewCompactNumber(data.memory.totalArtifacts) },
     // Community publishing is paused for now.
     // {
     //   label: "Published Prompts",
@@ -1283,20 +1289,11 @@ function OverviewPanel({
   const timelineItems = [
     overviewItems.get("Created"),
     overviewItems.get("Last Activity"),
+    overviewItems.get("Memory Artifacts"),
     // Community publishing is paused for now.
     // overviewItems.get("Last Published Prompt"),
     overviewItems.get("Repository Connected"),
   ].filter((item): item is OverviewItem => Boolean(item));
-  const communityMetrics = [
-    {
-      label: "Published Prompts",
-      value: overviewCompactNumber(data.community.publishedFlows),
-    },
-    { label: "Total Views", value: "0" },
-    { label: "Bookmarks", value: "0" },
-    { label: "Average Rating", value: "N/A" },
-  ];
-  const hasPublishedPrompts = data.community.publishedFlows > 0;
 
   return (
     <div className="bh-overview-dashboard">
@@ -1360,49 +1357,66 @@ function OverviewPanel({
         </section>
       </div>
 
-      {/* Community overview is paused for now.
-      <section className="bh-overview-community" aria-labelledby="project-community-title">
-        <div className="bh-overview-community-header">
+      <section className="bh-overview-memory" aria-labelledby="project-memory-title">
+        <div className="bh-overview-memory-header">
           <div>
-            <h2 id="project-community-title">Community</h2>
-            <p>Share useful AI workflows from this project with other builders.</p>
+            <h2 id="project-memory-title">Project Memory</h2>
+            <p>Promty turns completed development sessions into searchable decision history.</p>
           </div>
           <button
             className="bh-overview-primary-button"
-            onClick={onPublishLatestActivity}
+            disabled={!latestActivity || isGeneratingMemory || !onGenerateSessionMemory}
+            onClick={() => {
+              if (!latestActivity || !onGenerateSessionMemory) {
+                return;
+              }
+              setIsGeneratingMemory(true);
+              setMemoryError(null);
+              void onGenerateSessionMemory(latestActivity.id)
+                .catch((error) => {
+                  setMemoryError(
+                    error instanceof Error
+                      ? error.message
+                      : "Memory generation failed.",
+                  );
+                })
+                .finally(() => setIsGeneratingMemory(false));
+            }}
             type="button"
           >
-            Publish Latest Activity
+            {isGeneratingMemory ? "Generating" : "Generate Latest Memory"}
           </button>
         </div>
 
-        <dl className="bh-overview-community-metrics">
-          {communityMetrics.map((item) => (
-            <div key={item.label}>
-              <dd>{item.value}</dd>
-              <dt>{item.label}</dt>
-            </div>
-          ))}
-        </dl>
+        {memoryError ? <div className="bh-overview-memory-error">{memoryError}</div> : null}
 
-        {hasPublishedPrompts ? (
-          <div className="bh-overview-community-list">
-            {data.community.recentFlows.map((flow) => (
-              <article className="bh-overview-community-row" key={flow.id}>
-                <strong>{flow.title}</strong>
-                {flow.summary ? <p>{flow.summary}</p> : null}
-                <span>{flow.updatedAt ?? flow.publishedAt ?? "Unknown"}</span>
+        {data.memory.recentArtifacts.length > 0 ? (
+          <div className="bh-overview-memory-list">
+            {data.memory.recentArtifacts.map((artifact) => (
+              <article className="bh-overview-memory-row" key={artifact.id}>
+                <strong>{artifact.title}</strong>
+                {artifact.summary ? <p>{artifact.summary}</p> : null}
+                <span>
+                  {artifact.updatedAt ?? artifact.createdAt ?? "Unknown"} ·{" "}
+                  {artifact.changedFileCount} files
+                </span>
+                {artifact.tags.length > 0 ? (
+                  <div className="bh-overview-memory-tags">
+                    {artifact.tags.slice(0, 6).map((tag) => (
+                      <span key={`${artifact.id}-${tag}`}>{tag}</span>
+                    ))}
+                  </div>
+                ) : null}
               </article>
             ))}
           </div>
         ) : (
-          <div className="bh-overview-community-empty">
-            <strong>No published prompts yet.</strong>
-            <span>Share your best AI workflow with the community.</span>
+          <div className="bh-overview-memory-empty">
+            <strong>No memory artifacts yet.</strong>
+            <span>Generate memory from the latest completed session.</span>
           </div>
         )}
       </section>
-      */}
     </div>
   );
 }
@@ -2088,6 +2102,7 @@ function ProjectPanel({
   errorMessage,
   isLoading,
   onActivityNavigationChange,
+  onGenerateSessionMemory,
   onPublishFlow,
   onSaveFlowDraft,
   onUpdateFlow,
@@ -2102,6 +2117,7 @@ function ProjectPanel({
   errorMessage?: string | null;
   isLoading?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
+  onGenerateSessionMemory?: (sessionId: string) => Promise<void>;
   onPublishFlow?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
   onSaveFlowDraft?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
   onUpdateFlow?: (
@@ -2141,7 +2157,7 @@ function ProjectPanel({
     return (
       <OverviewPanel
         data={data}
-        onPublishLatestActivity={() => onTabChange("ai-activity")}
+        onGenerateSessionMemory={onGenerateSessionMemory}
       />
     );
   }
@@ -2182,6 +2198,7 @@ export function ProjectDetailPage({
   isRefreshing,
   onActivityNavigationChange,
   onConnectRepository,
+  onGenerateSessionMemory,
   onOpenAllProjects,
   onPublishFlow,
   onProjectSelect,
@@ -2229,6 +2246,7 @@ export function ProjectDetailPage({
           errorMessage={errorMessage}
           isLoading={isLoading}
           onActivityNavigationChange={onActivityNavigationChange}
+          onGenerateSessionMemory={onGenerateSessionMemory}
           onPublishFlow={onPublishFlow}
           onSaveFlowDraft={onSaveFlowDraft}
           onUpdateFlow={onUpdateFlow}

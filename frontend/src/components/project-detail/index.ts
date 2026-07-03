@@ -26,5 +26,7 @@ export type {
   ProjectDetailTabId,
   ProjectHeaderProjectOption,
   ProjectHeaderProps,
+  ProjectMemoryArtifact,
+  ProjectMemoryStatus,
   RepositoryFileContent,
 } from "./types";

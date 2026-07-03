@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.encryption import maybe_decrypt_app_text_from_string
 from app.core.security import require_web_user
 from app.db.session import get_db
+from app.models.artifacts import Artifact
 from app.models.code_change_patches import CodeChangePatch
 from app.models.events import Event
 from app.models.project_files import ProjectFile
@@ -30,6 +31,10 @@ from app.services.github_repositories import (
     read_github_repository_file_content,
     read_github_repository_tree,
     repository_metadata_from_url,
+)
+from app.services.memory_artifacts import (
+    MEMORY_ARTIFACT_TYPE,
+    serialize_memory_artifact_summary,
 )
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -652,6 +657,14 @@ def read_project_detail(
         ).scalars()
     )
     last_modified_at = max((file.changed_at for file in active_files), default=None)
+    memory_artifacts = list(
+        db.execute(
+            select(Artifact)
+            .where(Artifact.project_id == project.id, Artifact.type == MEMORY_ARTIFACT_TYPE)
+            .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
+            .limit(5)
+        ).scalars()
+    )
 
     return {
         "project": {
@@ -699,6 +712,24 @@ def read_project_detail(
         #     ],
         #     "total_flows": sum(flow_status_counts.values()),
         # },
+        "memory": {
+            "latest_artifact_at": _iso(memory_artifacts[0].updated_at)
+            if memory_artifacts
+            else None,
+            "recent_artifacts": [
+                serialize_memory_artifact_summary(artifact)
+                for artifact in memory_artifacts
+            ],
+            "total_artifacts": db.scalar(
+                select(func.count())
+                .select_from(Artifact)
+                .where(
+                    Artifact.project_id == project.id,
+                    Artifact.type == MEMORY_ARTIFACT_TYPE,
+                )
+            )
+            or 0,
+        },
         "activities": [
             {
                 "id": activity["id"],

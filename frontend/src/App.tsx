@@ -126,6 +126,23 @@ type ProjectDetailApiResponse = {
     }>;
     total_flows: number;
   };
+  memory?: {
+    latest_artifact_at: string | null;
+    recent_artifacts: Array<{
+      changed_file_count: number;
+      created_at: string | null;
+      generator: string | null;
+      id: string;
+      model: string | null;
+      outcome: string | null;
+      session_id: string | null;
+      summary: string | null;
+      tags: string[];
+      title: string;
+      updated_at: string | null;
+    }>;
+    total_artifacts: number;
+  };
   prompt_activities?: Array<{
     file_changes?: Array<{
       additions: number | null;
@@ -871,6 +888,11 @@ function emptyProjectDetailData(project: Project | null): ProjectDetailData {
       totalFlows: 0,
     },
     files: [],
+    memory: {
+      latestArtifactAt: null,
+      recentArtifacts: [],
+      totalArtifacts: 0,
+    },
     overview: [],
     promptActivities: [],
     project: {
@@ -903,6 +925,7 @@ function projectDetailDataFromApi(
 ): ProjectDetailData {
   const models = payload.metrics.connected_models;
   const community = payload.community;
+  const memory = payload.memory;
   const totalPrompts =
     payload.metrics.total_prompts ?? payload.prompt_activities?.length ?? 0;
   const projectDescription = payload.project.description?.trim() ?? "";
@@ -978,6 +1001,29 @@ function projectDetailDataFromApi(
       totalFlows: community?.total_flows ?? 0,
     },
     files: payload.files,
+    memory: {
+      latestArtifactAt: memory?.latest_artifact_at
+        ? formatOptionalTimestamp(memory.latest_artifact_at, "Unknown")
+        : null,
+      recentArtifacts: (memory?.recent_artifacts ?? []).map((artifact) => ({
+        changedFileCount: artifact.changed_file_count,
+        createdAt: artifact.created_at
+          ? formatOptionalTimestamp(artifact.created_at, "Unknown")
+          : null,
+        generator: artifact.generator,
+        id: artifact.id,
+        model: artifact.model,
+        outcome: artifact.outcome,
+        sessionId: artifact.session_id,
+        summary: artifact.summary,
+        tags: artifact.tags,
+        title: artifact.title,
+        updatedAt: artifact.updated_at
+          ? formatOptionalTimestamp(artifact.updated_at, "Unknown")
+          : null,
+      })),
+      totalArtifacts: memory?.total_artifacts ?? 0,
+    },
     overview: [
       {
         title: "Repository URL",
@@ -1024,6 +1070,12 @@ function projectDetailDataFromApi(
       {
         title: "Prompts",
         value: formatCompactNumber(totalPrompts),
+      },
+      {
+        title: "Memory Artifacts",
+        value: formatCompactNumber(memory?.total_artifacts ?? 0),
+        description:
+          formatRelativeTimestamp(memory?.latest_artifact_at) ?? "No memory yet",
       },
       {
         title: "Created",
@@ -2451,6 +2503,36 @@ function WorkspaceApp() {
     }
   };
 
+  const generateSessionMemory = async (sessionId: string) => {
+    if (!selectedProjectId) {
+      throw new Error("Select a project before generating memory.");
+    }
+
+    const response = await fetch(
+      `${API_URL}/api/projects/${selectedProjectId}/sessions/${sessionId}/complete`,
+      {
+        credentials: "include",
+        method: "POST",
+      },
+    );
+    if (response.status === 401) {
+      setAuthStatus("unauthenticated");
+      setCurrentUser(null);
+      throw new Error("Sign in again before generating memory.");
+    }
+    if (!response.ok) {
+      const detail = await response
+        .json()
+        .then((payload) =>
+          typeof payload?.detail === "string" ? payload.detail : null,
+        )
+        .catch(() => null);
+      throw new Error(detail ?? `Memory request failed with HTTP ${response.status}`);
+    }
+
+    await loadProjectDetail(selectedProjectId, selectedProject);
+  };
+
   const loadProjectGithubFiles = async (
     projectId: string,
     signal?: AbortSignal,
@@ -3463,6 +3545,7 @@ function WorkspaceApp() {
               isRefreshing={isProjectDetailLoading && projectDetail !== null}
               onActivityNavigationChange={selectActivityNavigation}
               onConnectRepository={() => openRepositoryConnector(selectedProject.id)}
+              onGenerateSessionMemory={generateSessionMemory}
               onOpenAllProjects={closeProjectDetail}
               onProjectSelect={switchProjectDetail}
               onRepositoryFileSelect={selectRepositoryFile}
