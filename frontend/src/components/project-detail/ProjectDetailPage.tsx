@@ -7,7 +7,7 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from "react";
-import { Activity, BookOpen, Check, ImagePlus, Search, Share2, X } from "lucide-react";
+import { Activity, BookOpen, ImagePlus, Search, Share2, X } from "lucide-react";
 import { MarkdownContent } from "../MarkdownContent";
 import {
   ActivityCard,
@@ -81,25 +81,41 @@ function promptTitle(prompt: string) {
   return prompt.split(/\r?\n/)[0]?.trim().replace(/\s+/g, " ") || "Prompt flow";
 }
 
-function promptRangeLabel(prompts: PromptActivityItem[]) {
-  if (prompts.length === 0) {
-    return "No prompts selected";
-  }
-  const first = prompts[0];
-  const last = prompts[prompts.length - 1];
-  return first.id === last.id
-    ? `Prompt ${first.sequence}`
-    : `Prompts ${first.sequence}-${last.sequence}`;
+function shareSelectionTitle(promptCount: number) {
+  return promptCount === 1 ? "1 prompt selected" : `${promptCount} prompts selected`;
 }
 
-function shareSelectionTitle(
-  prompts: PromptActivityItem[],
-  scope: "project" | "session",
+function promptSubmittedTime(prompt: PromptActivityItem) {
+  const submittedTime = Date.parse(prompt.submittedAt);
+  return Number.isNaN(submittedTime) ? null : submittedTime;
+}
+
+function sortPromptsForFlow(
+  first: PromptActivityItem,
+  second: PromptActivityItem,
 ) {
-  if (scope === "project") {
-    return prompts.length === 1 ? "1 prompt selected" : `${prompts.length} prompts selected`;
+  const firstTime = promptSubmittedTime(first);
+  const secondTime = promptSubmittedTime(second);
+
+  if (firstTime !== null && secondTime !== null && firstTime !== secondTime) {
+    return firstTime - secondTime;
   }
-  return promptRangeLabel(prompts);
+
+  return first.sequence - second.sequence;
+}
+
+function sortPromptsForSelection(
+  first: PromptActivityItem,
+  second: PromptActivityItem,
+) {
+  const firstTime = promptSubmittedTime(first);
+  const secondTime = promptSubmittedTime(second);
+
+  if (firstTime !== null && secondTime !== null && firstTime !== secondTime) {
+    return secondTime - firstTime;
+  }
+
+  return second.sequence - first.sequence;
 }
 
 function overviewCompactNumber(value: number) {
@@ -120,6 +136,10 @@ const workTypeFilterOptions: Array<{ id: WorkTypeFilter; label: string }> = [
 
 function workTypeForFiles(filesChanged: number): WorkType {
   return filesChanged > 0 ? "work" : "brainstorming";
+}
+
+function workTypeLabel(workType: WorkType) {
+  return workType === "work" ? "Work" : "Brainstorming";
 }
 
 function workTypeCounts<T extends { filesChanged: number }>(
@@ -179,19 +199,6 @@ function tagsFromPrompts(prompts: PromptActivityItem[]) {
   return Array.from(tags).filter(Boolean).slice(0, 6).join(", ");
 }
 
-function shareSelectionLabel(state: "end" | "range" | "start" | undefined) {
-  if (state === "start") {
-    return "Start";
-  }
-  if (state === "end") {
-    return "End";
-  }
-  if (state === "range") {
-    return "Included";
-  }
-  return null;
-}
-
 type MarkdownEditorView = {
   destroy: () => void;
   dispatch: (transaction: {
@@ -239,14 +246,12 @@ function focusableModalElements(root: HTMLElement) {
 
 function MarkdownEditor({
   insertRequest,
-  onInsertHandled,
   onChange,
   onInsertHandled,
   placeholder,
   value,
 }: {
   insertRequest?: MarkdownInsertRequest | null;
-  onInsertHandled?: (id: number) => void;
   onChange: (value: string) => void;
   onInsertHandled?: (insertRequestId: number) => void;
   placeholder: string;
@@ -423,24 +428,23 @@ function MarkdownEditor({
 }
 
 function PromptFlowShareDrawer({
+  availablePrompts,
   data,
+  initialPromptIds,
   onClose,
   onPublishFlow,
   onSaveFlowDraft,
-  onSelectPrompt,
   onUpdateFlow,
   onUploadFlowAsset,
-  prompts,
   scope,
   session,
-  sessionPrompts,
-  shareStateForPrompt,
 }: {
+  availablePrompts: PromptActivityItem[];
   data: ProjectDetailData;
+  initialPromptIds: string[];
   onClose: () => void;
   onPublishFlow?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
   onSaveFlowDraft?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
-  onSelectPrompt: (prompt: PromptActivityItem) => void;
   onUpdateFlow?: (
     flowKey: string,
     payload: PromptFlowUpdatePayload,
@@ -450,45 +454,42 @@ function PromptFlowShareDrawer({
     file: File,
     altText?: string,
   ) => Promise<PublishedFlowAsset>;
-  prompts: PromptActivityItem[];
   scope: "project" | "session";
   session: ActivityItem | null;
-  sessionPrompts: PromptActivityItem[];
-  shareStateForPrompt: (
-    prompt: PromptActivityItem,
-  ) => "end" | "range" | "start" | undefined;
 }) {
   const modalElementRef = useRef<HTMLElement | null>(null);
   const assetInputRef = useRef<HTMLInputElement | null>(null);
+  const [selectedPromptIds, setSelectedPromptIds] =
+    useState<string[]>(initialPromptIds);
+  const availablePromptIds = useMemo(
+    () => new Set(availablePrompts.map((prompt) => prompt.id)),
+    [availablePrompts],
+  );
+  const initialSelectionKey = initialPromptIds.join(":");
+  const selectionPrompts = useMemo(
+    () => [...availablePrompts].sort(sortPromptsForSelection),
+    [availablePrompts],
+  );
+  const rangePrompts = useMemo(
+    () => [...availablePrompts].sort(sortPromptsForFlow),
+    [availablePrompts],
+  );
   const orderedPrompts = useMemo(
     () =>
-      [...prompts].sort((first, second) => {
-        if (scope === "project") {
-          const firstTime = Date.parse(first.submittedAt);
-          const secondTime = Date.parse(second.submittedAt);
-          if (!Number.isNaN(firstTime) && !Number.isNaN(secondTime)) {
-            return firstTime - secondTime;
-          }
-        }
-        return first.sequence - second.sequence;
-      }),
-    [prompts, scope],
-  );
-  const orderedSessionPrompts = useMemo(
-    () =>
-      [...sessionPrompts].sort((first, second) => {
-        if (scope === "project") {
-          const firstTime = Date.parse(first.submittedAt);
-          const secondTime = Date.parse(second.submittedAt);
-          if (!Number.isNaN(firstTime) && !Number.isNaN(secondTime)) {
-            return secondTime - firstTime;
-          }
-        }
-        return first.sequence - second.sequence;
-      }),
-    [scope, sessionPrompts],
+      availablePrompts
+        .filter((prompt) => selectedPromptIds.includes(prompt.id))
+        .sort(sortPromptsForFlow),
+    [availablePrompts, selectedPromptIds],
   );
   const selectionKey = orderedPrompts.map((prompt) => prompt.id).join(":");
+  const selectedPromptIdSet = useMemo(
+    () => new Set(selectedPromptIds),
+    [selectedPromptIds],
+  );
+  const selectedFilesChanged = orderedPrompts.reduce(
+    (total, prompt) => total + prompt.filesChanged,
+    0,
+  );
   const defaultTitle =
     orderedPrompts.length > 0
       ? `${data.project.name}: ${promptTitle(orderedPrompts[0].prompt)}`
@@ -497,15 +498,12 @@ function PromptFlowShareDrawer({
     orderedPrompts.length > 0
       ? `${orderedPrompts.length} prompt flow from ${
           session?.model ?? data.project.name
-        } with ${orderedPrompts.reduce(
-          (total, prompt) => total + prompt.filesChanged,
-          0,
-        )} linked file changes.`
+        } with ${selectedFilesChanged} linked file changes.`
       : "";
   const defaultContext =
     orderedPrompts.length > 0
       ? scope === "session" && session
-        ? `${promptRangeLabel(orderedPrompts)} from session ${session.id.slice(0, 8)}.`
+        ? `${orderedPrompts.length} selected prompts from session ${session.id.slice(0, 8)}.`
         : `${orderedPrompts.length} selected prompts from ${data.project.name}.`
       : "";
   const editorPlaceholder =
@@ -527,6 +525,29 @@ function PromptFlowShareDrawer({
   const [isAssetUploading, setIsAssetUploading] = useState(false);
   const [insertRequest, setInsertRequest] =
     useState<MarkdownInsertRequest | null>(null);
+  const [rangeStartPromptId, setRangeStartPromptId] = useState(
+    rangePrompts[0]?.id ?? "",
+  );
+  const [rangeEndPromptId, setRangeEndPromptId] = useState(
+    rangePrompts[rangePrompts.length - 1]?.id ?? "",
+  );
+  const rangeStartPrompt = rangePrompts.find(
+    (prompt) => prompt.id === rangeStartPromptId,
+  );
+  const rangeEndPrompt = rangePrompts.find(
+    (prompt) => prompt.id === rangeEndPromptId,
+  );
+  const rangeStatusLabel = !rangeStartPromptId
+    ? "Select start"
+    : rangeEndPromptId
+    ? "Range selected"
+    : "Select end";
+  const rangeSummaryLabel =
+    rangeStartPrompt && rangeEndPrompt
+      ? `Prompt ${rangeStartPrompt.sequence} to Prompt ${rangeEndPrompt.sequence}`
+      : rangeStartPrompt
+      ? `Start: Prompt ${rangeStartPrompt.sequence}`
+      : "No range selected";
 
   useEffect(() => {
     const previousActiveElement =
@@ -548,6 +569,27 @@ function PromptFlowShareDrawer({
       previousActiveElement?.focus({ preventScroll: true });
     };
   }, []);
+
+  useEffect(() => {
+    setSelectedPromptIds(
+      initialPromptIds.filter((promptId) => availablePromptIds.has(promptId)),
+    );
+  }, [availablePromptIds, initialSelectionKey]);
+
+  useEffect(() => {
+    const selectedPromptIdSet = new Set(initialPromptIds);
+    const selectedRangePrompts = rangePrompts.filter((prompt) =>
+      selectedPromptIdSet.has(prompt.id),
+    );
+    setRangeStartPromptId(
+      selectedRangePrompts[0]?.id ?? rangePrompts[0]?.id ?? "",
+    );
+    setRangeEndPromptId(
+      selectedRangePrompts.length > 1
+        ? selectedRangePrompts[selectedRangePrompts.length - 1]?.id ?? ""
+        : "",
+    );
+  }, [initialSelectionKey, rangePrompts]);
 
   useEffect(() => {
     setTitle(defaultTitle);
@@ -575,14 +617,12 @@ function PromptFlowShareDrawer({
     status: PromptFlowPublishPayload["status"],
   ): PromptFlowPublishPayload => ({
       context_summary: contextSummary.trim() || null,
-      end_prompt_event_id:
-        scope === "session" ? orderedPrompts[orderedPrompts.length - 1].id : null,
+      end_prompt_event_id: null,
       notes: content.trim() || null,
-      prompt_event_ids:
-        scope === "project" ? orderedPrompts.map((prompt) => prompt.id) : undefined,
+      prompt_event_ids: orderedPrompts.map((prompt) => prompt.id),
       project_id: data.project.id,
       session_id: scope === "session" ? session?.id ?? null : null,
-      start_prompt_event_id: scope === "session" ? orderedPrompts[0].id : null,
+      start_prompt_event_id: null,
       status,
       summary: summary.trim() || null,
       tags: tags
@@ -683,6 +723,74 @@ function PromptFlowShareDrawer({
       currentRequest?.id === insertRequestId ? null : currentRequest,
     );
   }, []);
+  const selectPromptRange = (startPromptId: string, endPromptId: string) => {
+    const startIndex = rangePrompts.findIndex(
+      (prompt) => prompt.id === startPromptId,
+    );
+    const endIndex = rangePrompts.findIndex(
+      (prompt) => prompt.id === endPromptId,
+    );
+
+    if (startIndex < 0 || endIndex < 0) {
+      return;
+    }
+
+    const firstIndex = Math.min(startIndex, endIndex);
+    const lastIndex = Math.max(startIndex, endIndex);
+    setSelectedPromptIds(
+      rangePrompts
+        .slice(firstIndex, lastIndex + 1)
+        .map((prompt) => prompt.id),
+    );
+  };
+  const startRangeFromPrompt = (prompt: PromptActivityItem) => {
+    setRangeStartPromptId(prompt.id);
+    setRangeEndPromptId("");
+    setSelectedPromptIds([prompt.id]);
+  };
+  const completeRangeAtPrompt = (prompt: PromptActivityItem) => {
+    if (!rangeStartPromptId) {
+      startRangeFromPrompt(prompt);
+      return;
+    }
+
+    setRangeEndPromptId(prompt.id);
+    selectPromptRange(rangeStartPromptId, prompt.id);
+  };
+  const selectPromptForRange = (prompt: PromptActivityItem) => {
+    if (!rangeStartPromptId || rangeEndPromptId) {
+      startRangeFromPrompt(prompt);
+      return;
+    }
+
+    completeRangeAtPrompt(prompt);
+  };
+  const selectPromptList = (prompts: PromptActivityItem[]) => {
+    const orderedSelectedPrompts = [...prompts].sort(sortPromptsForFlow);
+    setSelectedPromptIds(orderedSelectedPrompts.map((prompt) => prompt.id));
+    setRangeStartPromptId(orderedSelectedPrompts[0]?.id ?? "");
+    setRangeEndPromptId(
+      orderedSelectedPrompts.length > 1
+        ? orderedSelectedPrompts[orderedSelectedPrompts.length - 1]?.id ?? ""
+        : "",
+    );
+  };
+  const selectAllPrompts = () => {
+    selectPromptList(rangePrompts);
+  };
+  const selectCurrentPrompts = () => {
+    selectPromptList(
+      rangePrompts.filter((prompt) => initialPromptIds.includes(prompt.id)),
+    );
+  };
+  const selectLatestPrompts = () => {
+    selectPromptList(selectionPrompts.slice(0, 5));
+  };
+  const clearPromptSelection = () => {
+    setSelectedPromptIds([]);
+    setRangeStartPromptId("");
+    setRangeEndPromptId("");
+  };
 
   const handleModalKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") {
@@ -743,7 +851,7 @@ function PromptFlowShareDrawer({
                 : "Step 2 of 2 · Write post"}
             </span>
             <h2 id="prompt-flow-share-title">
-              {shareSelectionTitle(orderedPrompts, scope)}
+              {shareSelectionTitle(orderedPrompts.length)}
             </h2>
           </div>
           <button
@@ -772,59 +880,144 @@ function PromptFlowShareDrawer({
               <div className="bh-share-selection-panel">
                 <div className="bh-share-selection-header">
                   <div>
-                    <span>Prompt selection</span>
-                    <strong>{shareSelectionTitle(orderedPrompts, scope)}</strong>
+                    <span>{scope === "session" ? "Session flow" : "Project flow"}</span>
+                    <strong>{data.project.name}</strong>
                   </div>
-                  <span>{orderedPrompts.length} selected</span>
+                  <span>
+                    {orderedPrompts.length}/{selectionPrompts.length} selected
+                  </span>
                 </div>
-                <div className="bh-share-selection-list">
-                  {orderedSessionPrompts.map((prompt) => {
-                    const shareState = shareStateForPrompt(prompt);
-                    const selectedLabel = shareSelectionLabel(shareState);
 
-                    return (
-                      <article
-                        aria-label={`Select prompt ${prompt.sequence}`}
-                        aria-pressed={Boolean(shareState)}
-                        className="bh-share-selection-row bh-prompt-row"
-                        data-share-state={shareState}
-                        key={prompt.id}
-                        onClick={() => onSelectPrompt(prompt)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            onSelectPrompt(prompt);
-                          }
-                        }}
-                        role="button"
-                        tabIndex={0}
-                      >
-                        <div className="bh-prompt-row-main">
-                          <div className="bh-prompt-row-header">
-                            <time>{prompt.submittedAt}</time>
-                            <span>Prompt {prompt.sequence}</span>
-                          </div>
-                          <div
-                            className="bh-prompt-row-meta"
-                            aria-label="Prompt metadata"
-                          >
-                            <AiModelBadge className="is-compact" model={prompt.model} />
-                            <span className="bh-prompt-row-chip">
-                              {prompt.filesChanged} files
+                <div className="bh-share-selection-toolbar">
+                  <div>
+                    <strong>{shareSelectionTitle(orderedPrompts.length)}</strong>
+                    <span>{selectedFilesChanged} file links</span>
+                  </div>
+                  <div>
+                    <button onClick={selectAllPrompts} type="button">
+                      Share all
+                    </button>
+                    <button
+                      disabled={selectionPrompts.length === 0}
+                      onClick={selectLatestPrompts}
+                      type="button"
+                    >
+                      Latest 5
+                    </button>
+                    <button
+                      disabled={initialPromptIds.length === 0}
+                      onClick={selectCurrentPrompts}
+                      type="button"
+                    >
+                      Current only
+                    </button>
+                    <button onClick={clearPromptSelection} type="button">
+                      Clear
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bh-share-range-guide">
+                  <div>
+                    <span>Range</span>
+                    <strong>{rangeSummaryLabel}</strong>
+                  </div>
+                  <ol className="bh-share-range-steps">
+                    <li data-active={Boolean(rangeStartPromptId)}>
+                      <span>1</span>
+                      <strong>Start</strong>
+                    </li>
+                    <li data-active={Boolean(rangeEndPromptId)}>
+                      <span>2</span>
+                      <strong>End</strong>
+                    </li>
+                  </ol>
+                  <span>{rangeStatusLabel}</span>
+                </div>
+
+                <div className="bh-share-selection-content">
+                  <div className="bh-share-selection-list">
+                    {selectionPrompts.map((prompt) => {
+                      const isSelected = selectedPromptIdSet.has(prompt.id);
+                      const rangeBoundary =
+                        prompt.id === rangeStartPromptId
+                          ? "start"
+                          : prompt.id === rangeEndPromptId
+                          ? "end"
+                          : undefined;
+                      const rangeMarkerLabel =
+                        rangeBoundary === "start"
+                          ? "Start"
+                          : rangeBoundary === "end"
+                          ? "End"
+                          : isSelected
+                          ? "In"
+                          : "Pick";
+                      const workType = workTypeForFiles(prompt.filesChanged);
+
+                      return (
+                        <button
+                          aria-pressed={isSelected}
+                          className="bh-share-selection-row"
+                          data-range-boundary={rangeBoundary}
+                          data-selected={isSelected}
+                          key={prompt.id}
+                          onClick={() => selectPromptForRange(prompt)}
+                          type="button"
+                        >
+                          <span className="bh-share-selection-marker">
+                            {rangeMarkerLabel}
+                          </span>
+                          <span className="bh-share-selection-copy">
+                            <span className="bh-share-selection-row-header">
+                              <time>{prompt.submittedAt}</time>
+                              <span>Prompt {prompt.sequence}</span>
                             </span>
-                            {selectedLabel ? (
-                              <span className="bh-prompt-row-chip is-share">
-                                {selectedLabel}
+                            <span
+                              className="bh-prompt-row-meta"
+                              aria-label="Prompt metadata"
+                            >
+                              <AiModelBadge className="is-compact" model={prompt.model} />
+                              <span
+                                className="bh-work-type-badge"
+                                data-work-type={workType}
+                              >
+                                {workTypeLabel(workType)}
                               </span>
-                            ) : null}
-                          </div>
-                          <div className="bh-prompt-text">
-                            <p>{prompt.prompt}</p>
-                          </div>
-                        </div>
-                      </article>
-                    );
-                  })}
+                              <span className="bh-prompt-row-chip">
+                                {prompt.filesChanged} files
+                              </span>
+                            </span>
+                            <span className="bh-share-selection-prompt">
+                              {prompt.prompt}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <aside
+                    aria-label="Selected prompts preview"
+                    className="bh-share-selection-preview"
+                  >
+                    <div>
+                      <span>Preview</span>
+                      <strong>{shareSelectionTitle(orderedPrompts.length)}</strong>
+                    </div>
+                    {orderedPrompts.length > 0 ? (
+                      <ol>
+                        {orderedPrompts.slice(0, 8).map((prompt) => (
+                          <li key={prompt.id}>
+                            <span>Prompt {prompt.sequence}</span>
+                            <strong>{promptTitle(prompt.prompt)}</strong>
+                          </li>
+                        ))}
+                      </ol>
+                    ) : (
+                      <p>Select at least one prompt to continue.</p>
+                    )}
+                  </aside>
                 </div>
               </div>
 
@@ -1401,10 +1594,8 @@ function ActivityPanel({
   const [sessionWorkTypeFilter, setSessionWorkTypeFilter] =
     useState<WorkTypeFilter>("all");
   const [shareScope, setShareScope] = useState<"project" | "session">("session");
-  const [shareModeSessionId, setShareModeSessionId] = useState<string | null>(null);
-  const [shareProjectPromptIds, setShareProjectPromptIds] = useState<string[]>([]);
-  const [shareStartPromptId, setShareStartPromptId] = useState<string | null>(null);
-  const [shareEndPromptId, setShareEndPromptId] = useState<string | null>(null);
+  const [shareSessionId, setShareSessionId] = useState<string | null>(null);
+  const [initialSharePromptIds, setInitialSharePromptIds] = useState<string[]>([]);
   const [isShareDrawerOpen, setIsShareDrawerOpen] = useState(false);
   const currentActivityNavigation =
     activityNavigation ?? localActivityNavigation;
@@ -1508,130 +1699,31 @@ function ActivityPanel({
     ) ??
     filteredSessionPrompts[0] ??
     null;
-  const sessionPromptCountLabel = sessionConversationSearchQuery.trim()
-    ? `${filteredSessionPrompts.length}/${selectedSessionPrompts.length} prompts`
-    : `${selectedSessionPrompts.length} prompts`;
-  const isShareMode =
-    shareScope === "session" &&
-    Boolean(selectedSession) &&
-    shareModeSessionId === selectedSession?.id;
   const shareSession =
     shareScope === "session"
-      ? data.activities.find((activity) => activity.id === shareModeSessionId) ?? null
+      ? data.activities.find((activity) => activity.id === shareSessionId) ?? null
       : null;
   const projectSharePrompts = useMemo(
-    () =>
-      [...data.promptActivities].sort((first, second) => {
-        const firstTime = Date.parse(first.submittedAt);
-        const secondTime = Date.parse(second.submittedAt);
-        if (!Number.isNaN(firstTime) && !Number.isNaN(secondTime)) {
-          return secondTime - firstTime;
-        }
-        return second.sequence - first.sequence;
-      }),
+    () => [...data.promptActivities].sort(sortPromptsForSelection),
     [data.promptActivities],
   );
-  const shareSessionPrompts = useMemo(
+  const shareAvailablePrompts = useMemo(
     () =>
       shareScope === "project"
         ? projectSharePrompts
         : shareSession
         ? data.promptActivities
             .filter((activity) => activity.sessionId === shareSession.id)
-            .sort((first, second) => second.sequence - first.sequence)
+            .sort(sortPromptsForSelection)
         : [],
     [data.promptActivities, projectSharePrompts, shareScope, shareSession],
   );
-  const shareStartPrompt = shareSessionPrompts.find(
-    (activity) => activity.id === shareStartPromptId,
-  );
-  const shareEndPrompt = shareSessionPrompts.find(
-    (activity) => activity.id === shareEndPromptId,
-  );
-  const selectedSharePrompts = useMemo(() => {
-    if (shareScope === "project") {
-      const selectedIds = new Set(shareProjectPromptIds);
-      return projectSharePrompts
-        .filter((activity) => selectedIds.has(activity.id))
-        .sort((first, second) => {
-          const firstTime = Date.parse(first.submittedAt);
-          const secondTime = Date.parse(second.submittedAt);
-          if (!Number.isNaN(firstTime) && !Number.isNaN(secondTime)) {
-            return firstTime - secondTime;
-          }
-          return first.sequence - second.sequence;
-        });
-    }
-    if (!shareStartPrompt) {
-      return [];
-    }
-    if (!shareEndPrompt) {
-      return [shareStartPrompt];
-    }
-    if (shareEndPrompt.sequence <= shareStartPrompt.sequence) {
-      return [shareStartPrompt];
-    }
-    return shareSessionPrompts
-      .filter(
-        (activity) =>
-          activity.sequence >= shareStartPrompt.sequence &&
-          activity.sequence <= shareEndPrompt.sequence,
-      )
-      .sort((first, second) => first.sequence - second.sequence);
-  }, [
-    projectSharePrompts,
-    shareEndPrompt,
-    shareProjectPromptIds,
-    shareScope,
-    shareSessionPrompts,
-    shareStartPrompt,
-  ]);
-  const selectedSharePromptIds = new Set(
-    selectedSharePrompts.map((activity) => activity.id),
-  );
   const sessionForPrompt = (activity: PromptActivityItem) =>
     data.activities.find((session) => session.id === activity.sessionId) ?? null;
-  const openShareSelection = (
-    session: ActivityItem,
-    prompts: PromptActivityItem[],
-  ) => {
-    const orderedPrompts = [...prompts].sort(
-      (first, second) => first.sequence - second.sequence,
-    );
-    if (orderedPrompts.length === 0) {
-      return;
-    }
-    setShareScope("session");
-    setShareModeSessionId(session.id);
-    setShareProjectPromptIds([]);
-    setShareStartPromptId(orderedPrompts[0].id);
-    setShareEndPromptId(orderedPrompts[orderedPrompts.length - 1].id);
-    setIsShareDrawerOpen(true);
-  };
-  const startShareMode = () => {
-    if (!selectedSession) {
-      return;
-    }
-    const defaultPrompt = selectedSessionPrompt ?? selectedSessionPrompts[0] ?? null;
-    setShareScope("session");
-    setShareModeSessionId(selectedSession.id);
-    setShareProjectPromptIds([]);
-    setShareStartPromptId(defaultPrompt?.id ?? null);
-    setShareEndPromptId(null);
-    setIsShareDrawerOpen(Boolean(defaultPrompt));
-  };
-  const shareEntireSession = () => {
-    if (!selectedSession || selectedSessionPrompts.length === 0) {
-      return;
-    }
-    openShareSelection(selectedSession, selectedSessionPrompts);
-  };
   const startProjectShareFromPrompt = (activity: PromptActivityItem) => {
     setShareScope("project");
-    setShareModeSessionId(null);
-    setShareProjectPromptIds([activity.id]);
-    setShareStartPromptId(null);
-    setShareEndPromptId(null);
+    setShareSessionId(null);
+    setInitialSharePromptIds([activity.id]);
     setIsShareDrawerOpen(true);
   };
   const startSessionShareFromPrompt = (activity: PromptActivityItem) => {
@@ -1640,60 +1732,9 @@ function ActivityPanel({
       return;
     }
     setShareScope("session");
-    setShareModeSessionId(session.id);
-    setShareProjectPromptIds([]);
-    setShareStartPromptId(activity.id);
-    setShareEndPromptId(null);
+    setShareSessionId(session.id);
+    setInitialSharePromptIds([activity.id]);
     setIsShareDrawerOpen(true);
-  };
-  const selectSharePrompt = (activity: PromptActivityItem) => {
-    if (shareScope === "project") {
-      setShareProjectPromptIds((currentIds) => {
-        if (currentIds.includes(activity.id)) {
-          return currentIds.length > 1
-            ? currentIds.filter((promptId) => promptId !== activity.id)
-            : currentIds;
-        }
-        return [...currentIds, activity.id];
-      });
-      return;
-    }
-    const session = sessionForPrompt(activity);
-    if (!session) {
-      return;
-    }
-    if (
-      !shareStartPrompt ||
-      activity.sessionId !== shareModeSessionId ||
-      shareEndPrompt ||
-      activity.id === shareStartPrompt.id ||
-      activity.sequence <= shareStartPrompt.sequence
-    ) {
-      setShareModeSessionId(session.id);
-      setShareStartPromptId(activity.id);
-      setShareEndPromptId(null);
-      return;
-    }
-    setShareModeSessionId(session.id);
-    setShareEndPromptId(activity.id);
-  };
-  const shareStateForPrompt = (activity: PromptActivityItem) => {
-    if (shareScope === "project") {
-      return selectedSharePromptIds.has(activity.id) ? ("range" as const) : undefined;
-    }
-    if (
-      activity.sessionId !== shareModeSessionId ||
-      !selectedSharePromptIds.has(activity.id)
-    ) {
-      return undefined;
-    }
-    if (activity.id === shareStartPromptId) {
-      return "start" as const;
-    }
-    if (activity.id === shareEndPromptId) {
-      return "end" as const;
-    }
-    return "range" as const;
   };
 
   if (!hasPromptActivity && !hasSessionActivity) {
@@ -1848,56 +1889,11 @@ function ActivityPanel({
           </div>
 
           <section
-            aria-labelledby="session-conversations-title"
+            aria-label="Session conversations"
             className="bh-session-conversation-panel"
           >
             {selectedSession ? (
               <>
-                <div className="bh-session-conversation-panel-header">
-                  <div>
-                    <span>Selected session</span>
-                    <h2 id="session-conversations-title">{selectedSession.model}</h2>
-                    <p>
-                      Session {selectedSession.id.slice(0, 8)} ·{" "}
-                      {selectedSession.lastActivity}
-                    </p>
-                  </div>
-                  <div className="bh-session-header-actions">
-                    <strong>{sessionPromptCountLabel}</strong>
-                    {selectedSessionPrompts.length > 0 ? (
-                      <>
-                        <button
-                          className="bh-header-action-button is-primary"
-                          onClick={shareEntireSession}
-                          type="button"
-                        >
-                          <Share2 aria-hidden="true" size={15} strokeWidth={1.5} />
-                          <span>Share session</span>
-                        </button>
-                        <button
-                          className="bh-header-action-button"
-                          data-active={isShareMode}
-                          onClick={isShareMode ? () => {
-                            setShareModeSessionId(null);
-                            setShareProjectPromptIds([]);
-                            setShareStartPromptId(null);
-                            setShareEndPromptId(null);
-                            setIsShareDrawerOpen(false);
-                          } : startShareMode}
-                          type="button"
-                        >
-                          {isShareMode ? (
-                            <X aria-hidden="true" size={15} strokeWidth={1.5} />
-                          ) : (
-                            <Check aria-hidden="true" size={15} strokeWidth={1.5} />
-                          )}
-                          <span>{isShareMode ? "Cancel" : "Select prompts"}</span>
-                        </button>
-                      </>
-                    ) : null}
-                  </div>
-                </div>
-
                 <label className="bh-prompt-search">
                   <Search aria-hidden="true" size={15} strokeWidth={1.7} />
                   <input
@@ -1911,34 +1907,6 @@ function ActivityPanel({
                   />
                 </label>
 
-                {isShareMode ? (
-                  <div className="bh-share-mode-bar">
-                    <span>{promptRangeLabel(selectedSharePrompts)}</span>
-                    <div>
-                      <button
-                        className="bh-header-action-button"
-                        onClick={() => {
-                          setShareProjectPromptIds([]);
-                          setShareStartPromptId(null);
-                          setShareEndPromptId(null);
-                          setIsShareDrawerOpen(false);
-                        }}
-                        type="button"
-                      >
-                        Clear
-                      </button>
-                      <button
-                        className="bh-header-action-button is-primary"
-                        disabled={selectedSharePrompts.length === 0}
-                        onClick={() => setIsShareDrawerOpen(true)}
-                        type="button"
-                      >
-                        Preview
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-
                 {selectedSessionPrompts.length > 0 ? (
                   filteredSessionPrompts.length > 0 ? (
                     <div className="bh-prompt-list">
@@ -1948,10 +1916,6 @@ function ActivityPanel({
                           isSelected={activity.id === selectedSessionPrompt?.id}
                           key={activity.id}
                           onOpen={() => {
-                            if (isShareMode) {
-                              selectSharePrompt(activity);
-                              return;
-                            }
                             updateActivityNavigation({
                               selectedPromptId: null,
                               selectedSessionId: selectedSession?.id ?? null,
@@ -1959,7 +1923,6 @@ function ActivityPanel({
                               view: "sessions",
                             })
                           }}
-                          shareState={shareStateForPrompt(activity)}
                           promptLabel={`Prompt ${activity.sequence}`}
                         />
                       ))}
@@ -1997,20 +1960,18 @@ function ActivityPanel({
 
       {isShareDrawerOpen &&
       (shareScope === "project" || shareSession) &&
-      selectedSharePrompts.length > 0 ? (
+      initialSharePromptIds.length > 0 ? (
         <PromptFlowShareDrawer
+          availablePrompts={shareAvailablePrompts}
           data={data}
+          initialPromptIds={initialSharePromptIds}
           onClose={() => setIsShareDrawerOpen(false)}
-          onSelectPrompt={selectSharePrompt}
           onPublishFlow={onPublishFlow}
           onSaveFlowDraft={onSaveFlowDraft}
           onUpdateFlow={onUpdateFlow}
           onUploadFlowAsset={onUploadFlowAsset}
-          prompts={selectedSharePrompts}
           scope={shareScope}
           session={shareSession}
-          sessionPrompts={shareSessionPrompts}
-          shareStateForPrompt={shareStateForPrompt}
         />
       ) : null}
 

@@ -874,8 +874,7 @@ function emptyProjectDetailData(project: Project | null): ProjectDetailData {
     overview: [],
     promptActivities: [],
     project: {
-      description:
-        "AI development workspace for prompts, code changes, context, and project memory.",
+      description: "",
       id: project?.id ?? "",
       name: project?.name ?? "Project",
       repositoryStatus: project?.githubUrl
@@ -906,9 +905,7 @@ function projectDetailDataFromApi(
   const community = payload.community;
   const totalPrompts =
     payload.metrics.total_prompts ?? payload.prompt_activities?.length ?? 0;
-  const projectDescription =
-    payload.project.description ??
-    "AI development workspace for prompts, code changes, context, and project memory.";
+  const projectDescription = payload.project.description?.trim() ?? "";
   const repositoryUrl = payload.project.repository_url ?? fallbackProject?.githubUrl;
   const projectUrl = projectDetailUrl(
     payload.project.slug ?? payload.project.id ?? fallbackProject?.id ?? "",
@@ -996,10 +993,14 @@ function projectDetailDataFromApi(
         description: `${BRAND_NAME} project detail page`,
         href: projectUrl,
       },
-      {
-        title: "Description",
-        value: projectDescription,
-      },
+      ...(projectDescription
+        ? [
+            {
+              title: "Description",
+              value: projectDescription,
+            },
+          ]
+        : []),
       {
         title: "Default Branch",
         value: payload.project.default_branch || "Not available",
