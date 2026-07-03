@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { Share2 } from "lucide-react";
 import { AiModelBadge } from "./AiModelBadge";
 import type { ActivityItem, PromptActivityItem } from "./types";
 
@@ -72,19 +71,6 @@ function responseTruncatedLabel(activity: PromptActivityItem) {
   return "response truncated";
 }
 
-function shareStateLabel(state: PromptActivityCardProps["shareState"]) {
-  if (state === "start") {
-    return "Start";
-  }
-  if (state === "end") {
-    return "End";
-  }
-  if (state === "range") {
-    return "Selected";
-  }
-  return null;
-}
-
 type WorkType = "brainstorming" | "work";
 
 function workTypeForFiles(filesChanged: number): WorkType {
@@ -146,7 +132,6 @@ type PromptActivityCardProps = {
   isSelected: boolean;
   onOpen: () => void;
   promptLabel?: string;
-  shareState?: "end" | "range" | "start";
 };
 
 export function PromptActivityCard({
@@ -154,18 +139,15 @@ export function PromptActivityCard({
   isSelected,
   onOpen,
   promptLabel,
-  shareState,
 }: PromptActivityCardProps) {
   const truncatedLabel = promptTruncatedLabel(activity);
   const responseLimitLabel = responseTruncatedLabel(activity);
-  const selectedShareLabel = shareStateLabel(shareState);
   const workType = workTypeForFiles(activity.filesChanged);
 
   return (
     <article
       className="bh-prompt-row"
       data-active={isSelected}
-      data-share-state={shareState}
       aria-label={`Select prompt submitted at ${activity.submittedAt}`}
       aria-pressed={isSelected}
       onClick={onOpen}
@@ -189,9 +171,6 @@ export function PromptActivityCard({
             {workTypeLabel(workType)}
           </span>
           <span className="bh-prompt-row-chip">{activity.filesChanged} files</span>
-          {selectedShareLabel ? (
-            <span className="bh-prompt-row-chip is-share">{selectedShareLabel}</span>
-          ) : null}
           {truncatedLabel ? (
             <span className="bh-prompt-row-chip">{truncatedLabel}</span>
           ) : null}
@@ -290,6 +269,7 @@ export function PromptChangeDetail({
           <h2 id="activity-detail-placeholder-title">Code changes</h2>
         </div>
         <div className="bh-prompt-change-header-actions">
+          {/* Community sharing is paused for now.
           {onSharePrompt ? (
             <button
               className="bh-header-action-button is-primary"
@@ -300,6 +280,7 @@ export function PromptChangeDetail({
               <span>Share prompt</span>
             </button>
           ) : null}
+          */}
           <strong>{activity.filesChanged} files</strong>
         </div>
       </div>

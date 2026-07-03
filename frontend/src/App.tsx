@@ -126,6 +126,23 @@ type ProjectDetailApiResponse = {
     }>;
     total_flows: number;
   };
+  memory?: {
+    latest_artifact_at: string | null;
+    recent_artifacts: Array<{
+      changed_file_count: number;
+      created_at: string | null;
+      generator: string | null;
+      id: string;
+      model: string | null;
+      outcome: string | null;
+      session_id: string | null;
+      summary: string | null;
+      tags: string[];
+      title: string;
+      updated_at: string | null;
+    }>;
+    total_artifacts: number;
+  };
   prompt_activities?: Array<{
     file_changes?: Array<{
       additions: number | null;
@@ -308,6 +325,7 @@ const API_URL = (
 ).replace(/\/$/, "");
 const BRAND_NAME = "Promty";
 const BRAND_LOGO_SRC = "/promty.svg";
+const COMMUNITY_FEATURE_ENABLED = false;
 const DEFAULT_URL_NAVIGATION_STATE: UrlNavigationState = {
   activityNavigation: {
     selectedPromptId: null,
@@ -328,7 +346,6 @@ const PROJECT_DETAIL_TAB_IDS = new Set<ProjectDetailTabId>([
   "files",
 ]);
 const SIDEBAR_ITEM_IDS = new Set<SidebarItemId>([
-  "community",
   "projects",
   "settings",
   "profile",
@@ -871,11 +888,15 @@ function emptyProjectDetailData(project: Project | null): ProjectDetailData {
       totalFlows: 0,
     },
     files: [],
+    memory: {
+      latestArtifactAt: null,
+      recentArtifacts: [],
+      totalArtifacts: 0,
+    },
     overview: [],
     promptActivities: [],
     project: {
-      description:
-        "AI development workspace for prompts, code changes, context, and project memory.",
+      description: "",
       id: project?.id ?? "",
       name: project?.name ?? "Project",
       repositoryStatus: project?.githubUrl
@@ -904,11 +925,10 @@ function projectDetailDataFromApi(
 ): ProjectDetailData {
   const models = payload.metrics.connected_models;
   const community = payload.community;
+  const memory = payload.memory;
   const totalPrompts =
     payload.metrics.total_prompts ?? payload.prompt_activities?.length ?? 0;
-  const projectDescription =
-    payload.project.description ??
-    "AI development workspace for prompts, code changes, context, and project memory.";
+  const projectDescription = payload.project.description?.trim() ?? "";
   const repositoryUrl = payload.project.repository_url ?? fallbackProject?.githubUrl;
   const projectUrl = projectDetailUrl(
     payload.project.slug ?? payload.project.id ?? fallbackProject?.id ?? "",
@@ -981,6 +1001,29 @@ function projectDetailDataFromApi(
       totalFlows: community?.total_flows ?? 0,
     },
     files: payload.files,
+    memory: {
+      latestArtifactAt: memory?.latest_artifact_at
+        ? formatOptionalTimestamp(memory.latest_artifact_at, "Unknown")
+        : null,
+      recentArtifacts: (memory?.recent_artifacts ?? []).map((artifact) => ({
+        changedFileCount: artifact.changed_file_count,
+        createdAt: artifact.created_at
+          ? formatOptionalTimestamp(artifact.created_at, "Unknown")
+          : null,
+        generator: artifact.generator,
+        id: artifact.id,
+        model: artifact.model,
+        outcome: artifact.outcome,
+        sessionId: artifact.session_id,
+        summary: artifact.summary,
+        tags: artifact.tags,
+        title: artifact.title,
+        updatedAt: artifact.updated_at
+          ? formatOptionalTimestamp(artifact.updated_at, "Unknown")
+          : null,
+      })),
+      totalArtifacts: memory?.total_artifacts ?? 0,
+    },
     overview: [
       {
         title: "Repository URL",
@@ -996,10 +1039,14 @@ function projectDetailDataFromApi(
         description: `${BRAND_NAME} project detail page`,
         href: projectUrl,
       },
-      {
-        title: "Description",
-        value: projectDescription,
-      },
+      ...(projectDescription
+        ? [
+            {
+              title: "Description",
+              value: projectDescription,
+            },
+          ]
+        : []),
       {
         title: "Default Branch",
         value: payload.project.default_branch || "Not available",
@@ -1023,6 +1070,12 @@ function projectDetailDataFromApi(
       {
         title: "Prompts",
         value: formatCompactNumber(totalPrompts),
+      },
+      {
+        title: "Memory Artifacts",
+        value: formatCompactNumber(memory?.total_artifacts ?? 0),
+        description:
+          formatRelativeTimestamp(memory?.latest_artifact_at) ?? "No memory yet",
       },
       {
         title: "Created",
@@ -1265,6 +1318,7 @@ function LoadingScreen() {
             />
             <span>Projects</span>
           </div>
+          {/* Community navigation is paused for now.
           <div className="sidebar-item sidebar-item-loading">
             <Share2
               aria-hidden="true"
@@ -1274,6 +1328,7 @@ function LoadingScreen() {
             />
             <span>Community</span>
           </div>
+          */}
         </nav>
 
         <div className="sidebar-spacer" />
@@ -2448,6 +2503,36 @@ function WorkspaceApp() {
     }
   };
 
+  const generateSessionMemory = async (sessionId: string) => {
+    if (!selectedProjectId) {
+      throw new Error("Select a project before generating memory.");
+    }
+
+    const response = await fetch(
+      `${API_URL}/api/projects/${selectedProjectId}/sessions/${sessionId}/complete`,
+      {
+        credentials: "include",
+        method: "POST",
+      },
+    );
+    if (response.status === 401) {
+      setAuthStatus("unauthenticated");
+      setCurrentUser(null);
+      throw new Error("Sign in again before generating memory.");
+    }
+    if (!response.ok) {
+      const detail = await response
+        .json()
+        .then((payload) =>
+          typeof payload?.detail === "string" ? payload.detail : null,
+        )
+        .catch(() => null);
+      throw new Error(detail ?? `Memory request failed with HTTP ${response.status}`);
+    }
+
+    await loadProjectDetail(selectedProjectId, selectedProject);
+  };
+
   const loadProjectGithubFiles = async (
     projectId: string,
     signal?: AbortSignal,
@@ -3022,7 +3107,11 @@ function WorkspaceApp() {
   }, []);
 
   useEffect(() => {
-    if (authStatus !== "authenticated" || activeItem !== "community") {
+    if (
+      !COMMUNITY_FEATURE_ENABLED ||
+      authStatus !== "authenticated" ||
+      activeItem !== "community"
+    ) {
       return;
     }
     void loadPublishedFlows();
@@ -3030,6 +3119,7 @@ function WorkspaceApp() {
 
   useEffect(() => {
     if (
+      !COMMUNITY_FEATURE_ENABLED ||
       authStatus !== "authenticated" ||
       activeItem !== "community" ||
       !selectedPublishedFlowKey
@@ -3373,6 +3463,7 @@ function WorkspaceApp() {
             />
             Projects
           </button>
+          {/* Community navigation is paused for now.
           <button
             aria-pressed={activeItem === "community"}
             className="sidebar-item"
@@ -3388,6 +3479,7 @@ function WorkspaceApp() {
             />
             Community
           </button>
+          */}
         </nav>
 
         <div className="sidebar-spacer" />
@@ -3443,6 +3535,7 @@ function WorkspaceApp() {
         {activeItem === "projects" && selectedProject ? (
           <>
             {repositoryConnector}
+            {/* Community publishing props are paused for now. */}
             <ProjectDetailPage
               activityNavigation={activityNavigation}
               activeTab={activeDetailTab}
@@ -3452,14 +3545,11 @@ function WorkspaceApp() {
               isRefreshing={isProjectDetailLoading && projectDetail !== null}
               onActivityNavigationChange={selectActivityNavigation}
               onConnectRepository={() => openRepositoryConnector(selectedProject.id)}
+              onGenerateSessionMemory={generateSessionMemory}
               onOpenAllProjects={closeProjectDetail}
-              onPublishFlow={publishPromptFlow}
               onProjectSelect={switchProjectDetail}
               onRepositoryFileSelect={selectRepositoryFile}
-              onSaveFlowDraft={savePromptFlowDraft}
               onTabChange={selectProjectDetailTab}
-              onUpdateFlow={updatePublishedFlow}
-              onUploadFlowAsset={uploadPublishedFlowAsset}
               projectOptions={projectHeaderOptions}
               onRetry={() => {
                 void loadProjectDetail(selectedProject.id, selectedProject);
@@ -3676,7 +3766,7 @@ function WorkspaceApp() {
               )}
             </section>
           </>
-        ) : activeItem === "community" ? (
+        ) : COMMUNITY_FEATURE_ENABLED && activeItem === "community" ? (
           <>
             <header className="page-header">
               <div>

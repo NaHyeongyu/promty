@@ -53,6 +53,10 @@ PROMPTHUB_APP_ENCRYPTION_KEY
 PROMPTHUB_APP_ENCRYPTION_KEY_ID
 PROMPTHUB_PROMPT_MAX_CHARS
 PROMPTHUB_RESPONSE_MAX_CHARS
+PROMTY_GEMINI_API_KEY
+PROMTY_GEMINI_MODEL
+PROMTY_GEMINI_TIMEOUT_SECONDS
+PROMTY_MEMORY_GENERATOR
 PROMPTHUB_OAUTH_STATE_SECRET
 PROMPTHUB_JWT_SECRET
 PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS
@@ -63,6 +67,8 @@ PROMPTHUB_OAUTH_STATE_COOKIE_NAME
 ```
 
 Browser reads require GitHub login and a valid PromptHub JWT session cookie. The session cookie is HttpOnly; JavaScript does not read the token directly. Set `PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS=15552000` for 180-day web sessions.
+
+Gemini-backed memory generation reads `PROMTY_GEMINI_API_KEY` from `.env.local`, `backend/.env.local`, or the process environment. The backend must be restarted after changing this key. `GET /api/projects/_memory/generator` reports whether Gemini is configured without exposing the key.
 
 If `PROMPTHUB_API_TOKEN` is set, `POST /api/events/batch` accepts that global `Authorization: Bearer <token>`. GitHub CLI login issues per-user collector tokens stored as hashes in `collector_tokens`. Web JWTs and collector tokens are intentionally separate.
 
@@ -283,12 +289,44 @@ ended_at is null or ended_at >= started_at
 
 ```text
 id UUID PK
+schema_version int
 project_id UUID FK -> projects.id on delete cascade
+session_id UUID nullable FK -> sessions.id on delete set null
 event_id UUID nullable FK -> events.id on delete set null
 type string
 title string
+summary text nullable
+reason text nullable
+outcome text nullable
 storage_key string
+tags JSONB array
+changed_files JSONB array
+prompt_event_ids JSONB array
+commit_sha string nullable
+model string nullable
+generator string nullable
+metadata JSONB object
 created_at timestamptz
+updated_at timestamptz
+```
+
+`MemoryTask` artifacts are generated from completed sessions and form Promty's project memory layer.
+
+### artifact_generation_jobs
+
+```text
+id UUID PK
+project_id UUID FK -> projects.id on delete cascade
+session_id UUID FK -> sessions.id on delete cascade
+artifact_id UUID nullable FK -> artifacts.id on delete set null
+status pending/running/succeeded/failed
+reason string
+generator string
+error text nullable
+metadata JSONB object
+created_at timestamptz
+updated_at timestamptz
+completed_at timestamptz nullable
 ```
 
 ## Current Ingest Behavior
@@ -328,3 +366,5 @@ Future authentication and device registration work should replace the system use
 `0002_event_security_indexes` adds event sequence uniqueness, event check constraints, session time ordering, latest/event-type/session query indexes, and a JSONB GIN index for future payload filtering.
 
 `0003_collector_tokens` adds hashed per-user collector tokens for CLI login and upload authentication.
+
+`0011_promty_memory_artifacts` extends artifacts for generated project memory and adds artifact generation jobs.

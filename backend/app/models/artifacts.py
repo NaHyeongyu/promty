@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,9 +19,15 @@ class Artifact(Base):
     __tablename__ = "artifacts"
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    schema_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     project_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("projects.id", ondelete="CASCADE"),
+        index=True,
+    )
+    session_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("sessions.id", ondelete="SET NULL"),
         index=True,
     )
     event_id: Mapped[UUID | None] = mapped_column(
@@ -30,8 +37,25 @@ class Artifact(Base):
     )
     type: Mapped[str] = mapped_column(String(64))
     title: Mapped[str] = mapped_column(String(255))
+    summary: Mapped[str | None] = mapped_column(Text)
+    reason: Mapped[str | None] = mapped_column(Text)
+    outcome: Mapped[str | None] = mapped_column(Text)
     storage_key: Mapped[str] = mapped_column(String(2048))
+    tags: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    changed_files: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    prompt_event_ids: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    commit_sha: Mapped[str | None] = mapped_column(String(64))
+    model: Mapped[str | None] = mapped_column(String(255))
+    generator: Mapped[str | None] = mapped_column(String(64))
+    metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+        nullable=False,
+    )
 
     project = relationship("Project", back_populates="artifacts")
+    session = relationship("Session", back_populates="artifacts")
     event = relationship("Event", back_populates="artifacts")

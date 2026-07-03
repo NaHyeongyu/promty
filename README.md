@@ -1,6 +1,6 @@
-# PromptHub
+# Promty
 
-PromptHub collects AI development events from local coding tools and shows them in a timeline.
+Promty collects AI development events from local coding tools and turns completed sessions into long-term project memory.
 
 ## Flow
 
@@ -14,7 +14,7 @@ Hook
 Adapter
     |
     v
-PromptHub Event
+Promty Event
     |
     v
 Queue (JSONL)
@@ -48,7 +48,7 @@ prompthub/
 
 ## Collector
 
-The collector receives hook JSON through stdin and normalizes each tool payload into a PromptHub Event.
+The collector receives hook JSON through stdin and normalizes each tool payload into a Promty Event.
 
 User-facing setup flow:
 
@@ -58,9 +58,9 @@ python3 collector/src/cli.py init \
   --api-url http://127.0.0.1:8011
 ```
 
-`init` opens the PromptHub login page, uses GitHub sign-in to receive a collector token, writes local PromptHub config, installs Codex hooks, and starts the uploader in the background.
+`init` opens the Promty login page, uses GitHub sign-in to receive a collector token, writes local Promty config, installs Codex hooks, and starts the uploader in the background.
 
-If the local repository has a GitHub `origin` remote, PromptHub automatically links the captured project to that GitHub repository:
+If the local repository has a GitHub `origin` remote, Promty automatically links the captured project to that GitHub repository:
 
 ```bash
 git remote add origin git@github.com:OWNER/REPO.git
@@ -264,7 +264,11 @@ See [Event Specification v1](docs/event-spec-v1.md) for the normalized event con
 
 See [Development Guidelines](docs/development-guidelines.md) for branch, commit, and module rules.
 
-See [Artifact Model Draft](docs/artifact-model.md) for the future artifact architecture.
+See [Memory Architecture](docs/memory-architecture.md) for the project memory roadmap.
+
+See [Artifact Model](docs/artifact-model.md) for the current memory artifact direction.
+
+Gemini-backed memory generation is enabled when `PROMTY_GEMINI_API_KEY` is set in `.env.local` or `backend/.env.local`. Use [Promty env example](docs/promty.env.example) as the copy source. Without the key, Promty falls back to deterministic local session summaries.
 
 See [Codex Hook Verification](docs/codex-hook-verification.md) for the first hook smoke path.
 

@@ -45,3 +45,4 @@ class Session(Base):
     project = relationship("Project", back_populates="sessions")
     device = relationship("Device", back_populates="sessions")
     events = relationship("Event", back_populates="session", cascade="all, delete-orphan")
+    artifacts = relationship("Artifact", back_populates="session")
