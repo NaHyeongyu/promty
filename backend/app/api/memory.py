@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
+from app.core.config import settings
 from app.core.security import require_web_user
 from app.db.session import get_db
 from app.models.artifacts import Artifact
@@ -14,6 +15,7 @@ from app.models.projects import Project
 from app.models.sessions import Session
 from app.models.users import User
 from app.services.memory_artifacts import (
+    LOCAL_MEMORY_GENERATOR,
     complete_session_if_ready,
     create_and_run_session_memory_job,
     list_project_memory_artifacts,
@@ -21,6 +23,7 @@ from app.services.memory_artifacts import (
     serialize_memory_artifact,
     serialize_memory_artifact_summary,
 )
+from app.services.gemini_memory import GEMINI_MEMORY_GENERATOR
 
 router = APIRouter(prefix="/api/projects", tags=["memory"])
 
@@ -43,6 +46,26 @@ def _session_for_project(db: DBSession, project: Project, session_id: UUID) -> S
             detail="Session not found",
         )
     return session
+
+
+@router.get("/_memory/generator")
+def read_memory_generator_status(
+    _current_user: User = Depends(require_web_user),
+) -> dict[str, Any]:
+    requested_generator = settings.memory_generator.strip().lower()
+    gemini_enabled = requested_generator == "gemini"
+    return {
+        "active_generator": GEMINI_MEMORY_GENERATOR
+        if gemini_enabled and settings.gemini_api_key
+        else LOCAL_MEMORY_GENERATOR,
+        "fallback_generator": LOCAL_MEMORY_GENERATOR,
+        "gemini_configured": bool(settings.gemini_api_key),
+        "gemini_model": settings.gemini_model,
+        "requested_generator": GEMINI_MEMORY_GENERATOR
+        if gemini_enabled
+        else LOCAL_MEMORY_GENERATOR,
+        "timeout_seconds": settings.gemini_timeout_seconds,
+    }
 
 
 @router.post("/{project_id}/sessions/{session_id}/complete")

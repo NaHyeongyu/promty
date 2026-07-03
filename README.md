@@ -268,7 +268,7 @@ See [Memory Architecture](docs/memory-architecture.md) for the project memory ro
 
 See [Artifact Model](docs/artifact-model.md) for the current memory artifact direction.
 
-Gemini-backed memory generation is enabled when `PROMTY_GEMINI_API_KEY` is set. Without it, Promty falls back to deterministic local session summaries.
+Gemini-backed memory generation is enabled when `PROMTY_GEMINI_API_KEY` is set in `.env.local` or `backend/.env.local`. Use [Promty env example](docs/promty.env.example) as the copy source. Without the key, Promty falls back to deterministic local session summaries.
 
 See [Codex Hook Verification](docs/codex-hook-verification.md) for the first hook smoke path.
 

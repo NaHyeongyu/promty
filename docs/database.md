@@ -68,6 +68,8 @@ PROMPTHUB_OAUTH_STATE_COOKIE_NAME
 
 Browser reads require GitHub login and a valid PromptHub JWT session cookie. The session cookie is HttpOnly; JavaScript does not read the token directly. Set `PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS=15552000` for 180-day web sessions.
 
+Gemini-backed memory generation reads `PROMTY_GEMINI_API_KEY` from `.env.local`, `backend/.env.local`, or the process environment. The backend must be restarted after changing this key. `GET /api/projects/_memory/generator` reports whether Gemini is configured without exposing the key.
+
 If `PROMPTHUB_API_TOKEN` is set, `POST /api/events/batch` accepts that global `Authorization: Bearer <token>`. GitHub CLI login issues per-user collector tokens stored as hashes in `collector_tokens`. Web JWTs and collector tokens are intentionally separate.
 
 The web OAuth flow stores a short-lived HttpOnly nonce cookie and verifies it against the signed OAuth state in the callback. `PROMPTHUB_CORS_ORIGINS` is a comma-separated allowlist and defaults to the local Vite origins.

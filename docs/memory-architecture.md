@@ -53,6 +53,16 @@ PROMTY_MEMORY_GENERATOR=gemini
 
 Legacy `PROMPTHUB_*` names are still accepted for compatibility.
 
+Use [promty.env.example](promty.env.example) as the copy source for `.env.local` or `backend/.env.local`. After setting the key, restart the backend process so the setting is loaded.
+
+Generator status is available to authenticated web users:
+
+```text
+GET /api/projects/_memory/generator
+```
+
+The response reports whether Gemini is configured without returning the API key.
+
 ## Next Build Order
 
 1. Add embedding generation for every `MemoryTask`.
