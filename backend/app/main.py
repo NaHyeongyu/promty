@@ -4,7 +4,6 @@ from fastapi.responses import JSONResponse
 
 from app.api.auth import router as auth_router
 from app.api.events import router as events_router
-from app.api.published_flows import router as published_flows_router
 from app.api.projects import router as projects_router
 from app.core.config import settings
 from app.core.encryption import EncryptionError
@@ -19,7 +18,9 @@ app.add_middleware(
 )
 app.include_router(auth_router)
 app.include_router(events_router)
-app.include_router(published_flows_router)
+# Community publishing routes are paused for now.
+# from app.api.published_flows import router as published_flows_router
+# app.include_router(published_flows_router)
 app.include_router(projects_router)
 
 

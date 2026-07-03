@@ -308,6 +308,7 @@ const API_URL = (
 ).replace(/\/$/, "");
 const BRAND_NAME = "Promty";
 const BRAND_LOGO_SRC = "/promty.svg";
+const COMMUNITY_FEATURE_ENABLED = false;
 const DEFAULT_URL_NAVIGATION_STATE: UrlNavigationState = {
   activityNavigation: {
     selectedPromptId: null,
@@ -328,7 +329,6 @@ const PROJECT_DETAIL_TAB_IDS = new Set<ProjectDetailTabId>([
   "files",
 ]);
 const SIDEBAR_ITEM_IDS = new Set<SidebarItemId>([
-  "community",
   "projects",
   "settings",
   "profile",
@@ -1266,6 +1266,7 @@ function LoadingScreen() {
             />
             <span>Projects</span>
           </div>
+          {/* Community navigation is paused for now.
           <div className="sidebar-item sidebar-item-loading">
             <Share2
               aria-hidden="true"
@@ -1275,6 +1276,7 @@ function LoadingScreen() {
             />
             <span>Community</span>
           </div>
+          */}
         </nav>
 
         <div className="sidebar-spacer" />
@@ -3023,7 +3025,11 @@ function WorkspaceApp() {
   }, []);
 
   useEffect(() => {
-    if (authStatus !== "authenticated" || activeItem !== "community") {
+    if (
+      !COMMUNITY_FEATURE_ENABLED ||
+      authStatus !== "authenticated" ||
+      activeItem !== "community"
+    ) {
       return;
     }
     void loadPublishedFlows();
@@ -3031,6 +3037,7 @@ function WorkspaceApp() {
 
   useEffect(() => {
     if (
+      !COMMUNITY_FEATURE_ENABLED ||
       authStatus !== "authenticated" ||
       activeItem !== "community" ||
       !selectedPublishedFlowKey
@@ -3374,6 +3381,7 @@ function WorkspaceApp() {
             />
             Projects
           </button>
+          {/* Community navigation is paused for now.
           <button
             aria-pressed={activeItem === "community"}
             className="sidebar-item"
@@ -3389,6 +3397,7 @@ function WorkspaceApp() {
             />
             Community
           </button>
+          */}
         </nav>
 
         <div className="sidebar-spacer" />
@@ -3444,6 +3453,7 @@ function WorkspaceApp() {
         {activeItem === "projects" && selectedProject ? (
           <>
             {repositoryConnector}
+            {/* Community publishing props are paused for now. */}
             <ProjectDetailPage
               activityNavigation={activityNavigation}
               activeTab={activeDetailTab}
@@ -3454,13 +3464,9 @@ function WorkspaceApp() {
               onActivityNavigationChange={selectActivityNavigation}
               onConnectRepository={() => openRepositoryConnector(selectedProject.id)}
               onOpenAllProjects={closeProjectDetail}
-              onPublishFlow={publishPromptFlow}
               onProjectSelect={switchProjectDetail}
               onRepositoryFileSelect={selectRepositoryFile}
-              onSaveFlowDraft={savePromptFlowDraft}
               onTabChange={selectProjectDetailTab}
-              onUpdateFlow={updatePublishedFlow}
-              onUploadFlowAsset={uploadPublishedFlowAsset}
               projectOptions={projectHeaderOptions}
               onRetry={() => {
                 void loadProjectDetail(selectedProject.id, selectedProject);
@@ -3677,7 +3683,7 @@ function WorkspaceApp() {
               )}
             </section>
           </>
-        ) : activeItem === "community" ? (
+        ) : COMMUNITY_FEATURE_ENABLED && activeItem === "community" ? (
           <>
             <header className="page-header">
               <div>

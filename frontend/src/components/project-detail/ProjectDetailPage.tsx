@@ -1267,10 +1267,11 @@ function OverviewPanel({
     { label: "Activities", value: overviewItems.get("Activities")?.value ?? "0" },
     { label: "Prompts", value: overviewItems.get("Prompts")?.value ?? "0" },
     { label: "Files Changed", value: overviewCompactNumber(filesChanged) },
-    {
-      label: "Published Prompts",
-      value: overviewCompactNumber(data.community.publishedFlows),
-    },
+    // Community publishing is paused for now.
+    // {
+    //   label: "Published Prompts",
+    //   value: overviewCompactNumber(data.community.publishedFlows),
+    // },
   ];
   const projectItems = [
     repositoryUrlItem,
@@ -1282,7 +1283,8 @@ function OverviewPanel({
   const timelineItems = [
     overviewItems.get("Created"),
     overviewItems.get("Last Activity"),
-    overviewItems.get("Last Published Prompt"),
+    // Community publishing is paused for now.
+    // overviewItems.get("Last Published Prompt"),
     overviewItems.get("Repository Connected"),
   ].filter((item): item is OverviewItem => Boolean(item));
   const communityMetrics = [
@@ -1358,6 +1360,7 @@ function OverviewPanel({
         </section>
       </div>
 
+      {/* Community overview is paused for now.
       <section className="bh-overview-community" aria-labelledby="project-community-title">
         <div className="bh-overview-community-header">
           <div>
@@ -1399,6 +1402,7 @@ function OverviewPanel({
           </div>
         )}
       </section>
+      */}
     </div>
   );
 }
@@ -1552,10 +1556,12 @@ function ProjectDetailLoadingSkeleton({
           ))}
         </div>
       </div>
+      {/* Community overview skeleton is paused for now.
       <div className="bh-detail-skeleton-community">
         <span className="skeleton-line skeleton-line-section" />
         <span className="skeleton-line skeleton-line-description" />
       </div>
+      */}
     </section>
   );
 }
@@ -1838,10 +1844,8 @@ function ActivityPanel({
                 </div>
               )}
             </div>
-            <PromptChangeDetail
-              activity={selectedPrompt}
-              onSharePrompt={startProjectShareFromPrompt}
-            />
+            {/* Community sharing is paused for now; share handler intentionally omitted. */}
+            <PromptChangeDetail activity={selectedPrompt} />
           </div>
         ) : (
           <EmptyState
@@ -1945,10 +1949,8 @@ function ActivityPanel({
             )}
           </section>
 
-          <PromptChangeDetail
-            activity={selectedSessionPrompt}
-            onSharePrompt={startSessionShareFromPrompt}
-          />
+          {/* Community sharing is paused for now; share handler intentionally omitted. */}
+          <PromptChangeDetail activity={selectedSessionPrompt} />
         </div>
       ) : (
         <EmptyState
@@ -1958,6 +1960,7 @@ function ActivityPanel({
         />
       )}
 
+      {/* Community share drawer is paused for now.
       {isShareDrawerOpen &&
       (shareScope === "project" || shareSession) &&
       initialSharePromptIds.length > 0 ? (
@@ -1974,6 +1977,7 @@ function ActivityPanel({
           session={shareSession}
         />
       ) : null}
+      */}
 
     </div>
   );

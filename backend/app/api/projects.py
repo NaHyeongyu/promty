@@ -17,7 +17,8 @@ from app.models.code_change_patches import CodeChangePatch
 from app.models.events import Event
 from app.models.project_files import ProjectFile
 from app.models.projects import Project
-from app.models.published_flows import PublishedFlow
+# Community publishing is paused for now.
+# from app.models.published_flows import PublishedFlow
 from app.models.sessions import Session as PromptSession
 from app.models.users import User
 from app.services.event_payload_security import (
@@ -451,29 +452,30 @@ def read_project_detail(
     latest_activity_at = db.scalar(
         select(func.max(Event.created_at)).where(Event.project_id == project.id)
     )
-    flow_status_rows = db.execute(
-        select(PublishedFlow.status, func.count(PublishedFlow.id))
-        .where(
-            PublishedFlow.source_project_id == project.id,
-            PublishedFlow.author_id == current_user.id,
-        )
-        .group_by(PublishedFlow.status)
-    ).all()
-    flow_status_counts = {
-        str(status_value): int(count_value or 0)
-        for status_value, count_value in flow_status_rows
-    }
-    recent_flows = list(
-        db.execute(
-            select(PublishedFlow)
-            .where(
-                PublishedFlow.source_project_id == project.id,
-                PublishedFlow.author_id == current_user.id,
-            )
-            .order_by(desc(PublishedFlow.updated_at), desc(PublishedFlow.created_at))
-            .limit(3)
-        ).scalars()
-    )
+    # Community publishing is paused for now.
+    # flow_status_rows = db.execute(
+    #     select(PublishedFlow.status, func.count(PublishedFlow.id))
+    #     .where(
+    #         PublishedFlow.source_project_id == project.id,
+    #         PublishedFlow.author_id == current_user.id,
+    #     )
+    #     .group_by(PublishedFlow.status)
+    # ).all()
+    # flow_status_counts = {
+    #     str(status_value): int(count_value or 0)
+    #     for status_value, count_value in flow_status_rows
+    # }
+    # recent_flows = list(
+    #     db.execute(
+    #         select(PublishedFlow)
+    #         .where(
+    #             PublishedFlow.source_project_id == project.id,
+    #             PublishedFlow.author_id == current_user.id,
+    #         )
+    #         .order_by(desc(PublishedFlow.updated_at), desc(PublishedFlow.created_at))
+    #         .limit(3)
+    #     ).scalars()
+    # )
 
     events = list(
         db.execute(
@@ -675,27 +677,28 @@ def read_project_detail(
             "total_prompts": prompt_count,
             "total_sessions": session_count,
         },
-        "community": {
-            "draft_flows": flow_status_counts.get("draft", 0),
-            "latest_flow_at": _iso(recent_flows[0].updated_at) if recent_flows else None,
-            "published_flows": flow_status_counts.get("published", 0),
-            "recent_flows": [
-                {
-                    "file_count": flow.file_count,
-                    "id": str(flow.id),
-                    "prompt_count": flow.prompt_count,
-                    "published_at": _iso(flow.published_at),
-                    "slug": flow.slug,
-                    "status": flow.status,
-                    "summary": flow.summary,
-                    "title": flow.title,
-                    "updated_at": _iso(flow.updated_at),
-                    "visibility": flow.visibility,
-                }
-                for flow in recent_flows
-            ],
-            "total_flows": sum(flow_status_counts.values()),
-        },
+        # Community publishing is paused for now.
+        # "community": {
+        #     "draft_flows": flow_status_counts.get("draft", 0),
+        #     "latest_flow_at": _iso(recent_flows[0].updated_at) if recent_flows else None,
+        #     "published_flows": flow_status_counts.get("published", 0),
+        #     "recent_flows": [
+        #         {
+        #             "file_count": flow.file_count,
+        #             "id": str(flow.id),
+        #             "prompt_count": flow.prompt_count,
+        #             "published_at": _iso(flow.published_at),
+        #             "slug": flow.slug,
+        #             "status": flow.status,
+        #             "summary": flow.summary,
+        #             "title": flow.title,
+        #             "updated_at": _iso(flow.updated_at),
+        #             "visibility": flow.visibility,
+        #         }
+        #         for flow in recent_flows
+        #     ],
+        #     "total_flows": sum(flow_status_counts.values()),
+        # },
         "activities": [
             {
                 "id": activity["id"],

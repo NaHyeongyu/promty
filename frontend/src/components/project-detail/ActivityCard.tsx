@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { Share2 } from "lucide-react";
 import { AiModelBadge } from "./AiModelBadge";
 import type { ActivityItem, PromptActivityItem } from "./types";
 
@@ -270,6 +269,7 @@ export function PromptChangeDetail({
           <h2 id="activity-detail-placeholder-title">Code changes</h2>
         </div>
         <div className="bh-prompt-change-header-actions">
+          {/* Community sharing is paused for now.
           {onSharePrompt ? (
             <button
               className="bh-header-action-button is-primary"
@@ -280,6 +280,7 @@ export function PromptChangeDetail({
               <span>Share prompt</span>
             </button>
           ) : null}
+          */}
           <strong>{activity.filesChanged} files</strong>
         </div>
       </div>
