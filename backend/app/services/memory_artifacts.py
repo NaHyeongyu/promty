@@ -7,12 +7,18 @@ from uuid import UUID
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session as DBSession
 
+from app.core.config import settings
 from app.models.artifact_generation_jobs import ArtifactGenerationJob
 from app.models.artifacts import Artifact
 from app.models.events import Event
 from app.models.projects import Project
 from app.models.sessions import Session
 from app.services.event_payload_security import decrypt_event_payload
+from app.services.gemini_memory import (
+    GEMINI_MEMORY_GENERATOR,
+    GeminiMemoryGenerationError,
+    generate_gemini_memory_payload,
+)
 
 MEMORY_ARTIFACT_TYPE = "MemoryTask"
 LOCAL_MEMORY_GENERATOR = "local-session-v1"
@@ -83,6 +89,34 @@ def _changed_files_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]
     return []
 
 
+def _event_context_payload(event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+    if event_type == "PromptSubmitted":
+        return {
+            "prompt": _truncate(_string_or_none(payload.get("prompt")) or "", 600),
+            "turn_id": payload.get("turn_id"),
+        }
+    if event_type == "ResponseReceived":
+        return {
+            "response": _truncate(_string_or_none(payload.get("response")) or "", 500),
+            "success": payload.get("success"),
+            "turn_id": payload.get("turn_id"),
+        }
+    if event_type == "FilesChanged":
+        return {
+            "files": [
+                file["path"]
+                for file in _changed_files_from_payload(payload)[:30]
+            ],
+            "summary": payload.get("summary") if isinstance(payload.get("summary"), dict) else None,
+        }
+    if event_type == "CommitCreated":
+        return {
+            "hash": _string_or_none(payload.get("hash")),
+            "message": _truncate(_string_or_none(payload.get("message")) or "", 240),
+        }
+    return {}
+
+
 def _dedupe_files(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
     merged: dict[str, dict[str, Any]] = {}
     for file in files:
@@ -132,7 +166,7 @@ def _title_from_session(
     *,
     commits: list[dict[str, str | None]],
     prompts: list[dict[str, Any]],
-    project: Project,
+    project_name: str,
 ) -> str:
     for commit in commits:
         message = _string_or_none(commit.get("message"))
@@ -142,10 +176,10 @@ def _title_from_session(
         prompt_text = _string_or_none(prompt.get("prompt"))
         if prompt_text:
             return _truncate(prompt_text.splitlines()[0], 120)
-    return f"{project.name} development session"
+    return f"{project_name} development session"
 
 
-def _build_memory_payload(db: DBSession, session: Session) -> dict[str, Any]:
+def _build_session_memory_context(db: DBSession, session: Session) -> dict[str, Any]:
     project = session.project or db.get(Project, session.project_id)
     events = list(
         db.execute(
@@ -156,9 +190,21 @@ def _build_memory_payload(db: DBSession, session: Session) -> dict[str, Any]:
     )
     payloads = [(event, _payload(event)) for event in events]
     prompt_events = [
-        {"id": str(event.id), "prompt": _string_or_none(payload.get("prompt"))}
+        {
+            "id": str(event.id),
+            "prompt": _string_or_none(payload.get("prompt")),
+            "sequence": event.sequence,
+        }
         for event, payload in payloads
         if event.event_type == "PromptSubmitted"
+    ]
+    responses = [
+        {
+            "response": _string_or_none(payload.get("response")),
+            "sequence": event.sequence,
+        }
+        for event, payload in payloads
+        if event.event_type == "ResponseReceived"
     ]
     response_count = sum(1 for event, _ in payloads if event.event_type == "ResponseReceived")
     commits = [
@@ -187,44 +233,100 @@ def _build_memory_payload(db: DBSession, session: Session) -> dict[str, Any]:
         ),
         session.model,
     )
-    title = _title_from_session(commits=commits, prompts=prompt_events, project=project)
+
+    return {
+        "changed_files": changed_files,
+        "commits": commits,
+        "ended_at": _iso(session.ended_at),
+        "event_count": len(events),
+        "events": [
+            {
+                "event_type": event.event_type,
+                "payload": _event_context_payload(event.event_type, payload),
+                "sequence": event.sequence,
+                "timestamp": _iso(event.created_at),
+            }
+            for event, payload in payloads
+        ],
+        "first_event_id": str(events[0].id) if events else None,
+        "last_event_id": str(events[-1].id) if events else None,
+        "model": model,
+        "project_id": str(session.project_id),
+        "project_name": project.name,
+        "prompt_events": prompt_events,
+        "response_count": response_count,
+        "responses": responses,
+        "session_id": str(session.id),
+        "started_at": _iso(session.started_at),
+        "tool": session.tool,
+    }
+
+
+def _build_local_memory_payload(context: dict[str, Any]) -> dict[str, Any]:
+    title = _title_from_session(
+        commits=context["commits"],
+        prompts=context["prompt_events"],
+        project_name=context["project_name"],
+    )
+    changed_files = context["changed_files"]
     file_count = len(changed_files)
-    prompt_count = len(prompt_events)
+    prompt_count = len(context["prompt_events"])
     summary = (
-        f"{prompt_count} prompts and {response_count} AI responses were captured"
+        f"{prompt_count} prompts and {context['response_count']} AI responses were captured"
         f" in this session, touching {file_count} files."
     )
     reason = (
-        _truncate(prompt_events[0]["prompt"], 480)
-        if prompt_events and prompt_events[0]["prompt"]
+        _truncate(context["prompt_events"][0]["prompt"], 480)
+        if context["prompt_events"] and context["prompt_events"][0]["prompt"]
         else "Promty captured this session as project memory from development events."
     )
     outcome = (
-        f"Latest commit: {_truncate(commits[-1]['message'] or commits[-1]['hash'] or 'unknown', 240)}"
-        if commits
+        f"Latest commit: {_truncate(context['commits'][-1]['message'] or context['commits'][-1]['hash'] or 'unknown', 240)}"
+        if context["commits"]
         else f"{file_count} files changed and {prompt_count} prompts recorded."
     )
 
     return {
         "changed_files": changed_files[:100],
-        "commit_sha": commits[-1]["hash"] if commits else None,
-        "event_count": len(events),
-        "first_event_id": str(first_event.id) if first_event else None,
+        "commit_sha": context["commits"][-1]["hash"] if context["commits"] else None,
+        "event_count": context["event_count"],
+        "first_event_id": context["first_event_id"],
         "generator": LOCAL_MEMORY_GENERATOR,
-        "last_event_id": str(last_event.id) if last_event else None,
-        "model": model,
+        "last_event_id": context["last_event_id"],
+        "model": context["model"],
         "outcome": outcome,
-        "prompt_event_ids": [prompt["id"] for prompt in prompt_events],
+        "prompt_event_ids": [prompt["id"] for prompt in context["prompt_events"]],
         "reason": reason,
         "summary": summary,
         "tags": _tags_for_session(
             changed_files=changed_files,
-            model=model,
-            tool=session.tool,
+            model=context["model"],
+            tool=context["tool"],
         ),
         "title": title,
-        "tool": session.tool,
+        "tool": context["tool"],
     }
+
+
+def _build_memory_payload(db: DBSession, session: Session) -> tuple[dict[str, Any], dict[str, Any]]:
+    context = _build_session_memory_context(db, session)
+    local_payload = _build_local_memory_payload(context)
+
+    if settings.memory_generator.strip().lower() != "gemini":
+        return local_payload, {"fallback_reason": "gemini_disabled"}
+
+    try:
+        return generate_gemini_memory_payload(
+            context=context,
+            fallback_payload=local_payload,
+        ), {"gemini_model": settings.gemini_model}
+    except GeminiMemoryGenerationError as exc:
+        local_payload["generator"] = LOCAL_MEMORY_GENERATOR
+        return local_payload, {
+            "fallback_generator": LOCAL_MEMORY_GENERATOR,
+            "fallback_reason": str(exc),
+            "requested_generator": GEMINI_MEMORY_GENERATOR,
+        }
 
 
 def session_completion_state(db: DBSession, session: Session) -> dict[str, Any]:
@@ -295,7 +397,9 @@ def create_artifact_generation_job(
         session_id=session_id,
         reason=reason,
         status="pending",
-        generator=LOCAL_MEMORY_GENERATOR,
+        generator=GEMINI_MEMORY_GENERATOR
+        if settings.memory_generator.strip().lower() == "gemini"
+        else LOCAL_MEMORY_GENERATOR,
     )
     db.add(job)
     db.flush()
@@ -316,6 +420,8 @@ def run_artifact_generation_job(
             raise ValueError("Session not found")
         artifact = generate_memory_artifact_for_session(db, session)
         job.artifact_id = artifact.id
+        job.generator = artifact.generator or job.generator
+        job.metadata_ = artifact.metadata_
         job.status = "succeeded"
         job.completed_at = utc_now()
         job.error = None
@@ -334,7 +440,7 @@ def generate_memory_artifact_for_session(
     db: DBSession,
     session: Session,
 ) -> Artifact:
-    payload = _build_memory_payload(db, session)
+    payload, generation_metadata = _build_memory_payload(db, session)
     artifact = db.execute(
         select(Artifact).where(
             Artifact.project_id == session.project_id,
@@ -370,6 +476,7 @@ def generate_memory_artifact_for_session(
         "first_event_id": payload["first_event_id"],
         "last_event_id": payload["last_event_id"],
         "tool": payload["tool"],
+        **generation_metadata,
     }
     artifact.updated_at = utc_now()
     db.flush()

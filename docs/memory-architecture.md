@@ -40,16 +40,26 @@ Promty currently has the first project-memory slice:
 - Artifact generation is recorded in `artifact_generation_jobs`.
 - The project overview shows recent Project Memory artifacts.
 
-The current generator is deterministic (`local-session-v1`) so the memory pipeline works without an external LLM. Gemini generation is the next upgrade to the same job path.
+The generator path supports Gemini-backed summaries (`gemini-session-v1`) with deterministic fallback (`local-session-v1`). If a Gemini API key is missing or generation fails, Promty still creates a memory artifact from local session evidence.
+
+Configuration:
+
+```text
+PROMTY_GEMINI_API_KEY
+PROMTY_GEMINI_MODEL=gemini-2.5-flash
+PROMTY_GEMINI_TIMEOUT_SECONDS=30
+PROMTY_MEMORY_GENERATOR=gemini
+```
+
+Legacy `PROMPTHUB_*` names are still accepted for compatibility.
 
 ## Next Build Order
 
-1. Replace `local-session-v1` with Gemini-backed session summarization.
-2. Add embedding generation for every `MemoryTask`.
-3. Store embeddings in pgvector.
-4. Add semantic project-memory search.
-5. Build a Context Builder that retrieves artifacts, prompts, diffs, commits, and changed files.
-6. Add Project Chat with cited answers from actual project history.
+1. Add embedding generation for every `MemoryTask`.
+2. Store embeddings in pgvector.
+3. Add semantic project-memory search.
+4. Build a Context Builder that retrieves artifacts, prompts, diffs, commits, and changed files.
+5. Add Project Chat with cited answers from actual project history.
 
 ## Memory Artifact
 

@@ -32,6 +32,14 @@ def _optional_env(name: str) -> str | None:
     return value
 
 
+def _optional_env_any(*names: str) -> str | None:
+    for name in names:
+        value = _optional_env(name)
+        if value is not None:
+            return value
+    return None
+
+
 def _csv_env(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
     value = os.environ.get(name)
     if value is None:
@@ -56,6 +64,26 @@ def _int_env(name: str, default: int) -> int:
         return int(value)
     except ValueError:
         return default
+
+
+def _str_env_any(names: tuple[str, ...], default: str) -> str:
+    for name in names:
+        value = os.environ.get(name)
+        if value is not None and value.strip():
+            return value.strip()
+    return default
+
+
+def _int_env_any(names: tuple[str, ...], default: int) -> int:
+    for name in names:
+        value = os.environ.get(name)
+        if value is None:
+            continue
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
 
 
 @dataclass(frozen=True)
@@ -91,6 +119,31 @@ class Settings:
     )
     response_max_chars: int = field(
         default_factory=lambda: _int_env("PROMPTHUB_RESPONSE_MAX_CHARS", 50000)
+    )
+    gemini_api_key: str | None = field(
+        default_factory=lambda: _optional_env_any(
+            "PROMTY_GEMINI_API_KEY",
+            "PROMPTHUB_GEMINI_API_KEY",
+            "GEMINI_API_KEY",
+        )
+    )
+    gemini_model: str = field(
+        default_factory=lambda: _str_env_any(
+            ("PROMTY_GEMINI_MODEL", "PROMPTHUB_GEMINI_MODEL"),
+            "gemini-2.5-flash",
+        )
+    )
+    gemini_timeout_seconds: int = field(
+        default_factory=lambda: _int_env_any(
+            ("PROMTY_GEMINI_TIMEOUT_SECONDS", "PROMPTHUB_GEMINI_TIMEOUT_SECONDS"),
+            30,
+        )
+    )
+    memory_generator: str = field(
+        default_factory=lambda: _str_env_any(
+            ("PROMTY_MEMORY_GENERATOR", "PROMPTHUB_MEMORY_GENERATOR"),
+            "gemini",
+        )
     )
     published_flow_asset_root: str = os.environ.get(
         "PROMPTHUB_PUBLISHED_FLOW_ASSET_ROOT",

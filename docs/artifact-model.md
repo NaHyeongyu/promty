@@ -84,7 +84,7 @@ Artifact implementation should not add tool-specific logic to the backend.
 
 Generated artifacts are tracked through `artifact_generation_jobs`.
 
-Current job execution is inline and deterministic with `local-session-v1`.
+Current job execution is inline. It uses Gemini (`gemini-session-v1`) when configured and falls back to deterministic local generation (`local-session-v1`) when the Gemini key is missing or the request fails.
 
 The job table is intentionally shaped so a future Redis + Celery or Dramatiq worker can process pending jobs without changing the API contract.
 
