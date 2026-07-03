@@ -1768,7 +1768,7 @@ function ActivityPanel({
   }
 
   return (
-    <div className="bh-activity-layout">
+    <div className="bh-activity-layout" data-view={view}>
       <div className="bh-activity-view-tabs" role="tablist" aria-label="AI activity views">
         <button
           aria-selected={view === "prompts"}
@@ -1877,33 +1877,36 @@ function ActivityPanel({
               onChange={setSessionWorkTypeFilter}
               value={sessionWorkTypeFilter}
             />
-            {filteredSessions.length > 0 ? (
-              filteredSessions.map((activity) => (
-                <ActivityCard
-                  activity={activity}
-                  isSelected={activity.id === selectedSession?.id}
-                  key={activity.id}
-                  onOpen={() => {
-                    const latestPromptInSession =
-                      data.promptActivities
-                        .filter((prompt) => prompt.sessionId === activity.id)
-                        .sort((first, second) => second.sequence - first.sequence)[0] ??
-                      null;
-                    updateActivityNavigation({
-                      selectedPromptId: null,
-                      selectedSessionId: activity.id,
-                      selectedSessionPromptId: latestPromptInSession?.id ?? null,
-                      view: "sessions",
-                    });
-                    setSessionConversationSearchQuery("");
-                  }}
-                />
-              ))
-            ) : (
-              <div className="bh-prompt-search-empty">
-                No sessions match this filter.
-              </div>
-            )}
+            <div className="bh-session-list">
+              {filteredSessions.length > 0 ? (
+                filteredSessions.map((activity) => (
+                  <ActivityCard
+                    activity={activity}
+                    isSelected={activity.id === selectedSession?.id}
+                    key={activity.id}
+                    onOpen={() => {
+                      const latestPromptInSession =
+                        data.promptActivities
+                          .filter((prompt) => prompt.sessionId === activity.id)
+                          .sort(
+                            (first, second) => second.sequence - first.sequence,
+                          )[0] ?? null;
+                      updateActivityNavigation({
+                        selectedPromptId: null,
+                        selectedSessionId: activity.id,
+                        selectedSessionPromptId: latestPromptInSession?.id ?? null,
+                        view: "sessions",
+                      });
+                      setSessionConversationSearchQuery("");
+                    }}
+                  />
+                ))
+              ) : (
+                <div className="bh-prompt-search-empty">
+                  No sessions match this filter.
+                </div>
+              )}
+            </div>
           </div>
 
           <section
@@ -1925,36 +1928,38 @@ function ActivityPanel({
                   />
                 </label>
 
-                {selectedSessionPrompts.length > 0 ? (
-                  filteredSessionPrompts.length > 0 ? (
-                    <div className="bh-prompt-list">
-                      {filteredSessionPrompts.map((activity) => (
-                        <PromptActivityCard
-                          activity={activity}
-                          isSelected={activity.id === selectedSessionPrompt?.id}
-                          key={activity.id}
-                          onOpen={() => {
-                            updateActivityNavigation({
-                              selectedPromptId: null,
-                              selectedSessionId: selectedSession?.id ?? null,
-                              selectedSessionPromptId: activity.id,
-                              view: "sessions",
-                            })
-                          }}
-                          promptLabel={`Prompt ${activity.sequence}`}
-                        />
-                      ))}
-                    </div>
+                <div className="bh-session-prompt-list">
+                  {selectedSessionPrompts.length > 0 ? (
+                    filteredSessionPrompts.length > 0 ? (
+                      <div className="bh-prompt-list">
+                        {filteredSessionPrompts.map((activity) => (
+                          <PromptActivityCard
+                            activity={activity}
+                            isSelected={activity.id === selectedSessionPrompt?.id}
+                            key={activity.id}
+                            onOpen={() => {
+                              updateActivityNavigation({
+                                selectedPromptId: null,
+                                selectedSessionId: selectedSession?.id ?? null,
+                                selectedSessionPromptId: activity.id,
+                                view: "sessions",
+                              });
+                            }}
+                            promptLabel={`Prompt ${activity.sequence}`}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="bh-prompt-search-empty">
+                        No conversations match this search.
+                      </div>
+                    )
                   ) : (
                     <div className="bh-prompt-search-empty">
-                      No conversations match this search.
+                      No prompts were captured in this session.
                     </div>
-                  )
-                ) : (
-                  <div className="bh-prompt-search-empty">
-                    No prompts were captured in this session.
-                  </div>
-                )}
+                  )}
+                </div>
               </>
             ) : (
               <div className="bh-prompt-search-empty">
@@ -2211,7 +2216,11 @@ export function ProjectDetailPage({
   projectOptions = [],
 }: ProjectDetailPageProps) {
   return (
-    <section className="bh-project-detail" aria-labelledby="project-detail-title">
+    <section
+      className="bh-project-detail"
+      data-active-tab={activeTab}
+      aria-labelledby="project-detail-title"
+    >
       <ProjectHeader
         description={data.project.description}
         name={data.project.name}
