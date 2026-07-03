@@ -96,12 +96,6 @@ def complete_project_session(
         reason=completion["reason"],
         session_id=session.id,
     )
-    if job.status == "failed":
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=job.error or "Memory artifact generation failed.",
-        )
     try:
         db.commit()
     except IntegrityError as exc:
@@ -110,6 +104,12 @@ def complete_project_session(
             status_code=status.HTTP_409_CONFLICT,
             detail="Memory artifact could not be generated.",
         ) from exc
+
+    if job.status == "failed":
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=job.error or "Memory artifact generation failed.",
+        )
 
     artifact = db.get(Artifact, job.artifact_id) if job.artifact_id else None
     return {
