@@ -308,8 +308,9 @@ def _build_local_memory_payload(context: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _build_memory_payload(db: DBSession, session: Session) -> tuple[dict[str, Any], dict[str, Any]]:
-    context = _build_session_memory_context(db, session)
+def _build_memory_payload_from_context(
+    context: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
     local_payload = _build_local_memory_payload(context)
 
     if settings.memory_generator.strip().lower() != "gemini":
@@ -327,6 +328,20 @@ def _build_memory_payload(db: DBSession, session: Session) -> tuple[dict[str, An
             "fallback_reason": str(exc),
             "requested_generator": GEMINI_MEMORY_GENERATOR,
         }
+
+
+def _build_memory_payload(db: DBSession, session: Session) -> tuple[dict[str, Any], dict[str, Any]]:
+    return _build_memory_payload_from_context(_build_session_memory_context(db, session))
+
+
+def _artifact_is_current_for_context(artifact: Artifact, context: dict[str, Any]) -> bool:
+    if not context["last_event_id"] or not artifact.summary:
+        return False
+    metadata = artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}
+    return (
+        metadata.get("last_event_id") == context["last_event_id"]
+        and metadata.get("event_count") == context["event_count"]
+    )
 
 
 def session_completion_state(db: DBSession, session: Session) -> dict[str, Any]:
@@ -440,7 +455,7 @@ def generate_memory_artifact_for_session(
     db: DBSession,
     session: Session,
 ) -> Artifact:
-    payload, generation_metadata = _build_memory_payload(db, session)
+    context = _build_session_memory_context(db, session)
     artifact = db.execute(
         select(Artifact).where(
             Artifact.project_id == session.project_id,
@@ -448,6 +463,10 @@ def generate_memory_artifact_for_session(
             Artifact.type == MEMORY_ARTIFACT_TYPE,
         )
     ).scalar_one_or_none()
+    if artifact is not None and _artifact_is_current_for_context(artifact, context):
+        return artifact
+
+    payload, generation_metadata = _build_memory_payload_from_context(context)
     if artifact is None:
         artifact = Artifact(
             project_id=session.project_id,
