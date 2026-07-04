@@ -149,6 +149,63 @@ function sortPromptsForSelection(
   return second.sequence - first.sequence;
 }
 
+type ActivityFeedItem =
+  | {
+      activity: PromptActivityItem;
+      kind: "prompt";
+      key: string;
+      sequenceIndex: number;
+      timestamp: number | null;
+    }
+  | {
+      activity: ActivityItem;
+      kind: "session";
+      key: string;
+      sequenceIndex: number;
+      timestamp: number | null;
+    };
+
+function displayTimeValue(value: string) {
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function activityFeedSearchText(item: ActivityFeedItem) {
+  if (item.kind === "prompt") {
+    return [
+      item.activity.prompt,
+      item.activity.model,
+      item.activity.submittedAt,
+      `prompt ${item.activity.sequence}`,
+      String(item.activity.sequence),
+    ].join(" ");
+  }
+
+  return [
+    item.activity.id,
+    item.activity.model,
+    item.activity.startedAt,
+    item.activity.lastActivity,
+    `${item.activity.prompts} prompts`,
+    `${item.activity.filesChanged} files`,
+  ].join(" ");
+}
+
+function sortActivityFeedItems(
+  first: ActivityFeedItem,
+  second: ActivityFeedItem,
+) {
+  if (
+    first.timestamp !== null &&
+    second.timestamp !== null &&
+    first.timestamp !== second.timestamp
+  ) {
+    return second.timestamp - first.timestamp;
+  }
+
+  return first.sequenceIndex - second.sequenceIndex;
+}
+
 function overviewCompactNumber(value: number) {
   return Intl.NumberFormat("en", {
     maximumFractionDigits: 1,
@@ -2642,12 +2699,13 @@ function ProjectDetailLoadingSkeleton({
   if (activeTab === "ai-activity") {
     return (
       <section
-        aria-label="Loading AI activity"
+        aria-label="Loading activity"
         aria-live="polite"
         className="bh-detail-skeleton bh-detail-skeleton-activity"
         role="status"
       >
         <div className="bh-activity-view-tabs bh-activity-view-tabs-skeleton">
+          <span className="skeleton-pill skeleton-pill-action" />
           <span className="skeleton-pill skeleton-pill-action" />
           <span className="skeleton-pill skeleton-pill-action" />
         </div>
@@ -2813,12 +2871,10 @@ function ActivityPanel({
   const [localActivityNavigation, setLocalActivityNavigation] =
     useState<ActivityNavigationState>(defaultActivityNavigation);
   const [promptSearchQuery, setPromptSearchQuery] = useState("");
-  const [promptWorkTypeFilter, setPromptWorkTypeFilter] =
+  const [activityWorkTypeFilter, setActivityWorkTypeFilter] =
     useState<WorkTypeFilter>("all");
   const [sessionConversationSearchQuery, setSessionConversationSearchQuery] =
     useState("");
-  const [sessionWorkTypeFilter, setSessionWorkTypeFilter] =
-    useState<WorkTypeFilter>("all");
   const [shareScope, setShareScope] = useState<"project" | "session">("session");
   const [shareSessionId, setShareSessionId] = useState<string | null>(null);
   const [initialSharePromptIds, setInitialSharePromptIds] = useState<string[]>([]);
@@ -2845,51 +2901,67 @@ function ActivityPanel({
     currentActivityNavigation.selectedSessionPromptId;
   const hasPromptActivity = data.promptActivities.length > 0;
   const hasSessionActivity = data.activities.length > 0;
-  const promptWorkTypeCounts = useMemo(
-    () => workTypeCounts(data.promptActivities),
-    [data.promptActivities],
-  );
-  const sessionWorkTypeCounts = useMemo(
-    () => workTypeCounts(data.activities),
-    [data.activities],
-  );
-  const filteredPromptActivities = useMemo(() => {
+  const unfilteredActivityFeedItems = useMemo<ActivityFeedItem[]>(() => {
+    const promptItems: ActivityFeedItem[] = data.promptActivities.map(
+      (activity, index) => ({
+        activity,
+        key: `prompt-${activity.id}`,
+        kind: "prompt",
+        sequenceIndex: index,
+        timestamp: promptSubmittedTime(activity),
+      }),
+    );
+    const sessionItems: ActivityFeedItem[] = data.activities.map(
+      (activity, index) => ({
+        activity,
+        key: `session-${activity.id}`,
+        kind: "session",
+        sequenceIndex: data.promptActivities.length + index,
+        timestamp: displayTimeValue(activity.lastActivity),
+      }),
+    );
+    const items = view === "sessions" ? sessionItems : promptItems;
+
+    return [...items].sort(sortActivityFeedItems);
+  }, [data.activities, data.promptActivities, view]);
+  const searchMatchedActivityFeedItems = useMemo(() => {
     const query = promptSearchQuery.trim().toLowerCase();
 
-    return data.promptActivities.filter((activity) => {
-      if (
-        promptWorkTypeFilter !== "all" &&
-        workTypeForFiles(activity.filesChanged) !== promptWorkTypeFilter
-      ) {
-        return false;
-      }
-
+    return unfilteredActivityFeedItems.filter((item) => {
       if (!query) {
         return true;
       }
 
-      return `${activity.prompt} ${activity.submittedAt}`
+      return activityFeedSearchText(item)
         .toLowerCase()
         .includes(query);
     });
-  }, [data.promptActivities, promptSearchQuery, promptWorkTypeFilter]);
-  const selectedPrompt =
-    filteredPromptActivities.find((activity) => activity.id === selectedPromptId) ??
-    filteredPromptActivities[0] ??
-    null;
-  const filteredSessions = useMemo(() => {
-    if (sessionWorkTypeFilter === "all") {
-      return data.activities;
+  }, [promptSearchQuery, unfilteredActivityFeedItems]);
+  const activityWorkTypeCounts = useMemo(
+    () => workTypeCounts(searchMatchedActivityFeedItems.map((item) => item.activity)),
+    [searchMatchedActivityFeedItems],
+  );
+  const filteredActivityFeedItems = useMemo(() => {
+    if (view === "sessions" || activityWorkTypeFilter === "all") {
+      return searchMatchedActivityFeedItems;
     }
 
-    return data.activities.filter(
-      (activity) => workTypeForFiles(activity.filesChanged) === sessionWorkTypeFilter,
+    return searchMatchedActivityFeedItems.filter(
+      (item) => workTypeForFiles(item.activity.filesChanged) === activityWorkTypeFilter,
     );
-  }, [data.activities, sessionWorkTypeFilter]);
-  const selectedSession =
-    filteredSessions.find((activity) => activity.id === selectedSessionId) ??
-    filteredSessions[0] ??
+  }, [activityWorkTypeFilter, searchMatchedActivityFeedItems, view]);
+  const selectedFeedItem =
+    filteredActivityFeedItems.find((item) =>
+      item.kind === "prompt"
+        ? item.activity.id === selectedPromptId
+        : item.activity.id === selectedSessionId,
+    ) ??
+    filteredActivityFeedItems[0] ??
     null;
+  const selectedPrompt =
+    selectedFeedItem?.kind === "prompt" ? selectedFeedItem.activity : null;
+  const selectedSession =
+    selectedFeedItem?.kind === "session" ? selectedFeedItem.activity : null;
   const selectedSessionPrompts = useMemo(
     () =>
       selectedSession
@@ -2899,6 +2971,48 @@ function ActivityPanel({
         : [],
     [data.promptActivities, selectedSession],
   );
+  const latestPromptForSession = (sessionId: string | null | undefined) =>
+    sessionId
+      ? data.promptActivities
+          .filter((prompt) => prompt.sessionId === sessionId)
+          .sort((first, second) => second.sequence - first.sequence)[0] ?? null
+      : null;
+  const promptTargetForCurrentSelection =
+    selectedFeedItem?.kind === "prompt"
+      ? selectedFeedItem.activity
+      : selectedSessionPrompts.find(
+          (activity) => activity.id === selectedSessionPromptId,
+        ) ??
+        selectedSessionPrompts[0] ??
+        null;
+  const updateActivityView = (nextView: ActivityNavigationState["view"]) => {
+    if (nextView === "prompts") {
+      updateActivityNavigation({
+        selectedPromptId: promptTargetForCurrentSelection?.id ?? selectedPromptId,
+        selectedSessionId: null,
+        selectedSessionPromptId: null,
+        view: "prompts",
+      });
+      return;
+    }
+
+    const sessionTarget =
+      promptTargetForCurrentSelection !== null
+        ? data.activities.find(
+            (activity) => activity.id === promptTargetForCurrentSelection.sessionId,
+          ) ?? null
+        : selectedSession;
+    const sessionPromptTarget =
+      promptTargetForCurrentSelection ?? latestPromptForSession(sessionTarget?.id);
+
+    updateActivityNavigation({
+      selectedPromptId: null,
+      selectedSessionId: sessionTarget?.id ?? selectedSessionId,
+      selectedSessionPromptId: sessionPromptTarget?.id ?? selectedSessionPromptId,
+      view: "sessions",
+    });
+    setSessionConversationSearchQuery("");
+  };
   const filteredSessionPrompts = useMemo(() => {
     const query = sessionConversationSearchQuery.trim().toLowerCase();
 
@@ -2968,224 +3082,177 @@ function ActivityPanel({
       <EmptyState
         description="AI interactions will appear after collector events are synced."
         icon={Activity}
-        title="No AI activity yet"
+        title="No activity yet"
       />
     );
   }
 
+  const activityViewOptions: ActivityNavigationState["view"][] = [
+    "prompts",
+    "sessions",
+  ];
+
   return (
     <div className="bh-activity-layout" data-view={view}>
-      <div className="bh-activity-view-tabs" role="tablist" aria-label="AI activity views">
-        <button
-          aria-selected={view === "prompts"}
-          className="bh-activity-view-tab"
-          data-active={view === "prompts"}
-          onClick={() =>
-            updateActivityNavigation({
-              selectedPromptId: null,
-              selectedSessionId: null,
-              selectedSessionPromptId: null,
-              view: "prompts",
-            })
-          }
-          role="tab"
-          type="button"
-        >
-          Latest prompts
-        </button>
-        <button
-          aria-selected={view === "sessions"}
-          className="bh-activity-view-tab"
-          data-active={view === "sessions"}
-          onClick={() => {
-            const promptSessionTarget = view === "prompts" ? selectedPrompt : null;
-            if (promptSessionTarget) {
-              setSessionWorkTypeFilter("all");
-            }
-            updateActivityNavigation({
-              selectedPromptId: null,
-              selectedSessionId:
-                promptSessionTarget?.sessionId ?? selectedSessionId,
-              selectedSessionPromptId:
-                promptSessionTarget?.id ?? selectedSessionPromptId,
-              view: "sessions",
-            });
-            setSessionConversationSearchQuery("");
-          }}
-          role="tab"
-          type="button"
-        >
-          Sessions
-        </button>
+      <div className="bh-activity-view-tabs" role="group" aria-label="Activity filters">
+        {activityViewOptions.map((activityView) => (
+          <button
+            aria-pressed={view === activityView}
+            className="bh-activity-view-tab"
+            data-active={view === activityView}
+            key={activityView}
+            onClick={() => updateActivityView(activityView)}
+            type="button"
+          >
+            {activityView === "prompts" ? "Prompts" : "Sessions"}
+          </button>
+        ))}
       </div>
 
-      {view === "prompts" ? (
-        hasPromptActivity ? (
-          <div className="bh-prompt-activity-layout" role="tabpanel">
-            <div className="bh-prompt-sidebar">
-              <label className="bh-prompt-search">
-                <Search aria-hidden="true" size={15} strokeWidth={1.7} />
-                <input
-                  aria-label="Search prompts by text or date"
-                  onChange={(event) => setPromptSearchQuery(event.target.value)}
-                  placeholder="Search prompts or dates"
-                  type="search"
-                  value={promptSearchQuery}
-                />
-              </label>
-              <WorkTypeFilterControl
-                ariaLabel="Filter prompts by activity type"
-                counts={promptWorkTypeCounts}
-                onChange={setPromptWorkTypeFilter}
-                value={promptWorkTypeFilter}
-              />
+      <div
+        className="bh-activity-feed-layout"
+        data-detail={selectedFeedItem?.kind ?? "prompt"}
+      >
+        <div className="bh-activity-feed-sidebar">
+          <label className="bh-prompt-search">
+            <Search aria-hidden="true" size={15} strokeWidth={1.7} />
+            <input
+              aria-label="Search activity by text, model, or date"
+              onChange={(event) => setPromptSearchQuery(event.target.value)}
+              placeholder="Search activity"
+              type="search"
+              value={promptSearchQuery}
+            />
+          </label>
+          {view === "prompts" ? (
+            <WorkTypeFilterControl
+              ariaLabel="Filter activity by work type"
+              counts={activityWorkTypeCounts}
+              onChange={setActivityWorkTypeFilter}
+              value={activityWorkTypeFilter}
+            />
+          ) : null}
 
-              <div className="bh-latest-prompt-list">
-                {filteredPromptActivities.length > 0 ? (
-                  <div className="bh-prompt-list">
-                    {filteredPromptActivities.map((activity) => (
+          <div className="bh-latest-prompt-list">
+            {filteredActivityFeedItems.length > 0 ? (
+              <div className="bh-prompt-list">
+                {filteredActivityFeedItems.map((item) => {
+                  if (item.kind === "prompt") {
+                    return (
                       <PromptActivityCard
-                        activity={activity}
-                        isSelected={activity.id === selectedPrompt?.id}
-                        key={activity.id}
+                        activity={item.activity}
+                        isSelected={item.key === selectedFeedItem?.key}
+                        key={item.key}
                         onOpen={() =>
                           updateActivityNavigation({
-                            selectedPromptId: activity.id,
+                            selectedPromptId: item.activity.id,
                             selectedSessionId: null,
                             selectedSessionPromptId: null,
-                            view: "prompts",
                           })
                         }
                       />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="bh-prompt-search-empty">
-                    No prompts match this search.
-                  </div>
-                )}
+                    );
+                  }
+
+                  return (
+                    <ActivityCard
+                      activity={item.activity}
+                      isSelected={item.key === selectedFeedItem?.key}
+                      key={item.key}
+                      onOpen={() => {
+                        const latestPromptInSession = latestPromptForSession(
+                          item.activity.id,
+                        );
+                        updateActivityNavigation({
+                          selectedPromptId: null,
+                          selectedSessionId: item.activity.id,
+                          selectedSessionPromptId:
+                            latestPromptInSession?.id ?? null,
+                        });
+                        setSessionConversationSearchQuery("");
+                      }}
+                    />
+                  );
+                })}
               </div>
-            </div>
-            {/* Community sharing is paused for now; share handler intentionally omitted. */}
-            <PromptChangeDetail activity={selectedPrompt} />
-          </div>
-        ) : (
-          <EmptyState
-            description="PromptSubmitted events will appear here newest first."
-            icon={Activity}
-            title="No prompts yet"
-          />
-        )
-      ) : hasSessionActivity ? (
-        <div className="bh-activity-session-layout" role="tabpanel">
-          <div className="bh-activity-list">
-            <WorkTypeFilterControl
-              ariaLabel="Filter sessions by activity type"
-              counts={sessionWorkTypeCounts}
-              onChange={setSessionWorkTypeFilter}
-              value={sessionWorkTypeFilter}
-            />
-            <div className="bh-session-list">
-              {filteredSessions.length > 0 ? (
-                filteredSessions.map((activity) => (
-                  <ActivityCard
-                    activity={activity}
-                    isSelected={activity.id === selectedSession?.id}
-                    key={activity.id}
-                    onOpen={() => {
-                      const latestPromptInSession =
-                        data.promptActivities
-                          .filter((prompt) => prompt.sessionId === activity.id)
-                          .sort(
-                            (first, second) => second.sequence - first.sequence,
-                          )[0] ?? null;
-                      updateActivityNavigation({
-                        selectedPromptId: null,
-                        selectedSessionId: activity.id,
-                        selectedSessionPromptId: latestPromptInSession?.id ?? null,
-                        view: "sessions",
-                      });
-                      setSessionConversationSearchQuery("");
-                    }}
-                  />
-                ))
-              ) : (
-                <div className="bh-prompt-search-empty">
-                  No sessions match this filter.
-                </div>
-              )}
-            </div>
-          </div>
-
-          <section
-            aria-label="Session conversations"
-            className="bh-session-conversation-panel"
-          >
-            {selectedSession ? (
-              <>
-                <label className="bh-prompt-search">
-                  <Search aria-hidden="true" size={15} strokeWidth={1.7} />
-                  <input
-                    aria-label="Search conversations by text or date"
-                    onChange={(event) =>
-                      setSessionConversationSearchQuery(event.target.value)
-                    }
-                    placeholder="Search conversations or dates"
-                    type="search"
-                    value={sessionConversationSearchQuery}
-                  />
-                </label>
-
-                <div className="bh-session-prompt-list">
-                  {selectedSessionPrompts.length > 0 ? (
-                    filteredSessionPrompts.length > 0 ? (
-                      <div className="bh-prompt-list">
-                        {filteredSessionPrompts.map((activity) => (
-                          <PromptActivityCard
-                            activity={activity}
-                            isSelected={activity.id === selectedSessionPrompt?.id}
-                            key={activity.id}
-                            onOpen={() => {
-                              updateActivityNavigation({
-                                selectedPromptId: null,
-                                selectedSessionId: selectedSession?.id ?? null,
-                                selectedSessionPromptId: activity.id,
-                                view: "sessions",
-                              });
-                            }}
-                            promptLabel={`Prompt ${activity.sequence}`}
-                          />
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="bh-prompt-search-empty">
-                        No conversations match this search.
-                      </div>
-                    )
-                  ) : (
-                    <div className="bh-prompt-search-empty">
-                      No prompts were captured in this session.
-                    </div>
-                  )}
-                </div>
-              </>
             ) : (
               <div className="bh-prompt-search-empty">
-                Select a session to inspect its conversations.
+                No activity matches this filter.
               </div>
             )}
-          </section>
-
-          {/* Community sharing is paused for now; share handler intentionally omitted. */}
-          <PromptChangeDetail activity={selectedSessionPrompt} />
+          </div>
         </div>
-      ) : (
-        <EmptyState
-          description="Session summaries will appear after AI activity is grouped."
-          icon={Activity}
-          title="No sessions yet"
-        />
-      )}
+
+        {selectedFeedItem?.kind === "session" ? (
+          <>
+            <section
+              aria-label="Session conversations"
+              className="bh-session-conversation-panel"
+            >
+              {selectedSession ? (
+                <>
+                  <label className="bh-prompt-search">
+                    <Search aria-hidden="true" size={15} strokeWidth={1.7} />
+                    <input
+                      aria-label="Search conversations by text or date"
+                      onChange={(event) =>
+                        setSessionConversationSearchQuery(event.target.value)
+                      }
+                      placeholder="Search conversations"
+                      type="search"
+                      value={sessionConversationSearchQuery}
+                    />
+                  </label>
+
+                  <div className="bh-session-prompt-list">
+                    {selectedSessionPrompts.length > 0 ? (
+                      filteredSessionPrompts.length > 0 ? (
+                        <div className="bh-prompt-list">
+                          {filteredSessionPrompts.map((activity) => (
+                            <PromptActivityCard
+                              activity={activity}
+                              isSelected={activity.id === selectedSessionPrompt?.id}
+                              key={activity.id}
+                              onOpen={() => {
+                                updateActivityNavigation({
+                                  selectedPromptId: null,
+                                  selectedSessionId: selectedSession.id,
+                                  selectedSessionPromptId: activity.id,
+                                });
+                              }}
+                              promptLabel={`Prompt ${activity.sequence}`}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="bh-prompt-search-empty">
+                          No conversations match this search.
+                        </div>
+                      )
+                    ) : (
+                      <div className="bh-prompt-search-empty">
+                        No prompts were captured in this session.
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="bh-prompt-search-empty">
+                  Select a session to inspect its conversations.
+                </div>
+              )}
+            </section>
+
+            {/* Community sharing is paused for now; share handler intentionally omitted. */}
+            <PromptChangeDetail activity={selectedSessionPrompt} />
+          </>
+        ) : (
+          <>
+            {/* Community sharing is paused for now; share handler intentionally omitted. */}
+            <PromptChangeDetail activity={selectedPrompt} />
+          </>
+        )}
+      </div>
 
       {/* Community share drawer is paused for now.
       {isShareDrawerOpen &&

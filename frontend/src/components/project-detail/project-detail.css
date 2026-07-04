@@ -2683,17 +2683,6 @@
   background: var(--bh-color-primary-subtle);
 }
 
-.bh-activity-view-tab[data-active="true"]::before {
-  position: absolute;
-  top: var(--bh-space-1);
-  bottom: var(--bh-space-1);
-  left: var(--bh-space-1);
-  width: 2px;
-  border-radius: var(--bh-radius-sm);
-  background: var(--bh-color-primary);
-  content: "";
-}
-
 .bh-activity-view-tab:focus-visible {
   outline: 2px solid var(--bh-color-primary);
   outline-offset: 2px;
@@ -2759,11 +2748,18 @@
   line-height: var(--bh-line-height-heading);
 }
 
+.bh-activity-feed-layout,
 .bh-prompt-activity-layout {
   display: grid;
   grid-template-columns: minmax(280px, 420px) minmax(0, 1fr);
   align-items: start;
   gap: var(--bh-space-4);
+}
+
+.bh-activity-feed-layout[data-detail="session"] {
+  grid-template-columns:
+    minmax(220px, 320px) minmax(280px, 400px)
+    minmax(0, 1fr);
 }
 
 .bh-activity-session-layout {
@@ -2775,6 +2771,7 @@
   gap: var(--bh-space-4);
 }
 
+.bh-activity-layout .bh-activity-feed-layout,
 .bh-activity-layout[data-view="prompts"] .bh-prompt-activity-layout,
 .bh-activity-layout[data-view="sessions"] .bh-activity-session-layout {
   min-height: 0;
@@ -2782,6 +2779,7 @@
   overflow: hidden;
 }
 
+.bh-activity-feed-sidebar,
 .bh-prompt-sidebar {
   display: grid;
   min-width: 0;
@@ -2796,6 +2794,7 @@
   gap: var(--bh-space-3);
 }
 
+.bh-activity-layout .bh-activity-feed-sidebar,
 .bh-activity-layout[data-view="prompts"] .bh-prompt-sidebar {
   min-height: 0;
   grid-template-rows: auto auto minmax(0, 1fr);
@@ -2803,6 +2802,7 @@
   overflow: hidden;
 }
 
+.bh-activity-feed-layout .bh-session-conversation-panel,
 .bh-activity-layout[data-view="sessions"] .bh-activity-list,
 .bh-activity-layout[data-view="sessions"] .bh-session-conversation-panel {
   min-height: 0;
@@ -2823,6 +2823,8 @@
   scrollbar-gutter: stable;
 }
 
+.bh-activity-layout .bh-activity-feed-layout > .bh-prompt-change-detail,
+.bh-activity-layout .bh-activity-feed-layout > .bh-activity-detail-placeholder,
 .bh-activity-layout[data-view="prompts"] .bh-prompt-activity-layout > .bh-prompt-change-detail,
 .bh-activity-layout[data-view="prompts"] .bh-prompt-activity-layout > .bh-activity-detail-placeholder,
 .bh-activity-layout[data-view="sessions"] .bh-activity-session-layout > .bh-prompt-change-detail,
@@ -3079,7 +3081,7 @@
 .bh-prompt-row-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--bh-space-1);
+  gap: var(--bh-space-2);
 }
 
 .bh-prompt-row-chip {
@@ -3356,13 +3358,41 @@
   display: grid;
   align-content: start;
   gap: var(--bh-space-2);
-}
-
-.bh-ai-response-summary {
   border: 1px solid var(--bh-color-border);
   border-radius: var(--bh-radius-sm);
   padding: var(--bh-space-3);
   background: var(--bh-color-background);
+}
+
+.bh-prompt-detail-section-label,
+.bh-prompt-detail-section-header span {
+  color: var(--bh-color-text-muted);
+  font-size: var(--bh-font-size-caption);
+  font-weight: var(--bh-font-weight-label);
+  line-height: var(--bh-line-height-heading);
+}
+
+.bh-prompt-detail-section-header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bh-space-3);
+}
+
+.bh-prompt-detail-section-header strong {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  border: 1px solid var(--bh-color-border);
+  border-radius: var(--bh-radius-sm);
+  padding: 0 var(--bh-space-2);
+  color: var(--bh-color-text-secondary);
+  background: var(--bh-color-surface-secondary);
+  font-size: var(--bh-font-size-caption);
+  font-weight: var(--bh-font-weight-label);
+  line-height: var(--bh-line-height-heading);
+  white-space: nowrap;
 }
 
 .bh-ai-response-label {
@@ -4915,6 +4945,7 @@ button.bh-file-tree-row:focus-visible {
     justify-content: flex-start;
   }
 
+  .bh-activity-feed-layout,
   .bh-prompt-activity-layout,
   .bh-activity-session-layout {
     grid-template-columns: 1fr;
@@ -4922,6 +4953,8 @@ button.bh-file-tree-row:focus-visible {
 
   .bh-activity-layout[data-view="prompts"],
   .bh-activity-layout[data-view="sessions"],
+  .bh-activity-layout .bh-activity-feed-layout,
+  .bh-activity-layout .bh-activity-feed-sidebar,
   .bh-activity-layout[data-view="prompts"] .bh-prompt-activity-layout,
   .bh-activity-layout[data-view="prompts"] .bh-prompt-sidebar,
   .bh-activity-layout[data-view="sessions"] .bh-activity-session-layout,

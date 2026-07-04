@@ -71,16 +71,6 @@ function responseTruncatedLabel(activity: PromptActivityItem) {
   return "response truncated";
 }
 
-type WorkType = "brainstorming" | "work";
-
-function workTypeForFiles(filesChanged: number): WorkType {
-  return filesChanged > 0 ? "work" : "brainstorming";
-}
-
-function workTypeLabel(workType: WorkType) {
-  return workType === "work" ? "Work" : "Brainstorming";
-}
-
 type ActivityCardProps = {
   activity: ActivityItem;
   isSelected?: boolean;
@@ -92,8 +82,6 @@ export function ActivityCard({
   isSelected = false,
   onOpen,
 }: ActivityCardProps) {
-  const workType = workTypeForFiles(activity.filesChanged);
-
   return (
     <article
       className="bh-session-row"
@@ -113,14 +101,12 @@ export function ActivityCard({
       <div className="bh-session-row-main">
         <div className="bh-session-row-header">
           <strong>{activity.model}</strong>
-          <span className="bh-work-type-badge" data-work-type={workType}>
-            {workTypeLabel(workType)}
-          </span>
+          <span>{activity.prompts} prompts</span>
         </div>
         <span>Session {activity.id.slice(0, 8)}</span>
         <span>
-          {activity.lastActivity} · {activity.prompts} prompts ·{" "}
-          {activity.filesChanged} files
+          {activity.prompts} prompts · {activity.filesChanged} files ·{" "}
+          {activity.lastActivity}
         </span>
       </div>
     </article>
@@ -142,7 +128,6 @@ export function PromptActivityCard({
 }: PromptActivityCardProps) {
   const truncatedLabel = promptTruncatedLabel(activity);
   const responseLimitLabel = responseTruncatedLabel(activity);
-  const workType = workTypeForFiles(activity.filesChanged);
 
   return (
     <article
@@ -161,15 +146,13 @@ export function PromptActivityCard({
       tabIndex={0}
     >
       <div className="bh-prompt-row-main">
-        <div className="bh-prompt-row-header">
-          <time>{activity.submittedAt}</time>
-          {promptLabel ? <span>{promptLabel}</span> : null}
-        </div>
+        <PromptText expandable={false} text={activity.prompt} />
         <div className="bh-prompt-row-meta" aria-label="Prompt metadata">
           <AiModelBadge className="is-compact" model={activity.model} />
-          <span className="bh-work-type-badge" data-work-type={workType}>
-            {workTypeLabel(workType)}
-          </span>
+          <span className="bh-prompt-row-chip">{activity.submittedAt}</span>
+          {promptLabel ? (
+            <span className="bh-prompt-row-chip">{promptLabel}</span>
+          ) : null}
           <span className="bh-prompt-row-chip">{activity.filesChanged} files</span>
           {truncatedLabel ? (
             <span className="bh-prompt-row-chip">{truncatedLabel}</span>
@@ -178,7 +161,6 @@ export function PromptActivityCard({
             <span className="bh-prompt-row-chip">{responseLimitLabel}</span>
           ) : null}
         </div>
-        <PromptText expandable={false} text={activity.prompt} />
       </div>
     </article>
   );
@@ -250,8 +232,8 @@ export function PromptChangeDetail({
         aria-labelledby="activity-detail-placeholder-title"
       >
         <div>
-          <h2 id="activity-detail-placeholder-title">Code changes</h2>
-          <p>Open a prompt to inspect changed files from that prompt.</p>
+          <h2 id="activity-detail-placeholder-title">Prompt detail</h2>
+          <p>Open a prompt to inspect its request, response, and file changes.</p>
         </div>
       </section>
     );
@@ -266,7 +248,7 @@ export function PromptChangeDetail({
       <div className="bh-prompt-change-header">
         <div>
           <span>Selected prompt</span>
-          <h2 id="activity-detail-placeholder-title">Code changes</h2>
+          <h2 id="activity-detail-placeholder-title">Prompt detail</h2>
         </div>
         <div className="bh-prompt-change-header-actions">
           {/* Community sharing is paused for now.
@@ -286,6 +268,7 @@ export function PromptChangeDetail({
       </div>
 
       <div className="bh-prompt-change-summary">
+        <span className="bh-prompt-detail-section-label">Prompt</span>
         <PromptText text={activity.prompt} />
         {activity.promptTruncated ? (
           <div className="bh-prompt-storage-note">
@@ -313,6 +296,10 @@ export function PromptChangeDetail({
 
       {activity.fileChanges.length > 0 ? (
         <div className="bh-prompt-change-list" aria-label="Prompt file changes">
+          <div className="bh-prompt-detail-section-header">
+            <span>File changes</span>
+            <strong>{activity.fileChanges.length}</strong>
+          </div>
           {activity.fileChanges.map((change) => (
             <article className="bh-diff-file" key={`${activity.id}-${change.path}`}>
               <div className="bh-diff-file-header">

@@ -1574,6 +1574,202 @@ function GitHubIcon() {
   return <SimpleBrandIcon icon={siGithub} name="github" />;
 }
 
+function UserProfilePage({
+  connectedRepositoryCount,
+  currentUser,
+  latestActivityLabel,
+  onLogout,
+  projectCount,
+}: {
+  connectedRepositoryCount: number;
+  currentUser: AuthUser | null;
+  latestActivityLabel: string;
+  onLogout: () => void;
+  projectCount: number;
+}) {
+  const displayName = currentUser?.username ?? "Signed in";
+  const email = currentUser?.email ?? "GitHub authenticated";
+  const roleLabel = currentUser?.is_admin ? "Admin" : "Member";
+  const userInitial = displayName.trim().charAt(0).toUpperCase() || "P";
+  const userId = currentUser?.id ?? "Not available";
+
+  return (
+    <section className="profile-page" aria-label="Profile settings">
+      <section className="profile-hero" aria-labelledby="profile-title">
+        <div className="profile-avatar profile-avatar-large" aria-hidden="true">
+          {currentUser?.avatar_url ? (
+            <img alt="" src={currentUser.avatar_url} />
+          ) : (
+            <span>{userInitial}</span>
+          )}
+        </div>
+        <div className="profile-hero-copy">
+          <span>GitHub account</span>
+          <h2 id="profile-title">{displayName}</h2>
+          <p>{email}</p>
+          <div className="profile-pill-row" aria-label="Account status">
+            <span className="profile-pill" data-tone="success">
+              Active session
+            </span>
+            <span className="profile-pill">{roleLabel}</span>
+          </div>
+        </div>
+      </section>
+
+      <div className="profile-grid">
+        <section className="profile-section" aria-labelledby="profile-account-title">
+          <div className="profile-section-header">
+            <User aria-hidden="true" size={18} strokeWidth={1.5} />
+            <div>
+              <h3 id="profile-account-title">Account</h3>
+              <p>Identity used across this workspace.</p>
+            </div>
+          </div>
+          <dl className="profile-setting-list">
+            <div className="profile-setting-row">
+              <dt>Display name</dt>
+              <dd>{displayName}</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Email</dt>
+              <dd>{email}</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>User ID</dt>
+              <dd>
+                <code>{userId}</code>
+              </dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Workspace projects</dt>
+              <dd>{projectCount.toLocaleString()}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="profile-section" aria-labelledby="profile-preferences-title">
+          <div className="profile-section-header">
+            <Settings aria-hidden="true" size={18} strokeWidth={1.5} />
+            <div>
+              <h3 id="profile-preferences-title">Preferences</h3>
+              <p>Defaults for how the workspace opens.</p>
+            </div>
+          </div>
+          <dl className="profile-setting-list">
+            <div className="profile-setting-row">
+              <dt>Default model</dt>
+              <dd>Auto-detect</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Theme</dt>
+              <dd>System dark</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Language</dt>
+              <dd>English</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Timezone</dt>
+              <dd>Browser default</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section
+          className="profile-section"
+          aria-labelledby="profile-connections-title"
+        >
+          <div className="profile-section-header">
+            <GitHubIcon />
+            <div>
+              <h3 id="profile-connections-title">Connected Accounts</h3>
+              <p>External accounts available to Promty.</p>
+            </div>
+          </div>
+          <dl className="profile-setting-list">
+            <div className="profile-setting-row">
+              <dt>GitHub</dt>
+              <dd>Connected</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Repository access</dt>
+              <dd>Project-level</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Connected repositories</dt>
+              <dd>
+                {connectedRepositoryCount.toLocaleString()} /{" "}
+                {projectCount.toLocaleString()}
+              </dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Latest workspace activity</dt>
+              <dd>{latestActivityLabel}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="profile-section" aria-labelledby="profile-security-title">
+          <div className="profile-section-header">
+            <ShieldCheck aria-hidden="true" size={18} strokeWidth={1.5} />
+            <div>
+              <h3 id="profile-security-title">Security</h3>
+              <p>Session and access controls.</p>
+            </div>
+          </div>
+          <dl className="profile-setting-list">
+            <div className="profile-setting-row">
+              <dt>Current session</dt>
+              <dd>Active</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Authentication</dt>
+              <dd>GitHub OAuth</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Workspace role</dt>
+              <dd>{roleLabel}</dd>
+            </div>
+          </dl>
+          <div className="profile-section-actions">
+            <button className="toolbar-button" onClick={onLogout} type="button">
+              <LogOut aria-hidden="true" size={15} strokeWidth={1.5} />
+              <span>Log out</span>
+            </button>
+          </div>
+        </section>
+
+        <section
+          className="profile-section profile-section-wide"
+          aria-labelledby="profile-privacy-title"
+        >
+          <div className="profile-section-header">
+            <Database aria-hidden="true" size={18} strokeWidth={1.5} />
+            <div>
+              <h3 id="profile-privacy-title">Data & Privacy</h3>
+              <p>What Promty stores for this account.</p>
+            </div>
+          </div>
+          <dl className="profile-setting-list profile-setting-list-compact">
+            <div className="profile-setting-row">
+              <dt>Project activity</dt>
+              <dd>Prompts, sessions, file changes</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Memory artifacts</dt>
+              <dd>Generated from synced project activity</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Data export</dt>
+              <dd>Not configured</dd>
+            </div>
+          </dl>
+        </section>
+      </div>
+    </section>
+  );
+}
+
 function BrandLogo({ className = "" }: { className?: string }) {
   const classNames = ["brand-logo", className].filter(Boolean).join(" ");
 
@@ -4181,6 +4377,11 @@ function WorkspaceApp() {
   const sidebarUserInitial =
     sidebarUserName.trim().charAt(0).toUpperCase() || "P";
   const canUseAdmin = currentUser?.is_admin === true;
+  const connectedRepositoryCount = projectCatalog.filter((project) =>
+    Boolean(project.githubUrl),
+  ).length;
+  const latestProfileActivityLabel =
+    projectCatalog[0]?.latestActivityLabel ?? "No project activity";
 
   return (
     <div className="app-shell">
@@ -4614,32 +4815,15 @@ function WorkspaceApp() {
             </header>
 
             {activeItem === "profile" ? (
-              <EmptyState
-                description={
-                  currentUser?.email ??
-                  "Your GitHub account is connected to this workspace."
-                }
-                eyebrow="Profile"
-                icon={User}
-                title={currentUser?.username ?? "Profile"}
-              >
-                <div className="profile-summary">
-                  <div className="profile-avatar" aria-hidden="true">
-                    {currentUser?.avatar_url ? (
-                      <img alt="" src={currentUser.avatar_url} />
-                    ) : (
-                      <span>
-                        {(currentUser?.username ?? "U").slice(0, 1).toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-                  <div className="profile-summary-copy">
-                    <strong>{currentUser?.username ?? "Signed in"}</strong>
-                    <span>{currentUser?.email ?? "GitHub authenticated"}</span>
-                  </div>
-                  <span className="profile-status">Active session</span>
-                </div>
-              </EmptyState>
+              <UserProfilePage
+                connectedRepositoryCount={connectedRepositoryCount}
+                currentUser={currentUser}
+                latestActivityLabel={latestProfileActivityLabel}
+                onLogout={() => {
+                  void logout();
+                }}
+                projectCount={projectCatalog.length}
+              />
             ) : (
               <EmptyState
                 description="Workspace controls will be grouped into focused sections as they become available."
