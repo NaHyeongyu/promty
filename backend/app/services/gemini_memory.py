@@ -210,6 +210,13 @@ def _build_prompt(context: dict[str, Any], fallback_payload: dict[str, Any]) -> 
                     "summary": "1-2 sentence factual summary",
                     "reason": "why the change was requested or necessary",
                     "outcome": "what was completed or left unresolved",
+                    "technologies": ["frameworks, languages, or tools involved"],
+                    "sections": [
+                        {
+                            "title": "short section title",
+                            "summary": "specific user-facing detail",
+                        }
+                    ],
                     "tags": ["short", "lowercase", "tags"],
                 },
                 indent=2,
@@ -220,7 +227,9 @@ def _build_prompt(context: dict[str, Any], fallback_payload: dict[str, Any]) -> 
                 {
                     "outcome": fallback_payload["outcome"],
                     "reason": fallback_payload["reason"],
+                    "sections": fallback_payload["sections"],
                     "summary": fallback_payload["summary"],
+                    "technologies": fallback_payload["technologies"],
                     "title": fallback_payload["title"],
                 },
                 ensure_ascii=False,
@@ -265,6 +274,35 @@ def _clean_tags(value: Any, fallback_tags: list[str]) -> list[str]:
         if isinstance(tag, str) and tag.strip()
     ]
     return sorted(set(tags))[:12] or fallback_tags
+
+
+def _clean_technologies(value: Any, fallback_technologies: list[str]) -> list[str]:
+    if not isinstance(value, list):
+        return fallback_technologies
+    technologies = [
+        technology.strip()
+        for technology in value
+        if isinstance(technology, str) and technology.strip()
+    ]
+    deduped = list(dict.fromkeys(technologies))
+    return deduped[:12] or fallback_technologies
+
+
+def _clean_sections(value: Any, fallback_sections: list[dict[str, str]]) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return fallback_sections
+
+    sections: list[dict[str, str]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        title = _truncate(item.get("title"), 80)
+        summary = _truncate(item.get("summary"), 360)
+        if not title or not summary:
+            continue
+        sections.append({"summary": summary, "title": title})
+
+    return sections[:6] or fallback_sections
 
 
 def generate_gemini_memory_payload(
@@ -324,7 +362,12 @@ def generate_gemini_memory_payload(
         "generator": GEMINI_MEMORY_GENERATOR,
         "outcome": _truncate(generated.get("outcome"), 1000) or fallback_payload["outcome"],
         "reason": _truncate(generated.get("reason"), 1200) or fallback_payload["reason"],
+        "sections": _clean_sections(generated.get("sections"), fallback_payload["sections"]),
         "summary": _truncate(generated.get("summary"), 800) or fallback_payload["summary"],
         "tags": _clean_tags(generated.get("tags"), fallback_payload["tags"]),
+        "technologies": _clean_technologies(
+            generated.get("technologies"),
+            fallback_payload["technologies"],
+        ),
         "title": _truncate(generated.get("title"), 180) or fallback_payload["title"],
     }

@@ -738,6 +738,45 @@
   gap: var(--bh-space-1);
 }
 
+.bh-overview-memory-technologies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bh-space-1);
+}
+
+.bh-overview-memory-technologies span {
+  border-radius: var(--bh-radius-sm);
+  padding: 1px var(--bh-space-2);
+  color: var(--bh-badge-primary-text);
+  background: var(--bh-badge-primary-bg);
+  font-size: var(--bh-font-size-caption);
+  font-weight: var(--bh-font-weight-medium);
+  line-height: var(--bh-line-height-heading);
+}
+
+.bh-overview-memory-sections {
+  display: grid;
+  gap: var(--bh-space-2);
+}
+
+.bh-overview-memory-sections div {
+  display: grid;
+  gap: 2px;
+  border-left: 1px solid var(--bh-color-border);
+  padding-left: var(--bh-space-2);
+}
+
+.bh-overview-memory-sections strong {
+  color: var(--bh-color-text-primary);
+  font-size: var(--bh-font-size-caption);
+  font-weight: var(--bh-font-weight-section);
+  line-height: var(--bh-line-height-heading);
+}
+
+.bh-overview-memory-sections p {
+  -webkit-line-clamp: 1;
+}
+
 .bh-overview-memory-tags span {
   border: 1px solid var(--bh-color-border);
   border-radius: var(--bh-radius-sm);

@@ -42,6 +42,8 @@ class Artifact(Base):
     outcome: Mapped[str | None] = mapped_column(Text)
     storage_key: Mapped[str] = mapped_column(String(2048))
     tags: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    technologies: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    sections: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     changed_files: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     prompt_event_ids: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     commit_sha: Mapped[str | None] = mapped_column(String(64))

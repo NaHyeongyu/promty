@@ -1400,6 +1400,23 @@ function OverviewPanel({
                   {artifact.updatedAt ?? artifact.createdAt ?? "Unknown"} ·{" "}
                   {artifact.changedFileCount} files
                 </span>
+                {artifact.technologies.length > 0 ? (
+                  <div className="bh-overview-memory-technologies" aria-label="Technologies">
+                    {artifact.technologies.slice(0, 5).map((technology) => (
+                      <span key={`${artifact.id}-${technology}`}>{technology}</span>
+                    ))}
+                  </div>
+                ) : null}
+                {artifact.sections.length > 0 ? (
+                  <div className="bh-overview-memory-sections">
+                    {artifact.sections.slice(0, 2).map((section) => (
+                      <div key={`${artifact.id}-${section.title}`}>
+                        <strong>{section.title}</strong>
+                        <p>{section.summary}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 {artifact.tags.length > 0 ? (
                   <div className="bh-overview-memory-tags">
                     {artifact.tags.slice(0, 6).map((tag) => (

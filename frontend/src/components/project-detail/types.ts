@@ -75,9 +75,14 @@ export type ProjectMemoryArtifact = {
   id: string;
   model: string | null;
   outcome: string | null;
+  sections: Array<{
+    summary: string;
+    title: string;
+  }>;
   sessionId: string | null;
   summary: string | null;
   tags: string[];
+  technologies: string[];
   title: string;
   updatedAt: string | null;
 };

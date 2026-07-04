@@ -162,6 +162,85 @@ def _tags_for_session(
     return sorted(tags)[:12]
 
 
+def _technologies_for_session(changed_files: list[dict[str, Any]]) -> list[str]:
+    technologies: set[str] = set()
+    extension_map = {
+        "css": "CSS",
+        "html": "HTML",
+        "js": "JavaScript",
+        "json": "JSON",
+        "jsx": "React",
+        "md": "Markdown",
+        "py": "Python",
+        "sql": "SQL",
+        "ts": "TypeScript",
+        "tsx": "React",
+        "yml": "YAML",
+        "yaml": "YAML",
+    }
+    path_markers = {
+        "alembic/": "Alembic",
+        "app/api/": "FastAPI",
+        "app/models/": "SQLAlchemy",
+        "backend/": "FastAPI",
+        "frontend/": "React",
+    }
+
+    for file in changed_files:
+        path = file["path"]
+        normalized_path = path.lower()
+        for marker, technology in path_markers.items():
+            if marker in normalized_path:
+                technologies.add(technology)
+        if "." in normalized_path:
+            extension = normalized_path.rsplit(".", 1)[1]
+            technology = extension_map.get(extension)
+            if technology:
+                technologies.add(technology)
+
+    return sorted(technologies)[:12]
+
+
+def _local_sections_for_session(
+    *,
+    changed_files: list[dict[str, Any]],
+    commits: list[dict[str, str | None]],
+    outcome: str,
+    prompt_events: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    sections: list[dict[str, str]] = []
+    if prompt_events and prompt_events[0]["prompt"]:
+        sections.append(
+            {
+                "summary": _truncate(prompt_events[0]["prompt"], 360),
+                "title": "User intent",
+            }
+        )
+    if changed_files:
+        file_sample = ", ".join(file["path"] for file in changed_files[:8])
+        sections.append(
+            {
+                "summary": _truncate(file_sample, 360),
+                "title": "Changed files",
+            }
+        )
+    if commits:
+        latest_commit = commits[-1]["message"] or commits[-1]["hash"] or "unknown"
+        sections.append(
+            {
+                "summary": _truncate(latest_commit, 360),
+                "title": "Latest commit",
+            }
+        )
+    sections.append(
+        {
+            "summary": _truncate(outcome, 360),
+            "title": "Outcome",
+        }
+    )
+    return sections[:6]
+
+
 def _title_from_session(
     *,
     commits: list[dict[str, str | None]],
@@ -285,6 +364,13 @@ def _build_local_memory_payload(context: dict[str, Any]) -> dict[str, Any]:
         if context["commits"]
         else f"{file_count} files changed and {prompt_count} prompts recorded."
     )
+    technologies = _technologies_for_session(changed_files)
+    sections = _local_sections_for_session(
+        changed_files=changed_files,
+        commits=context["commits"],
+        outcome=outcome,
+        prompt_events=context["prompt_events"],
+    )
 
     return {
         "changed_files": changed_files[:100],
@@ -297,12 +383,14 @@ def _build_local_memory_payload(context: dict[str, Any]) -> dict[str, Any]:
         "outcome": outcome,
         "prompt_event_ids": [prompt["id"] for prompt in context["prompt_events"]],
         "reason": reason,
+        "sections": sections,
         "summary": summary,
         "tags": _tags_for_session(
             changed_files=changed_files,
             model=context["model"],
             tool=context["tool"],
         ),
+        "technologies": technologies,
         "title": title,
         "tool": context["tool"],
     }
@@ -336,6 +424,8 @@ def _build_memory_payload(db: DBSession, session: Session) -> tuple[dict[str, An
 
 def _artifact_is_current_for_context(artifact: Artifact, context: dict[str, Any]) -> bool:
     if not context["last_event_id"] or not artifact.summary:
+        return False
+    if not isinstance(artifact.sections, list) or not artifact.sections:
         return False
     metadata = artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}
     return (
@@ -485,6 +575,8 @@ def generate_memory_artifact_for_session(
     artifact.reason = payload["reason"]
     artifact.outcome = payload["outcome"]
     artifact.tags = payload["tags"]
+    artifact.technologies = payload["technologies"]
+    artifact.sections = payload["sections"]
     artifact.changed_files = payload["changed_files"]
     artifact.prompt_event_ids = payload["prompt_event_ids"]
     artifact.commit_sha = payload["commit_sha"]
@@ -545,9 +637,11 @@ def serialize_memory_artifact(artifact: Artifact) -> dict[str, Any]:
         "outcome": artifact.outcome,
         "prompt_event_ids": artifact.prompt_event_ids,
         "reason": artifact.reason,
+        "sections": artifact.sections,
         "session_id": str(artifact.session_id) if artifact.session_id else None,
         "summary": artifact.summary,
         "tags": artifact.tags,
+        "technologies": artifact.technologies,
         "title": artifact.title,
         "type": artifact.type,
         "updated_at": _iso(artifact.updated_at),
@@ -562,9 +656,11 @@ def serialize_memory_artifact_summary(artifact: Artifact) -> dict[str, Any]:
         "id": str(artifact.id),
         "model": artifact.model,
         "outcome": artifact.outcome,
+        "sections": artifact.sections,
         "session_id": str(artifact.session_id) if artifact.session_id else None,
         "summary": artifact.summary,
         "tags": artifact.tags,
+        "technologies": artifact.technologies,
         "title": artifact.title,
         "updated_at": _iso(artifact.updated_at),
     }

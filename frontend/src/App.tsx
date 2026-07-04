@@ -135,9 +135,14 @@ type ProjectDetailApiResponse = {
       id: string;
       model: string | null;
       outcome: string | null;
+      sections?: Array<{
+        summary: string;
+        title: string;
+      }>;
       session_id: string | null;
       summary: string | null;
       tags: string[];
+      technologies?: string[];
       title: string;
       updated_at: string | null;
     }>;
@@ -1014,9 +1019,11 @@ function projectDetailDataFromApi(
         id: artifact.id,
         model: artifact.model,
         outcome: artifact.outcome,
+        sections: artifact.sections ?? [],
         sessionId: artifact.session_id,
         summary: artifact.summary,
         tags: artifact.tags,
+        technologies: artifact.technologies ?? [],
         title: artifact.title,
         updatedAt: artifact.updated_at
           ? formatOptionalTimestamp(artifact.updated_at, "Unknown")
