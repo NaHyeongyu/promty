@@ -9,14 +9,19 @@ import {
 } from "react";
 import {
   Archive,
+  Activity,
+  AlertTriangle,
   ArrowRight,
   Bot,
   Check,
   Clock,
   Copy,
+  Database,
   ExternalLink,
   Folder,
+  Gauge,
   ImagePlus,
+  KeyRound,
   LogOut,
   Pencil,
   Plus,
@@ -51,13 +56,15 @@ import {
 } from "./components/project-detail";
 import "./App.css";
 
-type SidebarItemId = "projects" | "community" | "settings" | "profile";
+type SidebarItemId = "projects" | "community" | "admin" | "settings" | "profile";
 
 type Project = {
   id: string;
   name: string;
   createdTimestamp: string;
   slug?: string;
+  tags: string[];
+  visibility: "private" | "public";
   latestTimestamp: string;
   latestUpdatedAt: string;
   latestActivityLabel: string;
@@ -77,6 +84,7 @@ type AuthUser = {
   username: string;
   email: string | null;
   avatar_url: string | null;
+  is_admin?: boolean;
 };
 
 type EventRecord = {
@@ -99,12 +107,14 @@ type ProjectSummary = {
   default_branch: string;
   created_at: string;
   connected_models: string[];
+  tags: string[];
   sessions: number;
   events: number;
   prompts: number;
   tracked_files: number;
   latest_event_at: string | null;
   updated_at: string;
+  visibility: "private" | "public";
 };
 
 type ProjectSortMode = "recent" | "added";
@@ -239,9 +249,13 @@ type ProjectDetailApiResponse = {
   metrics: {
     connected_models: string[];
     connected_tools?: string[];
+    files_changed_since_yesterday?: number;
     latest_activity_at: string | null;
     last_modified_at: string | null;
+    memory_artifacts_since_yesterday?: number;
+    prompts_since_yesterday?: number;
     repository_connected: boolean;
+    sessions_since_yesterday?: number;
     total_events: number;
     total_prompts?: number;
     total_sessions: number;
@@ -256,6 +270,7 @@ type ProjectDetailApiResponse = {
     repository_status: string;
     repository_url: string | null;
     slug?: string;
+    tags?: string[];
     updated_at: string | null;
     visibility?: string | null;
   };
@@ -344,6 +359,82 @@ type PublishedFlowDetailResponse = PublishedFlowSummary & {
   start_sequence: number | null;
 };
 
+type AdminOverview = {
+  breakdowns: {
+    events_by_tool: Array<{ count: number; key: string }>;
+    events_by_type: Array<{ count: number; key: string }>;
+    jobs_by_status: Array<{ count: number; key: string }>;
+    projects_by_visibility: Array<{ count: number; key: string }>;
+  };
+  generated_at: string | null;
+  metrics: {
+    active_collector_tokens: number;
+    events: number;
+    events_24h: number;
+    events_7d: number;
+    github_connections: number;
+    memory_artifacts: number;
+    projects: number;
+    prompts: number;
+    responses: number;
+    sessions: number;
+    tracked_files: number;
+    users: number;
+  };
+  recent_events: Array<{
+    created_at: string | null;
+    event_type: string;
+    id: string;
+    project_id: string;
+    sequence: number;
+    session_id: string;
+    tool: string;
+  }>;
+  recent_projects: Array<{
+    counts: {
+      events: number;
+      files: number;
+      prompts: number;
+      sessions: number;
+    };
+    default_branch: string;
+    github_connected: boolean;
+    id: string;
+    latest_event_at: string | null;
+    name: string;
+    owner: {
+      id: string;
+      username: string;
+    };
+    slug: string;
+    tags: string[];
+    updated_at: string | null;
+  }>;
+  recent_users: Array<{
+    created_at: string | null;
+    email: string | null;
+    github_connected: boolean;
+    id: string;
+    project_count: number;
+    username: string;
+  }>;
+  risks: Array<{
+    detail: string;
+    severity: string;
+    title: string;
+  }>;
+  system: {
+    admin_configured: boolean;
+    app_url: string;
+    cors_origins: string[];
+    gemini_configured: boolean;
+    memory_generator: string;
+    published_flows_enabled: boolean;
+    session_cookie_secure: boolean;
+    session_cookie_samesite: string;
+  };
+};
+
 type ProjectGithubFilesState = {
   files: FileTreeNode[];
   message?: string;
@@ -391,6 +482,7 @@ const PROJECT_DETAIL_TAB_IDS = new Set<ProjectDetailTabId>([
   "files",
 ]);
 const SIDEBAR_ITEM_IDS = new Set<SidebarItemId>([
+  "admin",
   "projects",
   "settings",
   "profile",
@@ -700,6 +792,13 @@ function formatCompactNumber(value: number) {
   }).format(value);
 }
 
+function formatSinceYesterdayDelta(value: number | null | undefined) {
+  const normalizedValue = value ?? 0;
+  return normalizedValue > 0
+    ? `+${formatCompactNumber(normalizedValue)} since yesterday`
+    : "0 since yesterday";
+}
+
 function formatTimestamp(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -866,6 +965,8 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
       prompts: number;
       sessions: Set<string>;
       slug?: string;
+      tags: string[];
+      visibility: "private" | "public";
     }
   >();
 
@@ -885,6 +986,8 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
       prompts: 0,
       sessions: new Set<string>(),
       slug: summary.slug,
+      tags: summary.tags ?? [],
+      visibility: summary.visibility === "public" ? "public" : "private",
     });
   }
 
@@ -902,6 +1005,8 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
         name: projectNameFromEvent(event),
         prompts: 0,
         sessions: new Set<string>(),
+        tags: [],
+        visibility: "private",
       };
 
     current.events += 1;
@@ -942,6 +1047,8 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
     trackedFiles: value.summaryTrackedFiles ?? value.filesChanged,
     models: Array.from(value.models).sort(),
     githubUrl: value.githubUrl ?? undefined,
+    tags: value.tags,
+    visibility: value.visibility,
   })).sort(
     (left, right) =>
       new Date(right.latestTimestamp).getTime() -
@@ -965,7 +1072,9 @@ function mockGithubUnlinkedProject(): Project {
     prompts: 18,
     sessions: 4,
     slug: "unlinked-repository-preview",
+    tags: ["frontend", "preview"],
     trackedFiles: 12,
+    visibility: "private",
   };
 }
 
@@ -1043,12 +1152,8 @@ function mockGithubUnlinkedProjectDetail(project: Project): ProjectDetailData {
         value: "Frontend preview data for the GitHub unlinked project state.",
       },
       {
-        title: "Default Branch",
-        value: "Not available",
-      },
-      {
         title: "Visibility",
-        value: "Private",
+        value: formatLabelValue(project.visibility, "Private"),
       },
       {
         title: "AI Models",
@@ -1063,13 +1168,29 @@ function mockGithubUnlinkedProjectDetail(project: Project): ProjectDetailData {
         value: formatCompactNumber(project.sessions),
       },
       {
+        title: "Sessions Added",
+        value: "+1 since yesterday",
+      },
+      {
         title: "Prompts",
         value: formatCompactNumber(project.prompts),
+      },
+      {
+        title: "Prompts Added",
+        value: "+4 since yesterday",
+      },
+      {
+        title: "Files Changed Added",
+        value: "+2 since yesterday",
       },
       {
         description: "No memory yet",
         title: "Memory Artifacts",
         value: "0",
+      },
+      {
+        title: "Memory Added",
+        value: "0 since yesterday",
       },
       {
         description: formatRelativeTimestamp(project.createdTimestamp) ?? "Not available",
@@ -1093,6 +1214,9 @@ function mockGithubUnlinkedProjectDetail(project: Project): ProjectDetailData {
       name: project.name,
       repositoryStatus: "Repository not connected",
       repositoryUrl: undefined,
+      slug: project.slug,
+      tags: project.tags,
+      visibility: project.visibility,
     },
     promptActivities: [],
     repositoryFiles: [],
@@ -1126,6 +1250,9 @@ function emptyProjectDetailData(project: Project | null): ProjectDetailData {
         ? "Repository connected"
         : "Repository not connected",
       repositoryUrl: project?.githubUrl,
+      slug: project?.slug,
+      tags: project?.tags ?? [],
+      visibility: project?.visibility ?? "private",
     },
     repositoryFiles: [],
     repositoryFilesMessage: project?.githubUrl
@@ -1299,17 +1426,9 @@ function projectDetailDataFromApi(
         description: `${BRAND_NAME} project detail page`,
         href: projectUrl,
       },
-      ...(projectDescription
-        ? [
-            {
-              title: "Description",
-              value: projectDescription,
-            },
-          ]
-        : []),
       {
-        title: "Default Branch",
-        value: payload.project.default_branch || "Not available",
+        title: "Description",
+        value: projectDescription || "Not provided",
       },
       {
         title: "Visibility",
@@ -1328,14 +1447,32 @@ function projectDetailDataFromApi(
         value: formatCompactNumber(payload.metrics.total_sessions),
       },
       {
+        title: "Sessions Added",
+        value: formatSinceYesterdayDelta(payload.metrics.sessions_since_yesterday),
+      },
+      {
         title: "Prompts",
         value: formatCompactNumber(totalPrompts),
+      },
+      {
+        title: "Prompts Added",
+        value: formatSinceYesterdayDelta(payload.metrics.prompts_since_yesterday),
+      },
+      {
+        title: "Files Changed Added",
+        value: formatSinceYesterdayDelta(payload.metrics.files_changed_since_yesterday),
       },
       {
         title: "Memory Artifacts",
         value: formatCompactNumber(memory?.total_artifacts ?? 0),
         description:
           formatRelativeTimestamp(memory?.latest_artifact_at) ?? "No memory yet",
+      },
+      {
+        title: "Memory Added",
+        value: formatSinceYesterdayDelta(
+          payload.metrics.memory_artifacts_since_yesterday,
+        ),
       },
       {
         title: "Created",
@@ -1366,6 +1503,12 @@ function projectDetailDataFromApi(
       name: payload.project.name || fallbackProject?.name || "Project",
       repositoryStatus: payload.project.repository_status,
       repositoryUrl,
+      slug: payload.project.slug ?? fallbackProject?.slug,
+      tags: payload.project.tags ?? fallbackProject?.tags ?? [],
+      visibility:
+        payload.project.visibility === "public" || payload.project.visibility === "private"
+          ? payload.project.visibility
+          : fallbackProject?.visibility ?? "private",
     },
     repositoryFiles: [],
     repositoryFilesMessage: payload.project.repository_url
@@ -2536,6 +2679,239 @@ function CommunityPage({
   );
 }
 
+function AdminDashboard({
+  errorMessage,
+  isLoading,
+  onRefresh,
+  overview,
+}: {
+  errorMessage: string | null;
+  isLoading: boolean;
+  onRefresh: () => void;
+  overview: AdminOverview | null;
+}) {
+  const metrics = overview?.metrics;
+  const metricCards = [
+    {
+      icon: User,
+      label: "Users",
+      sublabel: `${formatCompactNumber(metrics?.github_connections ?? 0)} GitHub links`,
+      value: formatCompactNumber(metrics?.users ?? 0),
+    },
+    {
+      icon: Folder,
+      label: "Projects",
+      sublabel: `${formatCompactNumber(metrics?.tracked_files ?? 0)} tracked files`,
+      value: formatCompactNumber(metrics?.projects ?? 0),
+    },
+    {
+      icon: Activity,
+      label: "Events",
+      sublabel: `${formatCompactNumber(metrics?.events_24h ?? 0)} last 24h`,
+      value: formatCompactNumber(metrics?.events ?? 0),
+    },
+    {
+      icon: Bot,
+      label: "AI Traffic",
+      sublabel: `${formatCompactNumber(metrics?.responses ?? 0)} responses`,
+      value: formatCompactNumber(metrics?.prompts ?? 0),
+    },
+    {
+      icon: Database,
+      label: "Memory",
+      sublabel: `${formatCompactNumber(metrics?.sessions ?? 0)} sessions`,
+      value: formatCompactNumber(metrics?.memory_artifacts ?? 0),
+    },
+    {
+      icon: KeyRound,
+      label: "Collectors",
+      sublabel: "Active ingest tokens",
+      value: formatCompactNumber(metrics?.active_collector_tokens ?? 0),
+    },
+  ];
+
+  return (
+    <section className="admin-console" aria-label="Admin console">
+      <div className="admin-command-bar">
+        <div>
+          <span className="admin-kicker">Command surface</span>
+          <h2>Operational control</h2>
+        </div>
+        <div className="admin-command-actions">
+          <span className="status-pill">
+            {overview?.generated_at
+              ? `Updated ${formatOptionalTimestamp(overview.generated_at, "now")}`
+              : "Standing by"}
+          </span>
+          <button
+            className="toolbar-button"
+            disabled={isLoading}
+            onClick={onRefresh}
+            type="button"
+          >
+            <RefreshCw aria-hidden="true" size={16} strokeWidth={1.5} />
+            <span>{isLoading ? "Refreshing" : "Refresh"}</span>
+          </button>
+        </div>
+      </div>
+
+      {errorMessage ? (
+        <div className="auth-message" data-error="true">
+          {errorMessage}
+        </div>
+      ) : null}
+
+      <div className="admin-metric-grid">
+        {metricCards.map((metric) => {
+          const MetricIcon = metric.icon;
+          return (
+            <div className="admin-metric" key={metric.label}>
+              <MetricIcon aria-hidden="true" size={18} strokeWidth={1.5} />
+              <div>
+                <span>{metric.label}</span>
+                <strong>{metric.value}</strong>
+                <small>{metric.sublabel}</small>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="admin-grid">
+        <section className="admin-panel is-span-2" aria-label="Recent projects">
+          <div className="admin-panel-header">
+            <h3>Project Operations</h3>
+            <span>{overview?.recent_projects.length ?? 0} visible</span>
+          </div>
+          <div className="admin-table">
+            <div className="admin-table-row is-head">
+              <span>Project</span>
+              <span>Owner</span>
+              <span>Events</span>
+              <span>State</span>
+            </div>
+            {(overview?.recent_projects ?? []).map((project) => (
+              <div className="admin-table-row" key={project.id}>
+                <span>
+                  <strong>{project.name}</strong>
+                  <small>{project.latest_event_at ? formatRelativeTimestamp(project.latest_event_at) : "No activity"}</small>
+                </span>
+                <span>{project.owner.username}</span>
+                <span>{formatCompactNumber(project.counts.events)}</span>
+                <span>
+                  <span className="admin-state-dot" data-on={project.github_connected} />
+                  {project.github_connected ? "Repo linked" : "No repo"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="admin-panel" aria-label="Risk register">
+          <div className="admin-panel-header">
+            <h3>Risk Register</h3>
+            <span>{overview?.risks.length ?? 0}</span>
+          </div>
+          <div className="admin-risk-list">
+            {(overview?.risks ?? []).length > 0 ? (
+              overview?.risks.map((risk) => (
+                <div className="admin-risk" data-severity={risk.severity} key={risk.title}>
+                  <AlertTriangle aria-hidden="true" size={16} strokeWidth={1.5} />
+                  <div>
+                    <strong>{risk.title}</strong>
+                    <span>{risk.detail}</span>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="admin-empty-line">No active configuration risks.</div>
+            )}
+          </div>
+        </section>
+
+        <section className="admin-panel" aria-label="System controls">
+          <div className="admin-panel-header">
+            <h3>System Posture</h3>
+            <span>{overview?.system.admin_configured ? "Locked" : "Unconfigured"}</span>
+          </div>
+          <dl className="admin-kv-list">
+            <div>
+              <dt>Memory</dt>
+              <dd>{overview?.system.memory_generator ?? "unknown"}</dd>
+            </div>
+            <div>
+              <dt>Gemini</dt>
+              <dd>{overview?.system.gemini_configured ? "configured" : "off"}</dd>
+            </div>
+            <div>
+              <dt>Cookie</dt>
+              <dd>{overview?.system.session_cookie_secure ? "secure" : "dev"}</dd>
+            </div>
+            <div>
+              <dt>Community</dt>
+              <dd>{overview?.system.published_flows_enabled ? "on" : "paused"}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="admin-panel" aria-label="Event types">
+          <div className="admin-panel-header">
+            <h3>Event Types</h3>
+            <span>Ranked</span>
+          </div>
+          <div className="admin-breakdown">
+            {(overview?.breakdowns.events_by_type ?? []).map((item) => (
+              <div key={item.key}>
+                <span>{item.key}</span>
+                <strong>{formatCompactNumber(item.count)}</strong>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="admin-panel" aria-label="Recent events">
+          <div className="admin-panel-header">
+            <h3>Live Feed</h3>
+            <span>{overview?.recent_events.length ?? 0}</span>
+          </div>
+          <div className="admin-feed">
+            {(overview?.recent_events ?? []).map((event) => (
+              <div className="admin-feed-item" key={event.id}>
+                <span>{event.event_type}</span>
+                <strong>{event.tool}</strong>
+                <small>
+                  #{event.sequence} · {formatOptionalTimestamp(event.created_at, "Unknown")}
+                </small>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="admin-panel" aria-label="Recent users">
+          <div className="admin-panel-header">
+            <h3>Users</h3>
+            <span>{overview?.recent_users.length ?? 0}</span>
+          </div>
+          <div className="admin-user-list">
+            {(overview?.recent_users ?? []).map((user) => (
+              <div className="admin-user-row" key={user.id}>
+                <span className="sidebar-avatar" aria-hidden="true">
+                  {user.username.slice(0, 1).toUpperCase()}
+                </span>
+                <div>
+                  <strong>{user.username}</strong>
+                  <small>{user.email ?? "No email"} · {user.project_count} projects</small>
+                </div>
+                <span className="admin-state-dot" data-on={user.github_connected} />
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </section>
+  );
+}
+
 function WorkspaceApp() {
   const initialNavigationState = useMemo(readUrlNavigationState, []);
   const [activeItem, setActiveItem] = useState<SidebarItemId>(
@@ -2590,6 +2966,9 @@ function WorkspaceApp() {
   const [isRepositoryConnectorOpen, setIsRepositoryConnectorOpen] = useState(false);
   const [repositoryConnectorProjectId, setRepositoryConnectorProjectId] =
     useState<string | null>(null);
+  const [adminOverview, setAdminOverview] = useState<AdminOverview | null>(null);
+  const [adminError, setAdminError] = useState<string | null>(null);
+  const [isAdminLoading, setIsAdminLoading] = useState(false);
   const [projectSearchQuery, setProjectSearchQuery] = useState("");
   const [projectSortMode, setProjectSortMode] = useState<ProjectSortMode>("recent");
   const projects = useMemo(
@@ -2648,6 +3027,8 @@ function WorkspaceApp() {
       ? "Projects"
       : activeItem === "community"
         ? "Community"
+        : activeItem === "admin"
+          ? "Admin"
         : activeItem === "settings"
           ? "Settings"
           : "Profile";
@@ -2957,6 +3338,113 @@ function WorkspaceApp() {
     }
   };
 
+  const saveProjectDescription = async (description: string) => {
+    if (!selectedProjectId) {
+      throw new Error("Select a project before editing the description.");
+    }
+
+    const response = await fetch(
+      `${API_URL}/api/projects/${selectedProjectId}/description`,
+      {
+        body: JSON.stringify({ description }),
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      },
+    );
+
+    if (response.status === 401) {
+      setAuthStatus("unauthenticated");
+      setCurrentUser(null);
+      throw new Error("Sign in again before editing the project description.");
+    }
+
+    if (!response.ok) {
+      const detail = await response
+        .json()
+        .then((payload) =>
+          typeof payload?.detail === "string" ? payload.detail : null,
+        )
+        .catch(() => null);
+      throw new Error(detail ?? `Description update failed with HTTP ${response.status}`);
+    }
+
+    await loadProjectDetail(selectedProjectId, selectedProject);
+  };
+
+  const saveProjectMetadata = async ({
+    slug,
+    tags,
+    visibility,
+  }: {
+    slug?: string;
+    tags?: string[];
+    visibility?: "private" | "public";
+  }) => {
+    if (!selectedProjectId) {
+      throw new Error("Select a project before editing project metadata.");
+    }
+
+    const response = await fetch(
+      `${API_URL}/api/projects/${selectedProjectId}/metadata`,
+      {
+        body: JSON.stringify({
+          ...(slug !== undefined ? { slug } : {}),
+          ...(tags !== undefined ? { tags } : {}),
+          ...(visibility !== undefined ? { visibility } : {}),
+        }),
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      },
+    );
+
+    if (response.status === 401) {
+      setAuthStatus("unauthenticated");
+      setCurrentUser(null);
+      throw new Error("Sign in again before editing project metadata.");
+    }
+
+    if (!response.ok) {
+      const detail = await response
+        .json()
+        .then((payload) =>
+          typeof payload?.detail === "string" ? payload.detail : null,
+        )
+        .catch(() => null);
+      throw new Error(detail ?? `Project metadata update failed with HTTP ${response.status}`);
+    }
+
+    const updatedProject = (await response.json()) as ProjectSummary;
+    setProjectSummaries((currentProjects) =>
+      currentProjects.map((project) =>
+        project.id === updatedProject.id ? updatedProject : project,
+      ),
+    );
+
+    if (updatedProject.slug) {
+      setSelectedProjectRouteKey(updatedProject.slug);
+      writeUrlNavigationState(
+        normalizeUrlNavigationState({
+          ...currentNavigationState,
+          selectedProjectRouteKey: updatedProject.slug,
+        }),
+        "replace",
+      );
+    }
+    await loadProjectDetail(
+      selectedProjectId,
+      selectedProject
+        ? {
+            ...selectedProject,
+            slug: updatedProject.slug,
+            tags: updatedProject.tags ?? [],
+            visibility: updatedProject.visibility,
+          }
+        : null,
+    );
+  };
+
   const loadPublishedFlows = async () => {
     setIsPublishedFlowsLoading(true);
     setPublishedFlowsError(null);
@@ -3020,6 +3508,43 @@ function WorkspaceApp() {
       );
     } finally {
       setIsPublishedFlowDetailLoading(false);
+    }
+  };
+
+  const loadAdminOverview = async (signal?: AbortSignal) => {
+    setIsAdminLoading(true);
+    setAdminError(null);
+    try {
+      const response = await fetch(`${API_URL}/api/admin/overview`, {
+        credentials: "include",
+        signal,
+      });
+      if (response.status === 401) {
+        setAuthStatus("unauthenticated");
+        setCurrentUser(null);
+        setAdminOverview(null);
+        return;
+      }
+      if (response.status === 403) {
+        setAdminOverview(null);
+        setAdminError("Admin access is not enabled for this GitHub account.");
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(`Admin overview request failed with HTTP ${response.status}`);
+      }
+      setAdminOverview((await response.json()) as AdminOverview);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+      setAdminError(
+        error instanceof Error ? error.message : "Admin overview request failed",
+      );
+    } finally {
+      if (!signal?.aborted) {
+        setIsAdminLoading(false);
+      }
     }
   };
 
@@ -3278,6 +3803,8 @@ function WorkspaceApp() {
     setRepositoryFileContent(null);
     setRepositoryFileContentError(null);
     setRepositoryFileContentPath(null);
+    setAdminOverview(null);
+    setAdminError(null);
     setIsRepositoryConnectorOpen(false);
     setRepositoryConnectorProjectId(null);
     setAuthStatus("unauthenticated");
@@ -3313,6 +3840,28 @@ function WorkspaceApp() {
     }
     void loadPublishedFlowDetail(selectedPublishedFlowKey);
   }, [activeItem, authStatus, selectedPublishedFlowKey]);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated" || activeItem !== "admin") {
+      return;
+    }
+    if (!currentUser?.is_admin) {
+      navigateWorkspace(
+        {
+          activeItem: "projects",
+          repositoryFileContentPath: null,
+          selectedProjectId: null,
+          selectedProjectRouteKey: null,
+        },
+        "replace",
+      );
+      return;
+    }
+
+    const controller = new AbortController();
+    void loadAdminOverview(controller.signal);
+    return () => controller.abort();
+  }, [activeItem, authStatus, currentUser?.is_admin]);
 
   useEffect(() => {
     writeUrlNavigationState(initialNavigationState, "replace");
@@ -3539,6 +4088,10 @@ function WorkspaceApp() {
     setRepositoryFileContentPath(null);
   };
   const selectSidebarItem = (item: SidebarItemId) => {
+    if (item === "admin" && !currentUser?.is_admin) {
+      return;
+    }
+
     if (item === "projects" && selectedProjectId) {
       closeProjectDetail();
       return;
@@ -3627,6 +4180,7 @@ function WorkspaceApp() {
   const sidebarUserName = currentUser?.username ?? "Profile";
   const sidebarUserInitial =
     sidebarUserName.trim().charAt(0).toUpperCase() || "P";
+  const canUseAdmin = currentUser?.is_admin === true;
 
   return (
     <div className="app-shell">
@@ -3672,6 +4226,23 @@ function WorkspaceApp() {
             Community
           </button>
           */}
+          {canUseAdmin ? (
+            <button
+              aria-pressed={activeItem === "admin"}
+              className="sidebar-item"
+              data-active={activeItem === "admin"}
+              onClick={() => selectSidebarItem("admin")}
+              type="button"
+            >
+              <Gauge
+                aria-hidden="true"
+                className="sidebar-icon"
+                size={18}
+                strokeWidth={1.5}
+              />
+              Admin
+            </button>
+          ) : null}
         </nav>
 
         <div className="sidebar-spacer" />
@@ -3749,6 +4320,8 @@ function WorkspaceApp() {
               onOpenAllProjects={closeProjectDetail}
               onProjectSelect={switchProjectDetail}
               onRepositoryFileSelect={selectRepositoryFile}
+              onSaveProjectMetadata={saveProjectMetadata}
+              onSaveDescription={saveProjectDescription}
               onTabChange={selectProjectDetailTab}
               projectOptions={projectHeaderOptions}
               onRetry={() => {
@@ -4010,6 +4583,26 @@ function WorkspaceApp() {
               onUpdateFlow={updatePublishedFlow}
               onUploadAsset={uploadPublishedFlowAsset}
               selectedFlow={selectedPublishedFlow}
+            />
+          </>
+        ) : activeItem === "admin" && canUseAdmin ? (
+          <>
+            <header className="page-header">
+              <div>
+                <h1>{activeTitle}</h1>
+              </div>
+              <div className="page-actions">
+                <span className="status-pill">Admin only</span>
+              </div>
+            </header>
+
+            <AdminDashboard
+              errorMessage={adminError}
+              isLoading={isAdminLoading}
+              onRefresh={() => {
+                void loadAdminOverview();
+              }}
+              overview={adminOverview}
             />
           </>
         ) : (

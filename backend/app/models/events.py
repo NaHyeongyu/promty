@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String
@@ -8,11 +8,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.time import utc_now
 from app.db.session import Base
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 class Event(Base):

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 from datetime import datetime, timezone
 import hashlib
 import hmac
@@ -15,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.encoding import base64_urldecode, base64_urlencode
 from app.db.session import get_db
 from app.models.tokens import CollectorToken
 from app.models.users import User
@@ -30,15 +30,6 @@ def hash_collector_token(token: str) -> str:
 
 def issue_collector_token() -> str:
     return f"ph_{secrets.token_urlsafe(32)}"
-
-
-def _base64_urlencode(value: bytes) -> str:
-    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
-
-
-def _base64_urldecode(value: str) -> bytes:
-    padding = "=" * (-len(value) % 4)
-    return base64.urlsafe_b64decode(f"{value}{padding}".encode("ascii"))
 
 
 def _jwt_secret() -> bytes:
@@ -58,13 +49,13 @@ def _sign_jwt(header: str, payload: str) -> str:
         f"{header}.{payload}".encode("ascii"),
         hashlib.sha256,
     ).digest()
-    return _base64_urlencode(signature)
+    return base64_urlencode(signature)
 
 
 def issue_web_access_token(user: User) -> str:
     now = int(time.time())
-    header = _base64_urlencode(_json_bytes({"alg": "HS256", "typ": "JWT"}))
-    payload = _base64_urlencode(
+    header = base64_urlencode(_json_bytes({"alg": "HS256", "typ": "JWT"}))
+    payload = base64_urlencode(
         _json_bytes(
             {
                 "aud": settings.jwt_audience,
@@ -82,8 +73,8 @@ def issue_web_access_token(user: User) -> str:
 def verify_web_access_token(token: str) -> UUID:
     try:
         header_part, payload_part, signature_part = token.split(".", 2)
-        header = json.loads(_base64_urldecode(header_part))
-        payload = json.loads(_base64_urldecode(payload_part))
+        header = json.loads(base64_urldecode(header_part))
+        payload = json.loads(base64_urldecode(payload_part))
     except (ValueError, json.JSONDecodeError) as exc:
         raise JWTError("Invalid JWT") from exc
 
@@ -172,6 +163,18 @@ def get_optional_web_user(
     return user
 
 
+def is_admin_user(user: User) -> bool:
+    admin_usernames = {value.lower() for value in settings.admin_usernames}
+    admin_emails = {value.lower() for value in settings.admin_emails}
+    admin_github_ids = set(settings.admin_github_ids)
+
+    return (
+        user.username.lower() in admin_usernames
+        or (user.email is not None and user.email.lower() in admin_emails)
+        or user.github_id in admin_github_ids
+    )
+
+
 def require_web_user(
     user: User | None = Depends(get_optional_web_user),
 ) -> User:
@@ -179,5 +182,16 @@ def require_web_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="PromptHub login required",
+        )
+    return user
+
+
+def require_admin_user(
+    user: User = Depends(require_web_user),
+) -> User:
+    if not is_admin_user(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="PromptHub admin access required",
         )
     return user

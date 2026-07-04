@@ -183,6 +183,15 @@ class Settings:
         default_factory=lambda: _bool_env("PROMPTHUB_SESSION_COOKIE_SECURE", False)
     )
     session_cookie_samesite: str = os.environ.get("PROMPTHUB_SESSION_COOKIE_SAMESITE", "lax")
+    admin_usernames: tuple[str, ...] = field(
+        default_factory=lambda: _csv_env("PROMPTHUB_ADMIN_USERNAMES", ())
+    )
+    admin_emails: tuple[str, ...] = field(
+        default_factory=lambda: _csv_env("PROMPTHUB_ADMIN_EMAILS", ())
+    )
+    admin_github_ids: tuple[str, ...] = field(
+        default_factory=lambda: _csv_env("PROMPTHUB_ADMIN_GITHUB_IDS", ())
+    )
 
 
 settings = Settings()

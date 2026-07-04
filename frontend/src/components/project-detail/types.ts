@@ -18,19 +18,24 @@ export type ActivityNavigationState = {
 };
 
 export type ProjectHeaderProps = {
+  lastActivityLabel?: string;
+  modelNames?: string[];
   name: string;
-  description: string;
   onOpenAllProjects?: () => void;
   onConnectRepository?: () => void;
   onProjectSelect?: (projectId: string) => void;
   projectOptions?: ProjectHeaderProjectOption[];
-  repositoryStatus: string;
+  repositoryStatus?: string;
   repositoryUrl?: string;
   selectedProjectId?: string;
 };
 
 export type ProjectDetailProject = ProjectHeaderProps & {
+  description: string;
   id: string;
+  slug?: string;
+  tags: string[];
+  visibility?: "private" | "public";
 };
 
 export type ProjectHeaderProjectOption = {

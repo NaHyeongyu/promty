@@ -18,6 +18,12 @@
   padding: 0 var(--bh-space-2);
 }
 
+.ai-model-badge.is-header {
+  min-height: 28px;
+  gap: var(--bh-space-1);
+  padding: 0 var(--bh-space-2);
+}
+
 .ai-model-badge.is-muted {
   color: var(--bh-color-text-muted);
   background: var(--bh-color-surface-secondary);

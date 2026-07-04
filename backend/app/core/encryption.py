@@ -11,6 +11,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from app.core.config import settings
+from app.core.encoding import base64_urldecode, base64_urlencode
 
 ENCRYPTED_TEXT_MARKER = "__buildhub_encrypted_text__"
 ENCRYPTED_TEXT_PREFIX = "bhenc:v1:"
@@ -57,15 +58,6 @@ def decrypt_github_token(value: str) -> str:
         raise EncryptionDecryptionError(
             "GitHub token encryption key cannot decrypt stored token"
         ) from exc
-
-
-def _base64_urlencode(value: bytes) -> str:
-    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
-
-
-def _base64_urldecode(value: str) -> bytes:
-    padding = "=" * (-len(value) % 4)
-    return base64.urlsafe_b64decode(f"{value}{padding}".encode("ascii"))
 
 
 def _app_encryption_secret() -> str:
@@ -120,8 +112,8 @@ def encrypt_app_text(value: str, *, purpose: str) -> dict[str, Any]:
         "alg": APP_TEXT_ALGORITHM,
         "v": 1,
         "key_id": settings.app_encryption_key_id,
-        "nonce": _base64_urlencode(nonce),
-        "ciphertext": _base64_urlencode(ciphertext),
+        "nonce": base64_urlencode(nonce),
+        "ciphertext": base64_urlencode(ciphertext),
     }
 
 
@@ -142,8 +134,8 @@ def decrypt_app_text(value: dict[str, Any], *, purpose: str) -> str:
     if not isinstance(nonce, str) or not isinstance(ciphertext, str):
         raise _encryption_error()
     try:
-        nonce_bytes = _base64_urldecode(nonce)
-        ciphertext_bytes = _base64_urldecode(ciphertext)
+        nonce_bytes = base64_urldecode(nonce)
+        ciphertext_bytes = base64_urldecode(ciphertext)
     except ValueError as exc:
         raise _encryption_error() from exc
 
@@ -173,7 +165,7 @@ def maybe_decrypt_app_text(value: Any, *, purpose: str) -> str | None:
 def encrypt_app_text_to_string(value: str, *, purpose: str) -> str:
     envelope = encrypt_app_text(value, purpose=purpose)
     payload = json.dumps(envelope, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    return f"{ENCRYPTED_TEXT_PREFIX}{_base64_urlencode(payload)}"
+    return f"{ENCRYPTED_TEXT_PREFIX}{base64_urlencode(payload)}"
 
 
 def maybe_decrypt_app_text_from_string(value: str | None, *, purpose: str) -> str | None:
@@ -183,7 +175,7 @@ def maybe_decrypt_app_text_from_string(value: str | None, *, purpose: str) -> st
         return value
     encoded = value[len(ENCRYPTED_TEXT_PREFIX) :]
     try:
-        envelope = json.loads(_base64_urldecode(encoded))
+        envelope = json.loads(base64_urldecode(encoded))
     except (ValueError, json.JSONDecodeError) as exc:
         raise _encryption_error() from exc
     if not isinstance(envelope, dict):

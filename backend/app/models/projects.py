@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.time import utc_now
 from app.db.session import Base
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 class Project(Base):
@@ -30,6 +28,7 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(255))
     slug: Mapped[str] = mapped_column(String(255), index=True)
     description: Mapped[str | None] = mapped_column(Text)
+    tags: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
     visibility: Mapped[str] = mapped_column(String(16), default="private")
     git_remote: Mapped[str | None] = mapped_column(String(2048))
     local_path_hash: Mapped[str | None] = mapped_column(String(128), index=True)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -8,6 +8,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import settings
+from app.core.time import utc_now
 from app.models.artifact_generation_jobs import ArtifactGenerationJob
 from app.models.artifact_versions import ArtifactVersion
 from app.models.artifacts import Artifact
@@ -25,11 +26,6 @@ MEMORY_ARTIFACT_TYPE = "MemoryTask"
 LOCAL_MEMORY_GENERATOR = "local-memory-slice-v1"
 MEMORY_WINDOW_STRATEGY = "prompt_window_v1"
 SESSION_IDLE_COMPLETE_AFTER = timedelta(minutes=45)
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
 
 def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
@@ -313,8 +309,6 @@ def _build_session_memory_context(
             for file in _changed_files_from_payload(payload)
         ]
     )
-    first_event = events[0] if events else None
-    last_event = events[-1] if events else None
     model = next(
         (
             model
