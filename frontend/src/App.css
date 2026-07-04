@@ -9,11 +9,7 @@
   place-items: center;
   padding: var(--bh-space-6);
   color: var(--bh-color-text-primary);
-  background:
-    linear-gradient(rgb(255 255 255 / 2%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(255 255 255 / 2%) 1px, transparent 1px),
-    var(--bh-color-background);
-  background-size: 44px 44px;
+  background: #050507;
 }
 
 .cli-login-panel {
