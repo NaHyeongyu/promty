@@ -651,11 +651,14 @@ def serialize_memory_artifact(artifact: Artifact) -> dict[str, Any]:
 def serialize_memory_artifact_summary(artifact: Artifact) -> dict[str, Any]:
     return {
         "changed_file_count": len(artifact.changed_files or []),
+        "changed_files": artifact.changed_files,
+        "commit_sha": artifact.commit_sha,
         "created_at": _iso(artifact.created_at),
         "generator": artifact.generator,
         "id": str(artifact.id),
         "model": artifact.model,
         "outcome": artifact.outcome,
+        "reason": artifact.reason,
         "sections": artifact.sections,
         "session_id": str(artifact.session_id) if artifact.session_id else None,
         "summary": artifact.summary,

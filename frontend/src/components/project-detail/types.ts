@@ -1,7 +1,7 @@
 import type { ComponentType, ReactNode } from "react";
 import type { LucideProps } from "lucide-react";
 
-export type ProjectDetailTabId = "overview" | "ai-activity" | "files";
+export type ProjectDetailTabId = "overview" | "memory" | "ai-activity" | "files";
 
 export type ProjectDetailTab = {
   id: ProjectDetailTabId;
@@ -70,11 +70,19 @@ export type ProjectCommunityStatus = {
 
 export type ProjectMemoryArtifact = {
   changedFileCount: number;
+  changedFiles: Array<{
+    additions?: number | null;
+    deletions?: number | null;
+    path: string;
+    status?: string | null;
+  }>;
+  commitSha: string | null;
   createdAt: string | null;
   generator: string | null;
   id: string;
   model: string | null;
   outcome: string | null;
+  reason: string | null;
   sections: Array<{
     summary: string;
     title: string;
