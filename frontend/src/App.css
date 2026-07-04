@@ -368,7 +368,7 @@
 
 .app-shell {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-columns: 232px minmax(0, 1fr);
   min-height: 100vh;
   color: var(--bh-color-text-primary);
   background: var(--bh-color-background);
@@ -378,7 +378,7 @@
   position: sticky;
   top: 0;
   display: flex;
-  width: 240px;
+  width: 232px;
   height: 100vh;
   max-height: 100vh;
   flex-direction: column;
@@ -394,7 +394,7 @@
   align-items: center;
   gap: var(--bh-space-1);
   min-height: 64px;
-  padding: 0 var(--bh-space-4);
+  padding: var(--bh-space-3) var(--bh-space-4);
 }
 
 .sidebar-header strong {
@@ -403,6 +403,15 @@
   font-size: var(--bh-font-size-title);
   font-weight: var(--bh-font-weight-page);
   line-height: var(--bh-line-height-heading);
+}
+
+.sidebar-brand {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--bh-space-1);
 }
 
 .brand-logo {
@@ -419,8 +428,8 @@
 }
 
 .brand-logo.is-sidebar {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
 }
 
 .sidebar-divider {
@@ -448,8 +457,8 @@
   width: 100%;
   min-height: var(--bh-interactive-min-size);
   border: 1px solid transparent;
-  border-radius: var(--bh-radius-sm);
-  padding: 0 var(--bh-space-3);
+  border-radius: var(--bh-radius-md);
+  padding: 0 var(--bh-space-2);
   color: var(--bh-color-text-secondary);
   background: transparent;
   font-size: var(--bh-font-size-body);
@@ -465,9 +474,9 @@
 
 .sidebar-item::before {
   position: absolute;
-  top: 9px;
-  bottom: 9px;
-  left: 5px;
+  top: 10px;
+  bottom: 10px;
+  left: 4px;
   width: 2px;
   border-radius: var(--bh-radius-sm);
   background: transparent;
@@ -501,6 +510,7 @@
   border-color: var(--bh-color-primary-border);
   color: var(--bh-color-text-primary);
   background: var(--bh-sidebar-item-selected-bg);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 4%);
 }
 
 .sidebar-item[data-active="true"]::before {
@@ -511,16 +521,92 @@
   width: var(--bh-icon-size-md);
   height: var(--bh-icon-size-md);
   flex: 0 0 auto;
+  box-sizing: content-box;
+  border-radius: var(--bh-radius-sm);
+  padding: 4px;
   color: var(--bh-color-text-muted);
+  background: rgb(250 250 250 / 3%);
+  transition:
+    background-color var(--bh-duration-fast) var(--bh-ease-out),
+    color var(--bh-duration-fast) var(--bh-ease-out);
 }
 
 .sidebar-item[data-active="true"] .sidebar-icon,
 .sidebar-item:hover .sidebar-icon {
   color: var(--bh-color-text-primary);
+  background: rgb(250 250 250 / 8%);
 }
 
 .profile-item {
   color: var(--bh-color-text-muted);
+}
+
+.sidebar-profile-card {
+  min-height: 48px;
+  align-items: center;
+  padding: var(--bh-space-2);
+}
+
+.sidebar-avatar {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--bh-color-border-hover);
+  border-radius: 50%;
+  color: var(--bh-color-text-primary);
+  background: var(--bh-color-surface-secondary);
+  font-size: var(--bh-font-size-small);
+  font-weight: var(--bh-font-weight-section);
+  line-height: 1;
+}
+
+.sidebar-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sidebar-profile-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.sidebar-profile-copy span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-profile-copy span:first-child {
+  color: var(--bh-color-text-primary);
+  font-weight: var(--bh-font-weight-section);
+}
+
+.sidebar-profile-copy span:last-child {
+  color: var(--bh-color-text-muted);
+  font-size: var(--bh-font-size-caption);
+  font-weight: var(--bh-font-weight-regular);
+}
+
+.sidebar-item-danger {
+  color: var(--bh-color-text-muted);
+}
+
+.sidebar-item-danger:hover {
+  border-color: rgb(239 68 68 / 28%);
+  color: #fecaca;
+  background: var(--bh-color-danger-subtle);
+}
+
+.sidebar-item-danger:hover .sidebar-icon {
+  color: #fecaca;
+  background: rgb(239 68 68 / 12%);
 }
 
 .page {
@@ -2121,6 +2207,31 @@ button.github-button {
 
   .sidebar-header {
     min-height: 56px;
+    padding: var(--bh-space-3) var(--bh-space-4);
+  }
+
+  .sidebar-brand {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .sidebar-nav,
+  .sidebar-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--bh-space-2);
+    padding: var(--bh-space-3) var(--bh-space-4);
+  }
+
+  .sidebar-item {
+    flex: 1 1 132px;
+  }
+
+  .sidebar-profile-card {
+    min-height: 42px;
+  }
+
+  .sidebar-profile-copy span:last-child {
+    display: none;
   }
 
   .sidebar-spacer {

@@ -3530,12 +3530,17 @@ function WorkspaceApp() {
       targetProjectName={repositoryConnectorProject?.name}
     />
   ) : null;
+  const sidebarUserName = currentUser?.username ?? "Profile";
+  const sidebarUserInitial =
+    sidebarUserName.trim().charAt(0).toUpperCase() || "P";
 
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label="Primary navigation">
         <div className="sidebar-header">
-          <BrandLockup />
+          <div className="sidebar-brand">
+            <BrandLockup />
+          </div>
         </div>
 
         <div className="sidebar-divider" />
@@ -3582,18 +3587,22 @@ function WorkspaceApp() {
         <div className="sidebar-footer">
           <button
             aria-pressed={activeItem === "profile"}
-            className="sidebar-item profile-item"
+            className="sidebar-item profile-item sidebar-profile-card"
             data-active={activeItem === "profile"}
             onClick={() => selectSidebarItem("profile")}
             type="button"
           >
-            <User
-              aria-hidden="true"
-              className="sidebar-icon"
-              size={18}
-              strokeWidth={1.5}
-            />
-            <span>{currentUser?.username ?? "Profile"}</span>
+            <span className="sidebar-avatar" aria-hidden="true">
+              {currentUser?.avatar_url ? (
+                <img alt="" src={currentUser.avatar_url} />
+              ) : (
+                sidebarUserInitial
+              )}
+            </span>
+            <span className="sidebar-profile-copy">
+              <span>{sidebarUserName}</span>
+              <span>Profile</span>
+            </span>
           </button>
 
           <button
@@ -3612,7 +3621,11 @@ function WorkspaceApp() {
             <span>Settings</span>
           </button>
 
-          <button className="sidebar-item" onClick={logout} type="button">
+          <button
+            className="sidebar-item sidebar-item-danger"
+            onClick={logout}
+            type="button"
+          >
             <LogOut
               aria-hidden="true"
               className="sidebar-icon"
