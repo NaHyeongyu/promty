@@ -558,13 +558,13 @@ h1 {
 
 .toolbar-button {
   display: inline-flex;
-  min-height: 28px;
+  min-height: var(--bh-interactive-min-size);
   align-items: center;
   justify-content: center;
-  gap: var(--bh-space-1);
+  gap: var(--bh-space-2);
   border: 1px solid var(--bh-color-border);
   border-radius: var(--bh-radius-sm);
-  padding: var(--bh-space-1) var(--bh-space-2);
+  padding: 0 var(--bh-space-3);
   color: var(--bh-color-text-secondary);
   background: var(--bh-color-surface);
   font-size: var(--bh-font-size-caption);
@@ -665,6 +665,8 @@ h1 {
 .repository-url-form {
   display: grid;
   gap: var(--bh-space-2);
+  border-top: 1px solid var(--bh-color-border);
+  padding-top: var(--bh-space-4);
 }
 
 .repository-url-form label {
@@ -691,7 +693,7 @@ h1 {
 }
 
 .repository-url-row input {
-  min-height: 36px;
+  min-height: var(--bh-interactive-min-size);
   border: 1px solid var(--bh-color-border);
   border-radius: var(--bh-radius-sm);
   padding: 0 var(--bh-space-3);
@@ -704,6 +706,41 @@ h1 {
 .repository-url-row input:focus,
 .repository-search:focus-within {
   border-color: var(--bh-color-border-hover);
+}
+
+.repository-url-submit {
+  display: inline-flex;
+  min-height: var(--bh-interactive-min-size);
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--bh-color-border);
+  border-radius: var(--bh-radius-sm);
+  padding: 0 var(--bh-space-3);
+  color: var(--bh-color-text-primary);
+  background: var(--bh-color-surface-secondary);
+  font: inherit;
+  font-size: var(--bh-font-size-caption);
+  font-weight: var(--bh-font-weight-label);
+  line-height: var(--bh-line-height-heading);
+  cursor: pointer;
+}
+
+.repository-url-submit:hover {
+  border-color: var(--bh-color-border-hover);
+  background: var(--bh-color-surface-hover);
+}
+
+.repository-url-submit:disabled {
+  color: var(--bh-color-text-disabled);
+  background: var(--bh-color-surface);
+  cursor: not-allowed;
+}
+
+.repository-connector-error {
+  margin: 0;
+  color: var(--bh-color-danger);
+  font-size: var(--bh-font-size-caption);
+  line-height: var(--bh-line-height-body);
 }
 
 .repository-picker {
@@ -850,6 +887,7 @@ h1 {
 .repository-option:focus-visible,
 .repository-connector-close:focus-visible,
 .repository-url-row input:focus-visible,
+.repository-url-submit:focus-visible,
 .repository-search:focus-within {
   outline: 2px solid var(--bh-color-primary);
   outline-offset: 2px;
@@ -1766,12 +1804,15 @@ h1 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--bh-space-3);
-  align-items: start;
+  align-items: center;
   margin-bottom: var(--bh-space-4);
 }
 
 .project-card h3 {
+  display: flex;
   min-width: 0;
+  min-height: var(--bh-interactive-min-size);
+  align-items: center;
   margin: 0;
   overflow: hidden;
   color: var(--bh-color-text-primary);
@@ -1787,10 +1828,10 @@ h1 {
   display: inline-flex;
   align-items: center;
   gap: var(--bh-space-1);
-  min-height: 32px;
+  min-height: var(--bh-interactive-min-size);
   border: 1px solid var(--bh-color-border);
   border-radius: var(--bh-radius-sm);
-  padding: 0 var(--bh-space-2);
+  padding: 0 var(--bh-space-3);
   color: var(--bh-color-text-secondary);
   background: var(--bh-color-surface-secondary);
   font-size: var(--bh-font-size-caption);
@@ -1822,6 +1863,15 @@ button.github-button {
 .github-button.is-disabled {
   color: var(--bh-color-text-disabled);
   cursor: default;
+}
+
+.github-button.is-unlinked {
+  color: var(--bh-color-text-muted);
+  background: var(--bh-color-surface-secondary);
+}
+
+.github-button.is-unlinked .brand-icon[data-brand="github"] {
+  color: var(--bh-color-text-muted);
 }
 
 .project-meta {

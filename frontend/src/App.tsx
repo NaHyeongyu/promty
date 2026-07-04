@@ -1,5 +1,6 @@
 import {
   type ChangeEvent,
+  type FormEvent,
   type ReactNode,
   useEffect,
   useMemo,
@@ -1797,13 +1798,42 @@ function SetupCommandBlock({
 }
 
 function RepositoryConnector({
+  onManualConnect,
   onClose,
   targetProjectName,
 }: {
+  onManualConnect?: (githubUrl: string) => Promise<void>;
   onClose: () => void;
   targetProjectName?: string;
 }) {
   const setupCommand = setupCommandText();
+  const [manualRepositoryUrl, setManualRepositoryUrl] = useState("");
+  const [manualRepositoryError, setManualRepositoryError] = useState<string | null>(
+    null,
+  );
+  const [isManualRepositorySaving, setIsManualRepositorySaving] = useState(false);
+  const canSubmitManualRepository =
+    Boolean(onManualConnect) && manualRepositoryUrl.trim().length > 0;
+
+  const submitManualRepository = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!onManualConnect || !manualRepositoryUrl.trim()) {
+      return;
+    }
+
+    setIsManualRepositorySaving(true);
+    setManualRepositoryError(null);
+    try {
+      await onManualConnect(manualRepositoryUrl.trim());
+      onClose();
+    } catch (error) {
+      setManualRepositoryError(
+        error instanceof Error ? error.message : "Repository could not be connected.",
+      );
+    } finally {
+      setIsManualRepositorySaving(false);
+    }
+  };
 
   return (
     <div className="repository-connector-overlay" role="presentation">
@@ -1817,8 +1847,9 @@ function RepositoryConnector({
           <div>
             <h2 id="repository-connector-title">Connect Repository</h2>
             <p>
-              Run this inside {targetProjectName ?? "your project"} to link the
-              project and install local AI tool hooks.
+              {onManualConnect
+                ? `Paste a GitHub URL or run setup inside ${targetProjectName ?? "this project"}.`
+                : `Run this inside ${targetProjectName ?? "your project"} to link the project and install local AI tool hooks.`}
             </p>
           </div>
           <button
@@ -1832,6 +1863,34 @@ function RepositoryConnector({
         </div>
 
         <SetupCommandBlock command={setupCommand} label="Project terminal" />
+
+        {onManualConnect ? (
+          <form className="repository-url-form" onSubmit={submitManualRepository}>
+            <label htmlFor="repository-url">GitHub repository URL</label>
+            <div className="repository-url-row">
+              <input
+                autoComplete="off"
+                id="repository-url"
+                inputMode="url"
+                onChange={(event) => setManualRepositoryUrl(event.target.value)}
+                placeholder="https://github.com/owner/repo"
+                spellCheck={false}
+                type="url"
+                value={manualRepositoryUrl}
+              />
+              <button
+                className="repository-url-submit"
+                disabled={!canSubmitManualRepository || isManualRepositorySaving}
+                type="submit"
+              >
+                {isManualRepositorySaving ? "Connecting" : "Connect"}
+              </button>
+            </div>
+            {manualRepositoryError ? (
+              <p className="repository-connector-error">{manualRepositoryError}</p>
+            ) : null}
+          </form>
+        ) : null}
       </section>
     </div>
   );
@@ -2849,6 +2908,55 @@ function WorkspaceApp() {
     }
   };
 
+  const saveRepositoryConnection = async (
+    projectId: string,
+    githubUrl: string,
+  ) => {
+    const response = await fetch(`${API_URL}/api/projects/${projectId}/repository`, {
+      body: JSON.stringify({ github_url: githubUrl }),
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      method: "PATCH",
+    });
+
+    if (response.status === 401) {
+      setAuthStatus("unauthenticated");
+      setCurrentUser(null);
+      throw new Error("Sign in again before connecting a repository.");
+    }
+
+    if (!response.ok) {
+      const detail = await response
+        .json()
+        .then((payload) =>
+          typeof payload?.detail === "string" ? payload.detail : null,
+        )
+        .catch(() => null);
+      throw new Error(detail ?? `Repository connection failed with HTTP ${response.status}`);
+    }
+
+    const updatedProject = (await response.json()) as ProjectSummary;
+    setProjectSummaries((currentProjects) => {
+      const nextProjects = currentProjects.map((project) =>
+        project.id === updatedProject.id ? updatedProject : project,
+      );
+      return nextProjects.some((project) => project.id === updatedProject.id)
+        ? nextProjects
+        : [updatedProject, ...currentProjects];
+    });
+
+    setProjectGithubFiles(null);
+    setProjectGithubFilesError(null);
+    setRepositoryFileContent(null);
+    setRepositoryFileContentError(null);
+    setRepositoryFileContentPath(null);
+
+    if (selectedProjectId === projectId) {
+      await loadProjectDetail(projectId, selectedProject);
+      await loadProjectGithubFiles(projectId);
+    }
+  };
+
   const loadPublishedFlows = async () => {
     setIsPublishedFlowsLoading(true);
     setPublishedFlowsError(null);
@@ -3505,6 +3613,13 @@ function WorkspaceApp() {
         };
   const repositoryConnector = isRepositoryConnectorOpen ? (
     <RepositoryConnector
+      onManualConnect={
+        repositoryConnectorProjectId &&
+        !isMockGithubUnlinkedProject(repositoryConnectorProjectId)
+          ? (githubUrl) =>
+              saveRepositoryConnection(repositoryConnectorProjectId, githubUrl)
+          : undefined
+      }
       onClose={closeRepositoryConnector}
       targetProjectName={repositoryConnectorProject?.name}
     />
@@ -3786,18 +3901,10 @@ function WorkspaceApp() {
                           />
                         </a>
                       ) : (
-                        <button
-                          className="github-button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openRepositoryConnector(project.id);
-                          }}
-                          onKeyDown={(event) => event.stopPropagation()}
-                          type="button"
-                        >
+                        <span className="github-button is-unlinked">
                           <GitHubIcon />
-                          <span>Connect</span>
-                        </button>
+                          <span>Not linked</span>
+                        </span>
                       )}
                     </div>
 

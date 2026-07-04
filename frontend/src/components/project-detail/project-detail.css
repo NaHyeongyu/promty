@@ -27,8 +27,11 @@
 }
 
 .bh-project-header-copy h1 {
+  display: flex;
   margin: 0;
   min-width: 0;
+  min-height: var(--bh-interactive-min-size);
+  align-items: center;
   overflow: hidden;
   overflow-wrap: anywhere;
   color: var(--bh-color-text-primary);
