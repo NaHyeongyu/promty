@@ -6,7 +6,7 @@ from urllib import error, parse, request
 
 from app.core.config import settings
 
-GEMINI_MEMORY_GENERATOR = "gemini-session-v1"
+GEMINI_MEMORY_GENERATOR = "gemini-memory-slice-v1"
 MAX_CHANGED_FILES = 60
 MAX_EVENT_TIMELINE = 80
 MAX_PROMPTS = 10
@@ -187,6 +187,7 @@ def _compact_context(context: dict[str, Any]) -> dict[str, Any]:
             "project_name": context["project_name"],
             "tool": context["tool"],
         },
+        "window": context.get("slice") if isinstance(context.get("slice"), dict) else None,
     }
 
 
@@ -194,7 +195,8 @@ def _build_prompt(context: dict[str, Any], fallback_payload: dict[str, Any]) -> 
     compact_context = _compact_context(context)
     return "\n".join(
         [
-            "You are generating Promty project memory from one completed AI development session.",
+            "You are generating Promty project memory from a bounded AI development slice.",
+            "The slice may cover only part of a longer session.",
             "Return strict JSON only. Do not include markdown fences.",
             "",
             "Goal:",

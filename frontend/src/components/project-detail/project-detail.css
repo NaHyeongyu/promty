@@ -320,7 +320,7 @@
   display: flex;
   min-width: 0;
   overflow-x: auto;
-  border-bottom: 1px solid var(--bh-color-border);
+  gap: var(--bh-space-1);
 }
 
 .bh-project-tab {
@@ -329,8 +329,8 @@
   gap: var(--bh-space-1);
   min-height: 42px;
   flex: 0 0 auto;
-  border: 0;
-  border-bottom: 1px solid transparent;
+  border: 1px solid transparent;
+  border-radius: var(--bh-radius-sm);
   padding: 0 var(--bh-space-4);
   color: var(--bh-color-text-muted);
   background: transparent;
@@ -365,8 +365,9 @@
 }
 
 .bh-project-tab[data-active="true"] {
-  border-bottom-color: var(--bh-color-text-primary);
+  border-color: var(--bh-color-border);
   color: var(--bh-color-text-primary);
+  background: var(--bh-color-surface-secondary);
 }
 
 .bh-project-tab:focus-visible {
@@ -450,6 +451,10 @@
   display: grid;
   min-width: 0;
   gap: var(--bh-space-1);
+  border: 1px solid var(--bh-color-border);
+  border-radius: var(--bh-radius-md);
+  padding: var(--bh-space-4);
+  background: var(--bh-color-surface);
 }
 
 .bh-overview-statistics dd {
@@ -487,7 +492,6 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--bh-space-5);
-  border-top: 1px solid var(--bh-color-border);
   padding-top: var(--bh-space-4);
 }
 
@@ -545,7 +549,6 @@
 .bh-overview-community {
   display: grid;
   gap: var(--bh-space-4);
-  border-top: 1px solid var(--bh-color-border);
   padding-top: var(--bh-space-4);
 }
 
@@ -609,12 +612,19 @@
 
 .bh-overview-community-metrics div {
   display: grid;
+  min-width: 0;
   gap: var(--bh-space-1);
+  border: 1px solid var(--bh-color-border);
+  border-radius: var(--bh-radius-md);
+  padding: var(--bh-space-4);
+  background: var(--bh-color-surface);
 }
 
 .bh-overview-community-metrics dd {
   order: -1;
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--bh-color-text-primary);
   font-family: var(--bh-font-brand);
   font-size: var(--bh-font-size-title);
@@ -663,7 +673,6 @@
 .bh-overview-memory {
   display: grid;
   gap: var(--bh-space-4);
-  border-top: 1px solid var(--bh-color-border);
   padding-top: var(--bh-space-4);
 }
 
@@ -1017,6 +1026,80 @@
   color: var(--bh-color-text-secondary);
   font-size: var(--bh-font-size-small);
   line-height: var(--bh-line-height-body);
+}
+
+.bh-memory-version-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bh-space-2);
+}
+
+.bh-memory-version-heading span {
+  color: var(--bh-color-text-muted);
+  font-size: var(--bh-font-size-caption);
+  line-height: var(--bh-line-height-heading);
+}
+
+.bh-memory-version-list {
+  display: grid;
+  gap: var(--bh-space-2);
+}
+
+.bh-memory-version-row {
+  display: grid;
+  min-width: 0;
+  gap: var(--bh-space-1);
+  border: 1px solid var(--bh-color-border);
+  border-radius: var(--bh-radius-md);
+  padding: var(--bh-space-2);
+  color: inherit;
+  background: var(--bh-color-surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.bh-memory-version-row:hover {
+  border-color: var(--bh-color-border-hover);
+  background: var(--bh-color-surface-hover);
+}
+
+.bh-memory-version-row[data-selected="true"] {
+  border-color: var(--bh-color-primary-border);
+  background: var(--bh-color-primary-subtle);
+}
+
+.bh-memory-version-row strong {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bh-space-2);
+  color: var(--bh-color-text-primary);
+  font-size: var(--bh-font-size-caption);
+  font-weight: var(--bh-font-weight-section);
+  line-height: var(--bh-line-height-heading);
+}
+
+.bh-memory-version-row strong span {
+  border-radius: var(--bh-radius-sm);
+  padding: 1px var(--bh-space-2);
+  color: var(--bh-badge-primary-text);
+  background: var(--bh-badge-primary-bg);
+  font-size: var(--bh-font-size-caption);
+  font-weight: var(--bh-font-weight-label);
+}
+
+.bh-memory-version-row small {
+  color: var(--bh-color-text-muted);
+  font-size: var(--bh-font-size-caption);
+  line-height: var(--bh-line-height-heading);
+}
+
+.bh-memory-version-row p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .bh-memory-chip-list {

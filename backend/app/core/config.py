@@ -145,6 +145,18 @@ class Settings:
             "gemini",
         )
     )
+    memory_slice_prompt_count: int = field(
+        default_factory=lambda: _int_env_any(
+            ("PROMTY_MEMORY_SLICE_PROMPT_COUNT", "PROMPTHUB_MEMORY_SLICE_PROMPT_COUNT"),
+            12,
+        )
+    )
+    memory_slice_max_minutes: int = field(
+        default_factory=lambda: _int_env_any(
+            ("PROMTY_MEMORY_SLICE_MAX_MINUTES", "PROMPTHUB_MEMORY_SLICE_MAX_MINUTES"),
+            120,
+        )
+    )
     published_flow_asset_root: str = os.environ.get(
         "PROMPTHUB_PUBLISHED_FLOW_ASSET_ROOT",
         "~/.prompthub/published-flow-assets",

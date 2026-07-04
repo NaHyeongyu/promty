@@ -717,7 +717,7 @@ def read_project_detail(
             if memory_artifacts
             else None,
             "recent_artifacts": [
-                serialize_memory_artifact_summary(artifact)
+                serialize_memory_artifact_summary(artifact, db=db)
                 for artifact in memory_artifacts
             ],
             "total_artifacts": db.scalar(

@@ -138,21 +138,59 @@ type ProjectDetailApiResponse = {
       }>;
       commit_sha?: string | null;
       created_at: string | null;
+      end_sequence?: number | null;
       generator: string | null;
       id: string;
+      memory_scope?: string | null;
       model: string | null;
       outcome: string | null;
+      prompt_count?: number | null;
       reason?: string | null;
       sections?: Array<{
         summary: string;
         title: string;
       }>;
       session_id: string | null;
+      slice_index?: number | null;
+      start_sequence?: number | null;
       summary: string | null;
       tags: string[];
       technologies?: string[];
       title: string;
       updated_at: string | null;
+      window_reason?: string | null;
+      versions?: Array<{
+        changed_file_count: number;
+        changed_files?: Array<{
+          additions?: number | null;
+          deletions?: number | null;
+          path: string;
+          status?: string | null;
+        }>;
+        commit_sha?: string | null;
+        created_at: string | null;
+        end_sequence?: number | null;
+        generator: string | null;
+        id: string;
+        memory_scope?: string | null;
+        model: string | null;
+        outcome: string | null;
+        prompt_count?: number | null;
+        reason?: string | null;
+        sections?: Array<{
+          summary: string;
+          title: string;
+        }>;
+        session_id: string | null;
+        slice_index?: number | null;
+        start_sequence?: number | null;
+        summary: string | null;
+        tags: string[];
+        technologies?: string[];
+        title: string;
+        version: number;
+        window_reason?: string | null;
+      }>;
     }>;
     total_artifacts: number;
   };
@@ -1026,13 +1064,18 @@ function projectDetailDataFromApi(
         createdAt: artifact.created_at
           ? formatOptionalTimestamp(artifact.created_at, "Unknown")
           : null,
+        endSequence: artifact.end_sequence ?? null,
         generator: artifact.generator,
         id: artifact.id,
+        memoryScope: artifact.memory_scope ?? null,
         model: artifact.model,
         outcome: artifact.outcome,
+        promptCount: artifact.prompt_count ?? null,
         reason: artifact.reason ?? null,
         sections: artifact.sections ?? [],
         sessionId: artifact.session_id,
+        sliceIndex: artifact.slice_index ?? null,
+        startSequence: artifact.start_sequence ?? null,
         summary: artifact.summary,
         tags: artifact.tags,
         technologies: artifact.technologies ?? [],
@@ -1040,6 +1083,33 @@ function projectDetailDataFromApi(
         updatedAt: artifact.updated_at
           ? formatOptionalTimestamp(artifact.updated_at, "Unknown")
           : null,
+        windowReason: artifact.window_reason ?? null,
+        versions: (artifact.versions ?? []).map((version) => ({
+          changedFileCount: version.changed_file_count,
+          changedFiles: version.changed_files ?? [],
+          commitSha: version.commit_sha ?? null,
+          createdAt: version.created_at
+            ? formatOptionalTimestamp(version.created_at, "Unknown")
+            : null,
+          endSequence: version.end_sequence ?? null,
+          generator: version.generator,
+          id: version.id,
+          memoryScope: version.memory_scope ?? null,
+          model: version.model,
+          outcome: version.outcome,
+          promptCount: version.prompt_count ?? null,
+          reason: version.reason ?? null,
+          sections: version.sections ?? [],
+          sessionId: version.session_id,
+          sliceIndex: version.slice_index ?? null,
+          startSequence: version.start_sequence ?? null,
+          summary: version.summary,
+          tags: version.tags,
+          technologies: version.technologies ?? [],
+          title: version.title,
+          version: version.version,
+          windowReason: version.window_reason ?? null,
+        })),
       })),
       totalArtifacts: memory?.total_artifacts ?? 0,
     },
@@ -2532,7 +2602,7 @@ function WorkspaceApp() {
     }
 
     const response = await fetch(
-      `${API_URL}/api/projects/${selectedProjectId}/sessions/${sessionId}/complete`,
+      `${API_URL}/api/projects/${selectedProjectId}/sessions/${sessionId}/complete?force=true&regenerate=true`,
       {
         credentials: "include",
         method: "POST",

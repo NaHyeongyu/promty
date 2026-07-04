@@ -17,7 +17,7 @@ from app.services.event_payload_security import (
     decrypt_event_payload,
     encrypt_event_payload,
 )
-from app.services.memory_artifacts import create_and_run_session_memory_job
+from app.services.memory_artifacts import generate_due_memory_artifacts_for_session
 from app.services.project_resources import sync_project_resources_from_event
 
 SYSTEM_USER_ID = uuid5(NAMESPACE_DNS, "prompthub.system_user")
@@ -232,6 +232,7 @@ def add_events(
 ) -> list[str]:
     event_ids: list[str] = []
     completed_session_ids: set[UUID] = set()
+    touched_session_ids: set[UUID] = set()
 
     for event in events:
         payload = apply_event_storage_policy(event.event_type, _dump_model(event.payload))
@@ -259,20 +260,20 @@ def add_events(
         db.add(event_row)
         db.flush()
         sync_project_resources_from_event(db, event_row, payload)
+        touched_session_ids.add(event.session_id)
         if event.event_type == "SessionEnded":
             completed_session_ids.add(event.session_id)
 
         event_ids.append(str(event.id))
 
-    for session_id in completed_session_ids:
+    for session_id in touched_session_ids:
         session = db.get(Session, session_id)
         if session is None:
             continue
-        create_and_run_session_memory_job(
+        generate_due_memory_artifacts_for_session(
             db,
-            project_id=session.project_id,
-            reason="explicit",
-            session_id=session.id,
+            session,
+            finalize=session_id in completed_session_ids,
         )
 
     db.commit()
