@@ -1,7 +1,7 @@
 .bh-project-detail {
   display: grid;
   min-width: 0;
-  gap: var(--bh-space-5);
+  gap: var(--bh-space-6);
 }
 
 .bh-project-detail[data-active-tab="ai-activity"] {
@@ -15,9 +15,9 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
-  gap: var(--bh-space-4);
+  gap: var(--bh-space-6);
   border-bottom: 1px solid var(--bh-color-border);
-  padding-bottom: var(--bh-space-5);
+  padding-bottom: var(--bh-space-6);
 }
 
 .bh-project-header-copy {
@@ -32,7 +32,7 @@
   overflow: hidden;
   overflow-wrap: anywhere;
   color: var(--bh-color-text-primary);
-  font-family: var(--bh-font-brand);
+  font-family: var(--bh-font-ui);
   font-size: var(--bh-font-size-h1);
   font-weight: var(--bh-font-weight-page);
   line-height: var(--bh-line-height-heading);
@@ -67,8 +67,8 @@
 
 .bh-project-switcher-trigger {
   display: inline-flex;
-  width: 30px;
-  height: 30px;
+  width: var(--bh-interactive-min-size);
+  height: var(--bh-interactive-min-size);
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
@@ -115,7 +115,7 @@
   top: 0;
   z-index: 1;
   display: flex;
-  min-height: 42px;
+  min-height: var(--bh-interactive-min-size);
   align-items: center;
   gap: var(--bh-space-2);
   border: 0;
@@ -227,7 +227,7 @@
 .bh-icon-button,
 .bh-header-action-button {
   display: inline-flex;
-  min-height: 34px;
+  min-height: var(--bh-interactive-min-size);
   align-items: center;
   justify-content: center;
   border: 1px solid var(--bh-color-border);
@@ -246,7 +246,7 @@
 }
 
 .bh-icon-button {
-  width: 34px;
+  width: var(--bh-interactive-min-size);
   padding: 0;
   transition:
     background-color var(--bh-duration-fast) var(--bh-ease-out),
@@ -275,7 +275,7 @@
 }
 
 .bh-header-action-button.is-primary {
-  min-height: 36px;
+  min-height: var(--bh-interactive-min-size);
   border-color: var(--bh-button-primary-bg);
   color: var(--bh-button-primary-text);
   background: var(--bh-button-primary-bg);
@@ -327,7 +327,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--bh-space-1);
-  min-height: 42px;
+  min-height: var(--bh-interactive-min-size);
   flex: 0 0 auto;
   border: 1px solid transparent;
   border-radius: var(--bh-radius-sm);
@@ -341,7 +341,7 @@
 }
 
 .bh-project-tab-external {
-  min-height: 34px;
+  min-height: var(--bh-interactive-min-size);
   align-self: center;
   margin-left: auto;
   border: 1px solid var(--bh-color-border);
@@ -390,7 +390,7 @@
 
 .bh-overview-dashboard {
   display: grid;
-  gap: var(--bh-space-4);
+  gap: var(--bh-space-6);
 }
 
 .bh-overview-meta-strip {
@@ -491,8 +491,8 @@
 .bh-overview-content-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--bh-space-5);
-  padding-top: var(--bh-space-4);
+  gap: var(--bh-space-6);
+  padding-top: var(--bh-space-2);
 }
 
 .bh-overview-panel {
@@ -580,7 +580,7 @@
 
 .bh-overview-primary-button {
   display: inline-flex;
-  min-height: 34px;
+  min-height: var(--bh-interactive-min-size);
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
@@ -2537,6 +2537,93 @@ button.bh-file-tree-row:focus-visible {
   gap: var(--bh-space-2);
 }
 
+.bh-repository-setup {
+  display: grid;
+  max-width: 720px;
+  gap: var(--bh-space-4);
+  border: 1px solid var(--bh-color-border);
+  border-radius: var(--bh-radius-md);
+  padding: var(--bh-space-4);
+  background: var(--bh-color-surface);
+}
+
+.bh-repository-setup-copy {
+  display: grid;
+  grid-template-columns: var(--bh-icon-size-lg) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--bh-space-3);
+  color: var(--bh-color-text-muted);
+}
+
+.bh-repository-setup-copy div {
+  display: grid;
+  min-width: 0;
+  gap: var(--bh-space-1);
+}
+
+.bh-repository-setup-copy h3 {
+  margin: 0;
+  color: var(--bh-color-text-primary);
+  font-size: var(--bh-font-size-title);
+  font-weight: var(--bh-font-weight-section);
+  line-height: var(--bh-line-height-heading);
+}
+
+.bh-repository-setup-copy p {
+  margin: 0;
+  color: var(--bh-color-text-secondary);
+  font-size: var(--bh-font-size-body);
+  line-height: var(--bh-line-height-body);
+}
+
+.bh-repository-command {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) var(--bh-interactive-min-size);
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid var(--bh-color-border);
+  border-radius: var(--bh-radius-sm);
+  background: var(--bh-color-background);
+}
+
+.bh-repository-command code {
+  min-width: 0;
+  overflow: auto;
+  padding: 0 var(--bh-space-3);
+  color: var(--bh-color-text-primary);
+  font-family: var(--bh-font-code);
+  font-size: var(--bh-font-size-code);
+  line-height: var(--bh-interactive-min-size);
+  white-space: nowrap;
+}
+
+.bh-repository-command button {
+  display: inline-flex;
+  width: var(--bh-interactive-min-size);
+  height: var(--bh-interactive-min-size);
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-left: 1px solid var(--bh-color-border);
+  color: var(--bh-color-text-secondary);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--bh-duration-fast) var(--bh-ease-out),
+    color var(--bh-duration-fast) var(--bh-ease-out);
+}
+
+.bh-repository-command button:hover {
+  color: var(--bh-color-text-primary);
+  background: var(--bh-color-surface-hover);
+}
+
+.bh-repository-command button:focus-visible {
+  outline: 2px solid var(--bh-color-primary);
+  outline-offset: -2px;
+}
+
 .bh-repository-browser {
   display: grid;
   grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
@@ -3436,8 +3523,8 @@ button.bh-file-tree-row:focus-visible {
 
 .bh-code-viewer-link {
   display: inline-flex;
-  width: 30px;
-  height: 30px;
+  width: var(--bh-interactive-min-size);
+  height: var(--bh-interactive-min-size);
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
@@ -3496,7 +3583,7 @@ button.bh-file-tree-row:focus-visible {
 .bh-empty-state-button {
   display: inline-flex;
   width: fit-content;
-  min-height: 34px;
+  min-height: var(--bh-interactive-min-size);
   align-items: center;
   justify-content: center;
   border: 1px solid var(--bh-color-border);

@@ -290,9 +290,12 @@ def _project_for_user(db: Session, project_id: UUID, current_user: User) -> Proj
 def _project_summary(
     project: Project,
     *,
+    connected_models: list[str] | tuple[str, ...] = (),
     event_count: int = 0,
     latest_event_at: Any = None,
+    prompt_count: int = 0,
     session_count: int = 0,
+    tracked_files: int = 0,
 ) -> dict[str, Any]:
     return {
         "id": str(project.id),
@@ -301,8 +304,12 @@ def _project_summary(
         "git_remote": project.git_remote,
         "github_url": _normalize_github_url(project.git_remote),
         "default_branch": project.default_branch,
+        "created_at": project.created_at.isoformat(),
+        "connected_models": sorted(connected_models),
         "sessions": int(session_count or 0),
         "events": int(event_count or 0),
+        "prompts": int(prompt_count or 0),
+        "tracked_files": int(tracked_files or 0),
         "latest_event_at": latest_event_at.isoformat() if latest_event_at else None,
         "updated_at": project.updated_at.isoformat(),
     }
@@ -320,11 +327,35 @@ def _project_summary_with_counts(db: Session, project: Project) -> dict[str, Any
     latest_event_at = db.scalar(
         select(func.max(Event.created_at)).where(Event.project_id == project.id)
     )
+    prompt_count = db.scalar(
+        select(func.count())
+        .select_from(Event)
+        .where(Event.project_id == project.id, Event.event_type == "PromptSubmitted")
+    ) or 0
+    tracked_files = db.scalar(
+        select(func.count())
+        .select_from(ProjectFile)
+        .where(ProjectFile.project_id == project.id, ProjectFile.status != "deleted")
+    ) or 0
+    sessions = list(
+        db.execute(
+            select(PromptSession.model).where(
+                PromptSession.project_id == project.id
+            )
+        ).all()
+    )
     return _project_summary(
         project,
+        connected_models=[
+            model
+            for (session_model,) in sessions
+            if (model := _model_name(session_model)) is not None
+        ],
         event_count=event_count,
         latest_event_at=latest_event_at,
+        prompt_count=prompt_count,
         session_count=session_count,
+        tracked_files=tracked_files,
     )
 
 
@@ -364,13 +395,39 @@ def list_projects(
         .group_by(Project.id)
         .order_by(desc(func.max(Event.created_at)), desc(Project.updated_at))
     ).all()
+    project_ids = [project.id for project, *_ in rows]
+    prompt_counts = dict(
+        db.execute(
+            select(Event.project_id, func.count(Event.id))
+            .where(Event.project_id.in_(project_ids), Event.event_type == "PromptSubmitted")
+            .group_by(Event.project_id)
+        ).all()
+    )
+    tracked_file_counts = dict(
+        db.execute(
+            select(ProjectFile.project_id, func.count(ProjectFile.id))
+            .where(ProjectFile.project_id.in_(project_ids), ProjectFile.status != "deleted")
+            .group_by(ProjectFile.project_id)
+        ).all()
+    )
+    connected_models: dict[UUID, set[str]] = {project_id: set() for project_id in project_ids}
+    for project_id, model_value in db.execute(
+        select(PromptSession.project_id, PromptSession.model).where(
+            PromptSession.project_id.in_(project_ids)
+        )
+    ).all():
+        if (model := _model_name(model_value)) is not None:
+            connected_models.setdefault(project_id, set()).add(model)
 
     return [
         _project_summary(
             project,
+            connected_models=tuple(connected_models.get(project.id, set())),
             event_count=event_count,
             latest_event_at=latest_event_at,
+            prompt_count=prompt_counts.get(project.id, 0),
             session_count=session_count,
+            tracked_files=tracked_file_counts.get(project.id, 0),
         )
         for project, session_count, event_count, latest_event_at in rows
     ]

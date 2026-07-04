@@ -7,7 +7,17 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from "react";
-import { Activity, BookOpen, ImagePlus, Search, Share2, X } from "lucide-react";
+import {
+  Activity,
+  BookOpen,
+  Check,
+  Copy,
+  GitBranch,
+  ImagePlus,
+  Search,
+  Share2,
+  X,
+} from "lucide-react";
 import { MarkdownContent } from "../MarkdownContent";
 import {
   ActivityCard,
@@ -83,6 +93,8 @@ const projectTabs: ProjectDetailTab[] = [
 function promptTitle(prompt: string) {
   return prompt.split(/\r?\n/)[0]?.trim().replace(/\s+/g, " ") || "Prompt flow";
 }
+
+const githubRemoteCommand = "git remote add origin https://github.com/OWNER/REPO.git";
 
 function shareSelectionTitle(promptCount: number) {
   return promptCount === 1 ? "1 prompt selected" : `${promptCount} prompts selected`;
@@ -2413,6 +2425,8 @@ function FilesPanel({
   data: ProjectDetailData;
   onRepositoryFileSelect?: (path: string) => void;
 }) {
+  const isRepositoryLinked = Boolean(data.project.repositoryUrl);
+
   return (
     <div className="bh-files-layout">
       <section className="bh-files-section" aria-labelledby="tracked-files-title">
@@ -2440,7 +2454,9 @@ function FilesPanel({
               : "Repository tree from GitHub OAuth access."}
           </p>
         </div>
-        {data.repositoryFilesLoading && data.repositoryFiles.length === 0 ? (
+        {!isRepositoryLinked ? (
+          <GitHubRepositorySetupState />
+        ) : data.repositoryFilesLoading && data.repositoryFiles.length === 0 ? (
           <div
             aria-busy="true"
             aria-label="Loading GitHub repository files"
@@ -2501,6 +2517,50 @@ function FilesPanel({
         )}
       </section>
     </div>
+  );
+}
+
+function GitHubRepositorySetupState() {
+  const [hasCopiedCommand, setHasCopiedCommand] = useState(false);
+
+  const copyCommand = async () => {
+    try {
+      await navigator.clipboard.writeText(githubRemoteCommand);
+      setHasCopiedCommand(true);
+      window.setTimeout(() => setHasCopiedCommand(false), 1600);
+    } catch {
+      setHasCopiedCommand(false);
+    }
+  };
+
+  return (
+    <section className="bh-repository-setup" aria-labelledby="github-setup-title">
+      <div className="bh-repository-setup-copy">
+        <GitBranch aria-hidden="true" size={20} strokeWidth={1.5} />
+        <div>
+          <h3 id="github-setup-title">GitHub repository not linked</h3>
+          <p>
+            Add the GitHub remote in this project, then run repository setup again
+            to attach source context.
+          </p>
+        </div>
+      </div>
+      <div className="bh-repository-command" aria-label="GitHub remote command">
+        <code>{githubRemoteCommand}</code>
+        <button
+          aria-label={hasCopiedCommand ? "Copied command" : "Copy command"}
+          onClick={copyCommand}
+          title={hasCopiedCommand ? "Copied" : "Copy command"}
+          type="button"
+        >
+          {hasCopiedCommand ? (
+            <Check aria-hidden="true" size={16} strokeWidth={1.5} />
+          ) : (
+            <Copy aria-hidden="true" size={16} strokeWidth={1.5} />
+          )}
+        </button>
+      </div>
+    </section>
   );
 }
 

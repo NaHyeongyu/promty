@@ -12,11 +12,10 @@ import {
   Bot,
   Check,
   Clock,
+  Copy,
   ExternalLink,
   Folder,
-  GitBranch,
   ImagePlus,
-  Link,
   LogOut,
   Pencil,
   Plus,
@@ -56,15 +55,21 @@ type SidebarItemId = "projects" | "community" | "settings" | "profile";
 type Project = {
   id: string;
   name: string;
+  createdTimestamp: string;
   slug?: string;
   latestTimestamp: string;
   latestUpdatedAt: string;
+  latestActivityLabel: string;
   sessions: number;
   events: number;
   filesChanged: number;
+  prompts: number;
+  trackedFiles: number;
   models: string[];
   githubUrl?: string;
 };
+
+const MOCK_GITHUB_UNLINKED_PROJECT_ID = "mock-github-unlinked-project";
 
 type AuthUser = {
   id: string;
@@ -91,11 +96,17 @@ type ProjectSummary = {
   git_remote: string | null;
   github_url: string | null;
   default_branch: string;
+  created_at: string;
+  connected_models: string[];
   sessions: number;
   events: number;
+  prompts: number;
+  tracked_files: number;
   latest_event_at: string | null;
   updated_at: string;
 };
+
+type ProjectSortMode = "recent" | "added";
 
 type ProjectDetailApiResponse = {
   activities: Array<{
@@ -330,25 +341,6 @@ type PublishedFlowDetailResponse = PublishedFlowSummary & {
   source_session_id: string | null;
   source_start_event_id: string | null;
   start_sequence: number | null;
-};
-
-type GithubRepositoryOption = {
-  id: number | string | null;
-  default_branch: string;
-  description: string | null;
-  full_name: string;
-  html_url: string;
-  name: string;
-  owner: string;
-  private: boolean;
-  updated_at: string | null;
-};
-
-type GithubRepositoriesApiResponse = {
-  available: boolean;
-  message: string | null;
-  repositories: GithubRepositoryOption[];
-  status: string;
 };
 
 type ProjectGithubFilesState = {
@@ -615,6 +607,15 @@ function readUrlNavigationState(): UrlNavigationState {
 
 function buildUrlNavigationSearch(state: UrlNavigationState) {
   const params = new URLSearchParams();
+  const previewMode = new URLSearchParams(window.location.search).get("preview");
+
+  if (
+    previewMode === "empty-projects" ||
+    previewMode === "github-unlinked-project" ||
+    previewMode === "project-loading"
+  ) {
+    params.set("preview", previewMode);
+  }
 
   if (state.activeItem !== "projects") {
     params.set("view", state.activeItem);
@@ -850,6 +851,7 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
   const grouped = new Map<
     string,
     {
+      createdTimestamp: string;
       events: number;
       filesChanged: number;
       githubUrl: string | null;
@@ -857,7 +859,10 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
       models: Set<string>;
       name: string;
       summaryEventCount?: number;
+      summaryPromptCount?: number;
       summarySessionCount?: number;
+      summaryTrackedFiles?: number;
+      prompts: number;
       sessions: Set<string>;
       slug?: string;
     }
@@ -865,14 +870,18 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
 
   for (const summary of summaries) {
     grouped.set(summary.id, {
+      createdTimestamp: summary.created_at,
       events: 0,
       filesChanged: 0,
       githubUrl: normalizeGithubUrl(summary.github_url ?? summary.git_remote),
       latestTimestamp: summary.latest_event_at ?? summary.updated_at,
-      models: new Set<string>(),
+      models: new Set<string>(summary.connected_models ?? []),
       name: summary.name,
       summaryEventCount: summary.events,
+      summaryPromptCount: summary.prompts,
       summarySessionCount: summary.sessions,
+      summaryTrackedFiles: summary.tracked_files,
+      prompts: 0,
       sessions: new Set<string>(),
       slug: summary.slug,
     });
@@ -883,12 +892,14 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
     const current =
       existing ??
       {
+        createdTimestamp: event.timestamp,
         events: 0,
         filesChanged: 0,
         githubUrl: githubUrlFromEvent(event),
         latestTimestamp: event.timestamp,
         models: new Set<string>(),
         name: projectNameFromEvent(event),
+        prompts: 0,
         sessions: new Set<string>(),
       };
 
@@ -903,6 +914,9 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
       const files = event.payload.files;
       current.filesChanged += Array.isArray(files) ? files.length : 1;
     }
+    if (event.event_type === "PromptSubmitted") {
+      current.prompts += 1;
+    }
     if (new Date(event.timestamp) > new Date(current.latestTimestamp)) {
       current.latestTimestamp = event.timestamp;
       current.name = projectNameFromEvent(event);
@@ -914,12 +928,17 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
   return Array.from(grouped, ([id, value]) => ({
     id,
     name: value.name,
+    createdTimestamp: value.createdTimestamp,
     slug: value.slug ?? id,
     latestTimestamp: value.latestTimestamp,
     latestUpdatedAt: formatTimestamp(value.latestTimestamp),
+    latestActivityLabel:
+      formatRelativeTimestamp(value.latestTimestamp) ?? formatTimestamp(value.latestTimestamp),
     sessions: value.summarySessionCount ?? value.sessions.size,
     events: value.summaryEventCount ?? value.events,
     filesChanged: value.filesChanged,
+    prompts: value.summaryPromptCount ?? value.prompts,
+    trackedFiles: value.summaryTrackedFiles ?? value.filesChanged,
     models: Array.from(value.models).sort(),
     githubUrl: value.githubUrl ?? undefined,
   })).sort(
@@ -927,6 +946,157 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
       new Date(right.latestTimestamp).getTime() -
       new Date(left.latestTimestamp).getTime(),
   );
+}
+
+function mockGithubUnlinkedProject(): Project {
+  const timestamp = "2026-07-04T14:18:00Z";
+
+  return {
+    createdTimestamp: "2026-07-01T09:00:00Z",
+    events: 42,
+    filesChanged: 12,
+    id: MOCK_GITHUB_UNLINKED_PROJECT_ID,
+    latestActivityLabel: formatRelativeTimestamp(timestamp) ?? formatTimestamp(timestamp),
+    latestTimestamp: timestamp,
+    latestUpdatedAt: formatTimestamp(timestamp),
+    models: ["gpt-5", "claude-sonnet-4"],
+    name: "Unlinked Repository Preview",
+    prompts: 18,
+    sessions: 4,
+    slug: "unlinked-repository-preview",
+    trackedFiles: 12,
+  };
+}
+
+function isMockGithubUnlinkedProject(projectId: string | null | undefined) {
+  return projectId === MOCK_GITHUB_UNLINKED_PROJECT_ID;
+}
+
+function mockGithubUnlinkedProjectDetail(project: Project): ProjectDetailData {
+  return {
+    activities: [
+      {
+        events: 18,
+        filesChanged: 7,
+        id: "mock-session-1",
+        lastActivity: "Today 2:18 PM",
+        model: "gpt-5",
+        prompts: 8,
+        responses: 8,
+        startedAt: "Today 1:42 PM",
+      },
+      {
+        events: 12,
+        filesChanged: 3,
+        id: "mock-session-2",
+        lastActivity: "Yesterday 5:30 PM",
+        model: "claude-sonnet-4",
+        prompts: 5,
+        responses: 5,
+        startedAt: "Yesterday 5:04 PM",
+      },
+    ],
+    community: {
+      draftFlows: 0,
+      latestFlowAt: null,
+      publishedFlows: 0,
+      recentFlows: [],
+      totalFlows: 0,
+    },
+    files: [
+      {
+        children: [
+          { name: "App.tsx", path: "frontend/src/App.tsx", type: "file" },
+          { name: "project-detail.css", path: "frontend/src/components/project-detail/project-detail.css", type: "file" },
+        ],
+        name: "frontend",
+        type: "folder",
+      },
+      {
+        children: [
+          { name: "projects.py", path: "backend/app/api/projects.py", type: "file" },
+        ],
+        name: "backend",
+        type: "folder",
+      },
+    ],
+    memory: {
+      latestArtifactAt: null,
+      recentArtifacts: [],
+      totalArtifacts: 0,
+    },
+    overview: [
+      {
+        description: "GitHub remote has not been added yet.",
+        title: "Repository URL",
+        value: "Not connected",
+      },
+      {
+        description: "Promty project detail page",
+        href: projectDetailUrl(project.slug ?? project.id),
+        title: "Project URL",
+        value: projectDetailUrl(project.slug ?? project.id),
+      },
+      {
+        title: "Description",
+        value: "Frontend preview data for the GitHub unlinked project state.",
+      },
+      {
+        title: "Default Branch",
+        value: "Not available",
+      },
+      {
+        title: "Visibility",
+        value: "Private",
+      },
+      {
+        title: "AI Models",
+        value: project.models.join(", "),
+      },
+      {
+        title: "Activities",
+        value: formatCompactNumber(project.events),
+      },
+      {
+        title: "Sessions",
+        value: formatCompactNumber(project.sessions),
+      },
+      {
+        title: "Prompts",
+        value: formatCompactNumber(project.prompts),
+      },
+      {
+        description: "No memory yet",
+        title: "Memory Artifacts",
+        value: "0",
+      },
+      {
+        description: formatRelativeTimestamp(project.createdTimestamp) ?? "Not available",
+        title: "Created",
+        value: formatDate(project.createdTimestamp),
+      },
+      {
+        description: project.latestActivityLabel,
+        title: "Last Activity",
+        value: formatDate(project.latestTimestamp),
+      },
+      {
+        description: "No repository",
+        title: "Repository Connected",
+        value: "Not connected",
+      },
+    ],
+    project: {
+      description: "Frontend preview data for the GitHub unlinked project state.",
+      id: project.id,
+      name: project.name,
+      repositoryStatus: "Repository not connected",
+      repositoryUrl: undefined,
+    },
+    promptActivities: [],
+    repositoryFiles: [],
+    repositoryFilesMessage: "This project does not have a GitHub repository remote.",
+  };
 }
 
 function emptyProjectDetailData(project: Project | null): ProjectDetailData {
@@ -1394,97 +1564,56 @@ function LoadingScreen() {
       className="app-shell"
       role="status"
     >
-      <aside className="sidebar" aria-hidden="true">
-        <div className="sidebar-header">
-          <BrandLockup />
-        </div>
-
-        <div className="sidebar-divider" />
-
-        <nav className="sidebar-nav" aria-label="Loading navigation">
-          <div className="sidebar-item sidebar-item-loading">
-            <Folder
-              aria-hidden="true"
-              className="sidebar-icon"
-              size={18}
-              strokeWidth={1.5}
-            />
-            <span>Projects</span>
-          </div>
-          {/* Community navigation is paused for now.
-          <div className="sidebar-item sidebar-item-loading">
-            <Share2
-              aria-hidden="true"
-              className="sidebar-icon"
-              size={18}
-              strokeWidth={1.5}
-            />
-            <span>Community</span>
-          </div>
-          */}
-        </nav>
-
-        <div className="sidebar-spacer" />
-        <div className="sidebar-divider" />
-
-        <div className="sidebar-footer">
-          <div className="sidebar-item sidebar-item-loading">
-            <User
-              aria-hidden="true"
-              className="sidebar-icon"
-              size={18}
-              strokeWidth={1.5}
-            />
-            <span>Profile</span>
-          </div>
-          <div className="sidebar-item sidebar-item-loading">
-            <Settings
-              aria-hidden="true"
-              className="sidebar-icon"
-              size={18}
-              strokeWidth={1.5}
-            />
-            <span>Settings</span>
-          </div>
-        </div>
-      </aside>
+      <LoadingSidebar />
 
       <main className="page">
         <header className="page-header">
           <div>
             <h1>Projects</h1>
           </div>
-          <div className="page-actions">
-            <button className="toolbar-button" disabled type="button">
-              <RefreshCw aria-hidden="true" size={16} strokeWidth={1.5} />
-              <span>Refresh</span>
-            </button>
-            <span className="status-pill">Loading</span>
-          </div>
         </header>
 
-        <section className="projects-section" aria-labelledby="loading-projects-title">
-          <div className="section-header">
-            <div>
-              <h2 id="loading-projects-title">Active projects</h2>
-              <p>Recent AI workspaces and connected repository context.</p>
-            </div>
-          </div>
-
-          <div className="inline-loading-status">
-            <RefreshCw
-              aria-hidden="true"
-              className="loading-spinner"
-              size={16}
-              strokeWidth={1.5}
-            />
-            <span>Loading workspace</span>
-          </div>
-
-          <ProjectGridSkeleton />
+        <section className="projects-section" aria-label="Projects">
+          <ProjectListLoadingState />
         </section>
       </main>
     </div>
+  );
+}
+
+function LoadingSidebar() {
+  return (
+    <aside className="sidebar sidebar-loading" aria-hidden="true">
+      <div className="sidebar-header">
+        <div className="sidebar-loading-brand">
+          <span />
+          <span />
+        </div>
+      </div>
+
+      <div className="sidebar-divider" />
+
+      <nav className="sidebar-nav" aria-label="Loading navigation">
+        <div className="sidebar-loading-item">
+          <span />
+          <span />
+        </div>
+      </nav>
+
+      <div className="sidebar-spacer" />
+      <div className="sidebar-divider" />
+
+      <div className="sidebar-footer">
+        <div className="sidebar-loading-item is-profile">
+          <span />
+          <span />
+        </div>
+        <div className="sidebar-loading-item">
+          <span />
+          <span />
+        </div>
+      </div>
+    </aside>
   );
 }
 
@@ -1516,6 +1645,50 @@ function EmptyState({
   );
 }
 
+function EmptyProjectsState() {
+  return (
+    <section className="empty-projects-state" aria-labelledby="empty-projects-title">
+      <div className="empty-projects-copy">
+        <h2 id="empty-projects-title">No projects yet</h2>
+        <p>Run this from a project directory to link the repository and install local AI tool hooks.</p>
+      </div>
+      <SetupCommandBlock command={setupCommandText()} />
+    </section>
+  );
+}
+
+function ProjectListLoadingState({ delayMs = 500 }: { delayMs?: number }) {
+  const [shouldShow, setShouldShow] = useState(delayMs <= 0);
+
+  useEffect(() => {
+    if (delayMs <= 0) {
+      setShouldShow(true);
+      return;
+    }
+
+    setShouldShow(false);
+    const timer = window.setTimeout(() => {
+      setShouldShow(true);
+    }, delayMs);
+
+    return () => window.clearTimeout(timer);
+  }, [delayMs]);
+
+  if (!shouldShow) {
+    return null;
+  }
+
+  return (
+    <div className="project-list-loading-state">
+      <div className="project-loading-controls" aria-hidden="true">
+        <div className="project-loading-search" />
+        <div className="project-loading-sort" />
+      </div>
+      <ProjectGridSkeleton />
+    </div>
+  );
+}
+
 function ProjectGridSkeleton() {
   return (
     <div
@@ -1524,7 +1697,7 @@ function ProjectGridSkeleton() {
       className="projects-grid project-grid-skeleton"
       role="status"
     >
-      {Array.from({ length: 8 }, (_, index) => (
+      {Array.from({ length: 12 }, (_, index) => (
         <article
           aria-hidden="true"
           className="project-card project-card-skeleton"
@@ -1582,171 +1755,85 @@ function RepositoryOptionsSkeleton() {
   );
 }
 
-function RepositoryConnector({
-  connectGitHubUrl,
-  errorMessage,
-  isLoadingRepositories,
-  isSaving,
-  mode,
-  onClose,
-  onReloadRepositories,
-  onRepositorySearchQueryChange,
-  onRepositoryUrlInputChange,
-  onSelectRepository,
-  onSubmitUrl,
-  repositories,
-  repositoryMessage,
-  repositorySearchQuery,
-  repositoryUrlInput,
-  targetProjectName,
+function setupCommandText() {
+  return `npx @prompthub/cli init --app-url ${window.location.origin} --api-url ${API_URL}`;
+}
+
+function SetupCommandBlock({
+  command,
+  label,
 }: {
-  connectGitHubUrl: string;
-  errorMessage?: string | null;
-  isLoadingRepositories: boolean;
-  isSaving: boolean;
-  mode: "create" | "connect";
-  onClose: () => void;
-  onReloadRepositories: () => void;
-  onRepositorySearchQueryChange: (value: string) => void;
-  onRepositoryUrlInputChange: (value: string) => void;
-  onSelectRepository: (repository: GithubRepositoryOption) => void;
-  onSubmitUrl: () => void;
-  repositories: GithubRepositoryOption[];
-  repositoryMessage?: string | null;
-  repositorySearchQuery: string;
-  repositoryUrlInput: string;
-  targetProjectName?: string;
+  command: string;
+  label?: string;
 }) {
+  const [hasCopied, setHasCopied] = useState(false);
+  const copyCommand = async () => {
+    await navigator.clipboard.writeText(command);
+    setHasCopied(true);
+    window.setTimeout(() => setHasCopied(false), 1400);
+  };
+
   return (
-    <section
-      aria-labelledby="repository-connector-title"
-      className="repository-connector"
-    >
-      <div className="repository-connector-header">
-        <div>
-          <h2 id="repository-connector-title">Connect Repository</h2>
-          <p>
-            {mode === "create"
-              ? `Create a ${BRAND_NAME} project from a GitHub repository.`
-              : `Connect a GitHub repository to ${targetProjectName ?? "this project"}.`}
-          </p>
-        </div>
+    <div className="setup-command-block">
+      {label ? <span>{label}</span> : null}
+      <div className="setup-command-surface">
+        <pre><code>{command}</code></pre>
         <button
-          aria-label="Close repository connector"
-          className="repository-connector-close"
-          onClick={onClose}
+          aria-label={hasCopied ? "Copied" : "Copy command"}
+          className="setup-command-copy"
+          onClick={copyCommand}
+          title={hasCopied ? "Copied" : "Copy command"}
           type="button"
         >
-          <X aria-hidden="true" size={16} strokeWidth={1.5} />
+          {hasCopied ? (
+            <Check aria-hidden="true" size={16} strokeWidth={1.5} />
+          ) : (
+            <Copy aria-hidden="true" size={16} strokeWidth={1.5} />
+          )}
         </button>
       </div>
+    </div>
+  );
+}
 
-      <form
-        className="repository-url-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSubmitUrl();
-        }}
+function RepositoryConnector({
+  onClose,
+  targetProjectName,
+}: {
+  onClose: () => void;
+  targetProjectName?: string;
+}) {
+  const setupCommand = setupCommandText();
+
+  return (
+    <div className="repository-connector-overlay" role="presentation">
+      <section
+        aria-labelledby="repository-connector-title"
+        aria-modal="true"
+        className="repository-connector"
+        role="dialog"
       >
-        <label htmlFor="repository-url">Repository URL</label>
-        <div className="repository-url-row">
-          <input
-            autoComplete="off"
-            id="repository-url"
-            inputMode="url"
-            onChange={(event) => onRepositoryUrlInputChange(event.target.value)}
-            placeholder="https://github.com/owner/repo"
-            spellCheck={false}
-            type="text"
-            value={repositoryUrlInput}
-          />
-          <button
-            className="empty-state-button"
-            disabled={isSaving || repositoryUrlInput.trim().length === 0}
-            type="submit"
-          >
-            <Link aria-hidden="true" size={16} strokeWidth={1.5} />
-            <span>{isSaving ? "Connecting" : "Connect URL"}</span>
-          </button>
-        </div>
-      </form>
-
-      <div className="repository-picker" aria-label="GitHub repository picker">
-        <div className="repository-picker-toolbar">
-          <div className="repository-search">
-            <Search aria-hidden="true" size={15} strokeWidth={1.5} />
-            <input
-              aria-label="Search GitHub repositories"
-              onChange={(event) => onRepositorySearchQueryChange(event.target.value)}
-              placeholder="Search repositories"
-              type="search"
-              value={repositorySearchQuery}
-            />
+        <div className="repository-connector-header">
+          <div>
+            <h2 id="repository-connector-title">Connect Repository</h2>
+            <p>
+              Run this inside {targetProjectName ?? "your project"} to link the
+              project and install local AI tool hooks.
+            </p>
           </div>
           <button
-            className="toolbar-button"
-            disabled={isLoadingRepositories}
-            onClick={onReloadRepositories}
+            aria-label="Close repository connector"
+            className="repository-connector-close"
+            onClick={onClose}
             type="button"
           >
-            <RefreshCw aria-hidden="true" size={15} strokeWidth={1.5} />
-            <span>{isLoadingRepositories ? "Loading" : "Reload"}</span>
+            <X aria-hidden="true" size={16} strokeWidth={1.5} />
           </button>
         </div>
 
-        {errorMessage ? (
-          <div className="repository-connector-message" data-error="true">
-            {errorMessage}
-          </div>
-        ) : null}
-
-        {repositoryMessage ? (
-          <div className="repository-connector-message">
-            <span>{repositoryMessage}</span>
-            <a href={connectGitHubUrl}>Connect GitHub access</a>
-          </div>
-        ) : null}
-
-        {isLoadingRepositories && repositories.length === 0 ? (
-          <RepositoryOptionsSkeleton />
-        ) : repositories.length > 0 ? (
-          <div
-            aria-busy={isLoadingRepositories || undefined}
-            className="repository-option-list loading-cascade"
-            data-loading={isLoadingRepositories ? "true" : undefined}
-          >
-            {repositories.map((repository) => (
-              <button
-                className="repository-option"
-                disabled={isSaving}
-                key={`${repository.full_name}-${repository.id ?? repository.html_url}`}
-                onClick={() => onSelectRepository(repository)}
-                type="button"
-              >
-                <span className="repository-option-main">
-                  <strong>{repository.full_name}</strong>
-                  <span>{repository.description ?? "No description"}</span>
-                </span>
-                <span className="repository-option-meta">
-                  <span>{repository.private ? "Private" : "Public"}</span>
-                  <span>
-                    <GitBranch aria-hidden="true" size={14} strokeWidth={1.5} />
-                    {repository.default_branch}
-                  </span>
-                  <span>{formatOptionalTimestamp(repository.updated_at, "Unknown")}</span>
-                </span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="repository-connector-message">
-            {repositorySearchQuery.trim()
-              ? "No repositories match this search."
-              : "No repositories are available from GitHub yet."}
-          </div>
-        )}
-      </div>
-    </section>
+        <SetupCommandBlock command={setupCommand} label="Project terminal" />
+      </section>
+    </div>
   );
 }
 
@@ -2444,51 +2531,59 @@ function WorkspaceApp() {
   const [isRepositoryConnectorOpen, setIsRepositoryConnectorOpen] = useState(false);
   const [repositoryConnectorProjectId, setRepositoryConnectorProjectId] =
     useState<string | null>(null);
-  const [repositoryUrlInput, setRepositoryUrlInput] = useState("");
-  const [repositorySearchQuery, setRepositorySearchQuery] = useState("");
-  const [githubRepositoryOptions, setGithubRepositoryOptions] = useState<
-    GithubRepositoryOption[]
-  >([]);
-  const [githubRepositoriesMessage, setGithubRepositoriesMessage] =
-    useState<string | null>(null);
-  const [githubRepositoriesError, setGithubRepositoriesError] = useState<string | null>(
-    null,
-  );
-  const [repositoryConnectorError, setRepositoryConnectorError] = useState<
-    string | null
-  >(null);
-  const [isGithubRepositoriesLoading, setIsGithubRepositoriesLoading] =
-    useState(false);
-  const [isRepositorySaving, setIsRepositorySaving] = useState(false);
+  const [projectSearchQuery, setProjectSearchQuery] = useState("");
+  const [projectSortMode, setProjectSortMode] = useState<ProjectSortMode>("recent");
   const projects = useMemo(
     () => projectsFromEvents(events, projectSummaries),
     [events, projectSummaries],
   );
+  const previewMode = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("preview");
+  }, []);
+  const previewEmptyProjects = previewMode === "empty-projects";
+  const previewGithubUnlinkedProject = previewMode === "github-unlinked-project";
+  const previewProjectLoading = previewMode === "project-loading";
+  const projectCatalog = useMemo(() => {
+    if (!previewGithubUnlinkedProject) {
+      return projects;
+    }
+
+    const mockProject = mockGithubUnlinkedProject();
+    return [
+      mockProject,
+      ...projects.filter((project) => project.id !== mockProject.id),
+    ];
+  }, [previewGithubUnlinkedProject, projects]);
+  const displayProjects = previewEmptyProjects ? [] : projectCatalog;
+  const visibleProjects = useMemo(() => {
+    const query = projectSearchQuery.trim().toLowerCase();
+    const filteredProjects = query
+      ? displayProjects.filter((project) => project.name.toLowerCase().includes(query))
+      : displayProjects;
+
+    return [...filteredProjects].sort((left, right) => {
+      const leftTimestamp =
+        projectSortMode === "added" ? left.createdTimestamp : left.latestTimestamp;
+      const rightTimestamp =
+        projectSortMode === "added" ? right.createdTimestamp : right.latestTimestamp;
+      return new Date(rightTimestamp).getTime() - new Date(leftTimestamp).getTime();
+    });
+  }, [displayProjects, projectSearchQuery, projectSortMode]);
   const projectHeaderOptions = useMemo<ProjectHeaderProjectOption[]>(
     () =>
-      projects.map((project) => ({
+      projectCatalog.map((project) => ({
         id: project.id,
         latestUpdatedAt: project.latestUpdatedAt,
         name: project.name,
       })),
-    [projects],
+    [projectCatalog],
   );
   const selectedProject =
-    projects.find((project) => project.id === selectedProjectId) ?? null;
+    projectCatalog.find((project) => project.id === selectedProjectId) ?? null;
   const repositoryConnectorProject =
-    projects.find((project) => project.id === repositoryConnectorProjectId) ?? null;
-  const filteredGithubRepositoryOptions = useMemo(() => {
-    const query = repositorySearchQuery.trim().toLowerCase();
-    if (!query) {
-      return githubRepositoryOptions;
-    }
-    return githubRepositoryOptions.filter(
-      (repository) =>
-        repository.full_name.toLowerCase().includes(query) ||
-        repository.name.toLowerCase().includes(query) ||
-        (repository.description?.toLowerCase().includes(query) ?? false),
-    );
-  }, [githubRepositoryOptions, repositorySearchQuery]);
+    projectCatalog.find((project) => project.id === repositoryConnectorProjectId) ??
+    null;
   const activeTitle =
     activeItem === "projects"
       ? "Projects"
@@ -2521,7 +2616,7 @@ function WorkspaceApp() {
     const requestedProject =
       requestedProjectId === null
         ? null
-        : projects.find((project) => project.id === requestedProjectId) ?? null;
+        : projectCatalog.find((project) => project.id === requestedProjectId) ?? null;
     const requestedProjectRouteKey = Object.prototype.hasOwnProperty.call(
       state,
       "selectedProjectRouteKey",
@@ -2709,44 +2804,6 @@ function WorkspaceApp() {
       if (!signal?.aborted) {
         setIsRepositoryFileContentLoading(false);
       }
-    }
-  };
-
-  const loadGithubRepositories = async () => {
-    setIsGithubRepositoriesLoading(true);
-    setGithubRepositoriesError(null);
-    setGithubRepositoriesMessage(null);
-    try {
-      const response = await fetch(`${API_URL}/api/projects/github/repositories`, {
-        credentials: "include",
-      });
-      if (response.status === 401) {
-        setAuthStatus("unauthenticated");
-        setCurrentUser(null);
-        setGithubRepositoryOptions([]);
-        return;
-      }
-      if (!response.ok) {
-        const detail = await response
-          .json()
-          .then((payload) =>
-            typeof payload?.detail === "string" ? payload.detail : null,
-          )
-          .catch(() => null);
-        throw new Error(detail ?? `GitHub repositories request failed with HTTP ${response.status}`);
-      }
-      const payload = (await response.json()) as GithubRepositoriesApiResponse;
-      setGithubRepositoryOptions(payload.repositories);
-      setGithubRepositoriesMessage(payload.available ? null : payload.message);
-    } catch (error) {
-      setGithubRepositoriesError(
-        error instanceof Error
-          ? error.message
-          : "GitHub repositories request failed",
-      );
-      setGithubRepositoryOptions([]);
-    } finally {
-      setIsGithubRepositoriesLoading(false);
     }
   };
 
@@ -3050,82 +3107,12 @@ function WorkspaceApp() {
 
   const openRepositoryConnector = (projectId: string | null = null) => {
     setRepositoryConnectorProjectId(projectId);
-    setRepositoryConnectorError(null);
-    setRepositoryUrlInput("");
-    setRepositorySearchQuery("");
     setIsRepositoryConnectorOpen(true);
-    void loadGithubRepositories();
   };
 
   const closeRepositoryConnector = () => {
     setIsRepositoryConnectorOpen(false);
     setRepositoryConnectorProjectId(null);
-    setRepositoryConnectorError(null);
-    setRepositoryUrlInput("");
-    setRepositorySearchQuery("");
-  };
-
-  const saveRepositoryConnection = async (githubUrl: string) => {
-    const trimmedUrl = githubUrl.trim();
-    if (!trimmedUrl) {
-      setRepositoryConnectorError("Enter a GitHub repository URL.");
-      return;
-    }
-
-    setIsRepositorySaving(true);
-    setRepositoryConnectorError(null);
-    try {
-      const isProjectUpdate = repositoryConnectorProjectId !== null;
-      const response = await fetch(
-        isProjectUpdate
-          ? `${API_URL}/api/projects/${repositoryConnectorProjectId}/repository`
-          : `${API_URL}/api/projects`,
-        {
-          body: JSON.stringify({ github_url: trimmedUrl }),
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          method: isProjectUpdate ? "PATCH" : "POST",
-        },
-      );
-      if (response.status === 401) {
-        setAuthStatus("unauthenticated");
-        setCurrentUser(null);
-        return;
-      }
-      if (!response.ok) {
-        const detail = await response
-          .json()
-          .then((payload) =>
-            typeof payload?.detail === "string" ? payload.detail : null,
-          )
-          .catch(() => null);
-        throw new Error(detail ?? `Repository connection failed with HTTP ${response.status}`);
-      }
-
-      const project = (await response.json()) as ProjectSummary;
-      closeRepositoryConnector();
-      await loadEvents();
-      navigateWorkspace({
-        activeDetailTab: "files",
-        activeItem: "projects",
-        repositoryFileContentPath: null,
-        selectedProjectId: project.id,
-        selectedProjectRouteKey: project.slug ?? project.id,
-      });
-      setProjectDetail(null);
-      setProjectGithubFiles(null);
-      setRepositoryFileContent(null);
-      setRepositoryFileContentError(null);
-      setRepositoryFileContentPath(null);
-      void loadProjectDetail(project.id, null);
-      void loadProjectGithubFiles(project.id);
-    } catch (error) {
-      setRepositoryConnectorError(
-        error instanceof Error ? error.message : "Repository connection failed",
-      );
-    } finally {
-      setIsRepositorySaving(false);
-    }
   };
 
   const loadSession = async () => {
@@ -3185,12 +3172,6 @@ function WorkspaceApp() {
     setRepositoryFileContentPath(null);
     setIsRepositoryConnectorOpen(false);
     setRepositoryConnectorProjectId(null);
-    setRepositoryConnectorError(null);
-    setRepositoryUrlInput("");
-    setRepositorySearchQuery("");
-    setGithubRepositoryOptions([]);
-    setGithubRepositoriesMessage(null);
-    setGithubRepositoriesError(null);
     setAuthStatus("unauthenticated");
     writeUrlNavigationState(DEFAULT_URL_NAVIGATION_STATE, "replace");
   };
@@ -3240,9 +3221,6 @@ function WorkspaceApp() {
       setRepositoryFileContentPath(nextState.repositoryFileContentPath);
       setIsRepositoryConnectorOpen(false);
       setRepositoryConnectorProjectId(null);
-      setRepositoryConnectorError(null);
-      setRepositoryUrlInput("");
-      setRepositorySearchQuery("");
     };
 
     window.addEventListener("popstate", handlePopState);
@@ -3255,7 +3233,7 @@ function WorkspaceApp() {
     }
 
     if (!selectedProjectId && selectedProjectRouteKey) {
-      const resolvedProject = projects.find((project) =>
+      const resolvedProject = projectCatalog.find((project) =>
         projectMatchesRouteKey(project, selectedProjectRouteKey),
       );
 
@@ -3288,9 +3266,9 @@ function WorkspaceApp() {
     }
 
     const resolvedProject =
-      projects.find((project) => project.id === selectedProjectId) ??
+      projectCatalog.find((project) => project.id === selectedProjectId) ??
       (selectedProjectRouteKey
-        ? projects.find((project) =>
+        ? projectCatalog.find((project) =>
             projectMatchesRouteKey(project, selectedProjectRouteKey),
           )
         : null);
@@ -3322,7 +3300,13 @@ function WorkspaceApp() {
         "replace",
       );
     }
-  }, [activeItem, hasLoadedWorkspaceData, projects, selectedProjectId, selectedProjectRouteKey]);
+  }, [
+    activeItem,
+    hasLoadedWorkspaceData,
+    projectCatalog,
+    selectedProjectId,
+    selectedProjectRouteKey,
+  ]);
 
   useEffect(() => {
     if (activeItem !== "projects" || (!selectedProjectId && !selectedProjectRouteKey)) {
@@ -3352,6 +3336,19 @@ function WorkspaceApp() {
       return;
     }
 
+    if (isMockGithubUnlinkedProject(selectedProjectId) && selectedProject) {
+      setProjectDetail(mockGithubUnlinkedProjectDetail(selectedProject));
+      setProjectDetailError(null);
+      setProjectGithubFiles(null);
+      setProjectGithubFilesError(null);
+      setRepositoryFileContent(null);
+      setRepositoryFileContentError(null);
+      setIsProjectDetailLoading(false);
+      setIsProjectGithubFilesLoading(false);
+      setIsRepositoryFileContentLoading(false);
+      return;
+    }
+
     const detailController = new AbortController();
     const githubFilesController = new AbortController();
     setProjectDetail(null);
@@ -3364,7 +3361,7 @@ function WorkspaceApp() {
       detailController.abort();
       githubFilesController.abort();
     };
-  }, [activeItem, selectedProjectId, selectedProjectRouteKey]);
+  }, [activeItem, selectedProject, selectedProjectId, selectedProjectRouteKey]);
 
   useEffect(() => {
     if (
@@ -3508,25 +3505,7 @@ function WorkspaceApp() {
         };
   const repositoryConnector = isRepositoryConnectorOpen ? (
     <RepositoryConnector
-      connectGitHubUrl={githubRepositoryConnectUrl()}
-      errorMessage={repositoryConnectorError ?? githubRepositoriesError}
-      isLoadingRepositories={isGithubRepositoriesLoading}
-      isSaving={isRepositorySaving}
-      mode={repositoryConnectorProjectId ? "connect" : "create"}
       onClose={closeRepositoryConnector}
-      onReloadRepositories={loadGithubRepositories}
-      onRepositorySearchQueryChange={setRepositorySearchQuery}
-      onRepositoryUrlInputChange={setRepositoryUrlInput}
-      onSelectRepository={(repository) => {
-        void saveRepositoryConnection(repository.html_url);
-      }}
-      onSubmitUrl={() => {
-        void saveRepositoryConnection(repositoryUrlInput);
-      }}
-      repositories={filteredGithubRepositoryOptions}
-      repositoryMessage={githubRepositoriesMessage}
-      repositorySearchQuery={repositorySearchQuery}
-      repositoryUrlInput={repositoryUrlInput}
       targetProjectName={repositoryConnectorProject?.name}
     />
   ) : null;
@@ -3688,20 +3667,6 @@ function WorkspaceApp() {
                   />
                   <span>Connect Repository</span>
                 </button>
-                <button
-                  className="toolbar-button"
-                  disabled={isEventsLoading}
-                  onClick={loadEvents}
-                  type="button"
-                >
-                  <RefreshCw
-                    aria-hidden="true"
-                    size={16}
-                    strokeWidth={1.5}
-                  />
-                  <span>{isEventsLoading ? "Refreshing" : "Refresh"}</span>
-                </button>
-                <span className="status-pill">{projects.length} projects</span>
               </div>
             </header>
 
@@ -3709,17 +3674,12 @@ function WorkspaceApp() {
 
             <section
               className="projects-section"
-              aria-labelledby="projects-title"
+              aria-label="Projects"
             >
-              <div className="section-header">
-                <div>
-                  <h2 id="projects-title">Active projects</h2>
-                  <p>Recent AI workspaces and connected repository context.</p>
-                </div>
-              </div>
-
-              {isEventsLoading && projects.length === 0 ? (
-                <ProjectGridSkeleton />
+              {previewProjectLoading ? (
+                <ProjectListLoadingState delayMs={0} />
+              ) : isEventsLoading && displayProjects.length === 0 && !previewEmptyProjects ? (
+                <ProjectListLoadingState />
               ) : errorMessage ? (
                 <EmptyState
                   description={errorMessage}
@@ -3741,36 +3701,56 @@ function WorkspaceApp() {
                     <span>{isEventsLoading ? "Retrying" : "Retry"}</span>
                   </button>
                 </EmptyState>
-              ) : projects.length === 0 ? (
-                <EmptyState
-                  description={`${BRAND_NAME} is ready for the first collector upload from this workspace.`}
-                  eyebrow="Waiting for data"
-                  icon={Terminal}
-                  title="No events yet"
-                >
-                  <div className="empty-state-actions">
-                    <button
-                      className="empty-state-button"
-                      onClick={() => openRepositoryConnector(null)}
-                      type="button"
-                    >
-                      <Plus aria-hidden="true" size={16} strokeWidth={1.5} />
-                      <span>Connect Repository</span>
-                    </button>
-                  </div>
-                  <div className="empty-state-steps" aria-hidden="true">
-                    <span>Connect repo</span>
-                    <span>Install collector</span>
-                    <span>First event</span>
-                  </div>
-                </EmptyState>
+              ) : displayProjects.length === 0 ? (
+                <EmptyProjectsState />
               ) : (
-                <div
-                  aria-busy={isEventsLoading || undefined}
-                  className="projects-grid loading-cascade"
-                  data-loading={isEventsLoading ? "true" : undefined}
-                >
-                  {projects.map((project) => (
+                <>
+                  <div className="project-controls">
+                    <label className="project-search-control">
+                      <span className="bh-visually-hidden">Search projects</span>
+                      <Search aria-hidden="true" size={16} strokeWidth={1.5} />
+                      <input
+                        onChange={(event) => setProjectSearchQuery(event.target.value)}
+                        placeholder="Search projects"
+                        type="search"
+                        value={projectSearchQuery}
+                      />
+                    </label>
+
+                    <div className="project-sort-control" aria-label="Sort projects">
+                      <button
+                        aria-pressed={projectSortMode === "recent"}
+                        data-active={projectSortMode === "recent"}
+                        onClick={() => setProjectSortMode("recent")}
+                        type="button"
+                      >
+                        Recent work
+                      </button>
+                      <button
+                        aria-pressed={projectSortMode === "added"}
+                        data-active={projectSortMode === "added"}
+                        onClick={() => setProjectSortMode("added")}
+                        type="button"
+                      >
+                        Added
+                      </button>
+                    </div>
+                  </div>
+
+                  {visibleProjects.length === 0 ? (
+                    <EmptyState
+                      description="Try a different project name."
+                      eyebrow="No matches"
+                      icon={Search}
+                      title="No projects found"
+                    />
+                  ) : (
+                    <div
+                      aria-busy={isEventsLoading || undefined}
+                      className="projects-grid loading-cascade"
+                      data-loading={isEventsLoading ? "true" : undefined}
+                    >
+                      {visibleProjects.map((project) => (
                   <article
                     aria-label={`Open ${project.name} details`}
                     className="project-card"
@@ -3829,9 +3809,12 @@ function WorkspaceApp() {
                             size={15}
                             strokeWidth={1.5}
                           />
-                          Latest update
+                          Last activity
                         </dt>
-                        <dd>{project.latestUpdatedAt}</dd>
+                        <dd>
+                          <strong>{project.latestActivityLabel}</strong>
+                          <span>{project.latestUpdatedAt}</span>
+                        </dd>
                       </div>
                     </dl>
 
@@ -3841,19 +3824,19 @@ function WorkspaceApp() {
                         <dd>{project.sessions}</dd>
                       </div>
                       <div>
-                        <dt>Events</dt>
-                        <dd>{formatCompactNumber(project.events)}</dd>
+                        <dt>Prompts</dt>
+                        <dd>{formatCompactNumber(project.prompts)}</dd>
                       </div>
                       <div>
-                        <dt>Files</dt>
-                        <dd>{formatCompactNumber(project.filesChanged)}</dd>
+                        <dt>Tracked files</dt>
+                        <dd>{formatCompactNumber(project.trackedFiles)}</dd>
                       </div>
                     </dl>
 
-                    <div className="model-group" aria-label="Models used">
+                    <div className="model-group" aria-label="AI models used">
                       <span className="model-group-label">
                         <Bot aria-hidden="true" size={15} strokeWidth={1.5} />
-                        Model
+                        AI model
                       </span>
                       <div className="model-list">
                         {project.models.length > 0 ? project.models.map((model) => (
@@ -3867,8 +3850,10 @@ function WorkspaceApp() {
                     </div>
 
                   </article>
-                  ))}
-                </div>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </section>
           </>
