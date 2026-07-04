@@ -260,7 +260,8 @@ def add_events(
         db.add(event_row)
         db.flush()
         sync_project_resources_from_event(db, event_row, payload)
-        touched_session_ids.add(event.session_id)
+        if event.session_id is not None:
+            touched_session_ids.add(event.session_id)
         if event.event_type == "SessionEnded":
             completed_session_ids.add(event.session_id)
 
