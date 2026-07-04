@@ -219,7 +219,7 @@ def _local_sections_for_session(
             }
         )
     if changed_files:
-        file_sample = ", ".join(file["path"] for file in changed_files[:8])
+        file_sample = ", ".join(file.get("path") for file in changed_files[:8] if file.get("path"))
         sections.append(
             {
                 "summary": _truncate(file_sample, 360),
