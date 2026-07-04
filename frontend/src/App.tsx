@@ -1212,68 +1212,6 @@ function BrandLockup() {
   );
 }
 
-function LoginIdentityPanel({ context }: { context: "web" | "cli" }) {
-  return (
-    <aside className="login-identity" aria-label={`${BRAND_NAME} product identity`}>
-      <div className="login-identity-copy">
-        <div className="login-brand-lockup">
-          <BrandLogo className="is-login" />
-          <div>
-            <span>Developer memory layer</span>
-            <strong>{BRAND_NAME}</strong>
-          </div>
-        </div>
-
-        <h2>
-          {context === "cli"
-            ? "Connect the collector to your local AI workflow."
-            : "Turn AI coding sessions into searchable development history."}
-        </h2>
-        <p>
-          Prompts, responses, changed files, and session context stay linked so
-          the work remains inspectable after the chat is gone.
-        </p>
-      </div>
-
-      <div className="login-signal-panel" aria-label="Captured activity preview">
-        <div className="login-signal-header">
-          <span>Session stream</span>
-          <strong>live</strong>
-        </div>
-
-        <div className="login-event-stream">
-          <div className="login-event-row">
-            <Terminal aria-hidden="true" size={16} strokeWidth={1.5} />
-            <div>
-              <strong>PromptSubmitted</strong>
-              <span>Plan database-backed timeline filtering</span>
-            </div>
-          </div>
-          <div className="login-event-row">
-            <Bot aria-hidden="true" size={16} strokeWidth={1.5} />
-            <div>
-              <strong>ResponseReceived</strong>
-              <span>FastAPI route, React state, validation path</span>
-            </div>
-          </div>
-          <div className="login-event-row">
-            <GitBranch aria-hidden="true" size={16} strokeWidth={1.5} />
-            <div>
-              <strong>FilesChanged</strong>
-              <span>frontend/App.tsx · backend/app/main.py</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="login-signal-footer">
-          <span>session memory</span>
-          <strong>ready</strong>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
 function CliLoginPage() {
   const params = new URLSearchParams(window.location.search);
   const redirectUri = params.get("redirect_uri") ?? "";
@@ -1293,56 +1231,40 @@ function CliLoginPage() {
 
   return (
     <main className="cli-login-shell">
-      <div className="login-stage">
-        <LoginIdentityPanel context="cli" />
+      <section className="cli-login-panel" aria-labelledby="cli-login-title">
+        <div className="cli-login-kicker">
+          <BrandLogo className="is-kicker" />
+          {BRAND_NAME} CLI
+        </div>
 
-        <section className="cli-login-panel" aria-labelledby="cli-login-title">
-          <div className="cli-login-kicker">
-            <BrandLogo className="is-kicker" />
-            {BRAND_NAME} CLI
-          </div>
+        <div className="cli-login-copy">
+          <h1 id="cli-login-title">Connect GitHub</h1>
+          <p>
+            Issue a local collector token for AI session history on this machine.
+          </p>
+        </div>
 
-          <div className="cli-login-copy">
-            <h1 id="cli-login-title">Connect your GitHub account</h1>
-            <p>
-              Issue a local collector token and attach this machine to your
-              development activity stream.
-            </p>
-          </div>
+        <a
+          aria-disabled={!canConnect}
+          className="github-login-button"
+          data-disabled={!canConnect}
+          href={canConnect ? githubLoginUrl : undefined}
+          onClick={(event) => {
+            if (!canConnect) {
+              event.preventDefault();
+            }
+          }}
+        >
+          <GitHubIcon />
+          <span>Continue with GitHub</span>
+          <ArrowRight aria-hidden="true" size={17} strokeWidth={1.5} />
+        </a>
 
-          <div className="login-auth-context" aria-label="Authentication context">
-            <span>
-              <Terminal aria-hidden="true" size={15} strokeWidth={1.5} />
-              Local collector
-            </span>
-            <span>
-              <ShieldCheck aria-hidden="true" size={15} strokeWidth={1.5} />
-              Token handoff
-            </span>
-          </div>
-
-          <a
-            aria-disabled={!canConnect}
-            className="github-login-button"
-            data-disabled={!canConnect}
-            href={canConnect ? githubLoginUrl : undefined}
-            onClick={(event) => {
-              if (!canConnect) {
-                event.preventDefault();
-              }
-            }}
-          >
-            <GitHubIcon />
-            <span>Continue with GitHub</span>
-            <ArrowRight aria-hidden="true" size={17} strokeWidth={1.5} />
-          </a>
-
-          <div className="cli-login-footer">
-            <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.5} />
-            <span>Only a {BRAND_NAME} collector token is returned to your terminal.</span>
-          </div>
-        </section>
-      </div>
+        <div className="cli-login-footer">
+          <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.5} />
+          <span>Only a {BRAND_NAME} collector token is returned to your terminal.</span>
+        </div>
+      </section>
     </main>
   );
 }
@@ -1361,49 +1283,34 @@ function WebLoginPage({
 
   return (
     <main className="cli-login-shell">
-      <div className="login-stage">
-        <LoginIdentityPanel context="web" />
+      <section className="cli-login-panel" aria-labelledby="web-login-title">
+        <div className="cli-login-kicker">
+          <BrandLogo className="is-kicker" />
+          {BRAND_NAME}
+        </div>
 
-        <section className="cli-login-panel" aria-labelledby="web-login-title">
-          <div className="cli-login-kicker">
-            <BrandLogo className="is-kicker" />
-            {BRAND_NAME}
+        <div className="cli-login-copy">
+          <h1 id="web-login-title">Sign in to {BRAND_NAME}</h1>
+          <p>Searchable memory for prompts, responses, and code changes.</p>
+        </div>
+
+        {errorMessage ? (
+          <div className="auth-message" data-error={isError}>
+            {errorMessage}
           </div>
+        ) : null}
 
-          <div className="cli-login-copy">
-            <h1 id="web-login-title">Sign in to {BRAND_NAME}</h1>
-            <p>Open your AI development workspace and inspect recent session history.</p>
-          </div>
+        <a className="github-login-button" href={loginUrl}>
+          <GitHubIcon />
+          <span>Continue with GitHub</span>
+          <ArrowRight aria-hidden="true" size={17} strokeWidth={1.5} />
+        </a>
 
-          <div className="login-auth-context" aria-label="Workspace context">
-            <span>
-              <GitBranch aria-hidden="true" size={15} strokeWidth={1.5} />
-              GitHub projects
-            </span>
-            <span>
-              <Clock aria-hidden="true" size={15} strokeWidth={1.5} />
-              Session timeline
-            </span>
-          </div>
-
-          {errorMessage ? (
-            <div className="auth-message" data-error={isError}>
-              {errorMessage}
-            </div>
-          ) : null}
-
-          <a className="github-login-button" href={loginUrl}>
-            <GitHubIcon />
-            <span>Continue with GitHub</span>
-            <ArrowRight aria-hidden="true" size={17} strokeWidth={1.5} />
-          </a>
-
-          <div className="cli-login-footer">
-            <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.5} />
-            <span>GitHub sign-in keeps project access tied to your workspace.</span>
-          </div>
-        </section>
-      </div>
+        <div className="cli-login-footer">
+          <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.5} />
+          <span>GitHub sign-in keeps project access tied to your workspace.</span>
+        </div>
+      </section>
     </main>
   );
 }
