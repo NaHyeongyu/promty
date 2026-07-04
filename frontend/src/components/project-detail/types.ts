@@ -1,7 +1,7 @@
 import type { ComponentType, ReactNode } from "react";
 import type { LucideProps } from "lucide-react";
 
-export type ProjectDetailTabId = "overview" | "ai-activity" | "files";
+export type ProjectDetailTabId = "overview" | "memory" | "ai-activity" | "files";
 
 export type ProjectDetailTab = {
   id: ProjectDetailTabId;
@@ -68,18 +68,71 @@ export type ProjectCommunityStatus = {
   totalFlows: number;
 };
 
-export type ProjectMemoryArtifact = {
+export type ProjectMemoryArtifactVersion = {
   changedFileCount: number;
+  changedFiles: Array<{
+    additions?: number | null;
+    deletions?: number | null;
+    path: string;
+    status?: string | null;
+  }>;
+  commitSha: string | null;
   createdAt: string | null;
+  endSequence: number | null;
   generator: string | null;
   id: string;
+  memoryScope: string | null;
   model: string | null;
   outcome: string | null;
+  promptCount: number | null;
+  reason: string | null;
+  sections: Array<{
+    summary: string;
+    title: string;
+  }>;
   sessionId: string | null;
+  sliceIndex: number | null;
+  startSequence: number | null;
   summary: string | null;
   tags: string[];
+  technologies: string[];
+  title: string;
+  version: number;
+  windowReason: string | null;
+};
+
+export type ProjectMemoryArtifact = {
+  changedFileCount: number;
+  changedFiles: Array<{
+    additions?: number | null;
+    deletions?: number | null;
+    path: string;
+    status?: string | null;
+  }>;
+  commitSha: string | null;
+  createdAt: string | null;
+  endSequence: number | null;
+  generator: string | null;
+  id: string;
+  memoryScope: string | null;
+  model: string | null;
+  outcome: string | null;
+  promptCount: number | null;
+  reason: string | null;
+  sections: Array<{
+    summary: string;
+    title: string;
+  }>;
+  sessionId: string | null;
+  sliceIndex: number | null;
+  startSequence: number | null;
+  summary: string | null;
+  tags: string[];
+  technologies: string[];
   title: string;
   updatedAt: string | null;
+  versions: ProjectMemoryArtifactVersion[];
+  windowReason: string | null;
 };
 
 export type ProjectMemoryStatus = {

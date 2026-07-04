@@ -5,31 +5,33 @@
 .cli-login-shell {
   display: grid;
   min-height: 100vh;
+  min-height: 100dvh;
   place-items: center;
   padding: var(--bh-space-6);
   color: var(--bh-color-text-primary);
-  background: var(--bh-color-background);
+  background: #050507;
 }
 
 .cli-login-panel {
   display: grid;
-  width: min(100%, 440px);
-  gap: var(--bh-space-5);
-  border: 1px solid var(--bh-card-border);
+  width: min(100%, 420px);
+  gap: var(--bh-space-6);
+  border: 1px solid var(--bh-color-border-hover);
   border-radius: var(--bh-radius-md);
-  padding: var(--bh-space-6);
+  padding: var(--bh-space-8);
   background: var(--bh-card-bg);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 28%);
 }
 
 .cli-login-kicker {
   display: inline-flex;
   align-items: center;
-  gap: var(--bh-space-1);
+  gap: var(--bh-space-2);
   width: fit-content;
-  min-height: 28px;
+  min-height: 32px;
   border: 1px solid var(--bh-color-border);
   border-radius: var(--bh-radius-sm);
-  padding: 0 var(--bh-space-2);
+  padding: 0 var(--bh-space-3) 0 var(--bh-space-2);
   color: var(--bh-color-text-secondary);
   font-family: var(--bh-font-brand);
   font-size: var(--bh-font-size-caption);
@@ -39,12 +41,15 @@
 
 .cli-login-copy {
   display: grid;
-  gap: var(--bh-space-2);
+  gap: var(--bh-space-3);
 }
 
 .cli-login-copy h1 {
   margin: 0;
+  color: var(--bh-color-text-primary);
   font-size: var(--bh-font-size-h2);
+  font-weight: var(--bh-font-weight-page);
+  line-height: var(--bh-line-height-heading);
 }
 
 .cli-login-copy p {
@@ -59,23 +64,24 @@
   align-items: center;
   justify-content: center;
   gap: var(--bh-space-2);
-  min-height: 44px;
-  border: 1px solid var(--bh-color-border-hover);
+  min-height: 46px;
+  border: 1px solid var(--bh-button-primary-bg);
   border-radius: var(--bh-radius-sm);
   padding: 0 var(--bh-space-4);
-  color: var(--bh-color-text-primary);
-  background: var(--bh-color-surface-secondary);
+  color: var(--bh-button-primary-text);
+  background: var(--bh-button-primary-bg);
   font-size: var(--bh-font-size-body);
   font-weight: var(--bh-font-weight-label);
   line-height: var(--bh-line-height-heading);
+  text-decoration: none;
   transition:
     background-color var(--bh-duration-fast) var(--bh-ease-out),
     border-color var(--bh-duration-fast) var(--bh-ease-out);
 }
 
 .github-login-button:hover {
-  border-color: var(--bh-color-text-muted);
-  background: var(--bh-color-surface-hover);
+  border-color: var(--bh-button-primary-bg-hover);
+  background: var(--bh-button-primary-bg-hover);
 }
 
 .github-login-button:focus-visible {
@@ -85,6 +91,8 @@
 
 .github-login-button[data-disabled="true"] {
   color: var(--bh-color-text-disabled);
+  border-color: var(--bh-color-border);
+  background: var(--bh-color-surface-secondary);
   pointer-events: none;
 }
 
@@ -2089,6 +2097,15 @@ button.github-button {
 }
 
 @media (max-width: 760px) {
+  .cli-login-shell {
+    align-items: start;
+    padding: var(--bh-space-4);
+  }
+
+  .cli-login-panel {
+    padding: var(--bh-space-4);
+  }
+
   .app-shell {
     grid-template-columns: 1fr;
   }

@@ -6,7 +6,11 @@ from urllib import error, parse, request
 
 from app.core.config import settings
 
-GEMINI_MEMORY_GENERATOR = "gemini-session-v1"
+GEMINI_MEMORY_GENERATOR = "gemini-memory-slice-v1"
+MAX_CHANGED_FILES = 60
+MAX_EVENT_TIMELINE = 80
+MAX_PROMPTS = 10
+MAX_RESPONSE_SAMPLES = 3
 
 
 class GeminiMemoryGenerationError(RuntimeError):
@@ -20,42 +24,170 @@ def _truncate(value: str | None, limit: int) -> str | None:
     return cleaned if len(cleaned) <= limit else f"{cleaned[: limit - 3].rstrip()}..."
 
 
-def _compact_context(context: dict[str, Any]) -> dict[str, Any]:
+def _compact_files(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "additions": file.get("additions"),
+            "deletions": file.get("deletions"),
+            "path": file.get("path"),
+            "status": file.get("status"),
+        }
+        for file in files[:MAX_CHANGED_FILES]
+        if file.get("path")
+    ]
+
+
+def _compact_commits(commits: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "hash": _truncate(commit.get("hash"), 16),
+            "message": _truncate(commit.get("message"), 180),
+        }
+        for commit in commits[-5:]
+    ]
+
+
+def _select_prompts(prompts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if len(prompts) <= MAX_PROMPTS:
+        selected = prompts
+    else:
+        first_count = 3
+        last_count = MAX_PROMPTS - first_count
+        selected = [*prompts[:first_count], *prompts[-last_count:]]
+
+    return [
+        {
+            "id": prompt["id"],
+            "prompt": _truncate(prompt["prompt"], 700),
+            "sequence": prompt["sequence"],
+        }
+        for prompt in selected
+        if prompt.get("prompt")
+    ]
+
+
+def _compact_responses(responses: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "response": _truncate(response["response"], 320),
+            "sequence": response["sequence"],
+        }
+        for response in responses[-MAX_RESPONSE_SAMPLES:]
+        if response.get("response")
+    ]
+
+
+def _compact_event(event: dict[str, Any]) -> dict[str, Any]:
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    event_type = event.get("event_type")
+    compact_payload: dict[str, Any] = {}
+
+    if event_type == "PromptSubmitted":
+        compact_payload = {
+            "prompt": _truncate(payload.get("prompt"), 220),
+            "turn_id": payload.get("turn_id"),
+        }
+    elif event_type == "ResponseReceived":
+        compact_payload = {
+            "success": payload.get("success"),
+            "turn_id": payload.get("turn_id"),
+        }
+    elif event_type == "FilesChanged":
+        files = payload.get("files") if isinstance(payload.get("files"), list) else []
+        compact_payload = {
+            "file_count": len(files),
+            "files": files[:8],
+        }
+    elif event_type == "CommitCreated":
+        compact_payload = {
+            "hash": _truncate(payload.get("hash"), 16),
+            "message": _truncate(payload.get("message"), 180),
+        }
+
     return {
-        "changed_files": context["changed_files"][:80],
-        "commits": context["commits"][-5:],
+        "event_type": event_type,
+        "payload": compact_payload,
+        "sequence": event.get("sequence"),
+        "timestamp": event.get("timestamp"),
+    }
+
+
+def _response_success_count(events: list[dict[str, Any]]) -> int:
+    return sum(
+        1
+        for event in events
+        if event.get("event_type") == "ResponseReceived"
+        and isinstance(event.get("payload"), dict)
+        and event["payload"].get("success") is True
+    )
+
+
+def _evidence_bullets(context: dict[str, Any]) -> list[str]:
+    changed_files = context["changed_files"]
+    commits = context["commits"]
+    prompts = context["prompt_events"]
+    responses = context["responses"]
+    events = context["events"]
+
+    bullets = [
+        (
+            f"{context['project_name']} session captured {context['event_count']} events, "
+            f"{len(prompts)} prompts, {len(responses)} AI responses, and "
+            f"{len(changed_files)} changed files."
+        )
+    ]
+    if prompts:
+        bullets.append(f"Initial user intent: {_truncate(prompts[0].get('prompt'), 260)}")
+    if len(prompts) > 1:
+        bullets.append(f"Latest user request: {_truncate(prompts[-1].get('prompt'), 260)}")
+    if commits:
+        latest_commit = commits[-1]
+        bullets.append(
+            "Latest commit: "
+            f"{_truncate(latest_commit.get('message') or latest_commit.get('hash'), 220)}"
+        )
+    if changed_files:
+        sample_paths = ", ".join(
+            file["path"] for file in changed_files[:12] if isinstance(file.get("path"), str)
+        )
+        bullets.append(f"Changed file sample: {sample_paths}")
+    success_count = _response_success_count(events)
+    if success_count:
+        bullets.append(f"{success_count} AI responses reported success.")
+    return [bullet for bullet in bullets if bullet and not bullet.endswith("None")]
+
+
+def _compact_context(context: dict[str, Any]) -> dict[str, Any]:
+    prompts = context["prompt_events"]
+    changed_files = context["changed_files"]
+    commits = context["commits"]
+    responses = context["responses"]
+    events = context["events"]
+
+    return {
+        "changed_file_count": len(changed_files),
+        "changed_files": _compact_files(changed_files),
+        "commit_count": len(commits),
+        "commits": _compact_commits(commits),
         "event_count": context["event_count"],
-        "events": [
-            {
-                "event_type": event["event_type"],
-                "payload": event["payload"],
-                "sequence": event["sequence"],
-                "timestamp": event["timestamp"],
-            }
-            for event in context["events"][-120:]
-        ],
-        "model": context["model"],
-        "project_name": context["project_name"],
-        "prompt_count": len(context["prompt_events"]),
-        "prompts": [
-            {
-                "id": prompt["id"],
-                "prompt": _truncate(prompt["prompt"], 1800),
-                "sequence": prompt["sequence"],
-            }
-            for prompt in context["prompt_events"][-30:]
-        ],
+        "event_timeline": [_compact_event(event) for event in events[-MAX_EVENT_TIMELINE:]],
+        "evidence_bullets": _evidence_bullets(context),
+        "omitted": {
+            "changed_files": max(len(changed_files) - MAX_CHANGED_FILES, 0),
+            "events": max(len(events) - MAX_EVENT_TIMELINE, 0),
+            "prompts": max(len(prompts) - MAX_PROMPTS, 0),
+            "responses": max(len(responses) - MAX_RESPONSE_SAMPLES, 0),
+        },
+        "prompts": _select_prompts(prompts),
         "response_count": context["response_count"],
-        "responses": [
-            {
-                "response": _truncate(response["response"], 1400),
-                "sequence": response["sequence"],
-            }
-            for response in context["responses"][-20:]
-            if response["response"]
-        ],
-        "session_id": context["session_id"],
-        "tool": context["tool"],
+        "response_samples": _compact_responses(responses),
+        "session": {
+            "id": context["session_id"],
+            "model": context["model"],
+            "project_name": context["project_name"],
+            "tool": context["tool"],
+        },
+        "window": context.get("slice") if isinstance(context.get("slice"), dict) else None,
     }
 
 
@@ -63,13 +195,15 @@ def _build_prompt(context: dict[str, Any], fallback_payload: dict[str, Any]) -> 
     compact_context = _compact_context(context)
     return "\n".join(
         [
-            "You are generating Promty project memory from one completed AI development session.",
+            "You are generating Promty project memory from a bounded AI development slice.",
+            "The slice may cover only part of a longer session.",
             "Return strict JSON only. Do not include markdown fences.",
             "",
             "Goal:",
             "- Explain what meaningful development task happened.",
             "- Capture why it happened, how it changed, and the outcome.",
-            "- Ground the summary only in the provided evidence.",
+            "- Ground the summary only in the compact evidence.",
+            "- Do not invent details omitted from the evidence.",
             "",
             "JSON shape:",
             json.dumps(
@@ -78,6 +212,13 @@ def _build_prompt(context: dict[str, Any], fallback_payload: dict[str, Any]) -> 
                     "summary": "1-2 sentence factual summary",
                     "reason": "why the change was requested or necessary",
                     "outcome": "what was completed or left unresolved",
+                    "technologies": ["frameworks, languages, or tools involved"],
+                    "sections": [
+                        {
+                            "title": "short section title",
+                            "summary": "specific user-facing detail",
+                        }
+                    ],
                     "tags": ["short", "lowercase", "tags"],
                 },
                 indent=2,
@@ -88,7 +229,9 @@ def _build_prompt(context: dict[str, Any], fallback_payload: dict[str, Any]) -> 
                 {
                     "outcome": fallback_payload["outcome"],
                     "reason": fallback_payload["reason"],
+                    "sections": fallback_payload["sections"],
                     "summary": fallback_payload["summary"],
+                    "technologies": fallback_payload["technologies"],
                     "title": fallback_payload["title"],
                 },
                 ensure_ascii=False,
@@ -133,6 +276,35 @@ def _clean_tags(value: Any, fallback_tags: list[str]) -> list[str]:
         if isinstance(tag, str) and tag.strip()
     ]
     return sorted(set(tags))[:12] or fallback_tags
+
+
+def _clean_technologies(value: Any, fallback_technologies: list[str]) -> list[str]:
+    if not isinstance(value, list):
+        return fallback_technologies
+    technologies = [
+        technology.strip()
+        for technology in value
+        if isinstance(technology, str) and technology.strip()
+    ]
+    deduped = list(dict.fromkeys(technologies))
+    return deduped[:12] or fallback_technologies
+
+
+def _clean_sections(value: Any, fallback_sections: list[dict[str, str]]) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return fallback_sections
+
+    sections: list[dict[str, str]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        title = _truncate(item.get("title"), 80)
+        summary = _truncate(item.get("summary"), 360)
+        if not title or not summary:
+            continue
+        sections.append({"summary": summary, "title": title})
+
+    return sections[:6] or fallback_sections
 
 
 def generate_gemini_memory_payload(
@@ -192,7 +364,12 @@ def generate_gemini_memory_payload(
         "generator": GEMINI_MEMORY_GENERATOR,
         "outcome": _truncate(generated.get("outcome"), 1000) or fallback_payload["outcome"],
         "reason": _truncate(generated.get("reason"), 1200) or fallback_payload["reason"],
+        "sections": _clean_sections(generated.get("sections"), fallback_payload["sections"]),
         "summary": _truncate(generated.get("summary"), 800) or fallback_payload["summary"],
         "tags": _clean_tags(generated.get("tags"), fallback_payload["tags"]),
+        "technologies": _clean_technologies(
+            generated.get("technologies"),
+            fallback_payload["technologies"],
+        ),
         "title": _truncate(generated.get("title"), 180) or fallback_payload["title"],
     }

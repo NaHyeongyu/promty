@@ -130,16 +130,67 @@ type ProjectDetailApiResponse = {
     latest_artifact_at: string | null;
     recent_artifacts: Array<{
       changed_file_count: number;
+      changed_files?: Array<{
+        additions?: number | null;
+        deletions?: number | null;
+        path: string;
+        status?: string | null;
+      }>;
+      commit_sha?: string | null;
       created_at: string | null;
+      end_sequence?: number | null;
       generator: string | null;
       id: string;
+      memory_scope?: string | null;
       model: string | null;
       outcome: string | null;
+      prompt_count?: number | null;
+      reason?: string | null;
+      sections?: Array<{
+        summary: string;
+        title: string;
+      }>;
       session_id: string | null;
+      slice_index?: number | null;
+      start_sequence?: number | null;
       summary: string | null;
       tags: string[];
+      technologies?: string[];
       title: string;
       updated_at: string | null;
+      window_reason?: string | null;
+      versions?: Array<{
+        changed_file_count: number;
+        changed_files?: Array<{
+          additions?: number | null;
+          deletions?: number | null;
+          path: string;
+          status?: string | null;
+        }>;
+        commit_sha?: string | null;
+        created_at: string | null;
+        end_sequence?: number | null;
+        generator: string | null;
+        id: string;
+        memory_scope?: string | null;
+        model: string | null;
+        outcome: string | null;
+        prompt_count?: number | null;
+        reason?: string | null;
+        sections?: Array<{
+          summary: string;
+          title: string;
+        }>;
+        session_id: string | null;
+        slice_index?: number | null;
+        start_sequence?: number | null;
+        summary: string | null;
+        tags: string[];
+        technologies?: string[];
+        title: string;
+        version: number;
+        window_reason?: string | null;
+      }>;
     }>;
     total_artifacts: number;
   };
@@ -342,6 +393,7 @@ const DEFAULT_URL_NAVIGATION_STATE: UrlNavigationState = {
 const ACTIVITY_VIEW_IDS = new Set<ActivityViewId>(["prompts", "sessions"]);
 const PROJECT_DETAIL_TAB_IDS = new Set<ProjectDetailTabId>([
   "overview",
+  "memory",
   "ai-activity",
   "files",
 ]);
@@ -1007,20 +1059,57 @@ function projectDetailDataFromApi(
         : null,
       recentArtifacts: (memory?.recent_artifacts ?? []).map((artifact) => ({
         changedFileCount: artifact.changed_file_count,
+        changedFiles: artifact.changed_files ?? [],
+        commitSha: artifact.commit_sha ?? null,
         createdAt: artifact.created_at
           ? formatOptionalTimestamp(artifact.created_at, "Unknown")
           : null,
+        endSequence: artifact.end_sequence ?? null,
         generator: artifact.generator,
         id: artifact.id,
+        memoryScope: artifact.memory_scope ?? null,
         model: artifact.model,
         outcome: artifact.outcome,
+        promptCount: artifact.prompt_count ?? null,
+        reason: artifact.reason ?? null,
+        sections: artifact.sections ?? [],
         sessionId: artifact.session_id,
+        sliceIndex: artifact.slice_index ?? null,
+        startSequence: artifact.start_sequence ?? null,
         summary: artifact.summary,
         tags: artifact.tags,
+        technologies: artifact.technologies ?? [],
         title: artifact.title,
         updatedAt: artifact.updated_at
           ? formatOptionalTimestamp(artifact.updated_at, "Unknown")
           : null,
+        windowReason: artifact.window_reason ?? null,
+        versions: (artifact.versions ?? []).map((version) => ({
+          changedFileCount: version.changed_file_count,
+          changedFiles: version.changed_files ?? [],
+          commitSha: version.commit_sha ?? null,
+          createdAt: version.created_at
+            ? formatOptionalTimestamp(version.created_at, "Unknown")
+            : null,
+          endSequence: version.end_sequence ?? null,
+          generator: version.generator,
+          id: version.id,
+          memoryScope: version.memory_scope ?? null,
+          model: version.model,
+          outcome: version.outcome,
+          promptCount: version.prompt_count ?? null,
+          reason: version.reason ?? null,
+          sections: version.sections ?? [],
+          sessionId: version.session_id,
+          sliceIndex: version.slice_index ?? null,
+          startSequence: version.start_sequence ?? null,
+          summary: version.summary,
+          tags: version.tags,
+          technologies: version.technologies ?? [],
+          title: version.title,
+          version: version.version,
+          windowReason: version.window_reason ?? null,
+        })),
       })),
       totalArtifacts: memory?.total_artifacts ?? 0,
     },
@@ -1219,10 +1308,9 @@ function CliLoginPage() {
         </div>
 
         <div className="cli-login-copy">
-          <h1 id="cli-login-title">Connect your GitHub account</h1>
+          <h1 id="cli-login-title">Connect GitHub</h1>
           <p>
-            {BRAND_NAME} uses GitHub sign-in to issue a local collector token for
-            this machine.
+            Issue a local collector token for AI session history on this machine.
           </p>
         </div>
 
@@ -1272,8 +1360,8 @@ function WebLoginPage({
         </div>
 
         <div className="cli-login-copy">
-          <h1 id="web-login-title">Sign in with GitHub</h1>
-          <p>Open your {BRAND_NAME} workspace and recent AI development activity.</p>
+          <h1 id="web-login-title">Sign in to {BRAND_NAME}</h1>
+          <p>Searchable memory for prompts, responses, and code changes.</p>
         </div>
 
         {errorMessage ? (
@@ -1287,6 +1375,11 @@ function WebLoginPage({
           <span>Continue with GitHub</span>
           <ArrowRight aria-hidden="true" size={17} strokeWidth={1.5} />
         </a>
+
+        <div className="cli-login-footer">
+          <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.5} />
+          <span>GitHub sign-in keeps project access tied to your workspace.</span>
+        </div>
       </section>
     </main>
   );
@@ -2509,7 +2602,7 @@ function WorkspaceApp() {
     }
 
     const response = await fetch(
-      `${API_URL}/api/projects/${selectedProjectId}/sessions/${sessionId}/complete`,
+      `${API_URL}/api/projects/${selectedProjectId}/sessions/${sessionId}/complete?force=true&regenerate=true`,
       {
         credentials: "include",
         method: "POST",

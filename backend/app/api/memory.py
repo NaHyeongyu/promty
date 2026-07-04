@@ -73,6 +73,7 @@ def complete_project_session(
     project_id: UUID,
     session_id: UUID,
     force: bool = Query(default=True),
+    regenerate: bool = Query(default=False),
     current_user: User = Depends(require_web_user),
     db: DBSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -92,6 +93,7 @@ def complete_project_session(
 
     job = create_and_run_session_memory_job(
         db,
+        force_regenerate=regenerate,
         project_id=project.id,
         reason=completion["reason"],
         session_id=session.id,
@@ -134,4 +136,4 @@ def list_project_artifacts(
 ) -> list[dict[str, Any]]:
     project = _project_for_user(db, project_id, current_user)
     artifacts = list_project_memory_artifacts(db, project_id=project.id, limit=limit)
-    return [serialize_memory_artifact_summary(artifact) for artifact in artifacts]
+    return [serialize_memory_artifact_summary(artifact, db=db) for artifact in artifacts]

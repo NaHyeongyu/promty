@@ -30,6 +30,7 @@ import type {
   ProjectDetailTab,
   ProjectDetailTabId,
   ProjectHeaderProjectOption,
+  ProjectMemoryArtifact,
   PromptActivityItem,
   PromptFlowPublishPayload,
   PromptFlowUpdatePayload,
@@ -74,6 +75,7 @@ const defaultActivityNavigation: ActivityNavigationState = {
 
 const projectTabs: ProjectDetailTab[] = [
   { id: "overview", label: "Overview" },
+  { id: "memory", label: "Memory" },
   { id: "ai-activity", label: "AI Activity" },
   { id: "files", label: "Files" },
 ];
@@ -1236,14 +1238,11 @@ function PromptFlowShareDrawer({
 
 function OverviewPanel({
   data,
-  onGenerateSessionMemory,
+  onOpenMemory,
 }: {
   data: ProjectDetailData;
-  onGenerateSessionMemory?: (sessionId: string) => Promise<void>;
+  onOpenMemory?: () => void;
 }) {
-  const [isGeneratingMemory, setIsGeneratingMemory] = useState(false);
-  const [memoryError, setMemoryError] = useState<string | null>(null);
-
   if (data.overview.length === 0) {
     return (
       <EmptyState
@@ -1267,7 +1266,6 @@ function OverviewPanel({
     (total, activity) => total + activity.filesChanged,
     0,
   );
-  const latestActivity = data.activities[0] ?? null;
   const statisticItems = [
     { label: "Activities", value: overviewItems.get("Activities")?.value ?? "0" },
     { label: "Prompts", value: overviewItems.get("Prompts")?.value ?? "0" },
@@ -1361,34 +1359,18 @@ function OverviewPanel({
         <div className="bh-overview-memory-header">
           <div>
             <h2 id="project-memory-title">Project Memory</h2>
-            <p>Promty turns completed development sessions into searchable decision history.</p>
+            <p>Memory is generated automatically from prompt and time windows.</p>
           </div>
-          <button
-            className="bh-overview-primary-button"
-            disabled={!latestActivity || isGeneratingMemory || !onGenerateSessionMemory}
-            onClick={() => {
-              if (!latestActivity || !onGenerateSessionMemory) {
-                return;
-              }
-              setIsGeneratingMemory(true);
-              setMemoryError(null);
-              void onGenerateSessionMemory(latestActivity.id)
-                .catch((error) => {
-                  setMemoryError(
-                    error instanceof Error
-                      ? error.message
-                      : "Memory generation failed.",
-                  );
-                })
-                .finally(() => setIsGeneratingMemory(false));
-            }}
-            type="button"
-          >
-            {isGeneratingMemory ? "Generating" : "Generate Latest Memory"}
-          </button>
+          {onOpenMemory ? (
+            <button
+              className="bh-overview-primary-button"
+              onClick={onOpenMemory}
+              type="button"
+            >
+              Open Memory
+            </button>
+          ) : null}
         </div>
-
-        {memoryError ? <div className="bh-overview-memory-error">{memoryError}</div> : null}
 
         {data.memory.recentArtifacts.length > 0 ? (
           <div className="bh-overview-memory-list">
@@ -1398,8 +1380,26 @@ function OverviewPanel({
                 {artifact.summary ? <p>{artifact.summary}</p> : null}
                 <span>
                   {artifact.updatedAt ?? artifact.createdAt ?? "Unknown"} ·{" "}
+                  {artifact.promptCount ? `${artifact.promptCount} prompts · ` : ""}
                   {artifact.changedFileCount} files
                 </span>
+                {artifact.technologies.length > 0 ? (
+                  <div className="bh-overview-memory-technologies" aria-label="Technologies">
+                    {artifact.technologies.slice(0, 5).map((technology) => (
+                      <span key={`${artifact.id}-${technology}`}>{technology}</span>
+                    ))}
+                  </div>
+                ) : null}
+                {artifact.sections.length > 0 ? (
+                  <div className="bh-overview-memory-sections">
+                    {artifact.sections.slice(0, 2).map((section) => (
+                      <div key={`${artifact.id}-${section.title}`}>
+                        <strong>{section.title}</strong>
+                        <p>{section.summary}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 {artifact.tags.length > 0 ? (
                   <div className="bh-overview-memory-tags">
                     {artifact.tags.slice(0, 6).map((tag) => (
@@ -1413,11 +1413,413 @@ function OverviewPanel({
         ) : (
           <div className="bh-overview-memory-empty">
             <strong>No memory artifacts yet.</strong>
-            <span>Generate memory from the latest completed session.</span>
+            <span>Artifacts will appear when Promty closes a prompt or time window.</span>
           </div>
         )}
       </section>
     </div>
+  );
+}
+
+function memoryArtifactSearchText(artifact: ProjectMemoryArtifact) {
+  return [
+    artifact.title,
+    artifact.summary,
+    artifact.reason,
+    artifact.outcome,
+    artifact.generator,
+    artifact.model,
+    artifact.commitSha,
+    artifact.memoryScope,
+    artifact.windowReason,
+    ...artifact.tags,
+    ...artifact.technologies,
+    ...artifact.changedFiles.map((file) => file.path),
+    ...artifact.sections.flatMap((section) => [section.title, section.summary]),
+    ...artifact.versions.flatMap((version) => [
+      version.title,
+      version.summary,
+      version.reason,
+      version.outcome,
+      version.generator,
+      version.model,
+      version.commitSha,
+      version.memoryScope,
+      version.windowReason,
+      ...version.tags,
+      ...version.technologies,
+      ...version.changedFiles.map((file) => file.path),
+      ...version.sections.flatMap((section) => [section.title, section.summary]),
+    ]),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function memoryWindowReasonLabel(reason: string | null) {
+  if (reason === "prompt_count") {
+    return "Prompt window";
+  }
+  if (reason === "time_window") {
+    return "Time window";
+  }
+  if (reason === "session_finalized") {
+    return "Session final";
+  }
+  return "Memory";
+}
+
+function memoryWindowLabel(
+  promptCount: number | null,
+  windowReason: string | null,
+  sliceIndex: number | null,
+) {
+  const parts = [];
+  if (sliceIndex) {
+    parts.push(`Slice ${sliceIndex}`);
+  }
+  if (promptCount) {
+    parts.push(`${promptCount} prompts`);
+  }
+  parts.push(memoryWindowReasonLabel(windowReason));
+  return parts.join(" · ");
+}
+
+function MemoryPanel({
+  data,
+  onGenerateSessionMemory,
+}: {
+  data: ProjectDetailData;
+  onGenerateSessionMemory?: (sessionId: string) => Promise<void>;
+}) {
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(
+    data.memory.recentArtifacts[0]?.id ?? null,
+  );
+  const [selectedVersionIds, setSelectedVersionIds] = useState<
+    Record<string, string>
+  >({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isGeneratingMemory, setIsGeneratingMemory] = useState(false);
+  const [memoryError, setMemoryError] = useState<string | null>(null);
+  const latestActivity = data.activities[0] ?? null;
+
+  useEffect(() => {
+    if (
+      selectedArtifactId &&
+      data.memory.recentArtifacts.some((artifact) => artifact.id === selectedArtifactId)
+    ) {
+      return;
+    }
+    setSelectedArtifactId(data.memory.recentArtifacts[0]?.id ?? null);
+  }, [data.memory.recentArtifacts, selectedArtifactId]);
+
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const filteredArtifacts = normalizedSearchQuery
+    ? data.memory.recentArtifacts.filter((artifact) =>
+        memoryArtifactSearchText(artifact).includes(normalizedSearchQuery),
+      )
+    : data.memory.recentArtifacts;
+  const selectedArtifact =
+    filteredArtifacts.find((artifact) => artifact.id === selectedArtifactId) ??
+    filteredArtifacts[0] ??
+    null;
+  const selectedVersion =
+    selectedArtifact?.versions.find(
+      (version) => version.id === selectedVersionIds[selectedArtifact.id],
+    ) ??
+    selectedArtifact?.versions[0] ??
+    null;
+  const memoryStatusText =
+    data.memory.latestArtifactAt
+      ? `Last generated ${data.memory.latestArtifactAt}`
+      : latestActivity
+        ? "Waiting for the next closed prompt window"
+        : "No completed AI sessions captured yet";
+
+  const generateLatestMemory = () => {
+    if (!latestActivity || !onGenerateSessionMemory) {
+      return;
+    }
+    setIsGeneratingMemory(true);
+    setMemoryError(null);
+    void onGenerateSessionMemory(latestActivity.id)
+      .catch((error) => {
+        setMemoryError(
+          error instanceof Error ? error.message : "Memory generation failed.",
+        );
+      })
+      .finally(() => setIsGeneratingMemory(false));
+  };
+
+  const detailChangedFiles =
+    selectedVersion?.changedFiles ?? selectedArtifact?.changedFiles ?? [];
+  const detailCommitSha = selectedVersion?.commitSha ?? selectedArtifact?.commitSha ?? null;
+  const detailGenerator = selectedVersion?.generator ?? selectedArtifact?.generator ?? null;
+  const detailModel = selectedVersion?.model ?? selectedArtifact?.model ?? null;
+  const detailOutcome = selectedVersion?.outcome ?? selectedArtifact?.outcome ?? null;
+  const detailPromptCount =
+    selectedVersion?.promptCount ?? selectedArtifact?.promptCount ?? null;
+  const detailReason = selectedVersion?.reason ?? selectedArtifact?.reason ?? null;
+  const detailSections = selectedVersion?.sections ?? selectedArtifact?.sections ?? [];
+  const detailSessionId = selectedVersion?.sessionId ?? selectedArtifact?.sessionId ?? null;
+  const detailSummary = selectedVersion?.summary ?? selectedArtifact?.summary ?? null;
+  const detailTags = selectedVersion?.tags ?? selectedArtifact?.tags ?? [];
+  const detailTechnologies =
+    selectedVersion?.technologies ?? selectedArtifact?.technologies ?? [];
+  const detailTimestamp =
+    selectedVersion?.createdAt ??
+    selectedArtifact?.updatedAt ??
+    selectedArtifact?.createdAt ??
+    null;
+  const detailTitle = selectedVersion?.title ?? selectedArtifact?.title ?? "";
+  const detailWindowReason =
+    selectedVersion?.windowReason ?? selectedArtifact?.windowReason ?? null;
+  const detailSliceIndex =
+    selectedVersion?.sliceIndex ?? selectedArtifact?.sliceIndex ?? null;
+  const selectedVersionNumber = selectedVersion?.version ?? null;
+
+  return (
+    <section className="bh-memory-workspace" aria-labelledby="project-memory-workspace-title">
+      <header className="bh-memory-toolbar">
+        <div>
+          <h2 id="project-memory-workspace-title">Project Memory</h2>
+          <p>
+            {data.memory.totalArtifacts} artifacts · {memoryStatusText}
+          </p>
+        </div>
+        <div className="bh-memory-toolbar-actions">
+          <span>Automatic by prompt count or time window</span>
+          <button
+            className="bh-overview-primary-button"
+            disabled={!latestActivity || isGeneratingMemory || !onGenerateSessionMemory}
+            onClick={generateLatestMemory}
+            type="button"
+          >
+            {isGeneratingMemory ? "Refreshing" : "Refresh Memory"}
+          </button>
+        </div>
+      </header>
+
+      {memoryError ? <div className="bh-overview-memory-error">{memoryError}</div> : null}
+
+      {data.memory.recentArtifacts.length > 0 ? (
+        <div className="bh-memory-layout">
+          <aside className="bh-memory-sidebar" aria-label="Memory artifacts">
+            <label className="bh-prompt-search">
+              <Search aria-hidden="true" size={15} strokeWidth={1.8} />
+              <input
+                aria-label="Search memory artifacts"
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search memory"
+                type="search"
+                value={searchQuery}
+              />
+            </label>
+
+            <div className="bh-memory-artifact-list">
+              {filteredArtifacts.length > 0 ? (
+                filteredArtifacts.map((artifact) => (
+                  <button
+                    className="bh-memory-artifact-row"
+                    data-selected={artifact.id === selectedArtifact?.id}
+                    key={artifact.id}
+                    onClick={() => setSelectedArtifactId(artifact.id)}
+                    type="button"
+                  >
+                    <strong>{artifact.title}</strong>
+                    {artifact.summary ? <span>{artifact.summary}</span> : null}
+                    <small>
+                      {artifact.updatedAt ?? artifact.createdAt ?? "Unknown"} ·{" "}
+                      {artifact.promptCount ? `${artifact.promptCount} prompts · ` : ""}
+                      {artifact.changedFileCount} files
+                      {artifact.versions[0]?.version
+                        ? ` · v${artifact.versions[0].version}`
+                        : ""}
+                    </small>
+                  </button>
+                ))
+              ) : (
+                <div className="bh-prompt-search-empty">
+                  No memory artifacts match this search.
+                </div>
+              )}
+            </div>
+          </aside>
+
+          {selectedArtifact ? (
+            <article className="bh-memory-detail">
+              <header className="bh-memory-detail-header">
+                <div>
+                  <span>
+                    AI Memory Artifact
+                    {selectedVersionNumber ? ` · v${selectedVersionNumber}` : ""}
+                  </span>
+                  <h3>{detailTitle}</h3>
+                </div>
+                <dl>
+                  <div>
+                    <dt>Generator</dt>
+                    <dd>{detailGenerator ?? "Unknown"}</dd>
+                  </div>
+                  <div>
+                    <dt>Model</dt>
+                    <dd>{detailModel ?? "Unknown"}</dd>
+                  </div>
+                  <div>
+                    <dt>Updated</dt>
+                    <dd>{detailTimestamp ?? "Unknown"}</dd>
+                  </div>
+                </dl>
+              </header>
+
+              {selectedArtifact.versions.length > 0 ? (
+                <section className="bh-memory-detail-section">
+                  <div className="bh-memory-version-heading">
+                    <h4>Version History</h4>
+                    <span>{selectedArtifact.versions.length} saved</span>
+                  </div>
+                  <div className="bh-memory-version-list">
+                    {selectedArtifact.versions.map((version) => (
+                      <button
+                        aria-pressed={version.id === selectedVersion?.id}
+                        className="bh-memory-version-row"
+                        data-current={version.id === selectedArtifact.versions[0]?.id}
+                        data-selected={version.id === selectedVersion?.id}
+                        key={version.id}
+                        onClick={() =>
+                          setSelectedVersionIds((currentVersions) => ({
+                            ...currentVersions,
+                            [selectedArtifact.id]: version.id,
+                          }))
+                        }
+                        type="button"
+                      >
+                        <strong>
+                          v{version.version}
+                          {version.id === selectedArtifact.versions[0]?.id ? (
+                            <span>Current</span>
+                          ) : null}
+                        </strong>
+                        <small>
+                          {version.createdAt ?? "Unknown"} ·{" "}
+                          {version.promptCount ? `${version.promptCount} prompts · ` : ""}
+                          {version.changedFileCount} files
+                        </small>
+                        {version.summary ? <p>{version.summary}</p> : null}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              {detailSummary ? (
+                <section className="bh-memory-detail-section">
+                  <h4>Summary</h4>
+                  <p>{detailSummary}</p>
+                </section>
+              ) : null}
+
+              <div className="bh-memory-detail-grid">
+                {detailReason ? (
+                  <section className="bh-memory-detail-section">
+                    <h4>Why</h4>
+                    <p>{detailReason}</p>
+                  </section>
+                ) : null}
+                {detailOutcome ? (
+                  <section className="bh-memory-detail-section">
+                    <h4>Outcome</h4>
+                    <p>{detailOutcome}</p>
+                  </section>
+                ) : null}
+              </div>
+
+              {detailTechnologies.length > 0 ? (
+                <section className="bh-memory-detail-section">
+                  <h4>Technologies</h4>
+                  <div className="bh-memory-chip-list">
+                    {detailTechnologies.map((technology) => (
+                      <span key={`${selectedArtifact.id}-${technology}`}>
+                        {technology}
+                      </span>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              {detailSections.length > 0 ? (
+                <section className="bh-memory-detail-section">
+                  <h4>Generated Sections</h4>
+                  <div className="bh-memory-section-list">
+                    {detailSections.map((section) => (
+                      <div key={`${selectedArtifact.id}-${section.title}`}>
+                        <strong>{section.title}</strong>
+                        <p>{section.summary}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              {detailChangedFiles.length > 0 ? (
+                <section className="bh-memory-detail-section">
+                  <h4>Changed Files</h4>
+                  <div className="bh-memory-file-list">
+                    {detailChangedFiles.slice(0, 24).map((file) => (
+                      <div key={`${selectedArtifact.id}-${file.path}`}>
+                        <code>{file.path}</code>
+                        <span>{file.status ?? "changed"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              <footer className="bh-memory-source">
+                <span>
+                  {memoryWindowLabel(
+                    detailPromptCount,
+                    detailWindowReason,
+                    detailSliceIndex,
+                  )}
+                </span>
+                <span>Session {detailSessionId ?? "Unknown"}</span>
+                {detailCommitSha ? (
+                  <span>Commit {detailCommitSha.slice(0, 12)}</span>
+                ) : null}
+                {detailTags.length > 0 ? (
+                  <span>{detailTags.slice(0, 6).join(", ")}</span>
+                ) : null}
+              </footer>
+            </article>
+          ) : (
+            <EmptyState
+              description="Try a different search or refresh memory after the latest session completes."
+              icon={BookOpen}
+              title="No memory artifact selected"
+            />
+          )}
+        </div>
+      ) : (
+        <EmptyState
+          description="Promty creates memory automatically when a prompt or time window closes. Use refresh only when testing or retrying generation."
+          icon={BookOpen}
+          title="No memory artifacts yet"
+        >
+          {latestActivity && onGenerateSessionMemory ? (
+            <button
+              className="bh-empty-state-button"
+              disabled={isGeneratingMemory}
+              onClick={generateLatestMemory}
+              type="button"
+            >
+              {isGeneratingMemory ? "Refreshing" : "Refresh Memory"}
+            </button>
+          ) : null}
+        </EmptyState>
+      )}
+    </section>
   );
 }
 
@@ -2163,6 +2565,15 @@ function ProjectPanel({
   if (activeTab === "overview") {
     return (
       <OverviewPanel
+        data={data}
+        onOpenMemory={() => onTabChange("memory")}
+      />
+    );
+  }
+
+  if (activeTab === "memory") {
+    return (
+      <MemoryPanel
         data={data}
         onGenerateSessionMemory={onGenerateSessionMemory}
       />
