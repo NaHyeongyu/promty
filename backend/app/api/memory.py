@@ -5,7 +5,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import settings
@@ -20,14 +19,12 @@ from app.services.memory_artifacts import (
     MEMORY_DRAFT_ARTIFACT_TYPE,
     compile_project_memory,
     complete_session_if_ready,
-    create_and_run_session_memory_job,
     generate_memory_draft_for_session,
     ignore_memory_draft,
     list_project_memory_drafts,
     list_project_memory_artifacts,
     list_project_memory_pending_ranges,
     get_latest_project_memory,
-    serialize_generation_job,
     serialize_memory_artifact,
     serialize_memory_artifact_summary,
     save_memory_draft_as_verified,
@@ -195,34 +192,21 @@ def complete_project_session(
                 "completed_at": None,
                 "reason": completion["reason"],
             },
-            "job": None,
+            "pending_range": None,
+            "status": "session_open",
         }
 
-    job = create_and_run_session_memory_job(
-        db,
-        force_regenerate=regenerate,
-        project_id=project.id,
-        reason=completion["reason"],
-        session_id=session.id,
+    db.commit()
+    pending_range = next(
+        (
+            item
+            for item in list_project_memory_pending_ranges(db, project_id=project.id, limit=100)
+            if item["session_id"] == str(session.id)
+        ),
+        None,
     )
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Memory artifact could not be generated.",
-        ) from exc
-
-    if job.status == "failed":
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=job.error or "Memory artifact generation failed.",
-        )
-
-    artifact = db.get(Artifact, job.artifact_id) if job.artifact_id else None
     return {
-        "artifact": serialize_memory_artifact(artifact) if artifact else None,
+        "artifact": None,
         "completion": {
             "completed": True,
             "completed_at": completion["completed_at"].isoformat()
@@ -230,7 +214,9 @@ def complete_project_session(
             else None,
             "reason": completion["reason"],
         },
-        "job": serialize_generation_job(job),
+        "message": "Session completed. Pending Memory is waiting for batch organization.",
+        "pending_range": pending_range,
+        "status": "pending_memory",
     }
 
 
@@ -271,7 +257,7 @@ def checkpoint_project_session(
         end_sequence=pending_range["end_sequence"],
         force_regenerate=regenerate,
         start_sequence=pending_range["start_sequence"],
-        trigger_reason="manual_checkpoint",
+        trigger_reason="batch_organize",
     )
     db.commit()
     if draft is None:

@@ -17,11 +17,7 @@ from app.services.event_payload_security import (
     decrypt_event_payload,
     encrypt_event_payload,
 )
-from app.services.memory_artifacts import (
-    SESSION_IDLE_COMPLETE_AFTER,
-    generate_due_memory_artifacts_for_session,
-    generate_memory_draft_for_session,
-)
+from app.services.memory_artifacts import generate_due_memory_artifacts_for_session
 from app.services.project_resources import sync_project_resources_from_event
 
 SYSTEM_USER_ID = uuid5(NAMESPACE_DNS, "prompthub.system_user")
@@ -228,30 +224,6 @@ def _ensure_sequence_available(db: DBSession, event: EventCreate) -> None:
         )
 
 
-def _generate_idle_draft_before_event(
-    db: DBSession,
-    session: Session,
-    event: EventCreate,
-) -> None:
-    if event.event_type == "SessionEnded":
-        return
-    latest_event = db.execute(
-        select(Event)
-        .where(Event.project_id == event.project_id, Event.session_id == event.session_id)
-        .order_by(desc(Event.sequence), desc(Event.created_at))
-        .limit(1)
-    ).scalar_one_or_none()
-    if latest_event is None:
-        return
-    if latest_event.created_at > event.timestamp - SESSION_IDLE_COMPLETE_AFTER:
-        return
-    generate_memory_draft_for_session(
-        db,
-        session,
-        trigger_reason="idle_timeout",
-    )
-
-
 def add_events(
     db: DBSession,
     events: list[EventCreate],
@@ -259,7 +231,6 @@ def add_events(
     owner: User | None = None,
 ) -> list[str]:
     event_ids: list[str] = []
-    completed_session_ids: set[UUID] = set()
     touched_session_ids: set[UUID] = set()
 
     for event in events:
@@ -274,7 +245,6 @@ def add_events(
 
         _ensure_sequence_available(db, event)
         session = _ensure_session(db, event, owner)
-        _generate_idle_draft_before_event(db, session, event)
         event_row = Event(
             id=event.id,
             project_id=event.project_id,
@@ -291,8 +261,6 @@ def add_events(
         sync_project_resources_from_event(db, event_row, payload)
         if event.session_id is not None:
             touched_session_ids.add(event.session_id)
-        if event.event_type == "SessionEnded":
-            completed_session_ids.add(event.session_id)
 
         event_ids.append(str(event.id))
 
@@ -300,14 +268,7 @@ def add_events(
         session = db.get(Session, session_id)
         if session is None:
             continue
-        if session_id in completed_session_ids:
-            generate_memory_draft_for_session(
-                db,
-                session,
-                trigger_reason="session_end",
-            )
-        else:
-            generate_due_memory_artifacts_for_session(db, session)
+        generate_due_memory_artifacts_for_session(db, session)
 
     db.commit()
     return event_ids

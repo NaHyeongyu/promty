@@ -48,8 +48,8 @@ PROJECT_MEMORY_ARTIFACT_TYPE = "ProjectMemory"
 LOCAL_MEMORY_GENERATOR = "local-memory-slice-v1"
 MEMORY_WINDOW_STRATEGY = "prompt_window_v1"
 SESSION_IDLE_COMPLETE_AFTER = timedelta(hours=1)
-LONG_PROMPT_AI_PREVIEW_AFTER = 10_000
-LONG_PROMPT_AI_PREVIEW_EDGE = 100
+LONG_TEXT_AI_PREVIEW_AFTER = 10_000
+LONG_TEXT_AI_PREVIEW_EDGE = 100
 REVIEW_STATE_DRAFT = "draft"
 REVIEW_STATE_IGNORED = "ignored"
 REVIEW_STATE_SAVED = "saved"
@@ -104,31 +104,51 @@ def _is_generic_local_memory_summary(value: str | None) -> bool:
     return "prompts and" in value.lower() and "ai responses were captured" in value.lower()
 
 
-def _prompt_ai_text(value: str | None) -> str | None:
-    if value is None:
-        return None
-    if len(value) <= LONG_PROMPT_AI_PREVIEW_AFTER:
-        return value
-    head = value[:LONG_PROMPT_AI_PREVIEW_EDGE]
-    tail = value[-LONG_PROMPT_AI_PREVIEW_EDGE:]
+def _long_text_ai_preview(value: str, *, label: str) -> str:
+    head = value[:LONG_TEXT_AI_PREVIEW_EDGE]
+    tail = value[-LONG_TEXT_AI_PREVIEW_EDGE:]
     return (
-        f"[Long prompt preview: original_size={len(value)} chars]\n"
+        f"[Long {label} preview: original_size={len(value)} chars]\n"
         f"Head: {head}\n"
         f"Tail: {tail}"
     )
 
 
-def _prompt_ai_metadata(value: str | None) -> dict[str, Any]:
-    if value is None or len(value) <= LONG_PROMPT_AI_PREVIEW_AFTER:
+def _ai_text_preview(value: str | None, *, label: str) -> str | None:
+    if value is None:
+        return None
+    if len(value) <= LONG_TEXT_AI_PREVIEW_AFTER:
+        return value
+    return _long_text_ai_preview(value, label=label)
+
+
+def _ai_text_metadata(value: str | None, *, prefix: str) -> dict[str, Any]:
+    if value is None or len(value) <= LONG_TEXT_AI_PREVIEW_AFTER:
         return {
-            "prompt_ai_preview_truncated": False,
-            "prompt_original_size": len(value) if value is not None else None,
+            f"{prefix}_ai_preview_truncated": False,
+            f"{prefix}_original_size": len(value) if value is not None else None,
         }
     return {
-        "prompt_ai_preview_policy": "head_100_tail_100_size",
-        "prompt_ai_preview_truncated": True,
-        "prompt_original_size": len(value),
+        f"{prefix}_ai_preview_policy": "head_100_tail_100_size",
+        f"{prefix}_ai_preview_truncated": True,
+        f"{prefix}_original_size": len(value),
     }
+
+
+def _prompt_ai_text(value: str | None) -> str | None:
+    return _ai_text_preview(value, label="prompt")
+
+
+def _prompt_ai_metadata(value: str | None) -> dict[str, Any]:
+    return _ai_text_metadata(value, prefix="prompt")
+
+
+def _response_ai_text(value: str | None) -> str | None:
+    return _ai_text_preview(value, label="AI output")
+
+
+def _response_ai_metadata(value: str | None) -> dict[str, Any]:
+    return _ai_text_metadata(value, prefix="response")
 
 
 def _payload(event: Event) -> dict[str, Any]:
@@ -187,10 +207,12 @@ def _event_context_payload(event_type: str, payload: dict[str, Any]) -> dict[str
             **_prompt_ai_metadata(prompt),
         }
     if event_type == "ResponseReceived":
+        response = _string_or_none(payload.get("response"))
         return {
-            "response": _truncate(_string_or_none(payload.get("response")) or "", 500),
+            "response": _truncate(_response_ai_text(response) or "", 500),
             "success": payload.get("success"),
             "turn_id": payload.get("turn_id"),
+            **_response_ai_metadata(response),
         }
     if event_type == "FilesChanged":
         return {
@@ -367,7 +389,8 @@ def _build_session_memory_context(
     ]
     responses = [
         {
-            "response": _string_or_none(payload.get("response")),
+            "response": _response_ai_text(_string_or_none(payload.get("response"))),
+            **_response_ai_metadata(_string_or_none(payload.get("response"))),
             "sequence": event.sequence,
             "turn_id": payload.get("turn_id"),
         }
@@ -1063,15 +1086,50 @@ def _section_from_strings(title: str, values: list[str]) -> dict[str, str] | Non
 
 def _sections_from_memory_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
     details = draft.get("details") if isinstance(draft.get("details"), dict) else {}
+    tasks = details.get("tasks") if isinstance(details.get("tasks"), list) else []
+    if not tasks:
+        tasks = details.get("what_happened") if isinstance(details.get("what_happened"), list) else []
+    follow_ups = (
+        details.get("follow_ups") if isinstance(details.get("follow_ups"), list) else []
+    )
+    if not follow_ups:
+        follow_ups = details.get("next_steps") if isinstance(details.get("next_steps"), list) else []
+    open_questions = (
+        [
+            item.get("question")
+            for item in details.get("open_questions", [])
+            if isinstance(item, dict) and isinstance(item.get("question"), str)
+        ]
+        if isinstance(details.get("open_questions"), list)
+        else []
+    )
+    rejected_directions = (
+        [
+            item.get("content")
+            for item in details.get("rejected_directions", [])
+            if isinstance(item, dict) and isinstance(item.get("content"), str)
+        ]
+        if isinstance(details.get("rejected_directions"), list)
+        else []
+    )
     sections: list[dict[str, str]] = []
     for section in (
         _section_from_strings(
-            "Problem",
-            [details.get("problem")] if isinstance(details.get("problem"), str) else [],
+            "Summary",
+            [
+                value
+                for value in (
+                    draft.get("summary"),
+                    details.get("summary"),
+                    details.get("problem"),
+                    details.get("why_started"),
+                )
+                if isinstance(value, str)
+            ],
         ),
         _section_from_strings(
-            "What happened",
-            details.get("what_happened") if isinstance(details.get("what_happened"), list) else [],
+            "Tasks",
+            tasks,
         ),
         _section_from_strings(
             "Decisions",
@@ -1084,33 +1142,13 @@ def _sections_from_memory_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
             else [],
         ),
         _section_from_strings(
-            "Rejected directions",
-            [
-                item.get("content")
-                for item in details.get("rejected_directions", [])
-                if isinstance(item, dict) and isinstance(item.get("content"), str)
-            ]
-            if isinstance(details.get("rejected_directions"), list)
-            else [],
-        ),
-        _section_from_strings(
-            "Open questions",
-            [
-                item.get("question")
-                for item in details.get("open_questions", [])
-                if isinstance(item, dict) and isinstance(item.get("question"), str)
-            ]
-            if isinstance(details.get("open_questions"), list)
-            else [],
-        ),
-        _section_from_strings(
-            "Next steps",
-            details.get("next_steps") if isinstance(details.get("next_steps"), list) else [],
+            "Follow-ups",
+            [*rejected_directions, *follow_ups, *open_questions],
         ),
     ):
         if section is not None:
             sections.append(section)
-    return sections[:6]
+    return sections[:4]
 
 
 def _payload_from_memory_draft(
@@ -1169,60 +1207,40 @@ def _build_memory_draft_payloads_from_context(
     trigger_reason: str,
 ) -> tuple[list[tuple[dict[str, Any], dict[str, Any]]], dict[str, Any]]:
     context = {**context, "trigger_reason": trigger_reason}
-    local_response = _build_local_memory_drafts_response(
-        context,
-        trigger_reason=trigger_reason,
-    )
+    source_chunk_ids = _source_chunk_ids_for_context(context)
+    source_event_ids = _source_event_ids_for_context(context)
     provider = _provider_name(settings.memory_draft_generator)
     if provider not in {"gemini", "openai"}:
-        response = local_response
-        generator = LOCAL_MEMORY_GENERATOR
+        return [], {
+            "fallback_reason": f"{provider}_disabled",
+            "source_chunk_ids": source_chunk_ids,
+            "source_event_ids": source_event_ids,
+        }
+
+    try:
+        response = compile_memory_drafts(context, provider=provider)
+        generator = _generator_for_provider(provider, stage="draft")
         generation_metadata = {
             "draft_generation": response,
-            "draft_generator": LOCAL_MEMORY_GENERATOR,
-            "fallback_reason": f"{provider}_disabled",
+            "draft_generator": generator,
+            **_model_metadata_for_provider(provider),
         }
-    else:
-        try:
-            response = compile_memory_drafts(context, provider=provider)
-            generator = _generator_for_provider(provider, stage="draft")
-            generation_metadata = {
-                "draft_generation": response,
-                "draft_generator": generator,
-                **_model_metadata_for_provider(provider),
-            }
-        except GeminiMemoryGenerationError as exc:
-            response = local_response
-            generator = LOCAL_MEMORY_GENERATOR
-            generation_metadata = {
-                "draft_generation": response,
-                "draft_generator": LOCAL_MEMORY_GENERATOR,
-                "fallback_generator": LOCAL_MEMORY_GENERATOR,
-                "fallback_reason": str(exc),
-                "requested_generator": _generator_for_provider(provider, stage="draft"),
-            }
+    except GeminiMemoryGenerationError as exc:
+        return [], {
+            "fallback_reason": str(exc),
+            "requested_generator": _generator_for_provider(provider, stage="draft"),
+            "source_chunk_ids": source_chunk_ids,
+            "source_event_ids": source_event_ids,
+        }
 
     drafts = response.get("memory_drafts") if isinstance(response.get("memory_drafts"), list) else []
     if not drafts:
-        drafts = local_response["memory_drafts"]
-        response = {
-            **response,
-            "memory_drafts": drafts,
-            "overall_uncertainties": [
-                *(
-                    response.get("overall_uncertainties")
-                    if isinstance(response.get("overall_uncertainties"), list)
-                    else []
-                ),
-                {
-                    "content": "Second-pass generator returned no usable drafts.",
-                    "reason": "Promty used local fallback draft content.",
-                    "source_chunk_ids": _source_chunk_ids_for_context(context),
-                    "source_event_ids": _source_event_ids_for_context(context),
-                },
-            ],
+        return [], {
+            **generation_metadata,
+            "fallback_reason": "Second-pass generator returned no usable drafts.",
+            "source_chunk_ids": source_chunk_ids,
+            "source_event_ids": source_event_ids,
         }
-        generation_metadata = {**generation_metadata, "draft_generation": response}
 
     payloads: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for index, draft in enumerate(drafts, start=1):
@@ -1254,10 +1272,6 @@ def _build_memory_payload(db: DBSession, session: Session) -> tuple[dict[str, An
 
 def _memory_slice_prompt_target() -> int:
     return max(settings.memory_slice_prompt_count, 1)
-
-
-def _memory_slice_max_age() -> timedelta:
-    return timedelta(minutes=max(settings.memory_slice_max_minutes, 1))
 
 
 def _slice_metadata(artifact: Artifact) -> dict[str, Any]:
@@ -1363,15 +1377,6 @@ def _due_memory_window(
             "reason": "session_finalized",
             "selected_prompts": prompts,
             "start_sequence": prompts[0].sequence,
-        }
-
-    if len(prompts) >= 2 and prompts[-1].created_at - prompts[0].created_at >= _memory_slice_max_age():
-        selected_prompts = prompts[:-1]
-        return {
-            "end_sequence": prompts[-1].sequence - 1,
-            "reason": "time_window",
-            "selected_prompts": selected_prompts,
-            "start_sequence": selected_prompts[0].sequence,
         }
 
     return None
@@ -1708,7 +1713,6 @@ def generate_due_memory_artifacts_for_session(
         slice_metadata = {
             "end_prompt_sequence": selected_prompts[-1].sequence,
             "end_sequence": window["end_sequence"],
-            "max_window_minutes": max(settings.memory_slice_max_minutes, 1),
             "memory_strategy": MEMORY_WINDOW_STRATEGY,
             "prompt_count": len(selected_prompts),
             "slice_index": slice_index,
@@ -2323,13 +2327,14 @@ def _local_project_memory_snapshot(
         else "No verified memory has established a detailed current direction yet."
     )
     workflow = [
-        "Raw Events",
-        "Active Buffer",
-        "Internal chunk summary every 20 PromptSubmitted events",
-        "Memory Draft on idle 1 hour, SessionEnded, or manual checkpoint",
-        "User Save/Edit/Ignore",
-        "Verified Memory",
-        "Project Memory",
+        "Raw Events are stored for every captured event.",
+        "Pending Memory accumulates event ranges that have not been organized.",
+        "Prompt count, session, and token thresholds are used only for internal chunking.",
+        "Internal chunk summaries are hidden from users.",
+        "The user batch-organizes Pending Memory into Memory Drafts.",
+        "Memory Drafts use Summary, Tasks, Decisions, and Follow-ups.",
+        "Only Save/Edit-approved drafts become Verified Memory.",
+        "Project Memory uses Verified Memory by default.",
     ]
     important_decisions = [
         {
@@ -2343,9 +2348,11 @@ def _local_project_memory_snapshot(
         "Project Memory uses verified memories by default.",
         "Internal chunk summaries and ignored drafts are not source of truth.",
         "Prompt chunk size is 20 PromptSubmitted events.",
-        "Idle finalization threshold is 1 hour.",
         "Prompts over 10,000 characters are summarized for AI using the first 100 characters, last 100 characters, and size.",
+        "Large outputs follow the same preview policy when sent to AI.",
+        "For large prompts, cause analysis should primarily use the paired AI output.",
         "Commit messages are metadata only and are not summary triggers.",
+        "LLM failure fallback must not be exposed as a user-facing Memory Draft.",
     ]
     body_markdown = "\n\n".join(
         [

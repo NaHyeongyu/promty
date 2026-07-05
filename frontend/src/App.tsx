@@ -265,7 +265,6 @@ type ProjectDetailApiResponse = {
     files_changed_since_yesterday?: number;
     latest_activity_at: string | null;
     last_modified_at: string | null;
-    memory_artifacts_since_yesterday?: number;
     prompts_since_yesterday?: number;
     repository_connected: boolean;
     sessions_since_yesterday?: number;
@@ -1244,15 +1243,6 @@ function mockGithubUnlinkedProjectDetail(project: Project): ProjectDetailData {
         value: "+2 since yesterday",
       },
       {
-        description: "No memory yet",
-        title: "Memory Artifacts",
-        value: "0",
-      },
-      {
-        title: "Memory Added",
-        value: "0 since yesterday",
-      },
-      {
         description: formatRelativeTimestamp(project.createdTimestamp) ?? "Not available",
         title: "Created",
         value: formatDate(project.createdTimestamp),
@@ -1634,18 +1624,6 @@ function projectDetailDataFromApi(
       {
         title: "Files Changed Added",
         value: formatSinceYesterdayDelta(payload.metrics.files_changed_since_yesterday),
-      },
-      {
-        title: "Memory Artifacts",
-        value: formatCompactNumber(memory?.total_artifacts ?? 0),
-        description:
-          formatRelativeTimestamp(memory?.latest_artifact_at) ?? "No memory yet",
-      },
-      {
-        title: "Memory Added",
-        value: formatSinceYesterdayDelta(
-          payload.metrics.memory_artifacts_since_yesterday,
-        ),
       },
       {
         title: "Created",
@@ -3808,86 +3786,75 @@ function WorkspaceApp() {
     }
   };
 
-  const generateSessionMemory = async (sessionId: string) => {
+  const organizePendingMemory = async (sessionIds: string[]) => {
     if (!selectedProjectId) {
-      throw new Error("Select a project before generating memory.");
+      throw new Error("Select a project before organizing Pending Memory.");
     }
-
-    const response = await fetch(
-      `${API_URL}/api/projects/${selectedProjectId}/sessions/${sessionId}/complete?force=true&regenerate=true`,
-      {
-        credentials: "include",
-        method: "POST",
-      },
-    );
-    if (response.status === 401) {
-      setAuthStatus("unauthenticated");
-      setCurrentUser(null);
-      throw new Error("Sign in again before generating memory.");
-    }
-    if (!response.ok) {
-      const detail = await response
-        .json()
-        .then((payload) =>
-          typeof payload?.detail === "string" ? payload.detail : null,
-        )
-        .catch(() => null);
-      throw new Error(detail ?? `Memory request failed with HTTP ${response.status}`);
-    }
-
-    await loadProjectDetail(selectedProjectId, selectedProject);
-  };
-
-  const checkpointSessionMemory = async (sessionId: string) => {
-    if (!selectedProjectId) {
-      throw new Error("Select a project before creating a checkpoint.");
-    }
-
-    const response = await fetch(
-      `${API_URL}/api/projects/${selectedProjectId}/sessions/${sessionId}/checkpoint`,
-      {
-        credentials: "include",
-        method: "POST",
-      },
-    );
-    if (response.status === 401) {
-      setAuthStatus("unauthenticated");
-      setCurrentUser(null);
-      throw new Error("Sign in again before creating a checkpoint.");
-    }
-    if (!response.ok) {
-      const detail = await response
-        .json()
-        .then((payload) =>
-          typeof payload?.detail === "string" ? payload.detail : null,
-        )
-        .catch(() => null);
-      throw new Error(detail ?? `Checkpoint request failed with HTTP ${response.status}`);
-    }
-
-    const payload = (await response.json()) as {
-      draft?: ProjectMemoryArtifactApiResponse | null;
-      message?: string;
-      status?: string;
-    };
-    await loadProjectDetail(selectedProjectId, selectedProject);
-    const draft = payload.draft ? projectMemoryArtifactFromApi(payload.draft) : null;
-    if (!draft) {
+    const uniqueSessionIds = Array.from(new Set(sessionIds.filter(Boolean)));
+    if (uniqueSessionIds.length === 0) {
       return {
-        message: payload.message ?? "No new Memory Draft was generated.",
+        message: "No Pending Memory is ready to organize.",
         status: "no_draft" as const,
       };
     }
-    if (draft.fallbackReason || isGenericMemoryDraftResponse(draft)) {
+
+    let createdCount = 0;
+    let generationFailureCount = 0;
+
+    for (const sessionId of uniqueSessionIds) {
+      const response = await fetch(
+        `${API_URL}/api/projects/${selectedProjectId}/sessions/${sessionId}/checkpoint`,
+        {
+          credentials: "include",
+          method: "POST",
+        },
+      );
+      if (response.status === 401) {
+        setAuthStatus("unauthenticated");
+        setCurrentUser(null);
+        throw new Error("Sign in again before organizing Pending Memory.");
+      }
+      if (!response.ok) {
+        const detail = await response
+          .json()
+          .then((payload) =>
+            typeof payload?.detail === "string" ? payload.detail : null,
+          )
+          .catch(() => null);
+        throw new Error(
+          detail ?? `Pending Memory organization failed with HTTP ${response.status}`,
+        );
+      }
+
+      const payload = (await response.json()) as {
+        draft?: ProjectMemoryArtifactApiResponse | null;
+        message?: string;
+        status?: string;
+      };
+      const draft = payload.draft ? projectMemoryArtifactFromApi(payload.draft) : null;
+      if (!draft) {
+        continue;
+      }
+      if (draft.fallbackReason || isGenericMemoryDraftResponse(draft)) {
+        generationFailureCount += 1;
+        continue;
+      }
+      createdCount += 1;
+    }
+    await loadProjectDetail(selectedProjectId, selectedProject);
+
+    if (createdCount === 0) {
       return {
-        message: draft.fallbackReason
-          ? `AI 정리가 실패했습니다. ${draft.fallbackReason}`
-          : "AI 정리가 유효한 Memory Draft를 만들지 못했습니다.",
-        status: "generation_failed" as const,
+        message:
+          generationFailureCount > 0
+            ? "Pending Memory organization failed to produce a valid Memory Draft."
+            : "No new Memory Draft was generated.",
+        status: "no_draft" as const,
       };
     }
+
     return {
-      message: payload.message ?? "A new Memory Draft was created.",
+      message: "Pending Memory batch was organized. Review the generated drafts.",
       status: "draft_created" as const,
     };
   };
@@ -3900,6 +3867,7 @@ function WorkspaceApp() {
       summary?: string;
       title?: string;
       why_it_matters?: string;
+      sections?: Array<{ summary: string; title: string }>;
     },
   ) => {
     if (!selectedProjectId) {
@@ -5154,12 +5122,15 @@ function WorkspaceApp() {
               isLoading={isProjectDetailLoading && projectDetail === null}
               isRefreshing={isProjectDetailLoading && projectDetail !== null}
               onActivityNavigationChange={selectActivityNavigation}
+              onCheckpointMemory={organizePendingMemory}
               onConnectRepository={() => openRepositoryConnector(selectedProject.id)}
+              onIgnoreMemoryDraft={ignoreMemoryDraft}
               onOpenAllProjects={closeProjectDetail}
               onProjectSelect={switchProjectDetail}
               onRepositoryFileSelect={selectRepositoryFile}
               onSaveProjectMetadata={saveProjectMetadata}
               onSaveDescription={saveProjectDescription}
+              onSaveMemoryDraft={saveMemoryDraft}
               onTabChange={selectProjectDetailTab}
               projectOptions={projectHeaderOptions}
               onRetry={() => {

@@ -21,7 +21,6 @@ import {
   ImagePlus,
   Link2,
   LockKeyhole,
-  MessageSquare,
   Search,
   Share2,
   Sparkles,
@@ -50,6 +49,7 @@ import type {
   ProjectDetailTab,
   ProjectDetailTabId,
   ProjectHeaderProjectOption,
+  ProjectMemoryArtifact,
   PromptActivityItem,
   PromptFlowPublishPayload,
   PromptFlowUpdatePayload,
@@ -74,6 +74,12 @@ type ProjectDetailPageProps = {
     visibility?: "private" | "public";
   }) => Promise<void>;
   onSaveDescription?: (description: string) => Promise<void>;
+  onCheckpointMemory?: (sessionIds: string[]) => Promise<MemoryCheckpointResult>;
+  onSaveMemoryDraft?: (
+    draftId: string,
+    updates?: MemoryDraftSaveUpdates,
+  ) => Promise<void>;
+  onIgnoreMemoryDraft?: (draftId: string) => Promise<void>;
   onPublishFlow?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
   onSaveFlowDraft?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
   onUpdateFlow?: (
@@ -88,6 +94,18 @@ type ProjectDetailPageProps = {
   onRetry?: () => void;
   onTabChange: (tabId: ProjectDetailTabId) => void;
   projectOptions?: ProjectHeaderProjectOption[];
+};
+
+type MemoryCheckpointResult = {
+  message: string;
+  status: "draft_created" | "generation_failed" | "no_draft" | string;
+};
+
+type MemoryDraftSaveUpdates = {
+  sections?: Array<{ summary: string; title: string }>;
+  summary?: string;
+  title?: string;
+  why_it_matters?: string;
 };
 
 const defaultActivityNavigation: ActivityNavigationState = {
@@ -1485,12 +1503,10 @@ function PlainDescriptionContent({
 
 function OverviewPanel({
   data,
-  onOpenMemory,
   onSaveDescription,
   onSaveProjectMetadata,
 }: {
   data: ProjectDetailData;
-  onOpenMemory?: () => void;
   onSaveDescription?: (description: string) => Promise<void>;
   onSaveProjectMetadata?: (metadata: {
     slug?: string;
@@ -1625,8 +1641,8 @@ function OverviewPanel({
     },
     {
       chart: "line" as const,
-      delta: overviewItems.get("Memory Added")?.value,
-      label: "Memory",
+      delta: undefined,
+      label: "Memories",
       tone: "memory",
       value: overviewCompactNumber(data.memory.totalArtifacts),
     },
@@ -1648,7 +1664,6 @@ function OverviewPanel({
   const projectTagDraftItems = projectTagsFromInput(projectTagsDraft);
   const rawDescriptionValue = data.project.description.trim();
   const latestActivity = data.activities[0] ?? null;
-  const latestMemoryArtifact = data.memory.recentArtifacts[0] ?? null;
   const repositoryConnected = repositoryConnectedItem?.value === "Connected";
   const repositoryStatusText = repositoryConnected
     ? "Connected"
@@ -2009,64 +2024,6 @@ function OverviewPanel({
           />
         </section>
 
-        <section
-          className="bh-overview-card bh-overview-card-latest-memory"
-          aria-labelledby="project-latest-memory-title"
-        >
-          <div className="bh-overview-card-header">
-            <h2 id="project-latest-memory-title">
-              <span>Latest Memory</span>
-            </h2>
-            {onOpenMemory ? (
-              <button
-                className="bh-overview-card-action"
-                onClick={onOpenMemory}
-                type="button"
-              >
-                View all
-              </button>
-            ) : null}
-          </div>
-
-          {latestMemoryArtifact ? (
-            <article className="bh-overview-latest-memory-row">
-              <span className="bh-overview-latest-memory-icon">
-                <Sparkles aria-hidden="true" size={20} strokeWidth={1.5} />
-              </span>
-              <div>
-                <strong>{latestMemoryArtifact.title}</strong>
-                {latestMemoryArtifact.summary ? (
-                  <p>{latestMemoryArtifact.summary}</p>
-                ) : null}
-                <div className="bh-overview-latest-memory-meta">
-                  {latestMemoryArtifact.promptCount ? (
-                    <span>
-                      <MessageSquare aria-hidden="true" size={16} strokeWidth={1.5} />
-                      {latestMemoryArtifact.promptCount} prompts
-                    </span>
-                  ) : null}
-                  <span>
-                    <Files aria-hidden="true" size={16} strokeWidth={1.5} />
-                    {latestMemoryArtifact.changedFileCount} files
-                  </span>
-                </div>
-              </div>
-              <time>
-                {latestMemoryArtifact.updatedAt ??
-                  latestMemoryArtifact.createdAt ??
-                  data.memory.latestArtifactAt ??
-                  "Unknown"}
-              </time>
-            </article>
-          ) : (
-            <div className="bh-overview-latest-memory-empty">
-              <strong>No memory yet</strong>
-              <span>
-                Latest generated memory will appear after a completed AI session.
-              </span>
-            </div>
-          )}
-        </section>
       </div>
 
       {isProjectMetadataDrawerVisible ? (
@@ -2287,8 +2244,532 @@ function OverviewPanel({
   );
 }
 
-function MemoryPanel() {
-  return <section className="bh-memory-workspace" aria-label="Memory" />;
+function memoryArtifactIsGenericFallback(artifact: ProjectMemoryArtifact) {
+  return /^\d+ prompts and \d+ AI responses were captured/i.test(
+    artifact.summary ?? "",
+  );
+}
+
+function memoryArtifactIsReviewableDraft(artifact: ProjectMemoryArtifact) {
+  return (
+    artifact.artifactStage === "memory_draft" &&
+    artifact.reviewState === "draft" &&
+    artifact.summaryLevel === 2 &&
+    !artifact.fallbackReason &&
+    !memoryArtifactIsGenericFallback(artifact)
+  );
+}
+
+function memoryArtifactIsVerified(artifact: ProjectMemoryArtifact) {
+  return (
+    artifact.artifactStage === "verified_memory" &&
+    artifact.reviewState === "verified"
+  );
+}
+
+function memoryTypeLabel(value: string | null) {
+  if (!value) {
+    return "Memory draft";
+  }
+
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+function memoryConfidenceLabel(value: number | null) {
+  if (value === null) {
+    return "Confidence not reported";
+  }
+
+  const percent = Math.round(value * 100);
+  if (value >= 0.85) {
+    return `High confidence · ${percent}%`;
+  }
+  if (value >= 0.65) {
+    return `Medium confidence · ${percent}%`;
+  }
+  return `Low confidence · ${percent}%`;
+}
+
+function memoryTriggerLabel(value: string | null) {
+  if (value === "batch_organize" || value === "manual_checkpoint" || value === "checkpoint") {
+    return "User batch";
+  }
+  if (value === "session_end") {
+    return "Imported from older session-end policy";
+  }
+  if (value === "idle") {
+    return "Imported from older idle policy";
+  }
+  if (value) {
+    return `Batch result · ${value.replaceAll("_", " ")}`;
+  }
+  return "Batch result";
+}
+
+function memorySequenceLabel(artifact: ProjectMemoryArtifact) {
+  if (artifact.startSequence !== null && artifact.endSequence !== null) {
+    return `Events ${artifact.startSequence}-${artifact.endSequence}`;
+  }
+  if (artifact.promptCount !== null) {
+    return `${artifact.promptCount} prompts`;
+  }
+  return "Event range not reported";
+}
+
+function MemoryArtifactSections({ artifact }: { artifact: ProjectMemoryArtifact }) {
+  const orderedTitles = ["Summary", "Tasks", "Decisions", "Follow-ups"];
+  const sections = [
+    ...orderedTitles
+      .map((title) => artifact.sections.find((section) => section.title === title))
+      .filter((section): section is { summary: string; title: string } => Boolean(section)),
+    ...artifact.sections.filter((section) => !orderedTitles.includes(section.title)),
+  ];
+
+  if (sections.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="bh-memory-structured-sections">
+      {sections.map((section) => (
+        <div key={section.title}>
+          <strong>{section.title}</strong>
+          <span>{section.summary}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function memoryEditableSections(artifact: ProjectMemoryArtifact) {
+  const orderedTitles = ["Summary", "Tasks", "Decisions", "Follow-ups"];
+  return orderedTitles.map((title) => {
+    const section = artifact.sections.find((item) => item.title === title);
+    return {
+      summary:
+        section?.summary ??
+        (title === "Summary" ? artifact.summary ?? "" : ""),
+      title,
+    };
+  });
+}
+
+function MemoryPanel({
+  data,
+  onCheckpointMemory,
+  onIgnoreMemoryDraft,
+  onSaveMemoryDraft,
+}: {
+  data: ProjectDetailData;
+  onCheckpointMemory?: (sessionIds: string[]) => Promise<MemoryCheckpointResult>;
+  onIgnoreMemoryDraft?: (draftId: string) => Promise<void>;
+  onSaveMemoryDraft?: (
+    draftId: string,
+    updates?: MemoryDraftSaveUpdates,
+  ) => Promise<void>;
+}) {
+  const draftInbox = data.memory.drafts.filter(memoryArtifactIsReviewableDraft);
+  const verifiedMemories = data.memory.recentArtifacts.filter(memoryArtifactIsVerified);
+  const checkpointableRanges = data.memory.pendingRanges.filter(
+    (range) => range.canCheckpoint,
+  );
+  const pendingPromptCount = data.memory.pendingRanges.reduce(
+    (total, range) => total + range.promptCount,
+    0,
+  );
+  const pendingEventCount = data.memory.pendingRanges.reduce(
+    (total, range) => total + range.eventCount,
+    0,
+  );
+  const pendingSessionCount = new Set(
+    data.memory.pendingRanges.map((range) => range.sessionId),
+  ).size;
+  const [checkpointStatus, setCheckpointStatus] = useState<string | null>(null);
+  const [checkpointError, setCheckpointError] = useState<string | null>(null);
+  const [isCheckpointing, setIsCheckpointing] = useState(false);
+  const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
+  const [draftEdit, setDraftEdit] = useState({
+    sections: [] as Array<{ summary: string; title: string }>,
+    summary: "",
+    title: "",
+    whyItMatters: "",
+  });
+  const [busyDraftId, setBusyDraftId] = useState<string | null>(null);
+  const [draftActionError, setDraftActionError] = useState<string | null>(null);
+
+  const startEditingDraft = (draft: ProjectMemoryArtifact) => {
+    setEditingDraftId(draft.id);
+    setDraftEdit({
+      sections: memoryEditableSections(draft),
+      summary: draft.summary ?? "",
+      title: draft.title,
+      whyItMatters: draft.whyItMatters ?? "",
+    });
+    setDraftActionError(null);
+  };
+
+  const organizePendingBatch = async () => {
+    if (!onCheckpointMemory || isCheckpointing) {
+      return;
+    }
+    const sessionIds = checkpointableRanges.map((range) => range.sessionId);
+    if (sessionIds.length === 0) {
+      return;
+    }
+
+    setIsCheckpointing(true);
+    setCheckpointError(null);
+    setCheckpointStatus(null);
+    try {
+      const result = await onCheckpointMemory(sessionIds);
+      setCheckpointStatus(result.message);
+    } catch (error) {
+      setCheckpointError(
+        error instanceof Error ? error.message : "Pending Memory organization failed.",
+      );
+    } finally {
+      setIsCheckpointing(false);
+    }
+  };
+
+  const saveDraft = async (draft: ProjectMemoryArtifact, withEdits: boolean) => {
+    if (!onSaveMemoryDraft || busyDraftId) {
+      return;
+    }
+
+    setBusyDraftId(draft.id);
+    setDraftActionError(null);
+    try {
+      await onSaveMemoryDraft(
+        draft.id,
+        withEdits
+          ? {
+              summary: draftEdit.summary,
+              sections: draftEdit.sections,
+              title: draftEdit.title,
+              why_it_matters: draftEdit.whyItMatters,
+            }
+          : undefined,
+      );
+      setEditingDraftId(null);
+    } catch (error) {
+      setDraftActionError(
+        error instanceof Error ? error.message : "Memory draft save failed.",
+      );
+    } finally {
+      setBusyDraftId(null);
+    }
+  };
+
+  const ignoreDraft = async (draft: ProjectMemoryArtifact) => {
+    if (!onIgnoreMemoryDraft || busyDraftId) {
+      return;
+    }
+
+    setBusyDraftId(draft.id);
+    setDraftActionError(null);
+    try {
+      await onIgnoreMemoryDraft(draft.id);
+      if (editingDraftId === draft.id) {
+        setEditingDraftId(null);
+      }
+    } catch (error) {
+      setDraftActionError(
+        error instanceof Error ? error.message : "Memory draft ignore failed.",
+      );
+    } finally {
+      setBusyDraftId(null);
+    }
+  };
+
+  return (
+    <section className="bh-memory-workspace" aria-label="Memory">
+      <header className="bh-memory-toolbar">
+        <div>
+          <h2>Memory</h2>
+          <p>Batch organize Pending Memory, then save only the drafts that matter.</p>
+        </div>
+        <button
+          className="bh-memory-primary-action"
+          disabled={
+            checkpointableRanges.length === 0 || !onCheckpointMemory || isCheckpointing
+          }
+          onClick={() => void organizePendingBatch()}
+          type="button"
+        >
+          <Sparkles aria-hidden="true" size={16} strokeWidth={1.7} />
+          <span>{isCheckpointing ? "Organizing" : "Organize pending batch"}</span>
+        </button>
+      </header>
+
+      <div className="bh-memory-summary-strip" aria-label="Memory status summary">
+        <span>Pending: {data.memory.pendingRanges.length > 0 ? "1 batch" : "0 batches"}</span>
+        <span>Drafts: {draftInbox.length}</span>
+        <span>Saved: {verifiedMemories.length}</span>
+      </div>
+
+      {checkpointStatus ? (
+        <div className="bh-memory-status" role="status">
+          {checkpointStatus}
+        </div>
+      ) : null}
+      {checkpointError ? (
+        <div className="bh-memory-status" data-error="true" role="alert">
+          {checkpointError}
+        </div>
+      ) : null}
+
+      <div className="bh-memory-flow">
+        <section className="bh-memory-section" aria-labelledby="memory-pending-title">
+          <div className="bh-memory-section-header">
+            <div>
+              <span className="bh-memory-step-kicker">Backlog</span>
+              <h3 id="memory-pending-title">Pending Memory</h3>
+              <p>One backlog of stored work waiting for batch organization.</p>
+            </div>
+            <span>{data.memory.pendingRanges.length > 0 ? "1 batch" : "0 batches"}</span>
+          </div>
+
+          {data.memory.pendingRanges.length > 0 ? (
+            <article className="bh-memory-pending-row">
+              <div>
+                <strong>Pending Memory backlog</strong>
+                <span>
+                  {pendingPromptCount} prompts · {pendingEventCount} events ·{" "}
+                  {pendingSessionCount} sessions
+                </span>
+              </div>
+            </article>
+          ) : (
+            <div className="bh-memory-empty">
+              <strong>No Pending Memory</strong>
+              <span>All captured work is already covered by drafts or saved memory.</span>
+            </div>
+          )}
+        </section>
+
+        <section className="bh-memory-section" aria-labelledby="memory-drafts-title">
+          <div className="bh-memory-section-header">
+            <div>
+              <span className="bh-memory-step-kicker">Review</span>
+              <h3 id="memory-drafts-title">Draft Inbox</h3>
+              <p>Second-pass Memory Drafts waiting for review.</p>
+            </div>
+            <span>{draftInbox.length} drafts</span>
+          </div>
+
+          {draftActionError ? (
+            <div className="bh-memory-status" data-error="true" role="alert">
+              {draftActionError}
+            </div>
+          ) : null}
+
+          {draftInbox.length > 0 ? (
+            <div className="bh-memory-draft-list">
+              {draftInbox.map((draft) => {
+                const isEditing = editingDraftId === draft.id;
+                const isBusy = busyDraftId === draft.id;
+
+                return (
+                  <article className="bh-memory-draft-card" key={draft.id}>
+                    <div className="bh-memory-card-meta">
+                      <span>{memoryTypeLabel(draft.draftType)}</span>
+                      <span>{memoryTriggerLabel(draft.triggerReason)}</span>
+                      <span>{memoryConfidenceLabel(draft.draftConfidence)}</span>
+                      {draft.needsUserVerification ? <span>Needs verification</span> : null}
+                    </div>
+
+                    {isEditing ? (
+                      <div className="bh-memory-edit-form">
+                        <label>
+                          <span>Title</span>
+                          <input
+                            onChange={(event) =>
+                              setDraftEdit((current) => ({
+                                ...current,
+                                title: event.target.value,
+                              }))
+                            }
+                            value={draftEdit.title}
+                          />
+                        </label>
+                        <label>
+                          <span>Summary</span>
+                          <textarea
+                            onChange={(event) =>
+                              setDraftEdit((current) => ({
+                                ...current,
+                                summary: event.target.value,
+                              }))
+                            }
+                            rows={4}
+                            value={draftEdit.summary}
+                          />
+                        </label>
+                        <div className="bh-memory-edit-section-grid">
+                          {draftEdit.sections.map((section, sectionIndex) => (
+                            <label key={section.title}>
+                              <span>{section.title}</span>
+                              <textarea
+                                onChange={(event) =>
+                                  setDraftEdit((current) => ({
+                                    ...current,
+                                    sections: current.sections.map((item, index) =>
+                                      index === sectionIndex
+                                        ? { ...item, summary: event.target.value }
+                                        : item,
+                                    ),
+                                  }))
+                                }
+                                rows={3}
+                                value={section.summary}
+                              />
+                            </label>
+                          ))}
+                        </div>
+                        <label>
+                          <span>Why it matters</span>
+                          <textarea
+                            onChange={(event) =>
+                              setDraftEdit((current) => ({
+                                ...current,
+                                whyItMatters: event.target.value,
+                              }))
+                            }
+                            rows={3}
+                            value={draftEdit.whyItMatters}
+                          />
+                        </label>
+                      </div>
+                    ) : (
+                      <div className="bh-memory-card-copy">
+                        <h4>{draft.title}</h4>
+                        <p>{draft.summary ?? "No summary provided."}</p>
+                        <details className="bh-memory-card-details">
+                          <summary>Details</summary>
+                          <MemoryArtifactSections artifact={draft} />
+                          <div>
+                            <strong>Why it matters</strong>
+                            <span>
+                              {draft.whyItMatters ?? "No importance note provided."}
+                            </span>
+                          </div>
+                        </details>
+                      </div>
+                    )}
+
+                    <div className="bh-memory-card-footer">
+                      <span>{memorySequenceLabel(draft)}</span>
+                      <div className="bh-memory-card-actions">
+                        {isEditing ? (
+                          <>
+                            <button
+                              disabled={isBusy}
+                              onClick={() => void saveDraft(draft, true)}
+                              type="button"
+                            >
+                              Save to Memory
+                            </button>
+                            <button
+                              disabled={isBusy}
+                              onClick={() => setEditingDraftId(null)}
+                              type="button"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              disabled={!onSaveMemoryDraft || isBusy}
+                              onClick={() => void saveDraft(draft, false)}
+                              type="button"
+                            >
+                              Save to Memory
+                            </button>
+                            <button
+                              disabled={isBusy}
+                              onClick={() => startEditingDraft(draft)}
+                              type="button"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              disabled={!onIgnoreMemoryDraft || isBusy}
+                              onClick={() => void ignoreDraft(draft)}
+                              type="button"
+                            >
+                              Ignore
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="bh-memory-empty">
+              <strong>No drafts waiting for review</strong>
+              <span>
+                {data.memory.pendingRanges.length > 0
+                  ? "Pending Memory is ready. Organize the batch to create drafts."
+                  : "No memory work right now."}
+              </span>
+            </div>
+          )}
+        </section>
+
+        <section className="bh-memory-section" aria-labelledby="memory-verified-title">
+          <div className="bh-memory-section-header">
+            <div>
+              <span className="bh-memory-step-kicker">Saved</span>
+              <h3 id="memory-verified-title">Verified Memory</h3>
+              <p>Saved memories that can be included in Project Memory.</p>
+            </div>
+            <span>{verifiedMemories.length} saved</span>
+          </div>
+
+          {verifiedMemories.length > 0 ? (
+            <div className="bh-memory-verified-list">
+              {verifiedMemories.map((memory) => (
+                <article className="bh-memory-verified-card" key={memory.id}>
+                  <div className="bh-memory-card-meta">
+                    <span>{memoryTypeLabel(memory.draftType)}</span>
+                    <span>{memory.updatedAt ?? memory.createdAt ?? "Date not reported"}</span>
+                  </div>
+                  <div className="bh-memory-card-copy">
+                    <h4>{memory.title}</h4>
+                    <p>{memory.summary ?? "No summary provided."}</p>
+                    <details className="bh-memory-card-details">
+                      <summary>Details</summary>
+                      <MemoryArtifactSections artifact={memory} />
+                      {memory.whyItMatters ? (
+                        <div>
+                          <strong>Why it matters</strong>
+                          <span>{memory.whyItMatters}</span>
+                        </div>
+                      ) : null}
+                    </details>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="bh-memory-empty">
+              <strong>No verified memory yet</strong>
+              <span>Save a draft to promote it into Verified Memory.</span>
+            </div>
+          )}
+        </section>
+      </div>
+    </section>
+  );
 }
 
 function ProjectDetailLoadingSkeleton({
@@ -3063,10 +3544,13 @@ function ProjectPanel({
   errorMessage,
   isLoading,
   onActivityNavigationChange,
+  onCheckpointMemory,
+  onIgnoreMemoryDraft,
   onPublishFlow,
   onSaveProjectMetadata,
   onSaveDescription,
   onSaveFlowDraft,
+  onSaveMemoryDraft,
   onUpdateFlow,
   onUploadFlowAsset,
   onRepositoryFileSelect,
@@ -3079,8 +3563,14 @@ function ProjectPanel({
   errorMessage?: string | null;
   isLoading?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
+  onCheckpointMemory?: (sessionIds: string[]) => Promise<MemoryCheckpointResult>;
+  onIgnoreMemoryDraft?: (draftId: string) => Promise<void>;
   onPublishFlow?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
   onSaveFlowDraft?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
+  onSaveMemoryDraft?: (
+    draftId: string,
+    updates?: MemoryDraftSaveUpdates,
+  ) => Promise<void>;
   onUpdateFlow?: (
     flowKey: string,
     payload: PromptFlowUpdatePayload,
@@ -3124,7 +3614,6 @@ function ProjectPanel({
     return (
       <OverviewPanel
         data={data}
-        onOpenMemory={() => onTabChange("memory")}
         onSaveProjectMetadata={onSaveProjectMetadata}
         onSaveDescription={onSaveDescription}
       />
@@ -3132,7 +3621,14 @@ function ProjectPanel({
   }
 
   if (activeTab === "memory") {
-    return <MemoryPanel />;
+    return (
+      <MemoryPanel
+        data={data}
+        onCheckpointMemory={onCheckpointMemory}
+        onIgnoreMemoryDraft={onIgnoreMemoryDraft}
+        onSaveMemoryDraft={onSaveMemoryDraft}
+      />
+    );
   }
 
   if (activeTab === "ai-activity") {
@@ -3170,7 +3666,9 @@ export function ProjectDetailPage({
   isLoading,
   isRefreshing,
   onActivityNavigationChange,
+  onCheckpointMemory,
   onConnectRepository,
+  onIgnoreMemoryDraft,
   onOpenAllProjects,
   onPublishFlow,
   onProjectSelect,
@@ -3179,6 +3677,7 @@ export function ProjectDetailPage({
   onSaveProjectMetadata,
   onSaveDescription,
   onSaveFlowDraft,
+  onSaveMemoryDraft,
   onTabChange,
   onUpdateFlow,
   onUploadFlowAsset,
@@ -3224,10 +3723,13 @@ export function ProjectDetailPage({
           errorMessage={errorMessage}
           isLoading={isLoading}
           onActivityNavigationChange={onActivityNavigationChange}
+          onCheckpointMemory={onCheckpointMemory}
+          onIgnoreMemoryDraft={onIgnoreMemoryDraft}
           onPublishFlow={onPublishFlow}
           onSaveProjectMetadata={onSaveProjectMetadata}
           onSaveDescription={onSaveDescription}
           onSaveFlowDraft={onSaveFlowDraft}
+          onSaveMemoryDraft={onSaveMemoryDraft}
           onUpdateFlow={onUpdateFlow}
           onUploadFlowAsset={onUploadFlowAsset}
           onRepositoryFileSelect={onRepositoryFileSelect}

@@ -87,11 +87,14 @@ class DraftOpenQuestion(BaseModel):
 
 class MemoryDraftDetails(BaseModel):
     problem: str | None = None
+    summary: str | None = None
+    tasks: list[str] = Field(default_factory=list)
     why_started: str | None = None
     what_happened: list[str] = Field(default_factory=list)
     decisions: list[DraftDecision] = Field(default_factory=list)
     rejected_directions: list[DraftRejectedDirection] = Field(default_factory=list)
     open_questions: list[DraftOpenQuestion] = Field(default_factory=list)
+    follow_ups: list[str] = Field(default_factory=list)
     next_steps: list[str] = Field(default_factory=list)
 
 
