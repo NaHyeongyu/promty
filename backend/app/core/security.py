@@ -171,7 +171,7 @@ def is_admin_user(user: User) -> bool:
     return (
         user.username.lower() in admin_usernames
         or (user.email is not None and user.email.lower() in admin_emails)
-        or user.github_id in admin_github_ids
+        or (user.github_id is not None and str(user.github_id) in admin_github_ids)
     )
 
 
