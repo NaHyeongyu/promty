@@ -35,6 +35,7 @@ from app.services.github_repositories import (
 )
 from app.services.memory_artifacts import (
     MEMORY_ARTIFACT_TYPE,
+    REVIEW_STATE_VERIFIED,
     serialize_memory_artifact_summary,
 )
 
@@ -813,7 +814,11 @@ def read_project_detail(
     memory_artifacts = list(
         db.execute(
             select(Artifact)
-            .where(Artifact.project_id == project.id, Artifact.type == MEMORY_ARTIFACT_TYPE)
+            .where(
+                Artifact.project_id == project.id,
+                Artifact.type == MEMORY_ARTIFACT_TYPE,
+                Artifact.metadata_["review_state"].astext == REVIEW_STATE_VERIFIED,
+            )
             .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
             .limit(5)
         ).scalars()
@@ -824,6 +829,7 @@ def read_project_detail(
         .where(
             Artifact.project_id == project.id,
             Artifact.type == MEMORY_ARTIFACT_TYPE,
+            Artifact.metadata_["review_state"].astext == REVIEW_STATE_VERIFIED,
         )
     ) or 0
     memory_artifact_count_since_yesterday = db.scalar(
@@ -832,6 +838,7 @@ def read_project_detail(
         .where(
             Artifact.project_id == project.id,
             Artifact.type == MEMORY_ARTIFACT_TYPE,
+            Artifact.metadata_["review_state"].astext == REVIEW_STATE_VERIFIED,
             Artifact.created_at >= since_yesterday_at,
         )
     ) or 0

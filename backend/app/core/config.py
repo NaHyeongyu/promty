@@ -86,6 +86,18 @@ def _int_env_any(names: tuple[str, ...], default: int) -> int:
     return default
 
 
+def _float_env_any(names: tuple[str, ...], default: float) -> float:
+    for name in names:
+        value = os.environ.get(name)
+        if value is None:
+            continue
+        try:
+            return float(value)
+        except ValueError:
+            return default
+    return default
+
+
 @dataclass(frozen=True)
 class Settings:
     database_url: str = os.environ.get(
@@ -139,16 +151,101 @@ class Settings:
             30,
         )
     )
+    gemini_max_retries: int = field(
+        default_factory=lambda: _int_env_any(
+            ("PROMTY_GEMINI_MAX_RETRIES", "PROMPTHUB_GEMINI_MAX_RETRIES"),
+            2,
+        )
+    )
+    gemini_retry_base_seconds: float = field(
+        default_factory=lambda: _float_env_any(
+            ("PROMTY_GEMINI_RETRY_BASE_SECONDS", "PROMPTHUB_GEMINI_RETRY_BASE_SECONDS"),
+            2.0,
+        )
+    )
+    gemini_retry_max_sleep_seconds: float = field(
+        default_factory=lambda: _float_env_any(
+            (
+                "PROMTY_GEMINI_RETRY_MAX_SLEEP_SECONDS",
+                "PROMPTHUB_GEMINI_RETRY_MAX_SLEEP_SECONDS",
+            ),
+            20.0,
+        )
+    )
+    openai_api_key: str | None = field(
+        default_factory=lambda: _optional_env_any(
+            "PROMTY_OPENAI_API_KEY",
+            "PROMPTHUB_OPENAI_API_KEY",
+            "OPENAI_API_KEY",
+        )
+    )
+    openai_model: str = field(
+        default_factory=lambda: _str_env_any(
+            ("PROMTY_OPENAI_MODEL", "PROMPTHUB_OPENAI_MODEL"),
+            "gpt-5-mini",
+        )
+    )
+    openai_timeout_seconds: int = field(
+        default_factory=lambda: _int_env_any(
+            ("PROMTY_OPENAI_TIMEOUT_SECONDS", "PROMPTHUB_OPENAI_TIMEOUT_SECONDS"),
+            90,
+        )
+    )
+    openai_reasoning_effort: str = field(
+        default_factory=lambda: _str_env_any(
+            ("PROMTY_OPENAI_REASONING_EFFORT", "PROMPTHUB_OPENAI_REASONING_EFFORT"),
+            "minimal",
+        )
+    )
+    openai_max_retries: int = field(
+        default_factory=lambda: _int_env_any(
+            ("PROMTY_OPENAI_MAX_RETRIES", "PROMPTHUB_OPENAI_MAX_RETRIES"),
+            2,
+        )
+    )
+    openai_retry_base_seconds: float = field(
+        default_factory=lambda: _float_env_any(
+            ("PROMTY_OPENAI_RETRY_BASE_SECONDS", "PROMPTHUB_OPENAI_RETRY_BASE_SECONDS"),
+            2.0,
+        )
+    )
+    openai_retry_max_sleep_seconds: float = field(
+        default_factory=lambda: _float_env_any(
+            (
+                "PROMTY_OPENAI_RETRY_MAX_SLEEP_SECONDS",
+                "PROMPTHUB_OPENAI_RETRY_MAX_SLEEP_SECONDS",
+            ),
+            20.0,
+        )
+    )
     memory_generator: str = field(
         default_factory=lambda: _str_env_any(
             ("PROMTY_MEMORY_GENERATOR", "PROMPTHUB_MEMORY_GENERATOR"),
-            "gemini",
+            "openai",
+        )
+    )
+    memory_chunk_generator: str = field(
+        default_factory=lambda: _str_env_any(
+            ("PROMTY_MEMORY_CHUNK_GENERATOR", "PROMPTHUB_MEMORY_CHUNK_GENERATOR"),
+            "local",
+        )
+    )
+    memory_draft_generator: str = field(
+        default_factory=lambda: _str_env_any(
+            ("PROMTY_MEMORY_DRAFT_GENERATOR", "PROMPTHUB_MEMORY_DRAFT_GENERATOR"),
+            _str_env_any(("PROMTY_MEMORY_GENERATOR", "PROMPTHUB_MEMORY_GENERATOR"), "openai"),
+        )
+    )
+    project_memory_generator: str = field(
+        default_factory=lambda: _str_env_any(
+            ("PROMTY_PROJECT_MEMORY_GENERATOR", "PROMPTHUB_PROJECT_MEMORY_GENERATOR"),
+            _str_env_any(("PROMTY_MEMORY_GENERATOR", "PROMPTHUB_MEMORY_GENERATOR"), "openai"),
         )
     )
     memory_slice_prompt_count: int = field(
         default_factory=lambda: _int_env_any(
             ("PROMTY_MEMORY_SLICE_PROMPT_COUNT", "PROMPTHUB_MEMORY_SLICE_PROMPT_COUNT"),
-            12,
+            20,
         )
     )
     memory_slice_max_minutes: int = field(

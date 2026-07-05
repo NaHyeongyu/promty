@@ -50,6 +50,7 @@ import {
   type ProjectDetailData,
   type ProjectDetailTabId,
   type ProjectHeaderProjectOption,
+  type ProjectMemoryArtifact,
   type PromptFlowPublishPayload,
   type PromptFlowUpdatePayload,
   type RepositoryFileContent,
@@ -151,6 +152,7 @@ type ProjectDetailApiResponse = {
   memory?: {
     latest_artifact_at: string | null;
     recent_artifacts: Array<{
+      artifact_stage?: string | null;
       changed_file_count: number;
       changed_files?: Array<{
         additions?: number | null;
@@ -160,14 +162,21 @@ type ProjectDetailApiResponse = {
       }>;
       commit_sha?: string | null;
       created_at: string | null;
+      draft_confidence?: number | null;
+      draft_generator?: string | null;
+      draft_type?: string | null;
       end_sequence?: number | null;
+      fallback_reason?: string | null;
       generator: string | null;
       id: string;
       memory_scope?: string | null;
       model: string | null;
+      needs_user_verification?: boolean | null;
       outcome: string | null;
       prompt_count?: number | null;
       reason?: string | null;
+      review_state?: string | null;
+      requested_generator?: string | null;
       sections?: Array<{
         summary: string;
         title: string;
@@ -176,10 +185,14 @@ type ProjectDetailApiResponse = {
       slice_index?: number | null;
       start_sequence?: number | null;
       summary: string | null;
+      summary_level?: number | null;
+      suggested_user_action?: string | null;
       tags: string[];
       technologies?: string[];
       title: string;
+      trigger_reason?: string | null;
       updated_at: string | null;
+      why_it_matters?: string | null;
       window_reason?: string | null;
       versions?: Array<{
         changed_file_count: number;
@@ -274,6 +287,48 @@ type ProjectDetailApiResponse = {
     updated_at: string | null;
     visibility?: string | null;
   };
+};
+
+type ProjectMemoryArtifactApiResponse =
+  NonNullable<ProjectDetailApiResponse["memory"]>["recent_artifacts"][number];
+
+type ProjectMemorySnapshotApiResponse = {
+  artifact: ProjectMemoryArtifactApiResponse | null;
+  snapshot: {
+    body_markdown?: string;
+    confidence?: number | null;
+    sections?: {
+      core_workflow?: string[];
+      current_direction?: string;
+      important_decisions?: Array<{
+        decision: string;
+        reason: string;
+        source_memory_ids?: string[];
+      }>;
+      instructions_for_future_ai_agents?: string[];
+      open_questions?: string[];
+      product_goal?: string;
+      rejected_directions?: Array<{
+        direction: string;
+        reason: string;
+        source_memory_ids?: string[];
+      }>;
+      technical_assumptions?: string[];
+    };
+    source_memory_ids?: string[];
+    warnings?: string[];
+  } | null;
+} | null;
+
+type ProjectMemoryPendingRangeApiResponse = {
+  can_checkpoint: boolean;
+  end_sequence: number;
+  event_count: number;
+  last_event_at: string | null;
+  prompt_count: number;
+  session_id: string;
+  start_sequence: number;
+  tool: string;
 };
 
 type ProjectGithubFilesApiResponse = {
@@ -429,6 +484,7 @@ type AdminOverview = {
     cors_origins: string[];
     gemini_configured: boolean;
     memory_generator: string;
+    openai_configured?: boolean;
     published_flows_enabled: boolean;
     session_cookie_secure: boolean;
     session_cookie_samesite: string;
@@ -1131,7 +1187,11 @@ function mockGithubUnlinkedProjectDetail(project: Project): ProjectDetailData {
       },
     ],
     memory: {
+      drafts: [],
       latestArtifactAt: null,
+      pendingRanges: [],
+      projectMemory: null,
+      projectMemoryArtifact: null,
       recentArtifacts: [],
       totalArtifacts: 0,
     },
@@ -1236,7 +1296,11 @@ function emptyProjectDetailData(project: Project | null): ProjectDetailData {
     },
     files: [],
     memory: {
+      drafts: [],
       latestArtifactAt: null,
+      pendingRanges: [],
+      projectMemory: null,
+      projectMemoryArtifact: null,
       recentArtifacts: [],
       totalArtifacts: 0,
     },
@@ -1269,6 +1333,152 @@ function projectDetailUrl(projectKey: string) {
   return `${window.location.origin}/?${params.toString()}`;
 }
 
+function isGenericMemoryDraftResponse(artifact: ProjectMemoryArtifact) {
+  return /^\d+ prompts and \d+ AI responses were captured/i.test(
+    artifact.summary ?? "",
+  );
+}
+
+function projectMemoryPendingRangeFromApi(
+  range: ProjectMemoryPendingRangeApiResponse,
+) {
+  return {
+    canCheckpoint: range.can_checkpoint,
+    endSequence: range.end_sequence,
+    eventCount: range.event_count,
+    lastEventAt: range.last_event_at
+      ? formatOptionalTimestamp(range.last_event_at, "Unknown")
+      : null,
+    promptCount: range.prompt_count,
+    sessionId: range.session_id,
+    startSequence: range.start_sequence,
+    tool: range.tool,
+  };
+}
+
+function projectMemoryArtifactFromApi(
+  artifact: ProjectMemoryArtifactApiResponse,
+) {
+  return {
+    artifactStage: artifact.artifact_stage ?? null,
+    changedFileCount: artifact.changed_file_count,
+    changedFiles: artifact.changed_files ?? [],
+    commitSha: artifact.commit_sha ?? null,
+    createdAt: artifact.created_at
+      ? formatOptionalTimestamp(artifact.created_at, "Unknown")
+      : null,
+    draftConfidence: artifact.draft_confidence ?? null,
+    draftGenerator: artifact.draft_generator ?? null,
+    draftType: artifact.draft_type ?? null,
+    endSequence: artifact.end_sequence ?? null,
+    fallbackReason: artifact.fallback_reason ?? null,
+    generator: artifact.generator,
+    id: artifact.id,
+    memoryScope: artifact.memory_scope ?? null,
+    model: artifact.model,
+    needsUserVerification: artifact.needs_user_verification ?? null,
+    outcome: artifact.outcome,
+    promptCount: artifact.prompt_count ?? null,
+    reason: artifact.reason ?? null,
+    reviewState: artifact.review_state ?? null,
+    requestedGenerator: artifact.requested_generator ?? null,
+    sections: artifact.sections ?? [],
+    sessionId: artifact.session_id,
+    sliceIndex: artifact.slice_index ?? null,
+    startSequence: artifact.start_sequence ?? null,
+    summary: artifact.summary,
+    summaryLevel: artifact.summary_level ?? null,
+    suggestedUserAction: artifact.suggested_user_action ?? null,
+    tags: artifact.tags,
+    technologies: artifact.technologies ?? [],
+    title: artifact.title,
+    triggerReason: artifact.trigger_reason ?? null,
+    updatedAt: artifact.updated_at
+      ? formatOptionalTimestamp(artifact.updated_at, "Unknown")
+      : null,
+    whyItMatters: artifact.why_it_matters ?? artifact.reason ?? null,
+    windowReason: artifact.window_reason ?? null,
+    versions: (artifact.versions ?? []).map((version) => ({
+      changedFileCount: version.changed_file_count,
+      changedFiles: version.changed_files ?? [],
+      commitSha: version.commit_sha ?? null,
+      createdAt: version.created_at
+        ? formatOptionalTimestamp(version.created_at, "Unknown")
+        : null,
+      draftConfidence: null,
+      draftGenerator: null,
+      draftType: null,
+      endSequence: version.end_sequence ?? null,
+      fallbackReason: null,
+      generator: version.generator,
+      id: version.id,
+      memoryScope: version.memory_scope ?? null,
+      model: version.model,
+      needsUserVerification: null,
+      outcome: version.outcome,
+      promptCount: version.prompt_count ?? null,
+      reason: version.reason ?? null,
+      requestedGenerator: null,
+      sections: version.sections ?? [],
+      sessionId: version.session_id,
+      sliceIndex: version.slice_index ?? null,
+      startSequence: version.start_sequence ?? null,
+      summary: version.summary,
+      suggestedUserAction: null,
+      tags: version.tags,
+      technologies: version.technologies ?? [],
+      title: version.title,
+      version: version.version,
+      windowReason: version.window_reason ?? null,
+    })),
+  };
+}
+
+function projectMemorySnapshotFromApi(
+  response: ProjectMemorySnapshotApiResponse,
+) {
+  const snapshot = response?.snapshot;
+  if (!snapshot) {
+    return {
+      projectMemory: null,
+      projectMemoryArtifact: response?.artifact
+        ? projectMemoryArtifactFromApi(response.artifact)
+        : null,
+    };
+  }
+  const sections = snapshot.sections ?? {};
+  return {
+    projectMemory: {
+      bodyMarkdown: snapshot.body_markdown ?? "",
+      confidence: snapshot.confidence ?? null,
+      sections: {
+        coreWorkflow: sections.core_workflow ?? [],
+        currentDirection: sections.current_direction ?? "",
+        importantDecisions: (sections.important_decisions ?? []).map((item) => ({
+          decision: item.decision,
+          reason: item.reason,
+          sourceMemoryIds: item.source_memory_ids ?? [],
+        })),
+        instructionsForFutureAiAgents:
+          sections.instructions_for_future_ai_agents ?? [],
+        openQuestions: sections.open_questions ?? [],
+        productGoal: sections.product_goal ?? "",
+        rejectedDirections: (sections.rejected_directions ?? []).map((item) => ({
+          direction: item.direction,
+          reason: item.reason,
+          sourceMemoryIds: item.source_memory_ids ?? [],
+        })),
+        technicalAssumptions: sections.technical_assumptions ?? [],
+      },
+      sourceMemoryIds: snapshot.source_memory_ids ?? [],
+      warnings: snapshot.warnings ?? [],
+    },
+    projectMemoryArtifact: response?.artifact
+      ? projectMemoryArtifactFromApi(response.artifact)
+      : null,
+  };
+}
+
 function projectDetailDataFromApi(
   payload: ProjectDetailApiResponse,
   fallbackProject: Project | null,
@@ -1276,6 +1486,18 @@ function projectDetailDataFromApi(
   const models = payload.metrics.connected_models;
   const community = payload.community;
   const memory = payload.memory;
+  const memoryDrafts =
+    ((memory as (typeof memory & { drafts?: ProjectMemoryArtifactApiResponse[] }) | undefined)
+      ?.drafts ?? []);
+  const pendingRanges =
+    ((memory as
+      | (typeof memory & { pending_ranges?: ProjectMemoryPendingRangeApiResponse[] })
+      | undefined)?.pending_ranges ?? []);
+  const projectMemoryResponse =
+    (memory as
+      | (typeof memory & { project_memory?: ProjectMemorySnapshotApiResponse })
+      | undefined)?.project_memory ?? null;
+  const projectMemory = projectMemorySnapshotFromApi(projectMemoryResponse);
   const totalPrompts =
     payload.metrics.total_prompts ?? payload.prompt_activities?.length ?? 0;
   const projectDescription = payload.project.description?.trim() ?? "";
@@ -1352,63 +1574,14 @@ function projectDetailDataFromApi(
     },
     files: payload.files,
     memory: {
+      drafts: memoryDrafts.map(projectMemoryArtifactFromApi),
       latestArtifactAt: memory?.latest_artifact_at
         ? formatOptionalTimestamp(memory.latest_artifact_at, "Unknown")
         : null,
-      recentArtifacts: (memory?.recent_artifacts ?? []).map((artifact) => ({
-        changedFileCount: artifact.changed_file_count,
-        changedFiles: artifact.changed_files ?? [],
-        commitSha: artifact.commit_sha ?? null,
-        createdAt: artifact.created_at
-          ? formatOptionalTimestamp(artifact.created_at, "Unknown")
-          : null,
-        endSequence: artifact.end_sequence ?? null,
-        generator: artifact.generator,
-        id: artifact.id,
-        memoryScope: artifact.memory_scope ?? null,
-        model: artifact.model,
-        outcome: artifact.outcome,
-        promptCount: artifact.prompt_count ?? null,
-        reason: artifact.reason ?? null,
-        sections: artifact.sections ?? [],
-        sessionId: artifact.session_id,
-        sliceIndex: artifact.slice_index ?? null,
-        startSequence: artifact.start_sequence ?? null,
-        summary: artifact.summary,
-        tags: artifact.tags,
-        technologies: artifact.technologies ?? [],
-        title: artifact.title,
-        updatedAt: artifact.updated_at
-          ? formatOptionalTimestamp(artifact.updated_at, "Unknown")
-          : null,
-        windowReason: artifact.window_reason ?? null,
-        versions: (artifact.versions ?? []).map((version) => ({
-          changedFileCount: version.changed_file_count,
-          changedFiles: version.changed_files ?? [],
-          commitSha: version.commit_sha ?? null,
-          createdAt: version.created_at
-            ? formatOptionalTimestamp(version.created_at, "Unknown")
-            : null,
-          endSequence: version.end_sequence ?? null,
-          generator: version.generator,
-          id: version.id,
-          memoryScope: version.memory_scope ?? null,
-          model: version.model,
-          outcome: version.outcome,
-          promptCount: version.prompt_count ?? null,
-          reason: version.reason ?? null,
-          sections: version.sections ?? [],
-          sessionId: version.session_id,
-          sliceIndex: version.slice_index ?? null,
-          startSequence: version.start_sequence ?? null,
-          summary: version.summary,
-          tags: version.tags,
-          technologies: version.technologies ?? [],
-          title: version.title,
-          version: version.version,
-          windowReason: version.window_reason ?? null,
-        })),
-      })),
+      pendingRanges: pendingRanges.map(projectMemoryPendingRangeFromApi),
+      projectMemory: projectMemory.projectMemory,
+      projectMemoryArtifact: projectMemory.projectMemoryArtifact,
+      recentArtifacts: (memory?.recent_artifacts ?? []).map(projectMemoryArtifactFromApi),
       totalArtifacts: memory?.total_artifacts ?? 0,
     },
     overview: [
@@ -1762,6 +1935,241 @@ function UserProfilePage({
             <div className="profile-setting-row">
               <dt>Data export</dt>
               <dd>Not configured</dd>
+            </div>
+          </dl>
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function UserSettingsPage({
+  apiUrl,
+  canUseAdmin,
+  connectedRepositoryCount,
+  currentUser,
+  isRefreshing,
+  latestActivityLabel,
+  onOpenProfile,
+  onRefreshWorkspace,
+  projectCount,
+}: {
+  apiUrl: string;
+  canUseAdmin: boolean;
+  connectedRepositoryCount: number;
+  currentUser: AuthUser | null;
+  isRefreshing: boolean;
+  latestActivityLabel: string;
+  onOpenProfile: () => void;
+  onRefreshWorkspace: () => void;
+  projectCount: number;
+}) {
+  const roleLabel = currentUser?.is_admin ? "Admin" : "Member";
+  const repositoryCoverage =
+    projectCount > 0
+      ? `${connectedRepositoryCount.toLocaleString()} / ${projectCount.toLocaleString()}`
+      : "No projects";
+
+  return (
+    <section className="settings-page" aria-label="Workspace settings">
+      <section className="settings-hero" aria-labelledby="settings-title">
+        <div className="settings-hero-copy">
+          <span>Workspace controls</span>
+          <h2 id="settings-title">Operational settings</h2>
+          <p>Defaults, sync behavior, collector state, and access posture.</p>
+        </div>
+        <div className="settings-hero-actions">
+          <button
+            className="toolbar-button"
+            disabled={isRefreshing}
+            onClick={onRefreshWorkspace}
+            type="button"
+          >
+            <RefreshCw aria-hidden="true" size={15} strokeWidth={1.5} />
+            <span>{isRefreshing ? "Refreshing" : "Refresh workspace"}</span>
+          </button>
+          <button className="toolbar-button" onClick={onOpenProfile} type="button">
+            <User aria-hidden="true" size={15} strokeWidth={1.5} />
+            <span>Profile</span>
+          </button>
+        </div>
+      </section>
+
+      <div className="settings-grid">
+        <section className="settings-section" aria-labelledby="settings-workspace-title">
+          <div className="settings-section-header">
+            <Folder aria-hidden="true" size={18} strokeWidth={1.5} />
+            <div>
+              <h3 id="settings-workspace-title">Workspace</h3>
+              <p>Project list and workspace defaults.</p>
+            </div>
+          </div>
+          <dl className="settings-list">
+            <div className="settings-row">
+              <dt>Default view</dt>
+              <dd>Projects</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Project sort</dt>
+              <dd>Recent activity</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Projects</dt>
+              <dd>{projectCount.toLocaleString()}</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Latest activity</dt>
+              <dd>{latestActivityLabel}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="settings-section" aria-labelledby="settings-collector-title">
+          <div className="settings-section-header">
+            <Terminal aria-hidden="true" size={18} strokeWidth={1.5} />
+            <div>
+              <h3 id="settings-collector-title">Collector</h3>
+              <p>Local CLI and event ingestion.</p>
+            </div>
+          </div>
+          <dl className="settings-list">
+            <div className="settings-row">
+              <dt>API endpoint</dt>
+              <dd>
+                <code>{apiUrl}</code>
+              </dd>
+            </div>
+            <div className="settings-row">
+              <dt>Event limit</dt>
+              <dd>500 latest</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Ingestion</dt>
+              <dd>
+                <span className="settings-value-chip" data-tone="success">
+                  Active
+                </span>
+              </dd>
+            </div>
+            <div className="settings-row">
+              <dt>Session grouping</dt>
+              <dd>Enabled</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="settings-section" aria-labelledby="settings-sync-title">
+          <div className="settings-section-header">
+            <GitHubIcon />
+            <div>
+              <h3 id="settings-sync-title">Repository Sync</h3>
+              <p>GitHub repository context and file browsing.</p>
+            </div>
+          </div>
+          <dl className="settings-list">
+            <div className="settings-row">
+              <dt>Provider</dt>
+              <dd>GitHub</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Repository coverage</dt>
+              <dd>{repositoryCoverage}</dd>
+            </div>
+            <div className="settings-row">
+              <dt>File browser</dt>
+              <dd>GitHub-backed</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Refresh mode</dt>
+              <dd>On demand</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="settings-section" aria-labelledby="settings-ai-title">
+          <div className="settings-section-header">
+            <Bot aria-hidden="true" size={18} strokeWidth={1.5} />
+            <div>
+              <h3 id="settings-ai-title">AI & Memory</h3>
+              <p>Model detection and generated memory behavior.</p>
+            </div>
+          </div>
+          <dl className="settings-list">
+            <div className="settings-row">
+              <dt>Model detection</dt>
+              <dd>Auto-detect</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Memory generation</dt>
+              <dd>Automatic</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Prompt detail</dt>
+              <dd>Request, response, file changes</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Activity layout</dt>
+              <dd>Prompts and sessions</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="settings-section" aria-labelledby="settings-interface-title">
+          <div className="settings-section-header">
+            <Settings aria-hidden="true" size={18} strokeWidth={1.5} />
+            <div>
+              <h3 id="settings-interface-title">Interface</h3>
+              <p>Display defaults for the app shell.</p>
+            </div>
+          </div>
+          <dl className="settings-list">
+            <div className="settings-row">
+              <dt>Theme</dt>
+              <dd>Dark</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Density</dt>
+              <dd>Compact</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Sidebar</dt>
+              <dd>Workspace navigation</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Language</dt>
+              <dd>English</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="settings-section" aria-labelledby="settings-access-title">
+          <div className="settings-section-header">
+            <ShieldCheck aria-hidden="true" size={18} strokeWidth={1.5} />
+            <div>
+              <h3 id="settings-access-title">Access</h3>
+              <p>Authentication, role, and privileged controls.</p>
+            </div>
+          </div>
+          <dl className="settings-list">
+            <div className="settings-row">
+              <dt>Authentication</dt>
+              <dd>GitHub OAuth</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Role</dt>
+              <dd>{roleLabel}</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Admin console</dt>
+              <dd>{canUseAdmin ? "Available" : "Restricted"}</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Session</dt>
+              <dd>
+                <span className="settings-value-chip" data-tone="success">
+                  Active
+                </span>
+              </dd>
             </div>
           </dl>
         </section>
@@ -3040,6 +3448,10 @@ function AdminDashboard({
               <dd>{overview?.system.gemini_configured ? "configured" : "off"}</dd>
             </div>
             <div>
+              <dt>OpenAI</dt>
+              <dd>{overview?.system.openai_configured ? "configured" : "off"}</dd>
+            </div>
+            <div>
               <dt>Cookie</dt>
               <dd>{overview?.system.session_cookie_secure ? "secure" : "dev"}</dd>
             </div>
@@ -3312,7 +3724,76 @@ function WorkspaceApp() {
         throw new Error(`Project detail request failed with HTTP ${response.status}`);
       }
       const payload = (await response.json()) as ProjectDetailApiResponse;
-      setProjectDetail(projectDetailDataFromApi(payload, fallbackProject));
+      const draftsResponse = await fetch(
+        `${API_URL}/api/projects/${projectId}/memory/drafts`,
+        {
+          credentials: "include",
+          signal,
+        },
+      );
+      if (draftsResponse.status === 401) {
+        setAuthStatus("unauthenticated");
+        setCurrentUser(null);
+        setProjectDetail(null);
+        return;
+      }
+      if (!draftsResponse.ok) {
+        throw new Error(`Memory drafts request failed with HTTP ${draftsResponse.status}`);
+      }
+      const drafts =
+        (await draftsResponse.json()) as ProjectMemoryArtifactApiResponse[];
+      const pendingRangesResponse = await fetch(
+        `${API_URL}/api/projects/${projectId}/memory/pending`,
+        {
+          credentials: "include",
+          signal,
+        },
+      );
+      if (pendingRangesResponse.status === 401) {
+        setAuthStatus("unauthenticated");
+        setCurrentUser(null);
+        setProjectDetail(null);
+        return;
+      }
+      if (!pendingRangesResponse.ok) {
+        throw new Error(
+          `Memory pending ranges request failed with HTTP ${pendingRangesResponse.status}`,
+        );
+      }
+      const pendingRanges =
+        (await pendingRangesResponse.json()) as ProjectMemoryPendingRangeApiResponse[];
+      const projectMemoryResponse = await fetch(
+        `${API_URL}/api/projects/${projectId}/memory/project`,
+        {
+          credentials: "include",
+          signal,
+        },
+      );
+      if (projectMemoryResponse.status === 401) {
+        setAuthStatus("unauthenticated");
+        setCurrentUser(null);
+        setProjectDetail(null);
+        return;
+      }
+      if (!projectMemoryResponse.ok) {
+        throw new Error(
+          `Project memory request failed with HTTP ${projectMemoryResponse.status}`,
+        );
+      }
+      const projectMemory =
+        (await projectMemoryResponse.json()) as ProjectMemorySnapshotApiResponse;
+      const payloadWithDrafts = {
+        ...payload,
+        memory: {
+          latest_artifact_at: payload.memory?.latest_artifact_at ?? null,
+          recent_artifacts: payload.memory?.recent_artifacts ?? [],
+          total_artifacts: payload.memory?.total_artifacts ?? 0,
+          drafts,
+          pending_ranges: pendingRanges,
+          project_memory: projectMemory,
+        },
+      };
+      setProjectDetail(projectDetailDataFromApi(payloadWithDrafts, fallbackProject));
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         return;
@@ -3352,6 +3833,163 @@ function WorkspaceApp() {
         )
         .catch(() => null);
       throw new Error(detail ?? `Memory request failed with HTTP ${response.status}`);
+    }
+
+    await loadProjectDetail(selectedProjectId, selectedProject);
+  };
+
+  const checkpointSessionMemory = async (sessionId: string) => {
+    if (!selectedProjectId) {
+      throw new Error("Select a project before creating a checkpoint.");
+    }
+
+    const response = await fetch(
+      `${API_URL}/api/projects/${selectedProjectId}/sessions/${sessionId}/checkpoint`,
+      {
+        credentials: "include",
+        method: "POST",
+      },
+    );
+    if (response.status === 401) {
+      setAuthStatus("unauthenticated");
+      setCurrentUser(null);
+      throw new Error("Sign in again before creating a checkpoint.");
+    }
+    if (!response.ok) {
+      const detail = await response
+        .json()
+        .then((payload) =>
+          typeof payload?.detail === "string" ? payload.detail : null,
+        )
+        .catch(() => null);
+      throw new Error(detail ?? `Checkpoint request failed with HTTP ${response.status}`);
+    }
+
+    const payload = (await response.json()) as {
+      draft?: ProjectMemoryArtifactApiResponse | null;
+      message?: string;
+      status?: string;
+    };
+    await loadProjectDetail(selectedProjectId, selectedProject);
+    const draft = payload.draft ? projectMemoryArtifactFromApi(payload.draft) : null;
+    if (!draft) {
+      return {
+        message: payload.message ?? "No new Memory Draft was generated.",
+        status: "no_draft" as const,
+      };
+    }
+    if (draft.fallbackReason || isGenericMemoryDraftResponse(draft)) {
+      return {
+        message: draft.fallbackReason
+          ? `AI 정리가 실패했습니다. ${draft.fallbackReason}`
+          : "AI 정리가 유효한 Memory Draft를 만들지 못했습니다.",
+        status: "generation_failed" as const,
+      };
+    }
+    return {
+      message: payload.message ?? "A new Memory Draft was created.",
+      status: "draft_created" as const,
+    };
+  };
+
+  const saveMemoryDraft = async (
+    draftId: string,
+    updates?: {
+      outcome?: string;
+      reason?: string;
+      summary?: string;
+      title?: string;
+      why_it_matters?: string;
+    },
+  ) => {
+    if (!selectedProjectId) {
+      throw new Error("Select a project before saving memory.");
+    }
+
+    const response = await fetch(
+      `${API_URL}/api/projects/${selectedProjectId}/memory/drafts/${draftId}/save`,
+      {
+        body: updates ? JSON.stringify(updates) : undefined,
+        credentials: "include",
+        headers: updates ? { "Content-Type": "application/json" } : undefined,
+        method: "POST",
+      },
+    );
+    if (response.status === 401) {
+      setAuthStatus("unauthenticated");
+      setCurrentUser(null);
+      throw new Error("Sign in again before saving memory.");
+    }
+    if (!response.ok) {
+      const detail = await response
+        .json()
+        .then((payload) =>
+          typeof payload?.detail === "string" ? payload.detail : null,
+        )
+        .catch(() => null);
+      throw new Error(detail ?? `Memory save failed with HTTP ${response.status}`);
+    }
+
+    await loadProjectDetail(selectedProjectId, selectedProject);
+  };
+
+  const ignoreMemoryDraft = async (draftId: string) => {
+    if (!selectedProjectId) {
+      throw new Error("Select a project before ignoring memory.");
+    }
+
+    const response = await fetch(
+      `${API_URL}/api/projects/${selectedProjectId}/memory/drafts/${draftId}/ignore`,
+      {
+        credentials: "include",
+        method: "POST",
+      },
+    );
+    if (response.status === 401) {
+      setAuthStatus("unauthenticated");
+      setCurrentUser(null);
+      throw new Error("Sign in again before ignoring memory.");
+    }
+    if (!response.ok) {
+      const detail = await response
+        .json()
+        .then((payload) =>
+          typeof payload?.detail === "string" ? payload.detail : null,
+        )
+        .catch(() => null);
+      throw new Error(detail ?? `Memory ignore failed with HTTP ${response.status}`);
+    }
+
+    await loadProjectDetail(selectedProjectId, selectedProject);
+  };
+
+  const compileProjectMemory = async () => {
+    if (!selectedProjectId) {
+      throw new Error("Select a project before compiling Project Memory.");
+    }
+
+    const response = await fetch(
+      `${API_URL}/api/projects/${selectedProjectId}/memory/project/compile?regenerate=true`,
+      {
+        credentials: "include",
+        method: "POST",
+      },
+    );
+    if (response.status === 401) {
+      setAuthStatus("unauthenticated");
+      setCurrentUser(null);
+      throw new Error("Sign in again before compiling Project Memory.");
+    }
+    if (!response.ok) {
+      const detail = await response
+        .json()
+        .then((payload) =>
+          typeof payload?.detail === "string" ? payload.detail : null,
+        )
+        .catch(() => null);
+      throw new Error(
+        detail ?? `Project Memory compile failed with HTTP ${response.status}`,
+      );
     }
 
     await loadProjectDetail(selectedProjectId, selectedProject);
@@ -4517,7 +5155,6 @@ function WorkspaceApp() {
               isRefreshing={isProjectDetailLoading && projectDetail !== null}
               onActivityNavigationChange={selectActivityNavigation}
               onConnectRepository={() => openRepositoryConnector(selectedProject.id)}
-              onGenerateSessionMemory={generateSessionMemory}
               onOpenAllProjects={closeProjectDetail}
               onProjectSelect={switchProjectDetail}
               onRepositoryFileSelect={selectRepositoryFile}
@@ -4627,12 +5264,30 @@ function WorkspaceApp() {
                   </div>
 
                   {visibleProjects.length === 0 ? (
-                    <EmptyState
-                      description="Try a different project name."
-                      eyebrow="No matches"
-                      icon={Search}
-                      title="No projects found"
-                    />
+                    <section
+                      className="project-search-empty"
+                      aria-labelledby="project-search-empty-title"
+                    >
+                      <div className="project-search-empty-icon" aria-hidden="true">
+                        <Search size={18} strokeWidth={1.5} />
+                      </div>
+                      <div className="project-search-empty-copy">
+                        <span>No matches</span>
+                        <h2 id="project-search-empty-title">No projects found</h2>
+                        <p>
+                          No project names match{" "}
+                          <code>{projectSearchQuery.trim()}</code>.
+                        </p>
+                      </div>
+                      <button
+                        className="toolbar-button"
+                        onClick={() => setProjectSearchQuery("")}
+                        type="button"
+                      >
+                        <X aria-hidden="true" size={15} strokeWidth={1.5} />
+                        <span>Clear search</span>
+                      </button>
+                    </section>
                   ) : (
                     <div
                       aria-busy={isEventsLoading || undefined}
@@ -4825,27 +5480,19 @@ function WorkspaceApp() {
                 projectCount={projectCatalog.length}
               />
             ) : (
-              <EmptyState
-                description="Workspace controls will be grouped into focused sections as they become available."
-                eyebrow="Settings"
-                icon={Settings}
-                title="Settings are ready for configuration"
-              >
-                <div className="settings-preview-grid" aria-hidden="true">
-                  <div>
-                    <ShieldCheck size={17} strokeWidth={1.5} />
-                    <span>Security</span>
-                  </div>
-                  <div>
-                    <Terminal size={17} strokeWidth={1.5} />
-                    <span>Collector</span>
-                  </div>
-                  <div>
-                    <RefreshCw size={17} strokeWidth={1.5} />
-                    <span>Sync</span>
-                  </div>
-                </div>
-              </EmptyState>
+              <UserSettingsPage
+                apiUrl={API_URL}
+                canUseAdmin={canUseAdmin}
+                connectedRepositoryCount={connectedRepositoryCount}
+                currentUser={currentUser}
+                isRefreshing={isEventsLoading}
+                latestActivityLabel={latestProfileActivityLabel}
+                onOpenProfile={() => selectSidebarItem("profile")}
+                onRefreshWorkspace={() => {
+                  void loadEvents();
+                }}
+                projectCount={projectCatalog.length}
+              />
             )}
           </>
         )}

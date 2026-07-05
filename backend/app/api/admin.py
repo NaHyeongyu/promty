@@ -97,10 +97,19 @@ def _operational_risks() -> list[dict[str, str]]:
                 "title": "Dedicated app encryption key is not configured",
             }
         )
-    if settings.memory_generator.strip().lower() == "gemini" and settings.gemini_api_key:
+    external_memory_enabled = any(
+        generator.strip().lower() in {"gemini", "openai"}
+        for generator in (
+            settings.memory_generator,
+            settings.memory_chunk_generator,
+            settings.memory_draft_generator,
+            settings.project_memory_generator,
+        )
+    )
+    if external_memory_enabled and (settings.gemini_api_key or settings.openai_api_key):
         risks.append(
             {
-                "detail": "Compact prompt and response evidence can be sent to Gemini memory generation.",
+                "detail": "Compact prompt and response evidence can be sent to an external memory generator.",
                 "severity": "info",
                 "title": "External memory generation is enabled",
             }
@@ -225,7 +234,14 @@ def read_admin_overview(
             "app_url": settings.app_url,
             "cors_origins": list(settings.cors_origins),
             "gemini_configured": bool(settings.gemini_api_key),
+            "openai_configured": bool(settings.openai_api_key),
             "memory_generator": settings.memory_generator,
+            "memory_generators": {
+                "chunk": settings.memory_chunk_generator,
+                "draft": settings.memory_draft_generator,
+                "legacy": settings.memory_generator,
+                "project": settings.project_memory_generator,
+            },
             "published_flows_enabled": False,
             "session_cookie_secure": settings.session_cookie_secure,
             "session_cookie_samesite": settings.session_cookie_samesite,
