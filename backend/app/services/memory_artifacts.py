@@ -1866,7 +1866,7 @@ def _latest_memory_cover_end_sequence(db: DBSession, session: Session) -> int | 
             .where(
                 Artifact.project_id == session.project_id,
                 Artifact.session_id == session.id,
-                Artifact.type.in_((MEMORY_DRAFT_ARTIFACT_TYPE, MEMORY_ARTIFACT_TYPE)),
+                Artifact.type == MEMORY_ARTIFACT_TYPE,
             )
             .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
         ).scalars()
@@ -2795,6 +2795,7 @@ def serialize_artifact_version(version: ArtifactVersion) -> dict[str, Any]:
 def serialize_memory_artifact(artifact: Artifact) -> dict[str, Any]:
     metadata = artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}
     return {
+        "changed_file_count": len(artifact.changed_files or []),
         "changed_files": artifact.changed_files,
         "commit_sha": artifact.commit_sha,
         "created_at": _iso(artifact.created_at),

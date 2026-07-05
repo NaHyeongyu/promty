@@ -51,6 +51,9 @@ import {
   type ProjectDetailTabId,
   type ProjectHeaderProjectOption,
   type ProjectMemoryArtifact,
+  type ProjectMemoryArtifactStage,
+  type ProjectMemoryReviewState,
+  type ProjectMemoryScope,
   type PromptFlowPublishPayload,
   type PromptFlowUpdatePayload,
   type RepositoryFileContent,
@@ -1346,11 +1349,55 @@ function projectMemoryPendingRangeFromApi(
   };
 }
 
+function projectMemoryArtifactStageFromApi(
+  value: string | null | undefined,
+): ProjectMemoryArtifactStage | null {
+  if (
+    value === "generated_memory" ||
+    value === "memory_draft" ||
+    value === "project_memory" ||
+    value === "verified_memory"
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function projectMemoryReviewStateFromApi(
+  value: string | null | undefined,
+): ProjectMemoryReviewState | null {
+  if (
+    value === "draft" ||
+    value === "edited" ||
+    value === "generated" ||
+    value === "ignored" ||
+    value === "saved" ||
+    value === "verified"
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function projectMemoryScopeFromApi(
+  value: string | null | undefined,
+): ProjectMemoryScope | null {
+  if (
+    value === "draft" ||
+    value === "generated" ||
+    value === "project" ||
+    value === "verified"
+  ) {
+    return value;
+  }
+  return null;
+}
+
 function projectMemoryArtifactFromApi(
   artifact: ProjectMemoryArtifactApiResponse,
 ) {
   return {
-    artifactStage: artifact.artifact_stage ?? null,
+    artifactStage: projectMemoryArtifactStageFromApi(artifact.artifact_stage),
     changedFileCount: artifact.changed_file_count,
     changedFiles: artifact.changed_files ?? [],
     commitSha: artifact.commit_sha ?? null,
@@ -1364,13 +1411,13 @@ function projectMemoryArtifactFromApi(
     fallbackReason: artifact.fallback_reason ?? null,
     generator: artifact.generator,
     id: artifact.id,
-    memoryScope: artifact.memory_scope ?? null,
+    memoryScope: projectMemoryScopeFromApi(artifact.memory_scope),
     model: artifact.model,
     needsUserVerification: artifact.needs_user_verification ?? null,
     outcome: artifact.outcome,
     promptCount: artifact.prompt_count ?? null,
     reason: artifact.reason ?? null,
-    reviewState: artifact.review_state ?? null,
+    reviewState: projectMemoryReviewStateFromApi(artifact.review_state),
     requestedGenerator: artifact.requested_generator ?? null,
     sections: artifact.sections ?? [],
     sessionId: artifact.session_id,
@@ -1402,7 +1449,7 @@ function projectMemoryArtifactFromApi(
       fallbackReason: null,
       generator: version.generator,
       id: version.id,
-      memoryScope: version.memory_scope ?? null,
+      memoryScope: projectMemoryScopeFromApi(version.memory_scope),
       model: version.model,
       needsUserVerification: null,
       outcome: version.outcome,
@@ -3803,13 +3850,12 @@ function WorkspaceApp() {
           )
           .catch(() => null);
         throw new Error(
-          detail ?? `Pending Memory organization failed with HTTP ${response.status}`,
+          detail ?? `Pending Work organization failed with HTTP ${response.status}`,
         );
       }
 
       const payload = (await response.json()) as {
         artifacts?: ProjectMemoryArtifactApiResponse[];
-        draft?: ProjectMemoryArtifactApiResponse | null;
         message?: string;
         project_memory?: ProjectMemorySnapshotApiResponse | null;
         status?: string;
@@ -3832,78 +3878,6 @@ function WorkspaceApp() {
       message: "Pending Memory was organized and Project Memory was updated.",
       status: "memory_generated" as const,
     };
-  };
-
-  const saveMemoryDraft = async (
-    draftId: string,
-    updates?: {
-      outcome?: string;
-      reason?: string;
-      summary?: string;
-      title?: string;
-      why_it_matters?: string;
-      sections?: Array<{ summary: string; title: string }>;
-    },
-  ) => {
-    if (!selectedProjectId) {
-      throw new Error("Select a project before saving memory.");
-    }
-
-    const response = await fetch(
-      `${API_URL}/api/projects/${selectedProjectId}/memory/drafts/${draftId}/save`,
-      {
-        body: updates ? JSON.stringify(updates) : undefined,
-        credentials: "include",
-        headers: updates ? { "Content-Type": "application/json" } : undefined,
-        method: "POST",
-      },
-    );
-    if (response.status === 401) {
-      setAuthStatus("unauthenticated");
-      setCurrentUser(null);
-      throw new Error("Sign in again before saving memory.");
-    }
-    if (!response.ok) {
-      const detail = await response
-        .json()
-        .then((payload) =>
-          typeof payload?.detail === "string" ? payload.detail : null,
-        )
-        .catch(() => null);
-      throw new Error(detail ?? `Memory save failed with HTTP ${response.status}`);
-    }
-
-    await loadProjectDetail(selectedProjectId, selectedProject);
-  };
-
-  const ignoreMemoryDraft = async (draftId: string) => {
-    if (!selectedProjectId) {
-      throw new Error("Select a project before ignoring memory.");
-    }
-
-    const response = await fetch(
-      `${API_URL}/api/projects/${selectedProjectId}/memory/drafts/${draftId}/ignore`,
-      {
-        credentials: "include",
-        method: "POST",
-      },
-    );
-    if (response.status === 401) {
-      setAuthStatus("unauthenticated");
-      setCurrentUser(null);
-      throw new Error("Sign in again before ignoring memory.");
-    }
-    if (!response.ok) {
-      const detail = await response
-        .json()
-        .then((payload) =>
-          typeof payload?.detail === "string" ? payload.detail : null,
-        )
-        .catch(() => null);
-      throw new Error(detail ?? `Memory ignore failed with HTTP ${response.status}`);
-    }
-
-    await loadProjectDetail(selectedProjectId, selectedProject);
   };
 
   const compileProjectMemory = async () => {
@@ -5141,6 +5115,7 @@ function WorkspaceApp() {
               isRefreshing={isProjectDetailLoading && projectDetail !== null}
               onActivityNavigationChange={selectActivityNavigation}
               onCheckpointMemory={selectedProject ? organizePendingMemory : undefined}
+              onCompileProjectMemory={selectedProject ? compileProjectMemory : undefined}
               onConnectRepository={
                 selectedProject
                   ? () => openRepositoryConnector(selectedProject.id)
