@@ -18,6 +18,7 @@ export type ActivityNavigationState = {
 };
 
 export type ProjectHeaderProps = {
+  isLoading?: boolean;
   lastActivityLabel?: string;
   modelNames?: string[];
   name: string;

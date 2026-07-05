@@ -43,6 +43,14 @@
   white-space: nowrap;
 }
 
+.bh-project-header-copy h1[data-loading="true"] {
+  width: min(260px, 52vw);
+}
+
+.bh-project-header-copy h1[data-loading="true"] .skeleton-line {
+  width: 100%;
+}
+
 .bh-project-header-copy p {
   max-width: 720px;
   margin: 0;
@@ -2081,6 +2089,7 @@
 
 .bh-memory-pending-row,
 .bh-memory-draft-card,
+.bh-memory-project-card,
 .bh-memory-verified-card,
 .bh-memory-empty {
   border: 1px solid var(--bh-card-border);
@@ -2121,10 +2130,22 @@
 }
 
 .bh-memory-draft-card,
+.bh-memory-project-card,
 .bh-memory-verified-card {
   display: grid;
   gap: var(--bh-space-3);
   padding: var(--bh-space-4);
+}
+
+.bh-memory-project-card pre {
+  max-height: 560px;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: var(--bh-color-text-primary);
+  font-family: var(--bh-font-mono);
+  font-size: var(--bh-font-size-small);
+  line-height: var(--bh-line-height-body);
 }
 
 .bh-memory-card-meta {
@@ -2306,6 +2327,8 @@
 }
 
 .bh-detail-skeleton-stats div,
+.bh-overview-stat-card-skeleton,
+.bh-overview-card-skeleton,
 .bh-detail-skeleton-panel,
 .bh-detail-skeleton-tree,
 .bh-detail-skeleton-code,
@@ -2319,24 +2342,28 @@
 }
 
 .bh-detail-skeleton-stats div:nth-child(1),
+.bh-detail-skeleton-overview .bh-overview-stat-card:nth-child(1),
 .bh-detail-skeleton-list .bh-detail-skeleton-row:nth-child(1),
 .bh-detail-skeleton-card:nth-child(1) {
   animation-delay: 40ms;
 }
 
 .bh-detail-skeleton-stats div:nth-child(2),
+.bh-detail-skeleton-overview .bh-overview-stat-card:nth-child(2),
 .bh-detail-skeleton-list .bh-detail-skeleton-row:nth-child(2),
 .bh-detail-skeleton-card:nth-child(2) {
   animation-delay: 100ms;
 }
 
 .bh-detail-skeleton-stats div:nth-child(3),
+.bh-detail-skeleton-overview .bh-overview-stat-card:nth-child(3),
 .bh-detail-skeleton-list .bh-detail-skeleton-row:nth-child(3),
 .bh-detail-skeleton-card:nth-child(3) {
   animation-delay: 160ms;
 }
 
 .bh-detail-skeleton-stats div:nth-child(4),
+.bh-detail-skeleton-overview .bh-overview-stat-card:nth-child(4),
 .bh-detail-skeleton-list .bh-detail-skeleton-row:nth-child(4),
 .bh-detail-skeleton-card:nth-child(4) {
   animation-delay: 220ms;
@@ -2373,6 +2400,81 @@
 
 .bh-code-viewer-skeleton {
   gap: var(--bh-space-4);
+}
+
+.bh-detail-skeleton-overview .bh-overview-stat-card {
+  pointer-events: none;
+}
+
+.bh-detail-skeleton-overview .bh-overview-stat-copy {
+  grid-template-areas:
+    "value"
+    "label"
+    "change";
+}
+
+.bh-detail-skeleton-overview .bh-overview-stat-copy dt {
+  grid-area: label;
+}
+
+.bh-detail-skeleton-overview .bh-overview-stat-copy dd {
+  grid-area: value;
+}
+
+.bh-detail-skeleton-overview .bh-overview-stat-copy dt,
+.bh-detail-skeleton-overview .bh-overview-stat-copy dd {
+  margin: 0;
+}
+
+.bh-detail-skeleton-overview .bh-overview-stat-copy dt .skeleton-line {
+  width: min(84px, 72%);
+}
+
+.bh-detail-skeleton-overview .bh-overview-stat-copy dd .skeleton-line {
+  width: min(112px, 100%);
+}
+
+.bh-detail-skeleton-overview .bh-overview-stat-copy > .skeleton-line {
+  grid-area: change;
+  width: min(124px, 86%);
+}
+
+.bh-overview-stat-sparkline-skeleton {
+  min-width: 72px;
+  height: 36px;
+  border-radius: var(--bh-radius-sm);
+  background: color-mix(in srgb, var(--bh-color-surface-hover) 78%, transparent);
+  animation: loading-pulse 1.8s ease-in-out infinite;
+}
+
+.bh-overview-card-skeleton {
+  pointer-events: none;
+}
+
+.bh-overview-description-skeleton {
+  display: grid;
+  min-width: 0;
+  gap: var(--bh-space-2);
+}
+
+.bh-work-type-filter-skeleton {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.bh-work-type-filter-skeleton .skeleton-pill {
+  width: 100%;
+  height: 30px;
+}
+
+.bh-detail-skeleton-activity {
+  min-height: 0;
+}
+
+.bh-detail-skeleton-activity .bh-prompt-list {
+  min-height: 0;
+  align-content: start;
+  overflow: hidden;
 }
 
 .bh-code-skeleton-lines {
@@ -4932,6 +5034,9 @@ button.bh-file-tree-row:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .bh-detail-skeleton-stats div,
+  .bh-overview-stat-card-skeleton,
+  .bh-overview-card-skeleton,
+  .bh-overview-stat-sparkline-skeleton,
   .bh-detail-skeleton-panel,
   .bh-detail-skeleton-tree,
   .bh-detail-skeleton-code,

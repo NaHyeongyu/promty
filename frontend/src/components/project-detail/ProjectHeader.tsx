@@ -4,6 +4,7 @@ import { AiModelBadge } from "./AiModelBadge";
 import type { ProjectHeaderProps } from "./types";
 
 export function ProjectHeader({
+  isLoading,
   lastActivityLabel,
   modelNames = [],
   name,
@@ -31,7 +32,9 @@ export function ProjectHeader({
   const canSwitchProjects = projectOptions.length > 0 || Boolean(onOpenAllProjects);
   const visibleModelNames = modelNames.slice(0, 2);
   const hiddenModelCount = Math.max(0, modelNames.length - visibleModelNames.length);
-  const hasHeaderMeta = visibleModelNames.length > 0 || Boolean(lastActivityLabel);
+  const hasHeaderMeta =
+    !isLoading && (visibleModelNames.length > 0 || Boolean(lastActivityLabel));
+  const projectTitle = isLoading ? "Loading project" : name;
   const closeProjectMenu = () => {
     setIsProjectMenuOpen(false);
     setProjectSearchQuery("");
@@ -70,15 +73,23 @@ export function ProjectHeader({
       <div className="bh-project-header-copy">
         <div className="bh-project-title-row">
           <div className="bh-project-name-switcher" ref={switcherRef}>
-            <h1 id="project-detail-title" title={name}>
-              {name}
+            <h1
+              data-loading={isLoading ? "true" : undefined}
+              id="project-detail-title"
+              title={projectTitle}
+            >
+              {isLoading ? (
+                <span className="skeleton-line skeleton-line-heading" />
+              ) : (
+                name
+              )}
             </h1>
-            {canSwitchProjects ? (
+            {canSwitchProjects && !isLoading ? (
               <>
                 <button
                   aria-expanded={isProjectMenuOpen}
                   aria-haspopup="dialog"
-                  aria-label={`Switch project from ${name}`}
+                  aria-label={`Switch project from ${projectTitle}`}
                   className="bh-project-switcher-trigger"
                   onClick={() => setIsProjectMenuOpen((isOpen) => !isOpen)}
                   type="button"

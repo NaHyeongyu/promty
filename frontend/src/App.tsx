@@ -3702,24 +3702,6 @@ function WorkspaceApp() {
         throw new Error(`Project detail request failed with HTTP ${response.status}`);
       }
       const payload = (await response.json()) as ProjectDetailApiResponse;
-      const draftsResponse = await fetch(
-        `${API_URL}/api/projects/${projectId}/memory/drafts`,
-        {
-          credentials: "include",
-          signal,
-        },
-      );
-      if (draftsResponse.status === 401) {
-        setAuthStatus("unauthenticated");
-        setCurrentUser(null);
-        setProjectDetail(null);
-        return;
-      }
-      if (!draftsResponse.ok) {
-        throw new Error(`Memory drafts request failed with HTTP ${draftsResponse.status}`);
-      }
-      const drafts =
-        (await draftsResponse.json()) as ProjectMemoryArtifactApiResponse[];
       const pendingRangesResponse = await fetch(
         `${API_URL}/api/projects/${projectId}/memory/pending`,
         {
@@ -3766,7 +3748,7 @@ function WorkspaceApp() {
           latest_artifact_at: payload.memory?.latest_artifact_at ?? null,
           recent_artifacts: payload.memory?.recent_artifacts ?? [],
           total_artifacts: payload.memory?.total_artifacts ?? 0,
-          drafts,
+          drafts: [],
           pending_ranges: pendingRanges,
           project_memory: projectMemory,
         },
@@ -3794,12 +3776,11 @@ function WorkspaceApp() {
     if (uniqueSessionIds.length === 0) {
       return {
         message: "No Pending Memory is ready to organize.",
-        status: "no_draft" as const,
+        status: "no_memory" as const,
       };
     }
 
-    let createdCount = 0;
-    let generationFailureCount = 0;
+    let generatedCount = 0;
 
     for (const sessionId of uniqueSessionIds) {
       const response = await fetch(
@@ -3827,35 +3808,29 @@ function WorkspaceApp() {
       }
 
       const payload = (await response.json()) as {
+        artifacts?: ProjectMemoryArtifactApiResponse[];
         draft?: ProjectMemoryArtifactApiResponse | null;
         message?: string;
+        project_memory?: ProjectMemorySnapshotApiResponse | null;
         status?: string;
       };
-      const draft = payload.draft ? projectMemoryArtifactFromApi(payload.draft) : null;
-      if (!draft) {
-        continue;
-      }
-      if (draft.fallbackReason || isGenericMemoryDraftResponse(draft)) {
-        generationFailureCount += 1;
-        continue;
-      }
-      createdCount += 1;
+      const artifacts = (payload.artifacts ?? []).map(projectMemoryArtifactFromApi);
+      generatedCount += artifacts.filter(
+        (artifact) => !artifact.fallbackReason && !isGenericMemoryDraftResponse(artifact),
+      ).length;
     }
     await loadProjectDetail(selectedProjectId, selectedProject);
 
-    if (createdCount === 0) {
+    if (generatedCount === 0) {
       return {
-        message:
-          generationFailureCount > 0
-            ? "Pending Memory organization failed to produce a valid Memory Draft."
-            : "No new Memory Draft was generated.",
-        status: "no_draft" as const,
+        message: "No new memory was generated.",
+        status: "no_memory" as const,
       };
     }
 
     return {
-      message: "Pending Memory batch was organized. Review the generated drafts.",
-      status: "draft_created" as const,
+      message: "Pending Memory was organized and Project Memory was updated.",
+      status: "memory_generated" as const,
     };
   };
 
@@ -3958,6 +3933,38 @@ function WorkspaceApp() {
       throw new Error(
         detail ?? `Project Memory compile failed with HTTP ${response.status}`,
       );
+    }
+
+    await loadProjectDetail(selectedProjectId, selectedProject);
+  };
+
+  const saveProjectMemory = async (bodyMarkdown: string) => {
+    if (!selectedProjectId) {
+      throw new Error("Select a project before saving Project Memory.");
+    }
+
+    const response = await fetch(
+      `${API_URL}/api/projects/${selectedProjectId}/memory/project`,
+      {
+        body: JSON.stringify({ body_markdown: bodyMarkdown }),
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      },
+    );
+    if (response.status === 401) {
+      setAuthStatus("unauthenticated");
+      setCurrentUser(null);
+      throw new Error("Sign in again before saving Project Memory.");
+    }
+    if (!response.ok) {
+      const detail = await response
+        .json()
+        .then((payload) =>
+          typeof payload?.detail === "string" ? payload.detail : null,
+        )
+        .catch(() => null);
+      throw new Error(detail ?? `Project Memory save failed with HTTP ${response.status}`);
     }
 
     await loadProjectDetail(selectedProjectId, selectedProject);
@@ -4988,6 +4995,13 @@ function WorkspaceApp() {
   ).length;
   const latestProfileActivityLabel =
     projectCatalog[0]?.latestActivityLabel ?? "No project activity";
+  const pendingProjectRouteKey = selectedProjectRouteKey ?? selectedProjectId;
+  const isResolvingProjectDetail =
+    activeItem === "projects" && selectedProject === null && Boolean(pendingProjectRouteKey);
+  const isShowingProjectDetail =
+    activeItem === "projects" && (selectedProject !== null || isResolvingProjectDetail);
+  const projectDetailRenderData =
+    selectedProjectDetailData ?? emptyProjectDetailData(selectedProject);
 
   return (
     <div className="app-shell">
@@ -5110,39 +5124,50 @@ function WorkspaceApp() {
       </aside>
 
       <main className="page">
-        {activeItem === "projects" && selectedProject ? (
+        {isShowingProjectDetail ? (
           <>
             {repositoryConnector}
             {/* Community publishing props are paused for now. */}
             <ProjectDetailPage
               activityNavigation={activityNavigation}
               activeTab={activeDetailTab}
-              data={selectedProjectDetailData ?? emptyProjectDetailData(selectedProject)}
+              data={projectDetailRenderData}
               errorMessage={projectDetailError}
-              isLoading={isProjectDetailLoading && projectDetail === null}
+              isProjectResolving={isResolvingProjectDetail}
+              isLoading={
+                isResolvingProjectDetail ||
+                (isProjectDetailLoading && projectDetail === null)
+              }
               isRefreshing={isProjectDetailLoading && projectDetail !== null}
               onActivityNavigationChange={selectActivityNavigation}
-              onCheckpointMemory={organizePendingMemory}
-              onConnectRepository={() => openRepositoryConnector(selectedProject.id)}
-              onIgnoreMemoryDraft={ignoreMemoryDraft}
+              onCheckpointMemory={selectedProject ? organizePendingMemory : undefined}
+              onConnectRepository={
+                selectedProject
+                  ? () => openRepositoryConnector(selectedProject.id)
+                  : undefined
+              }
               onOpenAllProjects={closeProjectDetail}
-              onProjectSelect={switchProjectDetail}
-              onRepositoryFileSelect={selectRepositoryFile}
-              onSaveProjectMetadata={saveProjectMetadata}
-              onSaveDescription={saveProjectDescription}
-              onSaveMemoryDraft={saveMemoryDraft}
+              onProjectSelect={selectedProject ? switchProjectDetail : undefined}
+              onRepositoryFileSelect={selectedProject ? selectRepositoryFile : undefined}
+              onSaveProjectMetadata={selectedProject ? saveProjectMetadata : undefined}
+              onSaveDescription={selectedProject ? saveProjectDescription : undefined}
+              onSaveProjectMemory={selectedProject ? saveProjectMemory : undefined}
               onTabChange={selectProjectDetailTab}
               projectOptions={projectHeaderOptions}
-              onRetry={() => {
-                void loadProjectDetail(selectedProject.id, selectedProject);
-                void loadProjectGithubFiles(selectedProject.id);
-                if (repositoryFileContentPath) {
-                  void loadRepositoryFileContent(
-                    selectedProject.id,
-                    repositoryFileContentPath,
-                  );
-                }
-              }}
+              onRetry={
+                selectedProject
+                  ? () => {
+                      void loadProjectDetail(selectedProject.id, selectedProject);
+                      void loadProjectGithubFiles(selectedProject.id);
+                      if (repositoryFileContentPath) {
+                        void loadRepositoryFileContent(
+                          selectedProject.id,
+                          repositoryFileContentPath,
+                        );
+                      }
+                    }
+                  : undefined
+              }
             />
           </>
         ) : activeItem === "projects" ? (

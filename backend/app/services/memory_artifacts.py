@@ -51,6 +51,8 @@ SESSION_IDLE_COMPLETE_AFTER = timedelta(hours=1)
 LONG_TEXT_AI_PREVIEW_AFTER = 10_000
 LONG_TEXT_AI_PREVIEW_EDGE = 100
 REVIEW_STATE_DRAFT = "draft"
+REVIEW_STATE_EDITED = "edited"
+REVIEW_STATE_GENERATED = "generated"
 REVIEW_STATE_IGNORED = "ignored"
 REVIEW_STATE_SAVED = "saved"
 REVIEW_STATE_VERIFIED = "verified"
@@ -840,7 +842,7 @@ def _local_draft_from_chunk(
     summary = _truncate(
         handoff
         or chunk.get("summary")
-        or "Local fallback converted an internal chunk summary into a review draft.",
+        or "Local fallback converted an internal chunk summary into generated context memory.",
         700,
     )
     user_intents = (
@@ -2009,6 +2011,96 @@ def generate_memory_drafts_for_session(
     return drafts
 
 
+def generate_context_memories_for_session(
+    db: DBSession,
+    session: Session,
+    *,
+    end_sequence: int | None = None,
+    force_regenerate: bool = False,
+    start_sequence: int | None = None,
+    trigger_reason: str,
+) -> list[Artifact]:
+    generate_due_memory_artifacts_for_session(
+        db,
+        session,
+        finalize=True,
+        force_regenerate_latest=force_regenerate,
+    )
+    all_chunks = _memory_chunks_for_session(db, session)
+    latest_sequence = end_sequence if end_sequence is not None else _latest_event_sequence(db, session)
+
+    context = _build_session_memory_context(
+        db,
+        session,
+        end_sequence=end_sequence,
+        start_sequence=start_sequence,
+    )
+    if not context["events"]:
+        return []
+    covered_start_sequence = context["events"][0]["sequence"]
+    covered_end_sequence = context["events"][-1]["sequence"]
+    relevant_chunks = [
+        chunk
+        for chunk in all_chunks
+        if not isinstance((metadata := chunk.metadata_ if isinstance(chunk.metadata_, dict) else {}).get("end_sequence"), int)
+        or metadata["end_sequence"] >= covered_start_sequence
+    ]
+    context["memory_chunks"] = _memory_chunk_evidence(relevant_chunks)
+    context["remaining_event_previews"] = _remaining_event_previews_after_chunks(
+        context,
+        relevant_chunks,
+    )
+    source_chunk_ids = [str(chunk.id) for chunk in relevant_chunks]
+    payloads, generation_metadata = _build_memory_draft_payloads_from_context(
+        context,
+        trigger_reason=trigger_reason,
+    )
+    memories: list[Artifact] = []
+    event_id = UUID(context["last_event_id"]) if context["last_event_id"] else None
+    for index, (payload, draft_metadata) in enumerate(payloads, start=1):
+        storage_key = (
+            f"memory/session/{session.id}/generated/"
+            f"{latest_sequence or 0}/{trigger_reason}/{index}"
+        )
+        existing_memory = db.execute(
+            select(Artifact).where(
+                Artifact.project_id == session.project_id,
+                Artifact.type == MEMORY_ARTIFACT_TYPE,
+                Artifact.storage_key == storage_key,
+            )
+        ).scalar_one_or_none()
+        if existing_memory is not None and not force_regenerate:
+            memories.append(existing_memory)
+            continue
+        memories.append(
+            _write_memory_artifact_payload(
+                db,
+                artifact_type=MEMORY_ARTIFACT_TYPE,
+                event_id=event_id,
+                extra_metadata={
+                    **draft_metadata,
+                    **generation_metadata,
+                    "artifact_stage": "generated_memory",
+                    "commit_metadata": context["commits"],
+                    "memory_scope": "generated",
+                    "review_state": REVIEW_STATE_GENERATED,
+                    "summary_level": 2,
+                    "trigger_reason": trigger_reason,
+                    "generated_chunk_ids": [str(chunk.id) for chunk in relevant_chunks],
+                    "source_chunk_ids": source_chunk_ids,
+                    "start_sequence": covered_start_sequence,
+                    "end_sequence": covered_end_sequence,
+                },
+                payload=payload,
+                project_id=session.project_id,
+                session_id=session.id,
+                storage_key=storage_key,
+            )
+        )
+
+    return memories
+
+
 def generate_memory_draft_for_session(
     db: DBSession,
     session: Session,
@@ -2264,7 +2356,7 @@ def list_project_memory_drafts(
     return filtered[:limit]
 
 
-def _verified_memory_context(artifact: Artifact) -> dict[str, Any]:
+def _source_memory_context(artifact: Artifact) -> dict[str, Any]:
     metadata = artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}
     return {
         "changed_file_count": len(artifact.changed_files or []),
@@ -2319,22 +2411,22 @@ def _local_project_memory_snapshot(
     source_memory_ids = [str(memory.id) for memory in verified_memories]
     product_goal = (
         project.description
-        or "Promty captures verified AI coding memory for future project context."
+        or "Promty captures generated AI coding memory for future project context."
     )
     current_direction = (
         verified_memories[0].summary
         if verified_memories and verified_memories[0].summary
-        else "No verified memory has established a detailed current direction yet."
+        else "No generated memory has established a detailed current direction yet."
     )
     workflow = [
         "Raw Events are stored for every captured event.",
         "Pending Memory accumulates event ranges that have not been organized.",
         "Prompt count, session, and token thresholds are used only for internal chunking.",
         "Internal chunk summaries are hidden from users.",
-        "The user batch-organizes Pending Memory into Memory Drafts.",
-        "Memory Drafts use Summary, Tasks, Decisions, and Follow-ups.",
-        "Only Save/Edit-approved drafts become Verified Memory.",
-        "Project Memory uses Verified Memory by default.",
+        "The user batch-organizes Pending Memory into generated context memories.",
+        "Generated memories use Summary, Tasks, Decisions, and Follow-ups.",
+        "Generated memories are saved automatically and Project Memory is recompiled immediately.",
+        "Users can edit the final Project Memory snapshot after generation.",
     ]
     important_decisions = [
         {
@@ -2345,14 +2437,14 @@ def _local_project_memory_snapshot(
         for memory in verified_memories[:12]
     ]
     technical_assumptions = [
-        "Project Memory uses verified memories by default.",
+        "Project Memory uses generated and user-edited memories by default.",
         "Internal chunk summaries and ignored drafts are not source of truth.",
         "Prompt chunk size is 20 PromptSubmitted events.",
         "Prompts over 10,000 characters are summarized for AI using the first 100 characters, last 100 characters, and size.",
         "Large outputs follow the same preview policy when sent to AI.",
         "For large prompts, cause analysis should primarily use the paired AI output.",
         "Commit messages are metadata only and are not summary triggers.",
-        "LLM failure fallback must not be exposed as a user-facing Memory Draft.",
+        "LLM failure fallback must not be exposed as user-facing memory.",
     ]
     body_markdown = "\n\n".join(
         [
@@ -2367,14 +2459,14 @@ def _local_project_memory_snapshot(
                     for item in important_decisions
                 )
                 if important_decisions
-                else "- No verified decisions yet."
+                else "- No generated decisions yet."
             ),
             "## Technical Assumptions\n"
             + "\n".join(f"- {item}" for item in technical_assumptions),
             "## Instructions For Future AI Agents\n"
             + "\n".join(
                 [
-                    "- Use verified memory as the source of truth.",
+                    "- Use generated and user-edited memory as the source of truth.",
                     "- Do not rely on internal chunks or ignored drafts.",
                     "- Preserve existing memory workflow thresholds unless the user changes them.",
                 ]
@@ -2389,7 +2481,7 @@ def _local_project_memory_snapshot(
             "current_direction": current_direction,
             "important_decisions": important_decisions,
             "instructions_for_future_ai_agents": [
-                "Use verified memory as the source of truth.",
+                "Use generated and user-edited memory as the source of truth.",
                 "Do not rely on internal chunks or ignored drafts.",
                 "Preserve existing memory workflow thresholds unless the user changes them.",
             ],
@@ -2467,12 +2559,12 @@ def compile_project_memory(
     if project is None:
         raise ValueError("Project not found")
     existing = _latest_project_memory_snapshot(db, project_id)
-    verified_memories = list_project_memory_artifacts(
+    source_memories = list_project_memory_artifacts(
         db,
         project_id=project_id,
         limit=100,
     )
-    source_memory_ids = [str(memory.id) for memory in verified_memories]
+    source_memory_ids = [str(memory.id) for memory in source_memories]
     existing_metadata = existing.metadata_ if existing and isinstance(existing.metadata_, dict) else {}
     if (
         existing is not None
@@ -2485,17 +2577,19 @@ def compile_project_memory(
     local_snapshot = _local_project_memory_snapshot(
         previous_snapshot=previous_snapshot,
         project=project,
-        verified_memories=verified_memories,
+        verified_memories=source_memories,
     )
+    source_memory_context = [
+        _source_memory_context(memory)
+        for memory in source_memories
+    ]
     context = {
         "previous_project_memory": previous_snapshot.metadata_.get("project_memory_snapshot")
         if previous_snapshot and isinstance(previous_snapshot.metadata_, dict)
         else None,
         "project_context": _project_context(project),
-        "verified_memories": [
-            _verified_memory_context(memory)
-            for memory in verified_memories
-        ],
+        "source_memories": source_memory_context,
+        "verified_memories": source_memory_context,
     }
     provider = _provider_name(settings.project_memory_generator)
     if provider not in {"gemini", "openai"}:
@@ -2528,7 +2622,7 @@ def compile_project_memory(
         extra_metadata={
             "memory_scope": "project",
             "project_memory_snapshot": snapshot,
-            "review_state": REVIEW_STATE_VERIFIED,
+            "review_state": REVIEW_STATE_GENERATED,
             "source_memory_ids": snapshot.get("source_memory_ids") or source_memory_ids,
             **generation_metadata,
         },
@@ -2538,6 +2632,68 @@ def compile_project_memory(
         storage_key=f"memory/project/{project_id}/latest",
     )
     return artifact
+
+
+def update_project_memory_snapshot(
+    db: DBSession,
+    *,
+    body_markdown: str,
+    project_id: UUID,
+) -> Artifact:
+    project = db.get(Project, project_id)
+    if project is None:
+        raise ValueError("Project not found")
+    existing = _latest_project_memory_snapshot(db, project_id)
+    existing_metadata = existing.metadata_ if existing and isinstance(existing.metadata_, dict) else {}
+    previous_snapshot = (
+        existing_metadata.get("project_memory_snapshot")
+        if isinstance(existing_metadata.get("project_memory_snapshot"), dict)
+        else None
+    )
+    if previous_snapshot is None:
+        previous_snapshot = _local_project_memory_snapshot(
+            previous_snapshot=existing,
+            project=project,
+            verified_memories=list_project_memory_artifacts(
+                db,
+                project_id=project_id,
+                limit=100,
+            ),
+        )
+    snapshot = {
+        **previous_snapshot,
+        "body_markdown": body_markdown,
+        "warnings": [
+            *(
+                previous_snapshot.get("warnings")
+                if isinstance(previous_snapshot.get("warnings"), list)
+                else []
+            ),
+            "Project Memory body was edited by the user.",
+        ],
+    }
+    payload = _project_memory_payload(
+        generator=existing.generator if existing and existing.generator else LOCAL_MEMORY_GENERATOR,
+        project=project,
+        snapshot=snapshot,
+    )
+    return _write_memory_artifact_payload(
+        db,
+        artifact_type=PROJECT_MEMORY_ARTIFACT_TYPE,
+        event_id=None,
+        extra_metadata={
+            **existing_metadata,
+            "memory_scope": "project",
+            "project_memory_snapshot": snapshot,
+            "review_state": REVIEW_STATE_EDITED,
+            "source_memory_ids": snapshot.get("source_memory_ids") or [],
+            "user_edited": True,
+        },
+        payload=payload,
+        project_id=project_id,
+        session_id=None,
+        storage_key=f"memory/project/{project_id}/latest",
+    )
 
 
 def get_latest_project_memory(db: DBSession, *, project_id: UUID) -> Artifact | None:
@@ -2579,15 +2735,16 @@ def list_project_memory_artifacts(
             .limit(limit * 3)
         ).scalars()
     )
-    verified = [
+    source_memories = [
         artifact
         for artifact in artifacts
-        if (artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}).get(
-            "review_state"
-        )
-        == REVIEW_STATE_VERIFIED
+        if (
+            metadata := artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}
+        ).get("review_state")
+        in {REVIEW_STATE_GENERATED, REVIEW_STATE_VERIFIED}
+        and metadata.get("artifact_stage") in {"generated_memory", "verified_memory"}
     ]
-    return verified[:limit]
+    return source_memories[:limit]
 
 
 def _artifact_versions(
