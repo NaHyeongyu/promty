@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ExternalLink, Folder, GitBranch, Link, Search } from "lucide-react";
+import { ChevronDown, Clock, ExternalLink, Folder, Link, Search } from "lucide-react";
+import { AiModelBadge } from "./AiModelBadge";
 import type { ProjectHeaderProps } from "./types";
 
 export function ProjectHeader({
-  description,
+  lastActivityLabel,
+  modelNames = [],
   name,
   onOpenAllProjects,
   onConnectRepository,
   onProjectSelect,
   projectOptions = [],
-  repositoryStatus,
   repositoryUrl,
   selectedProjectId,
 }: ProjectHeaderProps) {
@@ -28,6 +29,9 @@ export function ProjectHeader({
     );
   }, [projectOptions, projectSearchQuery]);
   const canSwitchProjects = projectOptions.length > 0 || Boolean(onOpenAllProjects);
+  const visibleModelNames = modelNames.slice(0, 2);
+  const hiddenModelCount = Math.max(0, modelNames.length - visibleModelNames.length);
+  const hasHeaderMeta = visibleModelNames.length > 0 || Boolean(lastActivityLabel);
   const closeProjectMenu = () => {
     setIsProjectMenuOpen(false);
     setProjectSearchQuery("");
@@ -74,7 +78,7 @@ export function ProjectHeader({
                 <button
                   aria-expanded={isProjectMenuOpen}
                   aria-haspopup="dialog"
-                  aria-label="Switch project"
+                  aria-label={`Switch project from ${name}`}
                   className="bh-project-switcher-trigger"
                   onClick={() => setIsProjectMenuOpen((isOpen) => !isOpen)}
                   type="button"
@@ -147,15 +151,29 @@ export function ProjectHeader({
             ) : null}
           </div>
         </div>
-        {description ? <p>{description}</p> : null}
+        {hasHeaderMeta ? (
+          <div className="bh-project-header-meta" aria-label="Project activity summary">
+            {visibleModelNames.map((modelName) => (
+              <AiModelBadge
+                className="is-header"
+                key={modelName}
+                model={modelName}
+              />
+            ))}
+            {hiddenModelCount > 0 ? (
+              <span className="bh-project-header-chip">+{hiddenModelCount}</span>
+            ) : null}
+            {lastActivityLabel ? (
+              <span className="bh-project-header-chip">
+                <Clock aria-hidden="true" size={14} strokeWidth={1.5} />
+                <span>{lastActivityLabel}</span>
+              </span>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="bh-project-header-actions">
-        <span className="bh-repository-status">
-          <GitBranch aria-hidden="true" size={16} strokeWidth={1.5} />
-          {repositoryStatus}
-        </span>
-
         {repositoryUrl ? (
           <a
             aria-label="Open repository"

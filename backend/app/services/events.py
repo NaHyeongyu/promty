@@ -231,7 +231,6 @@ def add_events(
     owner: User | None = None,
 ) -> list[str]:
     event_ids: list[str] = []
-    completed_session_ids: set[UUID] = set()
     touched_session_ids: set[UUID] = set()
 
     for event in events:
@@ -244,8 +243,8 @@ def add_events(
             event_ids.append(str(event.id))
             continue
 
-        _ensure_session(db, event, owner)
         _ensure_sequence_available(db, event)
+        session = _ensure_session(db, event, owner)
         event_row = Event(
             id=event.id,
             project_id=event.project_id,
@@ -262,8 +261,6 @@ def add_events(
         sync_project_resources_from_event(db, event_row, payload)
         if event.session_id is not None:
             touched_session_ids.add(event.session_id)
-        if event.event_type == "SessionEnded":
-            completed_session_ids.add(event.session_id)
 
         event_ids.append(str(event.id))
 
@@ -271,11 +268,7 @@ def add_events(
         session = db.get(Session, session_id)
         if session is None:
             continue
-        generate_due_memory_artifacts_for_session(
-            db,
-            session,
-            finalize=session_id in completed_session_ids,
-        )
+        generate_due_memory_artifacts_for_session(db, session)
 
     db.commit()
     return event_ids

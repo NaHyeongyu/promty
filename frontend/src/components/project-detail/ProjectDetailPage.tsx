@@ -7,7 +7,26 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from "react";
-import { Activity, BookOpen, ImagePlus, Search, Share2, X } from "lucide-react";
+import {
+  Activity,
+  BookOpen,
+  Check,
+  Copy,
+  ExternalLink,
+  FileText,
+  Files,
+  Folder,
+  GitBranch,
+  Globe2,
+  ImagePlus,
+  Link2,
+  LockKeyhole,
+  Search,
+  Share2,
+  Sparkles,
+  X,
+} from "lucide-react";
+import { siGithub } from "simple-icons";
 import { MarkdownContent } from "../MarkdownContent";
 import {
   ActivityCard,
@@ -46,10 +65,21 @@ type ProjectDetailPageProps = {
   isRefreshing?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onConnectRepository?: () => void;
-  onGenerateSessionMemory?: (sessionId: string) => Promise<void>;
   onOpenAllProjects?: () => void;
   onProjectSelect?: (projectId: string) => void;
   onRepositoryFileSelect?: (path: string) => void;
+  onSaveProjectMetadata?: (metadata: {
+    slug?: string;
+    tags?: string[];
+    visibility?: "private" | "public";
+  }) => Promise<void>;
+  onSaveDescription?: (description: string) => Promise<void>;
+  onCheckpointMemory?: (sessionIds: string[]) => Promise<MemoryCheckpointResult>;
+  onSaveMemoryDraft?: (
+    draftId: string,
+    updates?: MemoryDraftSaveUpdates,
+  ) => Promise<void>;
+  onIgnoreMemoryDraft?: (draftId: string) => Promise<void>;
   onPublishFlow?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
   onSaveFlowDraft?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
   onUpdateFlow?: (
@@ -66,6 +96,18 @@ type ProjectDetailPageProps = {
   projectOptions?: ProjectHeaderProjectOption[];
 };
 
+type MemoryCheckpointResult = {
+  message: string;
+  status: "draft_created" | "generation_failed" | "no_draft" | string;
+};
+
+type MemoryDraftSaveUpdates = {
+  sections?: Array<{ summary: string; title: string }>;
+  summary?: string;
+  title?: string;
+  why_it_matters?: string;
+};
+
 const defaultActivityNavigation: ActivityNavigationState = {
   selectedPromptId: null,
   selectedSessionId: null,
@@ -76,13 +118,15 @@ const defaultActivityNavigation: ActivityNavigationState = {
 const projectTabs: ProjectDetailTab[] = [
   { id: "overview", label: "Overview" },
   { id: "memory", label: "Memory" },
-  { id: "ai-activity", label: "AI Activity" },
+  { id: "ai-activity", label: "Activity" },
   { id: "files", label: "Files" },
 ];
 
 function promptTitle(prompt: string) {
   return prompt.split(/\r?\n/)[0]?.trim().replace(/\s+/g, " ") || "Prompt flow";
 }
+
+const githubRemoteCommand = "git remote add origin https://github.com/OWNER/REPO.git";
 
 function shareSelectionTitle(promptCount: number) {
   return promptCount === 1 ? "1 prompt selected" : `${promptCount} prompts selected`;
@@ -121,12 +165,215 @@ function sortPromptsForSelection(
   return second.sequence - first.sequence;
 }
 
+type ActivityFeedItem =
+  | {
+      activity: PromptActivityItem;
+      kind: "prompt";
+      key: string;
+      sequenceIndex: number;
+      timestamp: number | null;
+    }
+  | {
+      activity: ActivityItem;
+      kind: "session";
+      key: string;
+      sequenceIndex: number;
+      timestamp: number | null;
+    };
+
+function displayTimeValue(value: string) {
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function activityFeedSearchText(item: ActivityFeedItem) {
+  if (item.kind === "prompt") {
+    return [
+      item.activity.prompt,
+      item.activity.model,
+      item.activity.submittedAt,
+      `prompt ${item.activity.sequence}`,
+      String(item.activity.sequence),
+    ].join(" ");
+  }
+
+  return [
+    item.activity.id,
+    item.activity.model,
+    item.activity.startedAt,
+    item.activity.lastActivity,
+    `${item.activity.prompts} prompts`,
+    `${item.activity.filesChanged} files`,
+  ].join(" ");
+}
+
+function sortActivityFeedItems(
+  first: ActivityFeedItem,
+  second: ActivityFeedItem,
+) {
+  if (
+    first.timestamp !== null &&
+    second.timestamp !== null &&
+    first.timestamp !== second.timestamp
+  ) {
+    return second.timestamp - first.timestamp;
+  }
+
+  return first.sequenceIndex - second.sequenceIndex;
+}
+
 function overviewCompactNumber(value: number) {
   return Intl.NumberFormat("en", {
     maximumFractionDigits: 1,
     notation: "compact",
   }).format(value);
 }
+
+function statisticDeltaParts(delta: string | undefined) {
+  if (!delta) {
+    return null;
+  }
+
+  const [value, ...labelParts] = delta.split(" ");
+  const label = labelParts.join(" ");
+  return {
+    label,
+    value,
+  };
+}
+
+function statisticNumericValue(value: string | undefined) {
+  if (!value) {
+    return 0;
+  }
+
+  const normalizedValue = value.trim().replace(/,/g, "");
+  const match = normalizedValue.match(/^([+-]?\d+(?:\.\d+)?)([kmb])?/i);
+  if (!match) {
+    return 0;
+  }
+
+  const amount = Number.parseFloat(match[1]);
+  if (!Number.isFinite(amount)) {
+    return 0;
+  }
+
+  const suffix = match[2]?.toLowerCase();
+  const multiplier =
+    suffix === "b"
+      ? 1_000_000_000
+      : suffix === "m"
+        ? 1_000_000
+        : suffix === "k"
+          ? 1_000
+          : 1;
+  return amount * multiplier;
+}
+
+function statisticSparklinePoints(value: string, delta: string | undefined) {
+  const currentValue = Math.max(0, statisticNumericValue(value));
+  const deltaValue = Math.max(0, statisticNumericValue(delta?.split(" ")[0]));
+
+  if (currentValue === 0 && deltaValue === 0) {
+    return [0, 0, 0, 0, 0, 0, 0];
+  }
+
+  const trendUnit =
+    deltaValue > 0 ? deltaValue : Math.max(1, Math.round(currentValue * 0.08));
+  const startValue = Math.max(0, currentValue - trendUnit * 2);
+  return [
+    startValue,
+    startValue + trendUnit * 0.28,
+    startValue + trendUnit * 0.18,
+    startValue + trendUnit * 0.62,
+    startValue + trendUnit * 0.52,
+    startValue + trendUnit * 0.86,
+    currentValue,
+  ];
+}
+
+function sparklinePointCoordinates(points: number[]) {
+  const width = 96;
+  const height = 28;
+  const maxValue = Math.max(...points, 1);
+  const minValue = Math.min(...points);
+  const range = Math.max(maxValue - minValue, 1);
+
+  return points.map((point, index) => {
+    const x = (index / Math.max(points.length - 1, 1)) * width;
+    const y = height - ((point - minValue) / range) * (height - 4) - 2;
+    return [x, y] as const;
+  });
+}
+
+function SparklineChart({
+  points,
+  type,
+}: {
+  points: number[];
+  type: "bar" | "line";
+}) {
+  const coordinates = sparklinePointCoordinates(points);
+  const linePath = coordinates
+    .map(([x, y], index) => `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`)
+    .join(" ");
+  const areaPath = `${linePath} L 96 30 L 0 30 Z`;
+  const maxValue = Math.max(...points, 1);
+
+  return (
+    <svg
+      aria-hidden="true"
+      className="bh-overview-stat-sparkline"
+      focusable="false"
+      preserveAspectRatio="none"
+      viewBox="0 0 96 30"
+    >
+      {type === "bar" ? (
+        points.map((point, index) => {
+          const barHeight = Math.max(3, (point / maxValue) * 24);
+          return (
+            <rect
+              height={barHeight}
+              key={`${point}-${index}`}
+              rx="1.5"
+              width="7"
+              x={index * 14 + 2}
+              y={28 - barHeight}
+            />
+          );
+        })
+      ) : (
+        <>
+          <path className="bh-overview-stat-sparkline-area" d={areaPath} />
+          <path className="bh-overview-stat-sparkline-line" d={linePath} />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function projectTagsFromInput(value: string) {
+  const tags = new Set<string>();
+  for (const tag of value.split(",")) {
+    const normalizedTag = tag.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!normalizedTag) {
+      continue;
+    }
+    tags.add(normalizedTag.slice(0, 40));
+    if (tags.size >= 12) {
+      break;
+    }
+  }
+  return Array.from(tags);
+}
+
+function projectVisibilityFromValue(value: string | undefined): "private" | "public" {
+  return value?.toLowerCase() === "public" ? "public" : "private";
+}
+
+type OverviewEditorKind = "project" | "description";
+
+const OVERVIEW_EDIT_DRAWER_ANIMATION_MS = 200;
 
 type WorkType = "brainstorming" | "work";
 type WorkTypeFilter = "all" | WorkType;
@@ -1236,13 +1483,118 @@ function PromptFlowShareDrawer({
   );
 }
 
+function PlainDescriptionContent({
+  emptyLabel,
+  value,
+}: {
+  emptyLabel: string;
+  value: string;
+}) {
+  const trimmedValue = value.trim();
+
+  return (
+    <div
+      className={`bh-plain-description${trimmedValue ? "" : " is-empty"}`}
+    >
+      {trimmedValue || emptyLabel}
+    </div>
+  );
+}
+
 function OverviewPanel({
   data,
-  onOpenMemory,
+  onSaveDescription,
+  onSaveProjectMetadata,
 }: {
   data: ProjectDetailData;
-  onOpenMemory?: () => void;
+  onSaveDescription?: (description: string) => Promise<void>;
+  onSaveProjectMetadata?: (metadata: {
+    slug?: string;
+    tags?: string[];
+    visibility?: "private" | "public";
+  }) => Promise<void>;
 }) {
+  const overviewEditDrawerRef = useRef<HTMLElement | null>(null);
+  const overviewEditCloseTimerRef = useRef<number | null>(null);
+  const [descriptionDraft, setDescriptionDraft] = useState(data.project.description);
+  const [descriptionError, setDescriptionError] = useState<string | null>(null);
+  const [isDescriptionEditing, setIsDescriptionEditing] = useState(false);
+  const [isDescriptionSaving, setIsDescriptionSaving] = useState(false);
+  const [isProjectMetadataEditing, setIsProjectMetadataEditing] = useState(false);
+  const [isProjectMetadataSaving, setIsProjectMetadataSaving] = useState(false);
+  const [projectMetadataError, setProjectMetadataError] = useState<string | null>(null);
+  const [projectSlugDraft, setProjectSlugDraft] = useState(data.project.slug ?? data.project.id);
+  const [projectTagsDraft, setProjectTagsDraft] = useState(
+    data.project.tags.join(", "),
+  );
+  const [projectVisibilityDraft, setProjectVisibilityDraft] = useState<
+    "private" | "public"
+  >(projectVisibilityFromValue(data.project.visibility));
+  const [closingOverviewEditor, setClosingOverviewEditor] =
+    useState<OverviewEditorKind | null>(null);
+  const isProjectMetadataDrawerVisible =
+    isProjectMetadataEditing || closingOverviewEditor === "project";
+  const isDescriptionDrawerVisible =
+    isDescriptionEditing || closingOverviewEditor === "description";
+  const isOverviewDrawerOpen =
+    isProjectMetadataDrawerVisible || isDescriptionDrawerVisible;
+
+  useEffect(() => {
+    setDescriptionDraft(data.project.description);
+    setDescriptionError(null);
+  }, [data.project.description, data.project.id]);
+
+  useEffect(() => {
+    setProjectSlugDraft(data.project.slug ?? data.project.id);
+    setProjectTagsDraft(data.project.tags.join(", "));
+    setProjectVisibilityDraft(projectVisibilityFromValue(data.project.visibility));
+    setProjectMetadataError(null);
+  }, [data.project.id, data.project.slug, data.project.tags, data.project.visibility]);
+
+  useEffect(() => {
+    if (overviewEditCloseTimerRef.current !== null) {
+      window.clearTimeout(overviewEditCloseTimerRef.current);
+      overviewEditCloseTimerRef.current = null;
+    }
+    setClosingOverviewEditor(null);
+    setIsDescriptionEditing(false);
+    setIsProjectMetadataEditing(false);
+  }, [data.project.id]);
+
+  useEffect(() => {
+    if (!isOverviewDrawerOpen) {
+      return;
+    }
+
+    const previousActiveElement =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousBodyOverscrollBehavior = document.body.style.overscrollBehavior;
+
+    document.body.style.overflow = "hidden";
+    document.body.style.overscrollBehavior = "contain";
+
+    const focusTimer = window.setTimeout(() => {
+      overviewEditDrawerRef.current?.focus({ preventScroll: true });
+    }, 0);
+
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.body.style.overflow = previousBodyOverflow;
+      document.body.style.overscrollBehavior = previousBodyOverscrollBehavior;
+      previousActiveElement?.focus({ preventScroll: true });
+    };
+  }, [isOverviewDrawerOpen]);
+
+  useEffect(
+    () => () => {
+      if (overviewEditCloseTimerRef.current !== null) {
+        window.clearTimeout(overviewEditCloseTimerRef.current);
+      }
+    },
+    [],
+  );
+
   if (data.overview.length === 0) {
     return (
       <EmptyState
@@ -1257,568 +1609,1165 @@ function OverviewPanel({
   const repositoryUrlItem = overviewItems.get("Repository URL");
   const projectUrlItem = overviewItems.get("Project URL");
   const descriptionItem = overviewItems.get("Description");
-  const modelItem = overviewItems.get("AI Models");
-  const connectedModels =
-    modelItem?.value && modelItem.value !== "Not captured"
-      ? modelItem.value.split(",").map((model) => model.trim()).filter(Boolean)
-      : [];
+  const aiModelsItem = overviewItems.get("AI Models");
+  const lastActivityItem = overviewItems.get("Last Activity");
+  const repositoryConnectedItem = overviewItems.get("Repository Connected");
+  const visibilityItem = overviewItems.get("Visibility");
   const filesChanged = data.activities.reduce(
     (total, activity) => total + activity.filesChanged,
     0,
   );
   const statisticItems = [
-    { label: "Activities", value: overviewItems.get("Activities")?.value ?? "0" },
-    { label: "Prompts", value: overviewItems.get("Prompts")?.value ?? "0" },
-    { label: "Files Changed", value: overviewCompactNumber(filesChanged) },
-    { label: "Memory", value: overviewCompactNumber(data.memory.totalArtifacts) },
+    {
+      chart: "line" as const,
+      delta: overviewItems.get("Sessions Added")?.value,
+      label: "Sessions",
+      tone: "sessions",
+      value: overviewItems.get("Sessions")?.value ?? "0",
+    },
+    {
+      chart: "line" as const,
+      delta: overviewItems.get("Prompts Added")?.value,
+      label: "Prompts",
+      tone: "prompts",
+      value: overviewItems.get("Prompts")?.value ?? "0",
+    },
+    {
+      chart: "line" as const,
+      delta: overviewItems.get("Files Changed Added")?.value,
+      label: "Files changed",
+      tone: "files",
+      value: overviewCompactNumber(filesChanged),
+    },
+    {
+      chart: "line" as const,
+      delta: undefined,
+      label: "Memories",
+      tone: "memory",
+      value: overviewCompactNumber(data.memory.totalArtifacts),
+    },
     // Community publishing is paused for now.
     // {
     //   label: "Published Prompts",
     //   value: overviewCompactNumber(data.community.publishedFlows),
     // },
   ];
-  const projectItems = [
-    repositoryUrlItem,
-    projectUrlItem,
-    descriptionItem,
-    overviewItems.get("Default Branch"),
-    overviewItems.get("Visibility"),
-  ].filter((item): item is OverviewItem => Boolean(item));
-  const timelineItems = [
-    overviewItems.get("Created"),
-    overviewItems.get("Last Activity"),
-    overviewItems.get("Memory Artifacts"),
-    // Community publishing is paused for now.
-    // overviewItems.get("Last Published Prompt"),
-    overviewItems.get("Repository Connected"),
-  ].filter((item): item is OverviewItem => Boolean(item));
+  const renderedStatisticItems = statisticItems.map((item) => ({
+    ...item,
+    deltaParts: statisticDeltaParts(item.delta),
+    sparklinePoints: statisticSparklinePoints(item.value, item.delta),
+  }));
+  const projectAiModelNames =
+    aiModelsItem?.value && aiModelsItem.value !== "Not captured"
+      ? aiModelsItem.value.split(",").map((model) => model.trim()).filter(Boolean)
+      : [];
+  const projectTagDraftItems = projectTagsFromInput(projectTagsDraft);
+  const rawDescriptionValue = data.project.description.trim();
+  const latestActivity = data.activities[0] ?? null;
+  const repositoryConnected = repositoryConnectedItem?.value === "Connected";
+  const repositoryStatusText = repositoryConnected
+    ? "Connected"
+    : data.project.repositoryStatus?.replace(/^Repository\s+/i, "") || "Not connected";
+  const projectVisibility = projectVisibilityFromValue(
+    data.project.visibility ?? visibilityItem?.value,
+  );
+  const lastActivityDisplay =
+    lastActivityItem?.description && lastActivityItem.description !== "No activity"
+      ? lastActivityItem.description
+      : lastActivityItem?.value ?? latestActivity?.lastActivity ?? "No activity";
+  const canEditDescription = Boolean(onSaveDescription);
+  const canEditProjectMetadata = Boolean(onSaveProjectMetadata);
+  const clearOverviewEditCloseTimer = () => {
+    if (overviewEditCloseTimerRef.current !== null) {
+      window.clearTimeout(overviewEditCloseTimerRef.current);
+      overviewEditCloseTimerRef.current = null;
+    }
+  };
+  const resetProjectMetadataDraft = () => {
+    setProjectSlugDraft(data.project.slug ?? data.project.id);
+    setProjectTagsDraft(data.project.tags.join(", "));
+    setProjectVisibilityDraft(projectVisibilityFromValue(data.project.visibility));
+    setProjectMetadataError(null);
+  };
+  const resetDescriptionDraft = () => {
+    setDescriptionDraft(rawDescriptionValue);
+    setDescriptionError(null);
+  };
+  const completeOverviewEditorClose = (editor: OverviewEditorKind) => {
+    if (editor === "project") {
+      resetProjectMetadataDraft();
+      setIsProjectMetadataEditing(false);
+    } else {
+      resetDescriptionDraft();
+      setIsDescriptionEditing(false);
+    }
+    setClosingOverviewEditor((currentEditor) =>
+      currentEditor === editor ? null : currentEditor,
+    );
+    overviewEditCloseTimerRef.current = null;
+  };
+  const closeOverviewEditorWithAnimation = (editor: OverviewEditorKind) => {
+    clearOverviewEditCloseTimer();
+    setClosingOverviewEditor(editor);
+    overviewEditCloseTimerRef.current = window.setTimeout(() => {
+      completeOverviewEditorClose(editor);
+    }, OVERVIEW_EDIT_DRAWER_ANIMATION_MS);
+  };
+  const openProjectMetadataEditor = () => {
+    clearOverviewEditCloseTimer();
+    setClosingOverviewEditor(null);
+    resetProjectMetadataDraft();
+    setIsDescriptionEditing(false);
+    setIsProjectMetadataEditing(true);
+  };
+  const closeProjectMetadataEditor = () => {
+    closeOverviewEditorWithAnimation("project");
+  };
+  const openDescriptionEditor = () => {
+    clearOverviewEditCloseTimer();
+    setClosingOverviewEditor(null);
+    resetDescriptionDraft();
+    setIsProjectMetadataEditing(false);
+    setIsDescriptionEditing(true);
+  };
+  const closeDescriptionEditor = () => {
+    closeOverviewEditorWithAnimation("description");
+  };
+  const saveDescription = async (nextDescription: string) => {
+    if (!onSaveDescription || isDescriptionSaving) {
+      return;
+    }
+
+    setDescriptionError(null);
+    setIsDescriptionSaving(true);
+    try {
+      await onSaveDescription(nextDescription);
+      closeDescriptionEditor();
+    } catch (error) {
+      setDescriptionError(
+        error instanceof Error ? error.message : "Description could not be saved",
+      );
+    } finally {
+      setIsDescriptionSaving(false);
+    }
+  };
+  const saveProjectMetadata = async (tagInput = projectTagsDraft) => {
+    if (!onSaveProjectMetadata || isProjectMetadataSaving) {
+      return;
+    }
+
+    setProjectMetadataError(null);
+    setIsProjectMetadataSaving(true);
+    try {
+      await onSaveProjectMetadata({
+        slug: projectSlugDraft,
+        tags: projectTagsFromInput(tagInput),
+        visibility: projectVisibilityDraft,
+      });
+      closeProjectMetadataEditor();
+    } catch (error) {
+      setProjectMetadataError(
+        error instanceof Error ? error.message : "Project metadata could not be saved",
+      );
+    } finally {
+      setIsProjectMetadataSaving(false);
+    }
+  };
+  const handleOverviewDrawerKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      if (isProjectMetadataSaving || isDescriptionSaving) {
+        return;
+      }
+      if (isProjectMetadataEditing) {
+        closeProjectMetadataEditor();
+      } else {
+        closeDescriptionEditor();
+      }
+      return;
+    }
+
+    if (event.key !== "Tab") {
+      return;
+    }
+
+    const drawerElement = overviewEditDrawerRef.current;
+    if (!drawerElement) {
+      return;
+    }
+
+    const focusableElements = focusableModalElements(drawerElement);
+    if (focusableElements.length === 0) {
+      event.preventDefault();
+      drawerElement.focus({ preventScroll: true });
+      return;
+    }
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+    const activeElement =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    if (event.shiftKey && activeElement === firstElement) {
+      event.preventDefault();
+      lastElement.focus({ preventScroll: true });
+      return;
+    }
+
+    if (!event.shiftKey && activeElement === lastElement) {
+      event.preventDefault();
+      firstElement.focus({ preventScroll: true });
+    }
+  };
 
   return (
     <div className="bh-overview-dashboard">
-      <section className="bh-overview-meta-strip" aria-label="Project metadata">
-        <div className="bh-overview-hero-meta" aria-label="Connected models">
-          <div className="bh-overview-model-badges" aria-label="Connected models">
-            {connectedModels.length > 0 ? (
-              connectedModels.map((model) => (
-                <AiModelBadge className="is-overview" key={model} model={model} />
-              ))
-            ) : (
-              <span className="ai-model-badge is-muted">No models captured</span>
-            )}
-          </div>
-        </div>
-      </section>
-
       <section className="bh-overview-statistics" aria-label="Project statistics">
         <dl>
-          {statisticItems.map((item) => (
-            <div key={item.label}>
-              <dd>{item.value}</dd>
-              <dt>{item.label}</dt>
+          {renderedStatisticItems.map((item) => (
+            <div
+              className="bh-overview-stat-card"
+              data-tone={item.tone}
+              key={item.label}
+            >
+              <div className="bh-overview-stat-copy">
+                <dt>{item.label}</dt>
+                <dd>{item.value}</dd>
+                {item.deltaParts ? (
+                  <span className="bh-overview-statistics-change">
+                    <strong>{item.deltaParts.value}</strong>
+                    {item.deltaParts.label ? (
+                      <small>{item.deltaParts.label}</small>
+                    ) : null}
+                  </span>
+                ) : null}
+              </div>
+              <SparklineChart points={item.sparklinePoints} type={item.chart} />
             </div>
           ))}
         </dl>
       </section>
 
-      <div className="bh-overview-content-grid">
-        <section className="bh-overview-panel" aria-labelledby="project-identity-title">
-          <h2 id="project-identity-title">Project</h2>
-          <dl className="bh-overview-info-list">
-            {projectItems.map((item) => (
-              <div key={item.title}>
-                <dt>{item.title}</dt>
-                <dd>
-                  {item.href ? (
-                    <a href={item.href} rel="noreferrer" target="_blank">
-                      {item.value}
-                    </a>
-                  ) : (
-                    item.value
-                  )}
-                </dd>
+      <div className="bh-overview-detail-grid">
+        <section
+          className="bh-overview-card bh-overview-card-repository"
+          aria-labelledby="project-repository-title"
+        >
+          <div className="bh-overview-card-header">
+            <h2 id="project-repository-title">
+              <Folder aria-hidden="true" size={16} strokeWidth={1.5} />
+              <span>Project</span>
+            </h2>
+            {canEditProjectMetadata ? (
+              <button
+                className="bh-overview-card-action"
+                onClick={openProjectMetadataEditor}
+                type="button"
+              >
+                Edit
+              </button>
+            ) : null}
+          </div>
+
+          <div className="bh-project-context-layout">
+            <div className="bh-project-context-links" aria-label="Project links">
+              <div className="bh-project-context-link-field">
+                <span className="bh-project-context-link-label">Project URL</span>
+                {projectUrlItem ? (
+                  <a
+                    className="bh-project-context-link"
+                    href={projectUrlItem.href ?? projectUrlItem.value}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    <span className="bh-project-context-link-icon">
+                      <Link2 aria-hidden="true" size={16} strokeWidth={1.5} />
+                    </span>
+                    <span className="bh-project-context-link-value">
+                      {projectUrlItem.value}
+                    </span>
+                    <ExternalLink aria-hidden="true" size={16} strokeWidth={1.5} />
+                  </a>
+                ) : (
+                  <span className="bh-project-context-link is-disabled">
+                    <span className="bh-project-context-link-icon">
+                      <Link2 aria-hidden="true" size={16} strokeWidth={1.5} />
+                    </span>
+                    <span className="bh-project-context-link-value">Not available</span>
+                  </span>
+                )}
               </div>
-            ))}
-          </dl>
+
+              <div className="bh-project-context-link-field">
+                <span className="bh-project-context-link-label">GitHub URL</span>
+                {repositoryUrlItem?.href ? (
+                  <a
+                    className="bh-project-context-link"
+                    href={repositoryUrlItem.href}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    <span
+                      className="bh-project-context-link-icon"
+                      data-kind="github"
+                    >
+                      <svg aria-hidden="true" viewBox="0 0 24 24">
+                        <path d={siGithub.path} />
+                      </svg>
+                    </span>
+                    <span className="bh-project-context-link-value">
+                      {repositoryUrlItem.value}
+                    </span>
+                    <ExternalLink aria-hidden="true" size={16} strokeWidth={1.5} />
+                  </a>
+                ) : (
+                  <span className="bh-project-context-link is-disabled">
+                    <span
+                      className="bh-project-context-link-icon"
+                      data-kind="github"
+                    >
+                      <svg aria-hidden="true" viewBox="0 0 24 24">
+                        <path d={siGithub.path} />
+                      </svg>
+                    </span>
+                    <span className="bh-project-context-link-value">
+                      {repositoryUrlItem?.value ?? "Not connected"}
+                    </span>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="bh-overview-card-divider" />
+
+            <div className="bh-project-context-grid">
+              <section className="bh-project-context-section" aria-label="Repository">
+                <h3>Repository</h3>
+                <div className="bh-project-summary-strip">
+                  <span data-state={repositoryConnected ? "connected" : "idle"}>
+                    <i aria-hidden="true" />
+                    <strong>Status</strong>
+                    {repositoryStatusText}
+                  </span>
+                  <span>
+                    {projectVisibility === "public" ? (
+                      <Globe2 aria-hidden="true" size={16} strokeWidth={1.5} />
+                    ) : (
+                      <LockKeyhole aria-hidden="true" size={16} strokeWidth={1.5} />
+                    )}
+                    {visibilityItem?.value ?? "Private"}
+                  </span>
+                </div>
+              </section>
+
+              <section className="bh-project-context-section" aria-label="AI context">
+                <h3>AI Context</h3>
+                <div className="bh-overview-model-badge-list">
+                  {projectAiModelNames.length > 0 ? (
+                    projectAiModelNames.map((model) => (
+                      <AiModelBadge className="is-compact" key={model} model={model} />
+                    ))
+                  ) : (
+                    <span className="ai-model-badge is-muted">No models captured</span>
+                  )}
+                </div>
+              </section>
+
+              <section className="bh-project-context-section" aria-label="Project tags">
+                <h3>Tags</h3>
+                {data.project.tags.length > 0 ? (
+                  <div className="bh-project-tag-list">
+                    {data.project.tags.map((tag) => (
+                      <span key={tag}>{tag}</span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="bh-project-profile-empty">No tags</span>
+                )}
+              </section>
+
+              <section
+                className="bh-project-context-section"
+                aria-label="Last activity"
+              >
+                <h3>Last Activity</h3>
+                <p title={lastActivityItem?.value ?? undefined}>
+                  {lastActivityDisplay}
+                </p>
+              </section>
+            </div>
+          </div>
         </section>
 
-        <section className="bh-overview-panel" aria-labelledby="project-timeline-title">
-          <h2 id="project-timeline-title">Timeline</h2>
-          <dl className="bh-overview-timeline">
-            {timelineItems.map((item) => (
-              <div key={item.title}>
-                <dt>{item.title}</dt>
-                <dd>{item.value}</dd>
-                {item.description ? <span>{item.description}</span> : null}
-              </div>
-            ))}
-          </dl>
+        <section
+          className="bh-overview-card bh-overview-card-description"
+          aria-labelledby="project-description-title"
+        >
+          <div className="bh-overview-card-header">
+            <h2 id="project-description-title">
+              <FileText aria-hidden="true" size={16} strokeWidth={1.5} />
+              <span>Description</span>
+            </h2>
+            {canEditDescription ? (
+              <button
+                className="bh-overview-card-action"
+                onClick={openDescriptionEditor}
+                type="button"
+              >
+                Edit
+              </button>
+            ) : null}
+          </div>
+          <PlainDescriptionContent
+            emptyLabel="Not provided"
+            value={rawDescriptionValue || descriptionItem?.value.trim() || ""}
+          />
         </section>
+
       </div>
 
-      <section className="bh-overview-memory" aria-labelledby="project-memory-title">
-        <div className="bh-overview-memory-header">
-          <div>
-            <h2 id="project-memory-title">Project Memory</h2>
-            <p>Memory is generated automatically from prompt and time windows.</p>
-          </div>
-          {onOpenMemory ? (
-            <button
-              className="bh-overview-primary-button"
-              onClick={onOpenMemory}
-              type="button"
+      {isProjectMetadataDrawerVisible ? (
+        <div
+          className="bh-overview-edit-overlay"
+          data-state={closingOverviewEditor === "project" ? "closing" : "open"}
+          role="presentation"
+        >
+          <section
+            aria-labelledby="project-edit-drawer-title"
+            aria-modal="true"
+            className="bh-overview-edit-drawer"
+            data-state={closingOverviewEditor === "project" ? "closing" : "open"}
+            onKeyDown={handleOverviewDrawerKeyDown}
+            ref={overviewEditDrawerRef}
+            role="dialog"
+            tabIndex={-1}
+          >
+            <div className="bh-overview-edit-drawer-header">
+              <div>
+                <span>Project</span>
+                <h2 id="project-edit-drawer-title">Edit project</h2>
+              </div>
+              <button
+                aria-label="Close project editor"
+                className="bh-icon-button"
+                disabled={isProjectMetadataSaving}
+                onClick={closeProjectMetadataEditor}
+                type="button"
+              >
+                <X aria-hidden="true" size={16} strokeWidth={1.5} />
+              </button>
+            </div>
+            <form
+              className="bh-overview-edit-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void saveProjectMetadata();
+              }}
             >
-              Open Memory
-            </button>
-          ) : null}
+              <label>
+                <span>Project URL</span>
+                <input
+                  maxLength={255}
+                  onChange={(event) => setProjectSlugDraft(event.target.value)}
+                  placeholder="project-url"
+                  value={projectSlugDraft}
+                />
+              </label>
+              {repositoryUrlItem?.href ? (
+                <div className="bh-overview-edit-readonly">
+                  <span>GitHub URL</span>
+                  <a href={repositoryUrlItem.href} rel="noreferrer" target="_blank">
+                    <span className="bh-project-link-chip-icon" data-kind="github">
+                      <svg aria-hidden="true" viewBox="0 0 24 24">
+                        <path d={siGithub.path} />
+                      </svg>
+                    </span>
+                    <span>{repositoryUrlItem.value}</span>
+                    <ExternalLink aria-hidden="true" size={16} strokeWidth={1.5} />
+                  </a>
+                </div>
+              ) : null}
+              <label>
+                <span>Tags</span>
+                <input
+                  onChange={(event) => setProjectTagsDraft(event.target.value)}
+                  placeholder="frontend, dashboard, ai"
+                  value={projectTagsDraft}
+                />
+              </label>
+              {projectTagDraftItems.length > 0 ? (
+                <div className="bh-project-tag-list">
+                  {projectTagDraftItems.map((tag) => (
+                    <span key={tag}>{tag}</span>
+                  ))}
+                </div>
+              ) : (
+                <span className="bh-project-profile-empty">No tags</span>
+              )}
+              <fieldset className="bh-overview-edit-field">
+                <legend>Visibility</legend>
+                <div
+                  aria-label="Project visibility"
+                  className="bh-project-visibility"
+                  role="radiogroup"
+                >
+                  {(["private", "public"] as const).map((option) => (
+                    <button
+                      aria-checked={projectVisibilityDraft === option}
+                      className="bh-project-visibility-option"
+                      data-active={projectVisibilityDraft === option}
+                      key={option}
+                      onClick={() => setProjectVisibilityDraft(option)}
+                      role="radio"
+                      type="button"
+                    >
+                      {option === "private" ? (
+                        <LockKeyhole aria-hidden="true" size={16} strokeWidth={1.5} />
+                      ) : (
+                        <Globe2 aria-hidden="true" size={16} strokeWidth={1.5} />
+                      )}
+                      {option === "private" ? "Private" : "Public"}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+              {projectMetadataError ? (
+                <p className="bh-description-editor-error">{projectMetadataError}</p>
+              ) : null}
+              <div className="bh-overview-edit-actions">
+                <button
+                  disabled={isProjectMetadataSaving}
+                  type="button"
+                  onClick={closeProjectMetadataEditor}
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={isProjectMetadataSaving || projectTagsDraft.trim().length === 0}
+                  type="button"
+                  onClick={() => {
+                    setProjectTagsDraft("");
+                    void saveProjectMetadata("");
+                  }}
+                >
+                  Clear tags
+                </button>
+                <button disabled={isProjectMetadataSaving} type="submit">
+                  {isProjectMetadataSaving ? "Saving" : "Save"}
+                </button>
+              </div>
+            </form>
+          </section>
         </div>
+      ) : null}
 
-        {data.memory.recentArtifacts.length > 0 ? (
-          <div className="bh-overview-memory-list">
-            {data.memory.recentArtifacts.map((artifact) => (
-              <article className="bh-overview-memory-row" key={artifact.id}>
-                <strong>{artifact.title}</strong>
-                {artifact.summary ? <p>{artifact.summary}</p> : null}
-                <span>
-                  {artifact.updatedAt ?? artifact.createdAt ?? "Unknown"} ·{" "}
-                  {artifact.promptCount ? `${artifact.promptCount} prompts · ` : ""}
-                  {artifact.changedFileCount} files
-                </span>
-                {artifact.technologies.length > 0 ? (
-                  <div className="bh-overview-memory-technologies" aria-label="Technologies">
-                    {artifact.technologies.slice(0, 5).map((technology) => (
-                      <span key={`${artifact.id}-${technology}`}>{technology}</span>
-                    ))}
-                  </div>
-                ) : null}
-                {artifact.sections.length > 0 ? (
-                  <div className="bh-overview-memory-sections">
-                    {artifact.sections.slice(0, 2).map((section) => (
-                      <div key={`${artifact.id}-${section.title}`}>
-                        <strong>{section.title}</strong>
-                        <p>{section.summary}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                {artifact.tags.length > 0 ? (
-                  <div className="bh-overview-memory-tags">
-                    {artifact.tags.slice(0, 6).map((tag) => (
-                      <span key={`${artifact.id}-${tag}`}>{tag}</span>
-                    ))}
-                  </div>
-                ) : null}
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="bh-overview-memory-empty">
-            <strong>No memory artifacts yet.</strong>
-            <span>Artifacts will appear when Promty closes a prompt or time window.</span>
-          </div>
-        )}
-      </section>
+      {isDescriptionDrawerVisible ? (
+        <div
+          className="bh-overview-edit-overlay"
+          data-state={closingOverviewEditor === "description" ? "closing" : "open"}
+          role="presentation"
+        >
+          <section
+            aria-labelledby="description-edit-drawer-title"
+            aria-modal="true"
+            className="bh-overview-edit-drawer is-wide"
+            data-state={closingOverviewEditor === "description" ? "closing" : "open"}
+            onKeyDown={handleOverviewDrawerKeyDown}
+            ref={overviewEditDrawerRef}
+            role="dialog"
+            tabIndex={-1}
+          >
+            <div className="bh-overview-edit-drawer-header">
+              <div>
+                <span>Description</span>
+                <h2 id="description-edit-drawer-title">Edit description</h2>
+              </div>
+              <button
+                aria-label="Close description editor"
+                className="bh-icon-button"
+                disabled={isDescriptionSaving}
+                onClick={closeDescriptionEditor}
+                type="button"
+              >
+                <X aria-hidden="true" size={16} strokeWidth={1.5} />
+              </button>
+            </div>
+            <form
+              className="bh-overview-edit-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void saveDescription(descriptionDraft);
+              }}
+            >
+              <div className="bh-description-editor-header">
+                <span>Plain text</span>
+                <span>{descriptionDraft.length}/2000</span>
+              </div>
+              <textarea
+                aria-label="Project description"
+                className="bh-description-plain-editor"
+                maxLength={2000}
+                onChange={(event) => setDescriptionDraft(event.target.value)}
+                placeholder="Write a short project introduction."
+                value={descriptionDraft}
+              />
+              {descriptionError ? (
+                <p className="bh-description-editor-error">{descriptionError}</p>
+              ) : null}
+              <div className="bh-overview-edit-actions">
+                <button
+                  disabled={isDescriptionSaving}
+                  type="button"
+                  onClick={closeDescriptionEditor}
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={isDescriptionSaving || !rawDescriptionValue}
+                  type="button"
+                  onClick={() => {
+                    setDescriptionDraft("");
+                    void saveDescription("");
+                  }}
+                >
+                  Delete
+                </button>
+                <button disabled={isDescriptionSaving} type="submit">
+                  {isDescriptionSaving ? "Saving" : "Save"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function memoryArtifactSearchText(artifact: ProjectMemoryArtifact) {
-  return [
-    artifact.title,
-    artifact.summary,
-    artifact.reason,
-    artifact.outcome,
-    artifact.generator,
-    artifact.model,
-    artifact.commitSha,
-    artifact.memoryScope,
-    artifact.windowReason,
-    ...artifact.tags,
-    ...artifact.technologies,
-    ...artifact.changedFiles.map((file) => file.path),
-    ...artifact.sections.flatMap((section) => [section.title, section.summary]),
-    ...artifact.versions.flatMap((version) => [
-      version.title,
-      version.summary,
-      version.reason,
-      version.outcome,
-      version.generator,
-      version.model,
-      version.commitSha,
-      version.memoryScope,
-      version.windowReason,
-      ...version.tags,
-      ...version.technologies,
-      ...version.changedFiles.map((file) => file.path),
-      ...version.sections.flatMap((section) => [section.title, section.summary]),
-    ]),
-  ]
+function memoryArtifactIsGenericFallback(artifact: ProjectMemoryArtifact) {
+  return /^\d+ prompts and \d+ AI responses were captured/i.test(
+    artifact.summary ?? "",
+  );
+}
+
+function memoryArtifactIsReviewableDraft(artifact: ProjectMemoryArtifact) {
+  return (
+    artifact.artifactStage === "memory_draft" &&
+    artifact.reviewState === "draft" &&
+    artifact.summaryLevel === 2 &&
+    !artifact.fallbackReason &&
+    !memoryArtifactIsGenericFallback(artifact)
+  );
+}
+
+function memoryArtifactIsVerified(artifact: ProjectMemoryArtifact) {
+  return (
+    artifact.artifactStage === "verified_memory" &&
+    artifact.reviewState === "verified"
+  );
+}
+
+function memoryTypeLabel(value: string | null) {
+  if (!value) {
+    return "Memory draft";
+  }
+
+  return value
+    .split("_")
     .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
 }
 
-function memoryWindowReasonLabel(reason: string | null) {
-  if (reason === "prompt_count") {
-    return "Prompt window";
+function memoryConfidenceLabel(value: number | null) {
+  if (value === null) {
+    return "Confidence not reported";
   }
-  if (reason === "time_window") {
-    return "Time window";
+
+  const percent = Math.round(value * 100);
+  if (value >= 0.85) {
+    return `High confidence · ${percent}%`;
   }
-  if (reason === "session_finalized") {
-    return "Session final";
+  if (value >= 0.65) {
+    return `Medium confidence · ${percent}%`;
   }
-  return "Memory";
+  return `Low confidence · ${percent}%`;
 }
 
-function memoryWindowLabel(
-  promptCount: number | null,
-  windowReason: string | null,
-  sliceIndex: number | null,
-) {
-  const parts = [];
-  if (sliceIndex) {
-    parts.push(`Slice ${sliceIndex}`);
+function memoryTriggerLabel(value: string | null) {
+  if (value === "batch_organize" || value === "manual_checkpoint" || value === "checkpoint") {
+    return "User batch";
   }
-  if (promptCount) {
-    parts.push(`${promptCount} prompts`);
+  if (value === "session_end") {
+    return "Imported from older session-end policy";
   }
-  parts.push(memoryWindowReasonLabel(windowReason));
-  return parts.join(" · ");
+  if (value === "idle") {
+    return "Imported from older idle policy";
+  }
+  if (value) {
+    return `Batch result · ${value.replaceAll("_", " ")}`;
+  }
+  return "Batch result";
+}
+
+function memorySequenceLabel(artifact: ProjectMemoryArtifact) {
+  if (artifact.startSequence !== null && artifact.endSequence !== null) {
+    return `Events ${artifact.startSequence}-${artifact.endSequence}`;
+  }
+  if (artifact.promptCount !== null) {
+    return `${artifact.promptCount} prompts`;
+  }
+  return "Event range not reported";
+}
+
+function MemoryArtifactSections({ artifact }: { artifact: ProjectMemoryArtifact }) {
+  const orderedTitles = ["Summary", "Tasks", "Decisions", "Follow-ups"];
+  const sections = [
+    ...orderedTitles
+      .map((title) => artifact.sections.find((section) => section.title === title))
+      .filter((section): section is { summary: string; title: string } => Boolean(section)),
+    ...artifact.sections.filter((section) => !orderedTitles.includes(section.title)),
+  ];
+
+  if (sections.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="bh-memory-structured-sections">
+      {sections.map((section) => (
+        <div key={section.title}>
+          <strong>{section.title}</strong>
+          <span>{section.summary}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function memoryEditableSections(artifact: ProjectMemoryArtifact) {
+  const orderedTitles = ["Summary", "Tasks", "Decisions", "Follow-ups"];
+  return orderedTitles.map((title) => {
+    const section = artifact.sections.find((item) => item.title === title);
+    return {
+      summary:
+        section?.summary ??
+        (title === "Summary" ? artifact.summary ?? "" : ""),
+      title,
+    };
+  });
 }
 
 function MemoryPanel({
   data,
-  onGenerateSessionMemory,
+  onCheckpointMemory,
+  onIgnoreMemoryDraft,
+  onSaveMemoryDraft,
 }: {
   data: ProjectDetailData;
-  onGenerateSessionMemory?: (sessionId: string) => Promise<void>;
+  onCheckpointMemory?: (sessionIds: string[]) => Promise<MemoryCheckpointResult>;
+  onIgnoreMemoryDraft?: (draftId: string) => Promise<void>;
+  onSaveMemoryDraft?: (
+    draftId: string,
+    updates?: MemoryDraftSaveUpdates,
+  ) => Promise<void>;
 }) {
-  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(
-    data.memory.recentArtifacts[0]?.id ?? null,
+  const draftInbox = data.memory.drafts.filter(memoryArtifactIsReviewableDraft);
+  const verifiedMemories = data.memory.recentArtifacts.filter(memoryArtifactIsVerified);
+  const checkpointableRanges = data.memory.pendingRanges.filter(
+    (range) => range.canCheckpoint,
   );
-  const [selectedVersionIds, setSelectedVersionIds] = useState<
-    Record<string, string>
-  >({});
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isGeneratingMemory, setIsGeneratingMemory] = useState(false);
-  const [memoryError, setMemoryError] = useState<string | null>(null);
-  const latestActivity = data.activities[0] ?? null;
+  const pendingPromptCount = data.memory.pendingRanges.reduce(
+    (total, range) => total + range.promptCount,
+    0,
+  );
+  const pendingEventCount = data.memory.pendingRanges.reduce(
+    (total, range) => total + range.eventCount,
+    0,
+  );
+  const pendingSessionCount = new Set(
+    data.memory.pendingRanges.map((range) => range.sessionId),
+  ).size;
+  const [checkpointStatus, setCheckpointStatus] = useState<string | null>(null);
+  const [checkpointError, setCheckpointError] = useState<string | null>(null);
+  const [isCheckpointing, setIsCheckpointing] = useState(false);
+  const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
+  const [draftEdit, setDraftEdit] = useState({
+    sections: [] as Array<{ summary: string; title: string }>,
+    summary: "",
+    title: "",
+    whyItMatters: "",
+  });
+  const [busyDraftId, setBusyDraftId] = useState<string | null>(null);
+  const [draftActionError, setDraftActionError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (
-      selectedArtifactId &&
-      data.memory.recentArtifacts.some((artifact) => artifact.id === selectedArtifactId)
-    ) {
-      return;
-    }
-    setSelectedArtifactId(data.memory.recentArtifacts[0]?.id ?? null);
-  }, [data.memory.recentArtifacts, selectedArtifactId]);
-
-  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
-  const filteredArtifacts = normalizedSearchQuery
-    ? data.memory.recentArtifacts.filter((artifact) =>
-        memoryArtifactSearchText(artifact).includes(normalizedSearchQuery),
-      )
-    : data.memory.recentArtifacts;
-  const selectedArtifact =
-    filteredArtifacts.find((artifact) => artifact.id === selectedArtifactId) ??
-    filteredArtifacts[0] ??
-    null;
-  const selectedVersion =
-    selectedArtifact?.versions.find(
-      (version) => version.id === selectedVersionIds[selectedArtifact.id],
-    ) ??
-    selectedArtifact?.versions[0] ??
-    null;
-  const memoryStatusText =
-    data.memory.latestArtifactAt
-      ? `Last generated ${data.memory.latestArtifactAt}`
-      : latestActivity
-        ? "Waiting for the next closed prompt window"
-        : "No completed AI sessions captured yet";
-
-  const generateLatestMemory = () => {
-    if (!latestActivity || !onGenerateSessionMemory) {
-      return;
-    }
-    setIsGeneratingMemory(true);
-    setMemoryError(null);
-    void onGenerateSessionMemory(latestActivity.id)
-      .catch((error) => {
-        setMemoryError(
-          error instanceof Error ? error.message : "Memory generation failed.",
-        );
-      })
-      .finally(() => setIsGeneratingMemory(false));
+  const startEditingDraft = (draft: ProjectMemoryArtifact) => {
+    setEditingDraftId(draft.id);
+    setDraftEdit({
+      sections: memoryEditableSections(draft),
+      summary: draft.summary ?? "",
+      title: draft.title,
+      whyItMatters: draft.whyItMatters ?? "",
+    });
+    setDraftActionError(null);
   };
 
-  const detailChangedFiles =
-    selectedVersion?.changedFiles ?? selectedArtifact?.changedFiles ?? [];
-  const detailCommitSha = selectedVersion?.commitSha ?? selectedArtifact?.commitSha ?? null;
-  const detailGenerator = selectedVersion?.generator ?? selectedArtifact?.generator ?? null;
-  const detailModel = selectedVersion?.model ?? selectedArtifact?.model ?? null;
-  const detailOutcome = selectedVersion?.outcome ?? selectedArtifact?.outcome ?? null;
-  const detailPromptCount =
-    selectedVersion?.promptCount ?? selectedArtifact?.promptCount ?? null;
-  const detailReason = selectedVersion?.reason ?? selectedArtifact?.reason ?? null;
-  const detailSections = selectedVersion?.sections ?? selectedArtifact?.sections ?? [];
-  const detailSessionId = selectedVersion?.sessionId ?? selectedArtifact?.sessionId ?? null;
-  const detailSummary = selectedVersion?.summary ?? selectedArtifact?.summary ?? null;
-  const detailTags = selectedVersion?.tags ?? selectedArtifact?.tags ?? [];
-  const detailTechnologies =
-    selectedVersion?.technologies ?? selectedArtifact?.technologies ?? [];
-  const detailTimestamp =
-    selectedVersion?.createdAt ??
-    selectedArtifact?.updatedAt ??
-    selectedArtifact?.createdAt ??
-    null;
-  const detailTitle = selectedVersion?.title ?? selectedArtifact?.title ?? "";
-  const detailWindowReason =
-    selectedVersion?.windowReason ?? selectedArtifact?.windowReason ?? null;
-  const detailSliceIndex =
-    selectedVersion?.sliceIndex ?? selectedArtifact?.sliceIndex ?? null;
-  const selectedVersionNumber = selectedVersion?.version ?? null;
+  const organizePendingBatch = async () => {
+    if (!onCheckpointMemory || isCheckpointing) {
+      return;
+    }
+    const sessionIds = checkpointableRanges.map((range) => range.sessionId);
+    if (sessionIds.length === 0) {
+      return;
+    }
+
+    setIsCheckpointing(true);
+    setCheckpointError(null);
+    setCheckpointStatus(null);
+    try {
+      const result = await onCheckpointMemory(sessionIds);
+      setCheckpointStatus(result.message);
+    } catch (error) {
+      setCheckpointError(
+        error instanceof Error ? error.message : "Pending Memory organization failed.",
+      );
+    } finally {
+      setIsCheckpointing(false);
+    }
+  };
+
+  const saveDraft = async (draft: ProjectMemoryArtifact, withEdits: boolean) => {
+    if (!onSaveMemoryDraft || busyDraftId) {
+      return;
+    }
+
+    setBusyDraftId(draft.id);
+    setDraftActionError(null);
+    try {
+      await onSaveMemoryDraft(
+        draft.id,
+        withEdits
+          ? {
+              summary: draftEdit.summary,
+              sections: draftEdit.sections,
+              title: draftEdit.title,
+              why_it_matters: draftEdit.whyItMatters,
+            }
+          : undefined,
+      );
+      setEditingDraftId(null);
+    } catch (error) {
+      setDraftActionError(
+        error instanceof Error ? error.message : "Memory draft save failed.",
+      );
+    } finally {
+      setBusyDraftId(null);
+    }
+  };
+
+  const ignoreDraft = async (draft: ProjectMemoryArtifact) => {
+    if (!onIgnoreMemoryDraft || busyDraftId) {
+      return;
+    }
+
+    setBusyDraftId(draft.id);
+    setDraftActionError(null);
+    try {
+      await onIgnoreMemoryDraft(draft.id);
+      if (editingDraftId === draft.id) {
+        setEditingDraftId(null);
+      }
+    } catch (error) {
+      setDraftActionError(
+        error instanceof Error ? error.message : "Memory draft ignore failed.",
+      );
+    } finally {
+      setBusyDraftId(null);
+    }
+  };
 
   return (
-    <section className="bh-memory-workspace" aria-labelledby="project-memory-workspace-title">
+    <section className="bh-memory-workspace" aria-label="Memory">
       <header className="bh-memory-toolbar">
         <div>
-          <h2 id="project-memory-workspace-title">Project Memory</h2>
-          <p>
-            {data.memory.totalArtifacts} artifacts · {memoryStatusText}
-          </p>
+          <h2>Memory</h2>
+          <p>Batch organize Pending Memory, then save only the drafts that matter.</p>
         </div>
-        <div className="bh-memory-toolbar-actions">
-          <span>Automatic by prompt count or time window</span>
-          <button
-            className="bh-overview-primary-button"
-            disabled={!latestActivity || isGeneratingMemory || !onGenerateSessionMemory}
-            onClick={generateLatestMemory}
-            type="button"
-          >
-            {isGeneratingMemory ? "Refreshing" : "Refresh Memory"}
-          </button>
-        </div>
+        <button
+          className="bh-memory-primary-action"
+          disabled={
+            checkpointableRanges.length === 0 || !onCheckpointMemory || isCheckpointing
+          }
+          onClick={() => void organizePendingBatch()}
+          type="button"
+        >
+          <Sparkles aria-hidden="true" size={16} strokeWidth={1.7} />
+          <span>{isCheckpointing ? "Organizing" : "Organize pending batch"}</span>
+        </button>
       </header>
 
-      {memoryError ? <div className="bh-overview-memory-error">{memoryError}</div> : null}
+      <div className="bh-memory-summary-strip" aria-label="Memory status summary">
+        <span>Pending: {data.memory.pendingRanges.length > 0 ? "1 batch" : "0 batches"}</span>
+        <span>Drafts: {draftInbox.length}</span>
+        <span>Saved: {verifiedMemories.length}</span>
+      </div>
 
-      {data.memory.recentArtifacts.length > 0 ? (
-        <div className="bh-memory-layout">
-          <aside className="bh-memory-sidebar" aria-label="Memory artifacts">
-            <label className="bh-prompt-search">
-              <Search aria-hidden="true" size={15} strokeWidth={1.8} />
-              <input
-                aria-label="Search memory artifacts"
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search memory"
-                type="search"
-                value={searchQuery}
-              />
-            </label>
+      {checkpointStatus ? (
+        <div className="bh-memory-status" role="status">
+          {checkpointStatus}
+        </div>
+      ) : null}
+      {checkpointError ? (
+        <div className="bh-memory-status" data-error="true" role="alert">
+          {checkpointError}
+        </div>
+      ) : null}
 
-            <div className="bh-memory-artifact-list">
-              {filteredArtifacts.length > 0 ? (
-                filteredArtifacts.map((artifact) => (
-                  <button
-                    className="bh-memory-artifact-row"
-                    data-selected={artifact.id === selectedArtifact?.id}
-                    key={artifact.id}
-                    onClick={() => setSelectedArtifactId(artifact.id)}
-                    type="button"
-                  >
-                    <strong>{artifact.title}</strong>
-                    {artifact.summary ? <span>{artifact.summary}</span> : null}
-                    <small>
-                      {artifact.updatedAt ?? artifact.createdAt ?? "Unknown"} ·{" "}
-                      {artifact.promptCount ? `${artifact.promptCount} prompts · ` : ""}
-                      {artifact.changedFileCount} files
-                      {artifact.versions[0]?.version
-                        ? ` · v${artifact.versions[0].version}`
-                        : ""}
-                    </small>
-                  </button>
-                ))
-              ) : (
-                <div className="bh-prompt-search-empty">
-                  No memory artifacts match this search.
-                </div>
-              )}
+      <div className="bh-memory-flow">
+        <section className="bh-memory-section" aria-labelledby="memory-pending-title">
+          <div className="bh-memory-section-header">
+            <div>
+              <span className="bh-memory-step-kicker">Backlog</span>
+              <h3 id="memory-pending-title">Pending Memory</h3>
+              <p>One backlog of stored work waiting for batch organization.</p>
             </div>
-          </aside>
+            <span>{data.memory.pendingRanges.length > 0 ? "1 batch" : "0 batches"}</span>
+          </div>
 
-          {selectedArtifact ? (
-            <article className="bh-memory-detail">
-              <header className="bh-memory-detail-header">
-                <div>
-                  <span>
-                    AI Memory Artifact
-                    {selectedVersionNumber ? ` · v${selectedVersionNumber}` : ""}
-                  </span>
-                  <h3>{detailTitle}</h3>
-                </div>
-                <dl>
-                  <div>
-                    <dt>Generator</dt>
-                    <dd>{detailGenerator ?? "Unknown"}</dd>
-                  </div>
-                  <div>
-                    <dt>Model</dt>
-                    <dd>{detailModel ?? "Unknown"}</dd>
-                  </div>
-                  <div>
-                    <dt>Updated</dt>
-                    <dd>{detailTimestamp ?? "Unknown"}</dd>
-                  </div>
-                </dl>
-              </header>
-
-              {selectedArtifact.versions.length > 0 ? (
-                <section className="bh-memory-detail-section">
-                  <div className="bh-memory-version-heading">
-                    <h4>Version History</h4>
-                    <span>{selectedArtifact.versions.length} saved</span>
-                  </div>
-                  <div className="bh-memory-version-list">
-                    {selectedArtifact.versions.map((version) => (
-                      <button
-                        aria-pressed={version.id === selectedVersion?.id}
-                        className="bh-memory-version-row"
-                        data-current={version.id === selectedArtifact.versions[0]?.id}
-                        data-selected={version.id === selectedVersion?.id}
-                        key={version.id}
-                        onClick={() =>
-                          setSelectedVersionIds((currentVersions) => ({
-                            ...currentVersions,
-                            [selectedArtifact.id]: version.id,
-                          }))
-                        }
-                        type="button"
-                      >
-                        <strong>
-                          v{version.version}
-                          {version.id === selectedArtifact.versions[0]?.id ? (
-                            <span>Current</span>
-                          ) : null}
-                        </strong>
-                        <small>
-                          {version.createdAt ?? "Unknown"} ·{" "}
-                          {version.promptCount ? `${version.promptCount} prompts · ` : ""}
-                          {version.changedFileCount} files
-                        </small>
-                        {version.summary ? <p>{version.summary}</p> : null}
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-
-              {detailSummary ? (
-                <section className="bh-memory-detail-section">
-                  <h4>Summary</h4>
-                  <p>{detailSummary}</p>
-                </section>
-              ) : null}
-
-              <div className="bh-memory-detail-grid">
-                {detailReason ? (
-                  <section className="bh-memory-detail-section">
-                    <h4>Why</h4>
-                    <p>{detailReason}</p>
-                  </section>
-                ) : null}
-                {detailOutcome ? (
-                  <section className="bh-memory-detail-section">
-                    <h4>Outcome</h4>
-                    <p>{detailOutcome}</p>
-                  </section>
-                ) : null}
-              </div>
-
-              {detailTechnologies.length > 0 ? (
-                <section className="bh-memory-detail-section">
-                  <h4>Technologies</h4>
-                  <div className="bh-memory-chip-list">
-                    {detailTechnologies.map((technology) => (
-                      <span key={`${selectedArtifact.id}-${technology}`}>
-                        {technology}
-                      </span>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-
-              {detailSections.length > 0 ? (
-                <section className="bh-memory-detail-section">
-                  <h4>Generated Sections</h4>
-                  <div className="bh-memory-section-list">
-                    {detailSections.map((section) => (
-                      <div key={`${selectedArtifact.id}-${section.title}`}>
-                        <strong>{section.title}</strong>
-                        <p>{section.summary}</p>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-
-              {detailChangedFiles.length > 0 ? (
-                <section className="bh-memory-detail-section">
-                  <h4>Changed Files</h4>
-                  <div className="bh-memory-file-list">
-                    {detailChangedFiles.slice(0, 24).map((file) => (
-                      <div key={`${selectedArtifact.id}-${file.path}`}>
-                        <code>{file.path}</code>
-                        <span>{file.status ?? "changed"}</span>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-
-              <footer className="bh-memory-source">
+          {data.memory.pendingRanges.length > 0 ? (
+            <article className="bh-memory-pending-row">
+              <div>
+                <strong>Pending Memory backlog</strong>
                 <span>
-                  {memoryWindowLabel(
-                    detailPromptCount,
-                    detailWindowReason,
-                    detailSliceIndex,
-                  )}
+                  {pendingPromptCount} prompts · {pendingEventCount} events ·{" "}
+                  {pendingSessionCount} sessions
                 </span>
-                <span>Session {detailSessionId ?? "Unknown"}</span>
-                {detailCommitSha ? (
-                  <span>Commit {detailCommitSha.slice(0, 12)}</span>
-                ) : null}
-                {detailTags.length > 0 ? (
-                  <span>{detailTags.slice(0, 6).join(", ")}</span>
-                ) : null}
-              </footer>
+              </div>
             </article>
           ) : (
-            <EmptyState
-              description="Try a different search or refresh memory after the latest session completes."
-              icon={BookOpen}
-              title="No memory artifact selected"
-            />
+            <div className="bh-memory-empty">
+              <strong>No Pending Memory</strong>
+              <span>All captured work is already covered by drafts or saved memory.</span>
+            </div>
           )}
-        </div>
-      ) : (
-        <EmptyState
-          description="Promty creates memory automatically when a prompt or time window closes. Use refresh only when testing or retrying generation."
-          icon={BookOpen}
-          title="No memory artifacts yet"
-        >
-          {latestActivity && onGenerateSessionMemory ? (
-            <button
-              className="bh-empty-state-button"
-              disabled={isGeneratingMemory}
-              onClick={generateLatestMemory}
-              type="button"
-            >
-              {isGeneratingMemory ? "Refreshing" : "Refresh Memory"}
-            </button>
+        </section>
+
+        <section className="bh-memory-section" aria-labelledby="memory-drafts-title">
+          <div className="bh-memory-section-header">
+            <div>
+              <span className="bh-memory-step-kicker">Review</span>
+              <h3 id="memory-drafts-title">Draft Inbox</h3>
+              <p>Second-pass Memory Drafts waiting for review.</p>
+            </div>
+            <span>{draftInbox.length} drafts</span>
+          </div>
+
+          {draftActionError ? (
+            <div className="bh-memory-status" data-error="true" role="alert">
+              {draftActionError}
+            </div>
           ) : null}
-        </EmptyState>
-      )}
+
+          {draftInbox.length > 0 ? (
+            <div className="bh-memory-draft-list">
+              {draftInbox.map((draft) => {
+                const isEditing = editingDraftId === draft.id;
+                const isBusy = busyDraftId === draft.id;
+
+                return (
+                  <article className="bh-memory-draft-card" key={draft.id}>
+                    <div className="bh-memory-card-meta">
+                      <span>{memoryTypeLabel(draft.draftType)}</span>
+                      <span>{memoryTriggerLabel(draft.triggerReason)}</span>
+                      <span>{memoryConfidenceLabel(draft.draftConfidence)}</span>
+                      {draft.needsUserVerification ? <span>Needs verification</span> : null}
+                    </div>
+
+                    {isEditing ? (
+                      <div className="bh-memory-edit-form">
+                        <label>
+                          <span>Title</span>
+                          <input
+                            onChange={(event) =>
+                              setDraftEdit((current) => ({
+                                ...current,
+                                title: event.target.value,
+                              }))
+                            }
+                            value={draftEdit.title}
+                          />
+                        </label>
+                        <label>
+                          <span>Summary</span>
+                          <textarea
+                            onChange={(event) =>
+                              setDraftEdit((current) => ({
+                                ...current,
+                                summary: event.target.value,
+                              }))
+                            }
+                            rows={4}
+                            value={draftEdit.summary}
+                          />
+                        </label>
+                        <div className="bh-memory-edit-section-grid">
+                          {draftEdit.sections.map((section, sectionIndex) => (
+                            <label key={section.title}>
+                              <span>{section.title}</span>
+                              <textarea
+                                onChange={(event) =>
+                                  setDraftEdit((current) => ({
+                                    ...current,
+                                    sections: current.sections.map((item, index) =>
+                                      index === sectionIndex
+                                        ? { ...item, summary: event.target.value }
+                                        : item,
+                                    ),
+                                  }))
+                                }
+                                rows={3}
+                                value={section.summary}
+                              />
+                            </label>
+                          ))}
+                        </div>
+                        <label>
+                          <span>Why it matters</span>
+                          <textarea
+                            onChange={(event) =>
+                              setDraftEdit((current) => ({
+                                ...current,
+                                whyItMatters: event.target.value,
+                              }))
+                            }
+                            rows={3}
+                            value={draftEdit.whyItMatters}
+                          />
+                        </label>
+                      </div>
+                    ) : (
+                      <div className="bh-memory-card-copy">
+                        <h4>{draft.title}</h4>
+                        <p>{draft.summary ?? "No summary provided."}</p>
+                        <details className="bh-memory-card-details">
+                          <summary>Details</summary>
+                          <MemoryArtifactSections artifact={draft} />
+                          <div>
+                            <strong>Why it matters</strong>
+                            <span>
+                              {draft.whyItMatters ?? "No importance note provided."}
+                            </span>
+                          </div>
+                        </details>
+                      </div>
+                    )}
+
+                    <div className="bh-memory-card-footer">
+                      <span>{memorySequenceLabel(draft)}</span>
+                      <div className="bh-memory-card-actions">
+                        {isEditing ? (
+                          <>
+                            <button
+                              disabled={isBusy}
+                              onClick={() => void saveDraft(draft, true)}
+                              type="button"
+                            >
+                              Save to Memory
+                            </button>
+                            <button
+                              disabled={isBusy}
+                              onClick={() => setEditingDraftId(null)}
+                              type="button"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              disabled={!onSaveMemoryDraft || isBusy}
+                              onClick={() => void saveDraft(draft, false)}
+                              type="button"
+                            >
+                              Save to Memory
+                            </button>
+                            <button
+                              disabled={isBusy}
+                              onClick={() => startEditingDraft(draft)}
+                              type="button"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              disabled={!onIgnoreMemoryDraft || isBusy}
+                              onClick={() => void ignoreDraft(draft)}
+                              type="button"
+                            >
+                              Ignore
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="bh-memory-empty">
+              <strong>No drafts waiting for review</strong>
+              <span>
+                {data.memory.pendingRanges.length > 0
+                  ? "Pending Memory is ready. Organize the batch to create drafts."
+                  : "No memory work right now."}
+              </span>
+            </div>
+          )}
+        </section>
+
+        <section className="bh-memory-section" aria-labelledby="memory-verified-title">
+          <div className="bh-memory-section-header">
+            <div>
+              <span className="bh-memory-step-kicker">Saved</span>
+              <h3 id="memory-verified-title">Verified Memory</h3>
+              <p>Saved memories that can be included in Project Memory.</p>
+            </div>
+            <span>{verifiedMemories.length} saved</span>
+          </div>
+
+          {verifiedMemories.length > 0 ? (
+            <div className="bh-memory-verified-list">
+              {verifiedMemories.map((memory) => (
+                <article className="bh-memory-verified-card" key={memory.id}>
+                  <div className="bh-memory-card-meta">
+                    <span>{memoryTypeLabel(memory.draftType)}</span>
+                    <span>{memory.updatedAt ?? memory.createdAt ?? "Date not reported"}</span>
+                  </div>
+                  <div className="bh-memory-card-copy">
+                    <h4>{memory.title}</h4>
+                    <p>{memory.summary ?? "No summary provided."}</p>
+                    <details className="bh-memory-card-details">
+                      <summary>Details</summary>
+                      <MemoryArtifactSections artifact={memory} />
+                      {memory.whyItMatters ? (
+                        <div>
+                          <strong>Why it matters</strong>
+                          <span>{memory.whyItMatters}</span>
+                        </div>
+                      ) : null}
+                    </details>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="bh-memory-empty">
+              <strong>No verified memory yet</strong>
+              <span>Save a draft to promote it into Verified Memory.</span>
+            </div>
+          )}
+        </section>
+      </div>
     </section>
   );
 }
@@ -1831,12 +2780,13 @@ function ProjectDetailLoadingSkeleton({
   if (activeTab === "ai-activity") {
     return (
       <section
-        aria-label="Loading AI activity"
+        aria-label="Loading activity"
         aria-live="polite"
         className="bh-detail-skeleton bh-detail-skeleton-activity"
         role="status"
       >
         <div className="bh-activity-view-tabs bh-activity-view-tabs-skeleton">
+          <span className="skeleton-pill skeleton-pill-action" />
           <span className="skeleton-pill skeleton-pill-action" />
           <span className="skeleton-pill skeleton-pill-action" />
         </div>
@@ -1943,13 +2893,6 @@ function ProjectDetailLoadingSkeleton({
       className="bh-detail-skeleton bh-detail-skeleton-overview"
       role="status"
     >
-      <div className="bh-overview-meta-strip bh-overview-meta-strip-skeleton">
-        <div className="skeleton-badge-row">
-          <span />
-          <span />
-          <span />
-        </div>
-      </div>
       <div className="bh-detail-skeleton-stats">
         {Array.from({ length: 4 }).map((_, index) => (
           <div key={index}>
@@ -2009,12 +2952,10 @@ function ActivityPanel({
   const [localActivityNavigation, setLocalActivityNavigation] =
     useState<ActivityNavigationState>(defaultActivityNavigation);
   const [promptSearchQuery, setPromptSearchQuery] = useState("");
-  const [promptWorkTypeFilter, setPromptWorkTypeFilter] =
+  const [activityWorkTypeFilter, setActivityWorkTypeFilter] =
     useState<WorkTypeFilter>("all");
   const [sessionConversationSearchQuery, setSessionConversationSearchQuery] =
     useState("");
-  const [sessionWorkTypeFilter, setSessionWorkTypeFilter] =
-    useState<WorkTypeFilter>("all");
   const [shareScope, setShareScope] = useState<"project" | "session">("session");
   const [shareSessionId, setShareSessionId] = useState<string | null>(null);
   const [initialSharePromptIds, setInitialSharePromptIds] = useState<string[]>([]);
@@ -2041,51 +2982,67 @@ function ActivityPanel({
     currentActivityNavigation.selectedSessionPromptId;
   const hasPromptActivity = data.promptActivities.length > 0;
   const hasSessionActivity = data.activities.length > 0;
-  const promptWorkTypeCounts = useMemo(
-    () => workTypeCounts(data.promptActivities),
-    [data.promptActivities],
-  );
-  const sessionWorkTypeCounts = useMemo(
-    () => workTypeCounts(data.activities),
-    [data.activities],
-  );
-  const filteredPromptActivities = useMemo(() => {
+  const unfilteredActivityFeedItems = useMemo<ActivityFeedItem[]>(() => {
+    const promptItems: ActivityFeedItem[] = data.promptActivities.map(
+      (activity, index) => ({
+        activity,
+        key: `prompt-${activity.id}`,
+        kind: "prompt",
+        sequenceIndex: index,
+        timestamp: promptSubmittedTime(activity),
+      }),
+    );
+    const sessionItems: ActivityFeedItem[] = data.activities.map(
+      (activity, index) => ({
+        activity,
+        key: `session-${activity.id}`,
+        kind: "session",
+        sequenceIndex: data.promptActivities.length + index,
+        timestamp: displayTimeValue(activity.lastActivity),
+      }),
+    );
+    const items = view === "sessions" ? sessionItems : promptItems;
+
+    return [...items].sort(sortActivityFeedItems);
+  }, [data.activities, data.promptActivities, view]);
+  const searchMatchedActivityFeedItems = useMemo(() => {
     const query = promptSearchQuery.trim().toLowerCase();
 
-    return data.promptActivities.filter((activity) => {
-      if (
-        promptWorkTypeFilter !== "all" &&
-        workTypeForFiles(activity.filesChanged) !== promptWorkTypeFilter
-      ) {
-        return false;
-      }
-
+    return unfilteredActivityFeedItems.filter((item) => {
       if (!query) {
         return true;
       }
 
-      return `${activity.prompt} ${activity.submittedAt}`
+      return activityFeedSearchText(item)
         .toLowerCase()
         .includes(query);
     });
-  }, [data.promptActivities, promptSearchQuery, promptWorkTypeFilter]);
-  const selectedPrompt =
-    filteredPromptActivities.find((activity) => activity.id === selectedPromptId) ??
-    filteredPromptActivities[0] ??
-    null;
-  const filteredSessions = useMemo(() => {
-    if (sessionWorkTypeFilter === "all") {
-      return data.activities;
+  }, [promptSearchQuery, unfilteredActivityFeedItems]);
+  const activityWorkTypeCounts = useMemo(
+    () => workTypeCounts(searchMatchedActivityFeedItems.map((item) => item.activity)),
+    [searchMatchedActivityFeedItems],
+  );
+  const filteredActivityFeedItems = useMemo(() => {
+    if (view === "sessions" || activityWorkTypeFilter === "all") {
+      return searchMatchedActivityFeedItems;
     }
 
-    return data.activities.filter(
-      (activity) => workTypeForFiles(activity.filesChanged) === sessionWorkTypeFilter,
+    return searchMatchedActivityFeedItems.filter(
+      (item) => workTypeForFiles(item.activity.filesChanged) === activityWorkTypeFilter,
     );
-  }, [data.activities, sessionWorkTypeFilter]);
-  const selectedSession =
-    filteredSessions.find((activity) => activity.id === selectedSessionId) ??
-    filteredSessions[0] ??
+  }, [activityWorkTypeFilter, searchMatchedActivityFeedItems, view]);
+  const selectedFeedItem =
+    filteredActivityFeedItems.find((item) =>
+      item.kind === "prompt"
+        ? item.activity.id === selectedPromptId
+        : item.activity.id === selectedSessionId,
+    ) ??
+    filteredActivityFeedItems[0] ??
     null;
+  const selectedPrompt =
+    selectedFeedItem?.kind === "prompt" ? selectedFeedItem.activity : null;
+  const selectedSession =
+    selectedFeedItem?.kind === "session" ? selectedFeedItem.activity : null;
   const selectedSessionPrompts = useMemo(
     () =>
       selectedSession
@@ -2095,6 +3052,48 @@ function ActivityPanel({
         : [],
     [data.promptActivities, selectedSession],
   );
+  const latestPromptForSession = (sessionId: string | null | undefined) =>
+    sessionId
+      ? data.promptActivities
+          .filter((prompt) => prompt.sessionId === sessionId)
+          .sort((first, second) => second.sequence - first.sequence)[0] ?? null
+      : null;
+  const promptTargetForCurrentSelection =
+    selectedFeedItem?.kind === "prompt"
+      ? selectedFeedItem.activity
+      : selectedSessionPrompts.find(
+          (activity) => activity.id === selectedSessionPromptId,
+        ) ??
+        selectedSessionPrompts[0] ??
+        null;
+  const updateActivityView = (nextView: ActivityNavigationState["view"]) => {
+    if (nextView === "prompts") {
+      updateActivityNavigation({
+        selectedPromptId: promptTargetForCurrentSelection?.id ?? selectedPromptId,
+        selectedSessionId: null,
+        selectedSessionPromptId: null,
+        view: "prompts",
+      });
+      return;
+    }
+
+    const sessionTarget =
+      promptTargetForCurrentSelection !== null
+        ? data.activities.find(
+            (activity) => activity.id === promptTargetForCurrentSelection.sessionId,
+          ) ?? null
+        : selectedSession;
+    const sessionPromptTarget =
+      promptTargetForCurrentSelection ?? latestPromptForSession(sessionTarget?.id);
+
+    updateActivityNavigation({
+      selectedPromptId: null,
+      selectedSessionId: sessionTarget?.id ?? selectedSessionId,
+      selectedSessionPromptId: sessionPromptTarget?.id ?? selectedSessionPromptId,
+      view: "sessions",
+    });
+    setSessionConversationSearchQuery("");
+  };
   const filteredSessionPrompts = useMemo(() => {
     const query = sessionConversationSearchQuery.trim().toLowerCase();
 
@@ -2164,224 +3163,177 @@ function ActivityPanel({
       <EmptyState
         description="AI interactions will appear after collector events are synced."
         icon={Activity}
-        title="No AI activity yet"
+        title="No activity yet"
       />
     );
   }
 
+  const activityViewOptions: ActivityNavigationState["view"][] = [
+    "prompts",
+    "sessions",
+  ];
+
   return (
     <div className="bh-activity-layout" data-view={view}>
-      <div className="bh-activity-view-tabs" role="tablist" aria-label="AI activity views">
-        <button
-          aria-selected={view === "prompts"}
-          className="bh-activity-view-tab"
-          data-active={view === "prompts"}
-          onClick={() =>
-            updateActivityNavigation({
-              selectedPromptId: null,
-              selectedSessionId: null,
-              selectedSessionPromptId: null,
-              view: "prompts",
-            })
-          }
-          role="tab"
-          type="button"
-        >
-          Latest prompts
-        </button>
-        <button
-          aria-selected={view === "sessions"}
-          className="bh-activity-view-tab"
-          data-active={view === "sessions"}
-          onClick={() => {
-            const promptSessionTarget = view === "prompts" ? selectedPrompt : null;
-            if (promptSessionTarget) {
-              setSessionWorkTypeFilter("all");
-            }
-            updateActivityNavigation({
-              selectedPromptId: null,
-              selectedSessionId:
-                promptSessionTarget?.sessionId ?? selectedSessionId,
-              selectedSessionPromptId:
-                promptSessionTarget?.id ?? selectedSessionPromptId,
-              view: "sessions",
-            });
-            setSessionConversationSearchQuery("");
-          }}
-          role="tab"
-          type="button"
-        >
-          Sessions
-        </button>
+      <div className="bh-activity-view-tabs" role="group" aria-label="Activity filters">
+        {activityViewOptions.map((activityView) => (
+          <button
+            aria-pressed={view === activityView}
+            className="bh-activity-view-tab"
+            data-active={view === activityView}
+            key={activityView}
+            onClick={() => updateActivityView(activityView)}
+            type="button"
+          >
+            {activityView === "prompts" ? "Prompts" : "Sessions"}
+          </button>
+        ))}
       </div>
 
-      {view === "prompts" ? (
-        hasPromptActivity ? (
-          <div className="bh-prompt-activity-layout" role="tabpanel">
-            <div className="bh-prompt-sidebar">
-              <label className="bh-prompt-search">
-                <Search aria-hidden="true" size={15} strokeWidth={1.7} />
-                <input
-                  aria-label="Search prompts by text or date"
-                  onChange={(event) => setPromptSearchQuery(event.target.value)}
-                  placeholder="Search prompts or dates"
-                  type="search"
-                  value={promptSearchQuery}
-                />
-              </label>
-              <WorkTypeFilterControl
-                ariaLabel="Filter prompts by activity type"
-                counts={promptWorkTypeCounts}
-                onChange={setPromptWorkTypeFilter}
-                value={promptWorkTypeFilter}
-              />
+      <div
+        className="bh-activity-feed-layout"
+        data-detail={selectedFeedItem?.kind ?? "prompt"}
+      >
+        <div className="bh-activity-feed-sidebar">
+          <label className="bh-prompt-search">
+            <Search aria-hidden="true" size={15} strokeWidth={1.7} />
+            <input
+              aria-label="Search activity by text, model, or date"
+              onChange={(event) => setPromptSearchQuery(event.target.value)}
+              placeholder="Search activity"
+              type="search"
+              value={promptSearchQuery}
+            />
+          </label>
+          {view === "prompts" ? (
+            <WorkTypeFilterControl
+              ariaLabel="Filter activity by work type"
+              counts={activityWorkTypeCounts}
+              onChange={setActivityWorkTypeFilter}
+              value={activityWorkTypeFilter}
+            />
+          ) : null}
 
-              <div className="bh-latest-prompt-list">
-                {filteredPromptActivities.length > 0 ? (
-                  <div className="bh-prompt-list">
-                    {filteredPromptActivities.map((activity) => (
+          <div className="bh-latest-prompt-list">
+            {filteredActivityFeedItems.length > 0 ? (
+              <div className="bh-prompt-list">
+                {filteredActivityFeedItems.map((item) => {
+                  if (item.kind === "prompt") {
+                    return (
                       <PromptActivityCard
-                        activity={activity}
-                        isSelected={activity.id === selectedPrompt?.id}
-                        key={activity.id}
+                        activity={item.activity}
+                        isSelected={item.key === selectedFeedItem?.key}
+                        key={item.key}
                         onOpen={() =>
                           updateActivityNavigation({
-                            selectedPromptId: activity.id,
+                            selectedPromptId: item.activity.id,
                             selectedSessionId: null,
                             selectedSessionPromptId: null,
-                            view: "prompts",
                           })
                         }
                       />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="bh-prompt-search-empty">
-                    No prompts match this search.
-                  </div>
-                )}
+                    );
+                  }
+
+                  return (
+                    <ActivityCard
+                      activity={item.activity}
+                      isSelected={item.key === selectedFeedItem?.key}
+                      key={item.key}
+                      onOpen={() => {
+                        const latestPromptInSession = latestPromptForSession(
+                          item.activity.id,
+                        );
+                        updateActivityNavigation({
+                          selectedPromptId: null,
+                          selectedSessionId: item.activity.id,
+                          selectedSessionPromptId:
+                            latestPromptInSession?.id ?? null,
+                        });
+                        setSessionConversationSearchQuery("");
+                      }}
+                    />
+                  );
+                })}
               </div>
-            </div>
-            {/* Community sharing is paused for now; share handler intentionally omitted. */}
-            <PromptChangeDetail activity={selectedPrompt} />
-          </div>
-        ) : (
-          <EmptyState
-            description="PromptSubmitted events will appear here newest first."
-            icon={Activity}
-            title="No prompts yet"
-          />
-        )
-      ) : hasSessionActivity ? (
-        <div className="bh-activity-session-layout" role="tabpanel">
-          <div className="bh-activity-list">
-            <WorkTypeFilterControl
-              ariaLabel="Filter sessions by activity type"
-              counts={sessionWorkTypeCounts}
-              onChange={setSessionWorkTypeFilter}
-              value={sessionWorkTypeFilter}
-            />
-            <div className="bh-session-list">
-              {filteredSessions.length > 0 ? (
-                filteredSessions.map((activity) => (
-                  <ActivityCard
-                    activity={activity}
-                    isSelected={activity.id === selectedSession?.id}
-                    key={activity.id}
-                    onOpen={() => {
-                      const latestPromptInSession =
-                        data.promptActivities
-                          .filter((prompt) => prompt.sessionId === activity.id)
-                          .sort(
-                            (first, second) => second.sequence - first.sequence,
-                          )[0] ?? null;
-                      updateActivityNavigation({
-                        selectedPromptId: null,
-                        selectedSessionId: activity.id,
-                        selectedSessionPromptId: latestPromptInSession?.id ?? null,
-                        view: "sessions",
-                      });
-                      setSessionConversationSearchQuery("");
-                    }}
-                  />
-                ))
-              ) : (
-                <div className="bh-prompt-search-empty">
-                  No sessions match this filter.
-                </div>
-              )}
-            </div>
-          </div>
-
-          <section
-            aria-label="Session conversations"
-            className="bh-session-conversation-panel"
-          >
-            {selectedSession ? (
-              <>
-                <label className="bh-prompt-search">
-                  <Search aria-hidden="true" size={15} strokeWidth={1.7} />
-                  <input
-                    aria-label="Search conversations by text or date"
-                    onChange={(event) =>
-                      setSessionConversationSearchQuery(event.target.value)
-                    }
-                    placeholder="Search conversations or dates"
-                    type="search"
-                    value={sessionConversationSearchQuery}
-                  />
-                </label>
-
-                <div className="bh-session-prompt-list">
-                  {selectedSessionPrompts.length > 0 ? (
-                    filteredSessionPrompts.length > 0 ? (
-                      <div className="bh-prompt-list">
-                        {filteredSessionPrompts.map((activity) => (
-                          <PromptActivityCard
-                            activity={activity}
-                            isSelected={activity.id === selectedSessionPrompt?.id}
-                            key={activity.id}
-                            onOpen={() => {
-                              updateActivityNavigation({
-                                selectedPromptId: null,
-                                selectedSessionId: selectedSession?.id ?? null,
-                                selectedSessionPromptId: activity.id,
-                                view: "sessions",
-                              });
-                            }}
-                            promptLabel={`Prompt ${activity.sequence}`}
-                          />
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="bh-prompt-search-empty">
-                        No conversations match this search.
-                      </div>
-                    )
-                  ) : (
-                    <div className="bh-prompt-search-empty">
-                      No prompts were captured in this session.
-                    </div>
-                  )}
-                </div>
-              </>
             ) : (
               <div className="bh-prompt-search-empty">
-                Select a session to inspect its conversations.
+                No activity matches this filter.
               </div>
             )}
-          </section>
-
-          {/* Community sharing is paused for now; share handler intentionally omitted. */}
-          <PromptChangeDetail activity={selectedSessionPrompt} />
+          </div>
         </div>
-      ) : (
-        <EmptyState
-          description="Session summaries will appear after AI activity is grouped."
-          icon={Activity}
-          title="No sessions yet"
-        />
-      )}
+
+        {selectedFeedItem?.kind === "session" ? (
+          <>
+            <section
+              aria-label="Session conversations"
+              className="bh-session-conversation-panel"
+            >
+              {selectedSession ? (
+                <>
+                  <label className="bh-prompt-search">
+                    <Search aria-hidden="true" size={15} strokeWidth={1.7} />
+                    <input
+                      aria-label="Search conversations by text or date"
+                      onChange={(event) =>
+                        setSessionConversationSearchQuery(event.target.value)
+                      }
+                      placeholder="Search conversations"
+                      type="search"
+                      value={sessionConversationSearchQuery}
+                    />
+                  </label>
+
+                  <div className="bh-session-prompt-list">
+                    {selectedSessionPrompts.length > 0 ? (
+                      filteredSessionPrompts.length > 0 ? (
+                        <div className="bh-prompt-list">
+                          {filteredSessionPrompts.map((activity) => (
+                            <PromptActivityCard
+                              activity={activity}
+                              isSelected={activity.id === selectedSessionPrompt?.id}
+                              key={activity.id}
+                              onOpen={() => {
+                                updateActivityNavigation({
+                                  selectedPromptId: null,
+                                  selectedSessionId: selectedSession.id,
+                                  selectedSessionPromptId: activity.id,
+                                });
+                              }}
+                              promptLabel={`Prompt ${activity.sequence}`}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="bh-prompt-search-empty">
+                          No conversations match this search.
+                        </div>
+                      )
+                    ) : (
+                      <div className="bh-prompt-search-empty">
+                        No prompts were captured in this session.
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="bh-prompt-search-empty">
+                  Select a session to inspect its conversations.
+                </div>
+              )}
+            </section>
+
+            {/* Community sharing is paused for now; share handler intentionally omitted. */}
+            <PromptChangeDetail activity={selectedSessionPrompt} />
+          </>
+        ) : (
+          <>
+            {/* Community sharing is paused for now; share handler intentionally omitted. */}
+            <PromptChangeDetail activity={selectedPrompt} />
+          </>
+        )}
+      </div>
 
       {/* Community share drawer is paused for now.
       {isShareDrawerOpen &&
@@ -2413,6 +3365,8 @@ function FilesPanel({
   data: ProjectDetailData;
   onRepositoryFileSelect?: (path: string) => void;
 }) {
+  const isRepositoryLinked = Boolean(data.project.repositoryUrl);
+
   return (
     <div className="bh-files-layout">
       <section className="bh-files-section" aria-labelledby="tracked-files-title">
@@ -2440,7 +3394,9 @@ function FilesPanel({
               : "Repository tree from GitHub OAuth access."}
           </p>
         </div>
-        {data.repositoryFilesLoading && data.repositoryFiles.length === 0 ? (
+        {!isRepositoryLinked ? (
+          <GitHubRepositorySetupState />
+        ) : data.repositoryFilesLoading && data.repositoryFiles.length === 0 ? (
           <div
             aria-busy="true"
             aria-label="Loading GitHub repository files"
@@ -2504,6 +3460,83 @@ function FilesPanel({
   );
 }
 
+function GitHubRepositorySetupState() {
+  const [hasCopiedCommand, setHasCopiedCommand] = useState(false);
+
+  const copyCommand = async () => {
+    try {
+      await navigator.clipboard.writeText(githubRemoteCommand);
+      setHasCopiedCommand(true);
+      window.setTimeout(() => setHasCopiedCommand(false), 1600);
+    } catch {
+      setHasCopiedCommand(false);
+    }
+  };
+
+  return (
+    <section className="bh-repository-setup" aria-labelledby="github-setup-title">
+      <div className="bh-repository-setup-copy">
+        <GitBranch aria-hidden="true" size={20} strokeWidth={1.5} />
+        <div>
+          <h3 id="github-setup-title">GitHub repository not linked</h3>
+          <p>
+            Add the GitHub remote in this project, then run repository setup again
+            to attach source context.
+          </p>
+        </div>
+      </div>
+      <div className="bh-repository-command" aria-label="GitHub remote command">
+        <code>{githubRemoteCommand}</code>
+        <button
+          aria-label={hasCopiedCommand ? "Copied command" : "Copy command"}
+          onClick={copyCommand}
+          title={hasCopiedCommand ? "Copied" : "Copy command"}
+          type="button"
+        >
+          {hasCopiedCommand ? (
+            <Check aria-hidden="true" size={16} strokeWidth={1.5} />
+          ) : (
+            <Copy aria-hidden="true" size={16} strokeWidth={1.5} />
+          )}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function projectHeaderModelNames(data: ProjectDetailData) {
+  const modelItem = data.overview.find((item) => item.title === "AI Models");
+  if (!modelItem?.value || modelItem.value === "Not captured") {
+    return [];
+  }
+
+  return modelItem.value
+    .split(",")
+    .map((modelName) => modelName.trim())
+    .filter(Boolean);
+}
+
+function projectHeaderLastActivityLabel(data: ProjectDetailData) {
+  const lastActivityItem = data.overview.find(
+    (item) => item.title === "Last Activity",
+  );
+
+  if (!lastActivityItem) {
+    return undefined;
+  }
+
+  if (
+    lastActivityItem.description &&
+    lastActivityItem.description !== "No activity"
+  ) {
+    return lastActivityItem.description;
+  }
+
+  return lastActivityItem.value !== "No activity"
+    ? lastActivityItem.value
+    : undefined;
+}
+
 function ProjectPanel({
   activityNavigation,
   activeTab,
@@ -2511,9 +3544,13 @@ function ProjectPanel({
   errorMessage,
   isLoading,
   onActivityNavigationChange,
-  onGenerateSessionMemory,
+  onCheckpointMemory,
+  onIgnoreMemoryDraft,
   onPublishFlow,
+  onSaveProjectMetadata,
+  onSaveDescription,
   onSaveFlowDraft,
+  onSaveMemoryDraft,
   onUpdateFlow,
   onUploadFlowAsset,
   onRepositoryFileSelect,
@@ -2526,9 +3563,14 @@ function ProjectPanel({
   errorMessage?: string | null;
   isLoading?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
-  onGenerateSessionMemory?: (sessionId: string) => Promise<void>;
+  onCheckpointMemory?: (sessionIds: string[]) => Promise<MemoryCheckpointResult>;
+  onIgnoreMemoryDraft?: (draftId: string) => Promise<void>;
   onPublishFlow?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
   onSaveFlowDraft?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
+  onSaveMemoryDraft?: (
+    draftId: string,
+    updates?: MemoryDraftSaveUpdates,
+  ) => Promise<void>;
   onUpdateFlow?: (
     flowKey: string,
     payload: PromptFlowUpdatePayload,
@@ -2540,6 +3582,12 @@ function ProjectPanel({
   ) => Promise<PublishedFlowAsset>;
   onRepositoryFileSelect?: (path: string) => void;
   onRetry?: () => void;
+  onSaveProjectMetadata?: (metadata: {
+    slug?: string;
+    tags?: string[];
+    visibility?: "private" | "public";
+  }) => Promise<void>;
+  onSaveDescription?: (description: string) => Promise<void>;
   onTabChange: (tabId: ProjectDetailTabId) => void;
 }) {
   if (isLoading) {
@@ -2566,7 +3614,8 @@ function ProjectPanel({
     return (
       <OverviewPanel
         data={data}
-        onOpenMemory={() => onTabChange("memory")}
+        onSaveProjectMetadata={onSaveProjectMetadata}
+        onSaveDescription={onSaveDescription}
       />
     );
   }
@@ -2575,7 +3624,9 @@ function ProjectPanel({
     return (
       <MemoryPanel
         data={data}
-        onGenerateSessionMemory={onGenerateSessionMemory}
+        onCheckpointMemory={onCheckpointMemory}
+        onIgnoreMemoryDraft={onIgnoreMemoryDraft}
+        onSaveMemoryDraft={onSaveMemoryDraft}
       />
     );
   }
@@ -2615,14 +3666,18 @@ export function ProjectDetailPage({
   isLoading,
   isRefreshing,
   onActivityNavigationChange,
+  onCheckpointMemory,
   onConnectRepository,
-  onGenerateSessionMemory,
+  onIgnoreMemoryDraft,
   onOpenAllProjects,
   onPublishFlow,
   onProjectSelect,
   onRepositoryFileSelect,
   onRetry,
+  onSaveProjectMetadata,
+  onSaveDescription,
   onSaveFlowDraft,
+  onSaveMemoryDraft,
   onTabChange,
   onUpdateFlow,
   onUploadFlowAsset,
@@ -2635,13 +3690,13 @@ export function ProjectDetailPage({
       aria-labelledby="project-detail-title"
     >
       <ProjectHeader
-        description={data.project.description}
+        lastActivityLabel={projectHeaderLastActivityLabel(data)}
+        modelNames={projectHeaderModelNames(data)}
         name={data.project.name}
         onConnectRepository={data.project.repositoryUrl ? undefined : onConnectRepository}
         onOpenAllProjects={onOpenAllProjects}
         onProjectSelect={onProjectSelect}
         projectOptions={projectOptions}
-        repositoryStatus={data.project.repositoryStatus}
         repositoryUrl={data.project.repositoryUrl}
         selectedProjectId={data.project.id}
       />
@@ -2668,9 +3723,13 @@ export function ProjectDetailPage({
           errorMessage={errorMessage}
           isLoading={isLoading}
           onActivityNavigationChange={onActivityNavigationChange}
-          onGenerateSessionMemory={onGenerateSessionMemory}
+          onCheckpointMemory={onCheckpointMemory}
+          onIgnoreMemoryDraft={onIgnoreMemoryDraft}
           onPublishFlow={onPublishFlow}
+          onSaveProjectMetadata={onSaveProjectMetadata}
+          onSaveDescription={onSaveDescription}
           onSaveFlowDraft={onSaveFlowDraft}
+          onSaveMemoryDraft={onSaveMemoryDraft}
           onUpdateFlow={onUpdateFlow}
           onUploadFlowAsset={onUploadFlowAsset}
           onRepositoryFileSelect={onRepositoryFileSelect}

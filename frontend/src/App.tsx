@@ -1,5 +1,6 @@
 import {
   type ChangeEvent,
+  type FormEvent,
   type ReactNode,
   useEffect,
   useMemo,
@@ -8,15 +9,19 @@ import {
 } from "react";
 import {
   Archive,
+  Activity,
+  AlertTriangle,
   ArrowRight,
   Bot,
   Check,
   Clock,
+  Copy,
+  Database,
   ExternalLink,
   Folder,
-  GitBranch,
+  Gauge,
   ImagePlus,
-  Link,
+  KeyRound,
   LogOut,
   Pencil,
   Plus,
@@ -45,32 +50,42 @@ import {
   type ProjectDetailData,
   type ProjectDetailTabId,
   type ProjectHeaderProjectOption,
+  type ProjectMemoryArtifact,
   type PromptFlowPublishPayload,
   type PromptFlowUpdatePayload,
   type RepositoryFileContent,
 } from "./components/project-detail";
 import "./App.css";
 
-type SidebarItemId = "projects" | "community" | "settings" | "profile";
+type SidebarItemId = "projects" | "community" | "admin" | "settings" | "profile";
 
 type Project = {
   id: string;
   name: string;
+  createdTimestamp: string;
   slug?: string;
+  tags: string[];
+  visibility: "private" | "public";
   latestTimestamp: string;
   latestUpdatedAt: string;
+  latestActivityLabel: string;
   sessions: number;
   events: number;
   filesChanged: number;
+  prompts: number;
+  trackedFiles: number;
   models: string[];
   githubUrl?: string;
 };
+
+const MOCK_GITHUB_UNLINKED_PROJECT_ID = "mock-github-unlinked-project";
 
 type AuthUser = {
   id: string;
   username: string;
   email: string | null;
   avatar_url: string | null;
+  is_admin?: boolean;
 };
 
 type EventRecord = {
@@ -91,11 +106,19 @@ type ProjectSummary = {
   git_remote: string | null;
   github_url: string | null;
   default_branch: string;
+  created_at: string;
+  connected_models: string[];
+  tags: string[];
   sessions: number;
   events: number;
+  prompts: number;
+  tracked_files: number;
   latest_event_at: string | null;
   updated_at: string;
+  visibility: "private" | "public";
 };
+
+type ProjectSortMode = "recent" | "added";
 
 type ProjectDetailApiResponse = {
   activities: Array<{
@@ -129,6 +152,7 @@ type ProjectDetailApiResponse = {
   memory?: {
     latest_artifact_at: string | null;
     recent_artifacts: Array<{
+      artifact_stage?: string | null;
       changed_file_count: number;
       changed_files?: Array<{
         additions?: number | null;
@@ -138,14 +162,21 @@ type ProjectDetailApiResponse = {
       }>;
       commit_sha?: string | null;
       created_at: string | null;
+      draft_confidence?: number | null;
+      draft_generator?: string | null;
+      draft_type?: string | null;
       end_sequence?: number | null;
+      fallback_reason?: string | null;
       generator: string | null;
       id: string;
       memory_scope?: string | null;
       model: string | null;
+      needs_user_verification?: boolean | null;
       outcome: string | null;
       prompt_count?: number | null;
       reason?: string | null;
+      review_state?: string | null;
+      requested_generator?: string | null;
       sections?: Array<{
         summary: string;
         title: string;
@@ -154,10 +185,14 @@ type ProjectDetailApiResponse = {
       slice_index?: number | null;
       start_sequence?: number | null;
       summary: string | null;
+      summary_level?: number | null;
+      suggested_user_action?: string | null;
       tags: string[];
       technologies?: string[];
       title: string;
+      trigger_reason?: string | null;
       updated_at: string | null;
+      why_it_matters?: string | null;
       window_reason?: string | null;
       versions?: Array<{
         changed_file_count: number;
@@ -227,9 +262,12 @@ type ProjectDetailApiResponse = {
   metrics: {
     connected_models: string[];
     connected_tools?: string[];
+    files_changed_since_yesterday?: number;
     latest_activity_at: string | null;
     last_modified_at: string | null;
+    prompts_since_yesterday?: number;
     repository_connected: boolean;
+    sessions_since_yesterday?: number;
     total_events: number;
     total_prompts?: number;
     total_sessions: number;
@@ -244,9 +282,52 @@ type ProjectDetailApiResponse = {
     repository_status: string;
     repository_url: string | null;
     slug?: string;
+    tags?: string[];
     updated_at: string | null;
     visibility?: string | null;
   };
+};
+
+type ProjectMemoryArtifactApiResponse =
+  NonNullable<ProjectDetailApiResponse["memory"]>["recent_artifacts"][number];
+
+type ProjectMemorySnapshotApiResponse = {
+  artifact: ProjectMemoryArtifactApiResponse | null;
+  snapshot: {
+    body_markdown?: string;
+    confidence?: number | null;
+    sections?: {
+      core_workflow?: string[];
+      current_direction?: string;
+      important_decisions?: Array<{
+        decision: string;
+        reason: string;
+        source_memory_ids?: string[];
+      }>;
+      instructions_for_future_ai_agents?: string[];
+      open_questions?: string[];
+      product_goal?: string;
+      rejected_directions?: Array<{
+        direction: string;
+        reason: string;
+        source_memory_ids?: string[];
+      }>;
+      technical_assumptions?: string[];
+    };
+    source_memory_ids?: string[];
+    warnings?: string[];
+  } | null;
+} | null;
+
+type ProjectMemoryPendingRangeApiResponse = {
+  can_checkpoint: boolean;
+  end_sequence: number;
+  event_count: number;
+  last_event_at: string | null;
+  prompt_count: number;
+  session_id: string;
+  start_sequence: number;
+  tool: string;
 };
 
 type ProjectGithubFilesApiResponse = {
@@ -332,23 +413,81 @@ type PublishedFlowDetailResponse = PublishedFlowSummary & {
   start_sequence: number | null;
 };
 
-type GithubRepositoryOption = {
-  id: number | string | null;
-  default_branch: string;
-  description: string | null;
-  full_name: string;
-  html_url: string;
-  name: string;
-  owner: string;
-  private: boolean;
-  updated_at: string | null;
-};
-
-type GithubRepositoriesApiResponse = {
-  available: boolean;
-  message: string | null;
-  repositories: GithubRepositoryOption[];
-  status: string;
+type AdminOverview = {
+  breakdowns: {
+    events_by_tool: Array<{ count: number; key: string }>;
+    events_by_type: Array<{ count: number; key: string }>;
+    jobs_by_status: Array<{ count: number; key: string }>;
+    projects_by_visibility: Array<{ count: number; key: string }>;
+  };
+  generated_at: string | null;
+  metrics: {
+    active_collector_tokens: number;
+    events: number;
+    events_24h: number;
+    events_7d: number;
+    github_connections: number;
+    memory_artifacts: number;
+    projects: number;
+    prompts: number;
+    responses: number;
+    sessions: number;
+    tracked_files: number;
+    users: number;
+  };
+  recent_events: Array<{
+    created_at: string | null;
+    event_type: string;
+    id: string;
+    project_id: string;
+    sequence: number;
+    session_id: string;
+    tool: string;
+  }>;
+  recent_projects: Array<{
+    counts: {
+      events: number;
+      files: number;
+      prompts: number;
+      sessions: number;
+    };
+    default_branch: string;
+    github_connected: boolean;
+    id: string;
+    latest_event_at: string | null;
+    name: string;
+    owner: {
+      id: string;
+      username: string;
+    };
+    slug: string;
+    tags: string[];
+    updated_at: string | null;
+  }>;
+  recent_users: Array<{
+    created_at: string | null;
+    email: string | null;
+    github_connected: boolean;
+    id: string;
+    project_count: number;
+    username: string;
+  }>;
+  risks: Array<{
+    detail: string;
+    severity: string;
+    title: string;
+  }>;
+  system: {
+    admin_configured: boolean;
+    app_url: string;
+    cors_origins: string[];
+    gemini_configured: boolean;
+    memory_generator: string;
+    openai_configured?: boolean;
+    published_flows_enabled: boolean;
+    session_cookie_secure: boolean;
+    session_cookie_samesite: string;
+  };
 };
 
 type ProjectGithubFilesState = {
@@ -398,6 +537,7 @@ const PROJECT_DETAIL_TAB_IDS = new Set<ProjectDetailTabId>([
   "files",
 ]);
 const SIDEBAR_ITEM_IDS = new Set<SidebarItemId>([
+  "admin",
   "projects",
   "settings",
   "profile",
@@ -615,6 +755,15 @@ function readUrlNavigationState(): UrlNavigationState {
 
 function buildUrlNavigationSearch(state: UrlNavigationState) {
   const params = new URLSearchParams();
+  const previewMode = new URLSearchParams(window.location.search).get("preview");
+
+  if (
+    previewMode === "empty-projects" ||
+    previewMode === "github-unlinked-project" ||
+    previewMode === "project-loading"
+  ) {
+    params.set("preview", previewMode);
+  }
 
   if (state.activeItem !== "projects") {
     params.set("view", state.activeItem);
@@ -696,6 +845,13 @@ function formatCompactNumber(value: number) {
     maximumFractionDigits: 1,
     notation: "compact",
   }).format(value);
+}
+
+function formatSinceYesterdayDelta(value: number | null | undefined) {
+  const normalizedValue = value ?? 0;
+  return normalizedValue > 0
+    ? `+${formatCompactNumber(normalizedValue)} since yesterday`
+    : "0 since yesterday";
 }
 
 function formatTimestamp(value: string) {
@@ -850,6 +1006,7 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
   const grouped = new Map<
     string,
     {
+      createdTimestamp: string;
       events: number;
       filesChanged: number;
       githubUrl: string | null;
@@ -857,24 +1014,35 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
       models: Set<string>;
       name: string;
       summaryEventCount?: number;
+      summaryPromptCount?: number;
       summarySessionCount?: number;
+      summaryTrackedFiles?: number;
+      prompts: number;
       sessions: Set<string>;
       slug?: string;
+      tags: string[];
+      visibility: "private" | "public";
     }
   >();
 
   for (const summary of summaries) {
     grouped.set(summary.id, {
+      createdTimestamp: summary.created_at,
       events: 0,
       filesChanged: 0,
       githubUrl: normalizeGithubUrl(summary.github_url ?? summary.git_remote),
       latestTimestamp: summary.latest_event_at ?? summary.updated_at,
-      models: new Set<string>(),
+      models: new Set<string>(summary.connected_models ?? []),
       name: summary.name,
       summaryEventCount: summary.events,
+      summaryPromptCount: summary.prompts,
       summarySessionCount: summary.sessions,
+      summaryTrackedFiles: summary.tracked_files,
+      prompts: 0,
       sessions: new Set<string>(),
       slug: summary.slug,
+      tags: summary.tags ?? [],
+      visibility: summary.visibility === "public" ? "public" : "private",
     });
   }
 
@@ -883,13 +1051,17 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
     const current =
       existing ??
       {
+        createdTimestamp: event.timestamp,
         events: 0,
         filesChanged: 0,
         githubUrl: githubUrlFromEvent(event),
         latestTimestamp: event.timestamp,
         models: new Set<string>(),
         name: projectNameFromEvent(event),
+        prompts: 0,
         sessions: new Set<string>(),
+        tags: [],
+        visibility: "private",
       };
 
     current.events += 1;
@@ -903,6 +1075,9 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
       const files = event.payload.files;
       current.filesChanged += Array.isArray(files) ? files.length : 1;
     }
+    if (event.event_type === "PromptSubmitted") {
+      current.prompts += 1;
+    }
     if (new Date(event.timestamp) > new Date(current.latestTimestamp)) {
       current.latestTimestamp = event.timestamp;
       current.name = projectNameFromEvent(event);
@@ -914,19 +1089,189 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
   return Array.from(grouped, ([id, value]) => ({
     id,
     name: value.name,
+    createdTimestamp: value.createdTimestamp,
     slug: value.slug ?? id,
     latestTimestamp: value.latestTimestamp,
     latestUpdatedAt: formatTimestamp(value.latestTimestamp),
+    latestActivityLabel:
+      formatRelativeTimestamp(value.latestTimestamp) ?? formatTimestamp(value.latestTimestamp),
     sessions: value.summarySessionCount ?? value.sessions.size,
     events: value.summaryEventCount ?? value.events,
     filesChanged: value.filesChanged,
+    prompts: value.summaryPromptCount ?? value.prompts,
+    trackedFiles: value.summaryTrackedFiles ?? value.filesChanged,
     models: Array.from(value.models).sort(),
     githubUrl: value.githubUrl ?? undefined,
+    tags: value.tags,
+    visibility: value.visibility,
   })).sort(
     (left, right) =>
       new Date(right.latestTimestamp).getTime() -
       new Date(left.latestTimestamp).getTime(),
   );
+}
+
+function mockGithubUnlinkedProject(): Project {
+  const timestamp = "2026-07-04T14:18:00Z";
+
+  return {
+    createdTimestamp: "2026-07-01T09:00:00Z",
+    events: 42,
+    filesChanged: 12,
+    id: MOCK_GITHUB_UNLINKED_PROJECT_ID,
+    latestActivityLabel: formatRelativeTimestamp(timestamp) ?? formatTimestamp(timestamp),
+    latestTimestamp: timestamp,
+    latestUpdatedAt: formatTimestamp(timestamp),
+    models: ["gpt-5", "claude-sonnet-4"],
+    name: "Unlinked Repository Preview",
+    prompts: 18,
+    sessions: 4,
+    slug: "unlinked-repository-preview",
+    tags: ["frontend", "preview"],
+    trackedFiles: 12,
+    visibility: "private",
+  };
+}
+
+function isMockGithubUnlinkedProject(projectId: string | null | undefined) {
+  return projectId === MOCK_GITHUB_UNLINKED_PROJECT_ID;
+}
+
+function mockGithubUnlinkedProjectDetail(project: Project): ProjectDetailData {
+  return {
+    activities: [
+      {
+        events: 18,
+        filesChanged: 7,
+        id: "mock-session-1",
+        lastActivity: "Today 2:18 PM",
+        model: "gpt-5",
+        prompts: 8,
+        responses: 8,
+        startedAt: "Today 1:42 PM",
+      },
+      {
+        events: 12,
+        filesChanged: 3,
+        id: "mock-session-2",
+        lastActivity: "Yesterday 5:30 PM",
+        model: "claude-sonnet-4",
+        prompts: 5,
+        responses: 5,
+        startedAt: "Yesterday 5:04 PM",
+      },
+    ],
+    community: {
+      draftFlows: 0,
+      latestFlowAt: null,
+      publishedFlows: 0,
+      recentFlows: [],
+      totalFlows: 0,
+    },
+    files: [
+      {
+        children: [
+          { name: "App.tsx", path: "frontend/src/App.tsx", type: "file" },
+          { name: "project-detail.css", path: "frontend/src/components/project-detail/project-detail.css", type: "file" },
+        ],
+        name: "frontend",
+        type: "folder",
+      },
+      {
+        children: [
+          { name: "projects.py", path: "backend/app/api/projects.py", type: "file" },
+        ],
+        name: "backend",
+        type: "folder",
+      },
+    ],
+    memory: {
+      drafts: [],
+      latestArtifactAt: null,
+      pendingRanges: [],
+      projectMemory: null,
+      projectMemoryArtifact: null,
+      recentArtifacts: [],
+      totalArtifacts: 0,
+    },
+    overview: [
+      {
+        description: "GitHub remote has not been added yet.",
+        title: "Repository URL",
+        value: "Not connected",
+      },
+      {
+        description: "Promty project detail page",
+        href: projectDetailUrl(project.slug ?? project.id),
+        title: "Project URL",
+        value: projectDetailUrl(project.slug ?? project.id),
+      },
+      {
+        title: "Description",
+        value: "Frontend preview data for the GitHub unlinked project state.",
+      },
+      {
+        title: "Visibility",
+        value: formatLabelValue(project.visibility, "Private"),
+      },
+      {
+        title: "AI Models",
+        value: project.models.join(", "),
+      },
+      {
+        title: "Activities",
+        value: formatCompactNumber(project.events),
+      },
+      {
+        title: "Sessions",
+        value: formatCompactNumber(project.sessions),
+      },
+      {
+        title: "Sessions Added",
+        value: "+1 since yesterday",
+      },
+      {
+        title: "Prompts",
+        value: formatCompactNumber(project.prompts),
+      },
+      {
+        title: "Prompts Added",
+        value: "+4 since yesterday",
+      },
+      {
+        title: "Files Changed Added",
+        value: "+2 since yesterday",
+      },
+      {
+        description: formatRelativeTimestamp(project.createdTimestamp) ?? "Not available",
+        title: "Created",
+        value: formatDate(project.createdTimestamp),
+      },
+      {
+        description: project.latestActivityLabel,
+        title: "Last Activity",
+        value: formatDate(project.latestTimestamp),
+      },
+      {
+        description: "No repository",
+        title: "Repository Connected",
+        value: "Not connected",
+      },
+    ],
+    project: {
+      description: "Frontend preview data for the GitHub unlinked project state.",
+      id: project.id,
+      name: project.name,
+      repositoryStatus: "Repository not connected",
+      repositoryUrl: undefined,
+      slug: project.slug,
+      tags: project.tags,
+      visibility: project.visibility,
+    },
+    promptActivities: [],
+    repositoryFiles: [],
+    repositoryFilesMessage: "This project does not have a GitHub repository remote.",
+  };
 }
 
 function emptyProjectDetailData(project: Project | null): ProjectDetailData {
@@ -941,7 +1286,11 @@ function emptyProjectDetailData(project: Project | null): ProjectDetailData {
     },
     files: [],
     memory: {
+      drafts: [],
       latestArtifactAt: null,
+      pendingRanges: [],
+      projectMemory: null,
+      projectMemoryArtifact: null,
       recentArtifacts: [],
       totalArtifacts: 0,
     },
@@ -955,6 +1304,9 @@ function emptyProjectDetailData(project: Project | null): ProjectDetailData {
         ? "Repository connected"
         : "Repository not connected",
       repositoryUrl: project?.githubUrl,
+      slug: project?.slug,
+      tags: project?.tags ?? [],
+      visibility: project?.visibility ?? "private",
     },
     repositoryFiles: [],
     repositoryFilesMessage: project?.githubUrl
@@ -971,6 +1323,152 @@ function projectDetailUrl(projectKey: string) {
   return `${window.location.origin}/?${params.toString()}`;
 }
 
+function isGenericMemoryDraftResponse(artifact: ProjectMemoryArtifact) {
+  return /^\d+ prompts and \d+ AI responses were captured/i.test(
+    artifact.summary ?? "",
+  );
+}
+
+function projectMemoryPendingRangeFromApi(
+  range: ProjectMemoryPendingRangeApiResponse,
+) {
+  return {
+    canCheckpoint: range.can_checkpoint,
+    endSequence: range.end_sequence,
+    eventCount: range.event_count,
+    lastEventAt: range.last_event_at
+      ? formatOptionalTimestamp(range.last_event_at, "Unknown")
+      : null,
+    promptCount: range.prompt_count,
+    sessionId: range.session_id,
+    startSequence: range.start_sequence,
+    tool: range.tool,
+  };
+}
+
+function projectMemoryArtifactFromApi(
+  artifact: ProjectMemoryArtifactApiResponse,
+) {
+  return {
+    artifactStage: artifact.artifact_stage ?? null,
+    changedFileCount: artifact.changed_file_count,
+    changedFiles: artifact.changed_files ?? [],
+    commitSha: artifact.commit_sha ?? null,
+    createdAt: artifact.created_at
+      ? formatOptionalTimestamp(artifact.created_at, "Unknown")
+      : null,
+    draftConfidence: artifact.draft_confidence ?? null,
+    draftGenerator: artifact.draft_generator ?? null,
+    draftType: artifact.draft_type ?? null,
+    endSequence: artifact.end_sequence ?? null,
+    fallbackReason: artifact.fallback_reason ?? null,
+    generator: artifact.generator,
+    id: artifact.id,
+    memoryScope: artifact.memory_scope ?? null,
+    model: artifact.model,
+    needsUserVerification: artifact.needs_user_verification ?? null,
+    outcome: artifact.outcome,
+    promptCount: artifact.prompt_count ?? null,
+    reason: artifact.reason ?? null,
+    reviewState: artifact.review_state ?? null,
+    requestedGenerator: artifact.requested_generator ?? null,
+    sections: artifact.sections ?? [],
+    sessionId: artifact.session_id,
+    sliceIndex: artifact.slice_index ?? null,
+    startSequence: artifact.start_sequence ?? null,
+    summary: artifact.summary,
+    summaryLevel: artifact.summary_level ?? null,
+    suggestedUserAction: artifact.suggested_user_action ?? null,
+    tags: artifact.tags,
+    technologies: artifact.technologies ?? [],
+    title: artifact.title,
+    triggerReason: artifact.trigger_reason ?? null,
+    updatedAt: artifact.updated_at
+      ? formatOptionalTimestamp(artifact.updated_at, "Unknown")
+      : null,
+    whyItMatters: artifact.why_it_matters ?? artifact.reason ?? null,
+    windowReason: artifact.window_reason ?? null,
+    versions: (artifact.versions ?? []).map((version) => ({
+      changedFileCount: version.changed_file_count,
+      changedFiles: version.changed_files ?? [],
+      commitSha: version.commit_sha ?? null,
+      createdAt: version.created_at
+        ? formatOptionalTimestamp(version.created_at, "Unknown")
+        : null,
+      draftConfidence: null,
+      draftGenerator: null,
+      draftType: null,
+      endSequence: version.end_sequence ?? null,
+      fallbackReason: null,
+      generator: version.generator,
+      id: version.id,
+      memoryScope: version.memory_scope ?? null,
+      model: version.model,
+      needsUserVerification: null,
+      outcome: version.outcome,
+      promptCount: version.prompt_count ?? null,
+      reason: version.reason ?? null,
+      requestedGenerator: null,
+      sections: version.sections ?? [],
+      sessionId: version.session_id,
+      sliceIndex: version.slice_index ?? null,
+      startSequence: version.start_sequence ?? null,
+      summary: version.summary,
+      suggestedUserAction: null,
+      tags: version.tags,
+      technologies: version.technologies ?? [],
+      title: version.title,
+      version: version.version,
+      windowReason: version.window_reason ?? null,
+    })),
+  };
+}
+
+function projectMemorySnapshotFromApi(
+  response: ProjectMemorySnapshotApiResponse,
+) {
+  const snapshot = response?.snapshot;
+  if (!snapshot) {
+    return {
+      projectMemory: null,
+      projectMemoryArtifact: response?.artifact
+        ? projectMemoryArtifactFromApi(response.artifact)
+        : null,
+    };
+  }
+  const sections = snapshot.sections ?? {};
+  return {
+    projectMemory: {
+      bodyMarkdown: snapshot.body_markdown ?? "",
+      confidence: snapshot.confidence ?? null,
+      sections: {
+        coreWorkflow: sections.core_workflow ?? [],
+        currentDirection: sections.current_direction ?? "",
+        importantDecisions: (sections.important_decisions ?? []).map((item) => ({
+          decision: item.decision,
+          reason: item.reason,
+          sourceMemoryIds: item.source_memory_ids ?? [],
+        })),
+        instructionsForFutureAiAgents:
+          sections.instructions_for_future_ai_agents ?? [],
+        openQuestions: sections.open_questions ?? [],
+        productGoal: sections.product_goal ?? "",
+        rejectedDirections: (sections.rejected_directions ?? []).map((item) => ({
+          direction: item.direction,
+          reason: item.reason,
+          sourceMemoryIds: item.source_memory_ids ?? [],
+        })),
+        technicalAssumptions: sections.technical_assumptions ?? [],
+      },
+      sourceMemoryIds: snapshot.source_memory_ids ?? [],
+      warnings: snapshot.warnings ?? [],
+    },
+    projectMemoryArtifact: response?.artifact
+      ? projectMemoryArtifactFromApi(response.artifact)
+      : null,
+  };
+}
+
 function projectDetailDataFromApi(
   payload: ProjectDetailApiResponse,
   fallbackProject: Project | null,
@@ -978,6 +1476,18 @@ function projectDetailDataFromApi(
   const models = payload.metrics.connected_models;
   const community = payload.community;
   const memory = payload.memory;
+  const memoryDrafts =
+    ((memory as (typeof memory & { drafts?: ProjectMemoryArtifactApiResponse[] }) | undefined)
+      ?.drafts ?? []);
+  const pendingRanges =
+    ((memory as
+      | (typeof memory & { pending_ranges?: ProjectMemoryPendingRangeApiResponse[] })
+      | undefined)?.pending_ranges ?? []);
+  const projectMemoryResponse =
+    (memory as
+      | (typeof memory & { project_memory?: ProjectMemorySnapshotApiResponse })
+      | undefined)?.project_memory ?? null;
+  const projectMemory = projectMemorySnapshotFromApi(projectMemoryResponse);
   const totalPrompts =
     payload.metrics.total_prompts ?? payload.prompt_activities?.length ?? 0;
   const projectDescription = payload.project.description?.trim() ?? "";
@@ -1054,63 +1564,14 @@ function projectDetailDataFromApi(
     },
     files: payload.files,
     memory: {
+      drafts: memoryDrafts.map(projectMemoryArtifactFromApi),
       latestArtifactAt: memory?.latest_artifact_at
         ? formatOptionalTimestamp(memory.latest_artifact_at, "Unknown")
         : null,
-      recentArtifacts: (memory?.recent_artifacts ?? []).map((artifact) => ({
-        changedFileCount: artifact.changed_file_count,
-        changedFiles: artifact.changed_files ?? [],
-        commitSha: artifact.commit_sha ?? null,
-        createdAt: artifact.created_at
-          ? formatOptionalTimestamp(artifact.created_at, "Unknown")
-          : null,
-        endSequence: artifact.end_sequence ?? null,
-        generator: artifact.generator,
-        id: artifact.id,
-        memoryScope: artifact.memory_scope ?? null,
-        model: artifact.model,
-        outcome: artifact.outcome,
-        promptCount: artifact.prompt_count ?? null,
-        reason: artifact.reason ?? null,
-        sections: artifact.sections ?? [],
-        sessionId: artifact.session_id,
-        sliceIndex: artifact.slice_index ?? null,
-        startSequence: artifact.start_sequence ?? null,
-        summary: artifact.summary,
-        tags: artifact.tags,
-        technologies: artifact.technologies ?? [],
-        title: artifact.title,
-        updatedAt: artifact.updated_at
-          ? formatOptionalTimestamp(artifact.updated_at, "Unknown")
-          : null,
-        windowReason: artifact.window_reason ?? null,
-        versions: (artifact.versions ?? []).map((version) => ({
-          changedFileCount: version.changed_file_count,
-          changedFiles: version.changed_files ?? [],
-          commitSha: version.commit_sha ?? null,
-          createdAt: version.created_at
-            ? formatOptionalTimestamp(version.created_at, "Unknown")
-            : null,
-          endSequence: version.end_sequence ?? null,
-          generator: version.generator,
-          id: version.id,
-          memoryScope: version.memory_scope ?? null,
-          model: version.model,
-          outcome: version.outcome,
-          promptCount: version.prompt_count ?? null,
-          reason: version.reason ?? null,
-          sections: version.sections ?? [],
-          sessionId: version.session_id,
-          sliceIndex: version.slice_index ?? null,
-          startSequence: version.start_sequence ?? null,
-          summary: version.summary,
-          tags: version.tags,
-          technologies: version.technologies ?? [],
-          title: version.title,
-          version: version.version,
-          windowReason: version.window_reason ?? null,
-        })),
-      })),
+      pendingRanges: pendingRanges.map(projectMemoryPendingRangeFromApi),
+      projectMemory: projectMemory.projectMemory,
+      projectMemoryArtifact: projectMemory.projectMemoryArtifact,
+      recentArtifacts: (memory?.recent_artifacts ?? []).map(projectMemoryArtifactFromApi),
       totalArtifacts: memory?.total_artifacts ?? 0,
     },
     overview: [
@@ -1128,17 +1589,9 @@ function projectDetailDataFromApi(
         description: `${BRAND_NAME} project detail page`,
         href: projectUrl,
       },
-      ...(projectDescription
-        ? [
-            {
-              title: "Description",
-              value: projectDescription,
-            },
-          ]
-        : []),
       {
-        title: "Default Branch",
-        value: payload.project.default_branch || "Not available",
+        title: "Description",
+        value: projectDescription || "Not provided",
       },
       {
         title: "Visibility",
@@ -1157,14 +1610,20 @@ function projectDetailDataFromApi(
         value: formatCompactNumber(payload.metrics.total_sessions),
       },
       {
+        title: "Sessions Added",
+        value: formatSinceYesterdayDelta(payload.metrics.sessions_since_yesterday),
+      },
+      {
         title: "Prompts",
         value: formatCompactNumber(totalPrompts),
       },
       {
-        title: "Memory Artifacts",
-        value: formatCompactNumber(memory?.total_artifacts ?? 0),
-        description:
-          formatRelativeTimestamp(memory?.latest_artifact_at) ?? "No memory yet",
+        title: "Prompts Added",
+        value: formatSinceYesterdayDelta(payload.metrics.prompts_since_yesterday),
+      },
+      {
+        title: "Files Changed Added",
+        value: formatSinceYesterdayDelta(payload.metrics.files_changed_since_yesterday),
       },
       {
         title: "Created",
@@ -1195,6 +1654,12 @@ function projectDetailDataFromApi(
       name: payload.project.name || fallbackProject?.name || "Project",
       repositoryStatus: payload.project.repository_status,
       repositoryUrl,
+      slug: payload.project.slug ?? fallbackProject?.slug,
+      tags: payload.project.tags ?? fallbackProject?.tags ?? [],
+      visibility:
+        payload.project.visibility === "public" || payload.project.visibility === "private"
+          ? payload.project.visibility
+          : fallbackProject?.visibility ?? "private",
     },
     repositoryFiles: [],
     repositoryFilesMessage: payload.project.repository_url
@@ -1258,6 +1723,437 @@ function SimpleBrandIcon({
 
 function GitHubIcon() {
   return <SimpleBrandIcon icon={siGithub} name="github" />;
+}
+
+function UserProfilePage({
+  connectedRepositoryCount,
+  currentUser,
+  latestActivityLabel,
+  onLogout,
+  projectCount,
+}: {
+  connectedRepositoryCount: number;
+  currentUser: AuthUser | null;
+  latestActivityLabel: string;
+  onLogout: () => void;
+  projectCount: number;
+}) {
+  const displayName = currentUser?.username ?? "Signed in";
+  const email = currentUser?.email ?? "GitHub authenticated";
+  const roleLabel = currentUser?.is_admin ? "Admin" : "Member";
+  const userInitial = displayName.trim().charAt(0).toUpperCase() || "P";
+  const userId = currentUser?.id ?? "Not available";
+
+  return (
+    <section className="profile-page" aria-label="Profile settings">
+      <section className="profile-hero" aria-labelledby="profile-title">
+        <div className="profile-avatar profile-avatar-large" aria-hidden="true">
+          {currentUser?.avatar_url ? (
+            <img alt="" src={currentUser.avatar_url} />
+          ) : (
+            <span>{userInitial}</span>
+          )}
+        </div>
+        <div className="profile-hero-copy">
+          <span>GitHub account</span>
+          <h2 id="profile-title">{displayName}</h2>
+          <p>{email}</p>
+          <div className="profile-pill-row" aria-label="Account status">
+            <span className="profile-pill" data-tone="success">
+              Active session
+            </span>
+            <span className="profile-pill">{roleLabel}</span>
+          </div>
+        </div>
+      </section>
+
+      <div className="profile-grid">
+        <section className="profile-section" aria-labelledby="profile-account-title">
+          <div className="profile-section-header">
+            <User aria-hidden="true" size={18} strokeWidth={1.5} />
+            <div>
+              <h3 id="profile-account-title">Account</h3>
+              <p>Identity used across this workspace.</p>
+            </div>
+          </div>
+          <dl className="profile-setting-list">
+            <div className="profile-setting-row">
+              <dt>Display name</dt>
+              <dd>{displayName}</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Email</dt>
+              <dd>{email}</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>User ID</dt>
+              <dd>
+                <code>{userId}</code>
+              </dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Workspace projects</dt>
+              <dd>{projectCount.toLocaleString()}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="profile-section" aria-labelledby="profile-preferences-title">
+          <div className="profile-section-header">
+            <Settings aria-hidden="true" size={18} strokeWidth={1.5} />
+            <div>
+              <h3 id="profile-preferences-title">Preferences</h3>
+              <p>Defaults for how the workspace opens.</p>
+            </div>
+          </div>
+          <dl className="profile-setting-list">
+            <div className="profile-setting-row">
+              <dt>Default model</dt>
+              <dd>Auto-detect</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Theme</dt>
+              <dd>System dark</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Language</dt>
+              <dd>English</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Timezone</dt>
+              <dd>Browser default</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section
+          className="profile-section"
+          aria-labelledby="profile-connections-title"
+        >
+          <div className="profile-section-header">
+            <GitHubIcon />
+            <div>
+              <h3 id="profile-connections-title">Connected Accounts</h3>
+              <p>External accounts available to Promty.</p>
+            </div>
+          </div>
+          <dl className="profile-setting-list">
+            <div className="profile-setting-row">
+              <dt>GitHub</dt>
+              <dd>Connected</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Repository access</dt>
+              <dd>Project-level</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Connected repositories</dt>
+              <dd>
+                {connectedRepositoryCount.toLocaleString()} /{" "}
+                {projectCount.toLocaleString()}
+              </dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Latest workspace activity</dt>
+              <dd>{latestActivityLabel}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="profile-section" aria-labelledby="profile-security-title">
+          <div className="profile-section-header">
+            <ShieldCheck aria-hidden="true" size={18} strokeWidth={1.5} />
+            <div>
+              <h3 id="profile-security-title">Security</h3>
+              <p>Session and access controls.</p>
+            </div>
+          </div>
+          <dl className="profile-setting-list">
+            <div className="profile-setting-row">
+              <dt>Current session</dt>
+              <dd>Active</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Authentication</dt>
+              <dd>GitHub OAuth</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Workspace role</dt>
+              <dd>{roleLabel}</dd>
+            </div>
+          </dl>
+          <div className="profile-section-actions">
+            <button className="toolbar-button" onClick={onLogout} type="button">
+              <LogOut aria-hidden="true" size={15} strokeWidth={1.5} />
+              <span>Log out</span>
+            </button>
+          </div>
+        </section>
+
+        <section
+          className="profile-section profile-section-wide"
+          aria-labelledby="profile-privacy-title"
+        >
+          <div className="profile-section-header">
+            <Database aria-hidden="true" size={18} strokeWidth={1.5} />
+            <div>
+              <h3 id="profile-privacy-title">Data & Privacy</h3>
+              <p>What Promty stores for this account.</p>
+            </div>
+          </div>
+          <dl className="profile-setting-list profile-setting-list-compact">
+            <div className="profile-setting-row">
+              <dt>Project activity</dt>
+              <dd>Prompts, sessions, file changes</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Memory artifacts</dt>
+              <dd>Generated from synced project activity</dd>
+            </div>
+            <div className="profile-setting-row">
+              <dt>Data export</dt>
+              <dd>Not configured</dd>
+            </div>
+          </dl>
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function UserSettingsPage({
+  apiUrl,
+  canUseAdmin,
+  connectedRepositoryCount,
+  currentUser,
+  isRefreshing,
+  latestActivityLabel,
+  onOpenProfile,
+  onRefreshWorkspace,
+  projectCount,
+}: {
+  apiUrl: string;
+  canUseAdmin: boolean;
+  connectedRepositoryCount: number;
+  currentUser: AuthUser | null;
+  isRefreshing: boolean;
+  latestActivityLabel: string;
+  onOpenProfile: () => void;
+  onRefreshWorkspace: () => void;
+  projectCount: number;
+}) {
+  const roleLabel = currentUser?.is_admin ? "Admin" : "Member";
+  const repositoryCoverage =
+    projectCount > 0
+      ? `${connectedRepositoryCount.toLocaleString()} / ${projectCount.toLocaleString()}`
+      : "No projects";
+
+  return (
+    <section className="settings-page" aria-label="Workspace settings">
+      <section className="settings-hero" aria-labelledby="settings-title">
+        <div className="settings-hero-copy">
+          <span>Workspace controls</span>
+          <h2 id="settings-title">Operational settings</h2>
+          <p>Defaults, sync behavior, collector state, and access posture.</p>
+        </div>
+        <div className="settings-hero-actions">
+          <button
+            className="toolbar-button"
+            disabled={isRefreshing}
+            onClick={onRefreshWorkspace}
+            type="button"
+          >
+            <RefreshCw aria-hidden="true" size={15} strokeWidth={1.5} />
+            <span>{isRefreshing ? "Refreshing" : "Refresh workspace"}</span>
+          </button>
+          <button className="toolbar-button" onClick={onOpenProfile} type="button">
+            <User aria-hidden="true" size={15} strokeWidth={1.5} />
+            <span>Profile</span>
+          </button>
+        </div>
+      </section>
+
+      <div className="settings-grid">
+        <section className="settings-section" aria-labelledby="settings-workspace-title">
+          <div className="settings-section-header">
+            <Folder aria-hidden="true" size={18} strokeWidth={1.5} />
+            <div>
+              <h3 id="settings-workspace-title">Workspace</h3>
+              <p>Project list and workspace defaults.</p>
+            </div>
+          </div>
+          <dl className="settings-list">
+            <div className="settings-row">
+              <dt>Default view</dt>
+              <dd>Projects</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Project sort</dt>
+              <dd>Recent activity</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Projects</dt>
+              <dd>{projectCount.toLocaleString()}</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Latest activity</dt>
+              <dd>{latestActivityLabel}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="settings-section" aria-labelledby="settings-collector-title">
+          <div className="settings-section-header">
+            <Terminal aria-hidden="true" size={18} strokeWidth={1.5} />
+            <div>
+              <h3 id="settings-collector-title">Collector</h3>
+              <p>Local CLI and event ingestion.</p>
+            </div>
+          </div>
+          <dl className="settings-list">
+            <div className="settings-row">
+              <dt>API endpoint</dt>
+              <dd>
+                <code>{apiUrl}</code>
+              </dd>
+            </div>
+            <div className="settings-row">
+              <dt>Event limit</dt>
+              <dd>500 latest</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Ingestion</dt>
+              <dd>
+                <span className="settings-value-chip" data-tone="success">
+                  Active
+                </span>
+              </dd>
+            </div>
+            <div className="settings-row">
+              <dt>Session grouping</dt>
+              <dd>Enabled</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="settings-section" aria-labelledby="settings-sync-title">
+          <div className="settings-section-header">
+            <GitHubIcon />
+            <div>
+              <h3 id="settings-sync-title">Repository Sync</h3>
+              <p>GitHub repository context and file browsing.</p>
+            </div>
+          </div>
+          <dl className="settings-list">
+            <div className="settings-row">
+              <dt>Provider</dt>
+              <dd>GitHub</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Repository coverage</dt>
+              <dd>{repositoryCoverage}</dd>
+            </div>
+            <div className="settings-row">
+              <dt>File browser</dt>
+              <dd>GitHub-backed</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Refresh mode</dt>
+              <dd>On demand</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="settings-section" aria-labelledby="settings-ai-title">
+          <div className="settings-section-header">
+            <Bot aria-hidden="true" size={18} strokeWidth={1.5} />
+            <div>
+              <h3 id="settings-ai-title">AI & Memory</h3>
+              <p>Model detection and generated memory behavior.</p>
+            </div>
+          </div>
+          <dl className="settings-list">
+            <div className="settings-row">
+              <dt>Model detection</dt>
+              <dd>Auto-detect</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Memory generation</dt>
+              <dd>Automatic</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Prompt detail</dt>
+              <dd>Request, response, file changes</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Activity layout</dt>
+              <dd>Prompts and sessions</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="settings-section" aria-labelledby="settings-interface-title">
+          <div className="settings-section-header">
+            <Settings aria-hidden="true" size={18} strokeWidth={1.5} />
+            <div>
+              <h3 id="settings-interface-title">Interface</h3>
+              <p>Display defaults for the app shell.</p>
+            </div>
+          </div>
+          <dl className="settings-list">
+            <div className="settings-row">
+              <dt>Theme</dt>
+              <dd>Dark</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Density</dt>
+              <dd>Compact</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Sidebar</dt>
+              <dd>Workspace navigation</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Language</dt>
+              <dd>English</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="settings-section" aria-labelledby="settings-access-title">
+          <div className="settings-section-header">
+            <ShieldCheck aria-hidden="true" size={18} strokeWidth={1.5} />
+            <div>
+              <h3 id="settings-access-title">Access</h3>
+              <p>Authentication, role, and privileged controls.</p>
+            </div>
+          </div>
+          <dl className="settings-list">
+            <div className="settings-row">
+              <dt>Authentication</dt>
+              <dd>GitHub OAuth</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Role</dt>
+              <dd>{roleLabel}</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Admin console</dt>
+              <dd>{canUseAdmin ? "Available" : "Restricted"}</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Session</dt>
+              <dd>
+                <span className="settings-value-chip" data-tone="success">
+                  Active
+                </span>
+              </dd>
+            </div>
+          </dl>
+        </section>
+      </div>
+    </section>
+  );
 }
 
 function BrandLogo({ className = "" }: { className?: string }) {
@@ -1394,97 +2290,56 @@ function LoadingScreen() {
       className="app-shell"
       role="status"
     >
-      <aside className="sidebar" aria-hidden="true">
-        <div className="sidebar-header">
-          <BrandLockup />
-        </div>
-
-        <div className="sidebar-divider" />
-
-        <nav className="sidebar-nav" aria-label="Loading navigation">
-          <div className="sidebar-item sidebar-item-loading">
-            <Folder
-              aria-hidden="true"
-              className="sidebar-icon"
-              size={18}
-              strokeWidth={1.5}
-            />
-            <span>Projects</span>
-          </div>
-          {/* Community navigation is paused for now.
-          <div className="sidebar-item sidebar-item-loading">
-            <Share2
-              aria-hidden="true"
-              className="sidebar-icon"
-              size={18}
-              strokeWidth={1.5}
-            />
-            <span>Community</span>
-          </div>
-          */}
-        </nav>
-
-        <div className="sidebar-spacer" />
-        <div className="sidebar-divider" />
-
-        <div className="sidebar-footer">
-          <div className="sidebar-item sidebar-item-loading">
-            <User
-              aria-hidden="true"
-              className="sidebar-icon"
-              size={18}
-              strokeWidth={1.5}
-            />
-            <span>Profile</span>
-          </div>
-          <div className="sidebar-item sidebar-item-loading">
-            <Settings
-              aria-hidden="true"
-              className="sidebar-icon"
-              size={18}
-              strokeWidth={1.5}
-            />
-            <span>Settings</span>
-          </div>
-        </div>
-      </aside>
+      <LoadingSidebar />
 
       <main className="page">
         <header className="page-header">
           <div>
             <h1>Projects</h1>
           </div>
-          <div className="page-actions">
-            <button className="toolbar-button" disabled type="button">
-              <RefreshCw aria-hidden="true" size={16} strokeWidth={1.5} />
-              <span>Refresh</span>
-            </button>
-            <span className="status-pill">Loading</span>
-          </div>
         </header>
 
-        <section className="projects-section" aria-labelledby="loading-projects-title">
-          <div className="section-header">
-            <div>
-              <h2 id="loading-projects-title">Active projects</h2>
-              <p>Recent AI workspaces and connected repository context.</p>
-            </div>
-          </div>
-
-          <div className="inline-loading-status">
-            <RefreshCw
-              aria-hidden="true"
-              className="loading-spinner"
-              size={16}
-              strokeWidth={1.5}
-            />
-            <span>Loading workspace</span>
-          </div>
-
-          <ProjectGridSkeleton />
+        <section className="projects-section" aria-label="Projects">
+          <ProjectListLoadingState />
         </section>
       </main>
     </div>
+  );
+}
+
+function LoadingSidebar() {
+  return (
+    <aside className="sidebar sidebar-loading" aria-hidden="true">
+      <div className="sidebar-header">
+        <div className="sidebar-loading-brand">
+          <span />
+          <span />
+        </div>
+      </div>
+
+      <div className="sidebar-divider" />
+
+      <nav className="sidebar-nav" aria-label="Loading navigation">
+        <div className="sidebar-loading-item">
+          <span />
+          <span />
+        </div>
+      </nav>
+
+      <div className="sidebar-spacer" />
+      <div className="sidebar-divider" />
+
+      <div className="sidebar-footer">
+        <div className="sidebar-loading-item is-profile">
+          <span />
+          <span />
+        </div>
+        <div className="sidebar-loading-item">
+          <span />
+          <span />
+        </div>
+      </div>
+    </aside>
   );
 }
 
@@ -1516,6 +2371,50 @@ function EmptyState({
   );
 }
 
+function EmptyProjectsState() {
+  return (
+    <section className="empty-projects-state" aria-labelledby="empty-projects-title">
+      <div className="empty-projects-copy">
+        <h2 id="empty-projects-title">No projects yet</h2>
+        <p>Run this from a project directory to link the repository and install local AI tool hooks.</p>
+      </div>
+      <SetupCommandBlock command={setupCommandText()} />
+    </section>
+  );
+}
+
+function ProjectListLoadingState({ delayMs = 500 }: { delayMs?: number }) {
+  const [shouldShow, setShouldShow] = useState(delayMs <= 0);
+
+  useEffect(() => {
+    if (delayMs <= 0) {
+      setShouldShow(true);
+      return;
+    }
+
+    setShouldShow(false);
+    const timer = window.setTimeout(() => {
+      setShouldShow(true);
+    }, delayMs);
+
+    return () => window.clearTimeout(timer);
+  }, [delayMs]);
+
+  if (!shouldShow) {
+    return null;
+  }
+
+  return (
+    <div className="project-list-loading-state">
+      <div className="project-loading-controls" aria-hidden="true">
+        <div className="project-loading-search" />
+        <div className="project-loading-sort" />
+      </div>
+      <ProjectGridSkeleton />
+    </div>
+  );
+}
+
 function ProjectGridSkeleton() {
   return (
     <div
@@ -1524,7 +2423,7 @@ function ProjectGridSkeleton() {
       className="projects-grid project-grid-skeleton"
       role="status"
     >
-      {Array.from({ length: 8 }, (_, index) => (
+      {Array.from({ length: 12 }, (_, index) => (
         <article
           aria-hidden="true"
           className="project-card project-card-skeleton"
@@ -1582,171 +2481,143 @@ function RepositoryOptionsSkeleton() {
   );
 }
 
-function RepositoryConnector({
-  connectGitHubUrl,
-  errorMessage,
-  isLoadingRepositories,
-  isSaving,
-  mode,
-  onClose,
-  onReloadRepositories,
-  onRepositorySearchQueryChange,
-  onRepositoryUrlInputChange,
-  onSelectRepository,
-  onSubmitUrl,
-  repositories,
-  repositoryMessage,
-  repositorySearchQuery,
-  repositoryUrlInput,
-  targetProjectName,
+function setupCommandText() {
+  return `npx @prompthub/cli init --app-url ${window.location.origin} --api-url ${API_URL}`;
+}
+
+function SetupCommandBlock({
+  command,
+  label,
 }: {
-  connectGitHubUrl: string;
-  errorMessage?: string | null;
-  isLoadingRepositories: boolean;
-  isSaving: boolean;
-  mode: "create" | "connect";
-  onClose: () => void;
-  onReloadRepositories: () => void;
-  onRepositorySearchQueryChange: (value: string) => void;
-  onRepositoryUrlInputChange: (value: string) => void;
-  onSelectRepository: (repository: GithubRepositoryOption) => void;
-  onSubmitUrl: () => void;
-  repositories: GithubRepositoryOption[];
-  repositoryMessage?: string | null;
-  repositorySearchQuery: string;
-  repositoryUrlInput: string;
-  targetProjectName?: string;
+  command: string;
+  label?: string;
 }) {
+  const [hasCopied, setHasCopied] = useState(false);
+  const copyCommand = async () => {
+    await navigator.clipboard.writeText(command);
+    setHasCopied(true);
+    window.setTimeout(() => setHasCopied(false), 1400);
+  };
+
   return (
-    <section
-      aria-labelledby="repository-connector-title"
-      className="repository-connector"
-    >
-      <div className="repository-connector-header">
-        <div>
-          <h2 id="repository-connector-title">Connect Repository</h2>
-          <p>
-            {mode === "create"
-              ? `Create a ${BRAND_NAME} project from a GitHub repository.`
-              : `Connect a GitHub repository to ${targetProjectName ?? "this project"}.`}
-          </p>
-        </div>
+    <div className="setup-command-block">
+      {label ? <span>{label}</span> : null}
+      <div className="setup-command-surface">
+        <pre><code>{command}</code></pre>
         <button
-          aria-label="Close repository connector"
-          className="repository-connector-close"
-          onClick={onClose}
+          aria-label={hasCopied ? "Copied" : "Copy command"}
+          className="setup-command-copy"
+          onClick={copyCommand}
+          title={hasCopied ? "Copied" : "Copy command"}
           type="button"
         >
-          <X aria-hidden="true" size={16} strokeWidth={1.5} />
+          {hasCopied ? (
+            <Check aria-hidden="true" size={16} strokeWidth={1.5} />
+          ) : (
+            <Copy aria-hidden="true" size={16} strokeWidth={1.5} />
+          )}
         </button>
       </div>
+    </div>
+  );
+}
 
-      <form
-        className="repository-url-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSubmitUrl();
-        }}
+function RepositoryConnector({
+  onManualConnect,
+  onClose,
+  targetProjectName,
+}: {
+  onManualConnect?: (githubUrl: string) => Promise<void>;
+  onClose: () => void;
+  targetProjectName?: string;
+}) {
+  const setupCommand = setupCommandText();
+  const [manualRepositoryUrl, setManualRepositoryUrl] = useState("");
+  const [manualRepositoryError, setManualRepositoryError] = useState<string | null>(
+    null,
+  );
+  const [isManualRepositorySaving, setIsManualRepositorySaving] = useState(false);
+  const canSubmitManualRepository =
+    Boolean(onManualConnect) && manualRepositoryUrl.trim().length > 0;
+
+  const submitManualRepository = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!onManualConnect || !manualRepositoryUrl.trim()) {
+      return;
+    }
+
+    setIsManualRepositorySaving(true);
+    setManualRepositoryError(null);
+    try {
+      await onManualConnect(manualRepositoryUrl.trim());
+      onClose();
+    } catch (error) {
+      setManualRepositoryError(
+        error instanceof Error ? error.message : "Repository could not be connected.",
+      );
+    } finally {
+      setIsManualRepositorySaving(false);
+    }
+  };
+
+  return (
+    <div className="repository-connector-overlay" role="presentation">
+      <section
+        aria-labelledby="repository-connector-title"
+        aria-modal="true"
+        className="repository-connector"
+        role="dialog"
       >
-        <label htmlFor="repository-url">Repository URL</label>
-        <div className="repository-url-row">
-          <input
-            autoComplete="off"
-            id="repository-url"
-            inputMode="url"
-            onChange={(event) => onRepositoryUrlInputChange(event.target.value)}
-            placeholder="https://github.com/owner/repo"
-            spellCheck={false}
-            type="text"
-            value={repositoryUrlInput}
-          />
-          <button
-            className="empty-state-button"
-            disabled={isSaving || repositoryUrlInput.trim().length === 0}
-            type="submit"
-          >
-            <Link aria-hidden="true" size={16} strokeWidth={1.5} />
-            <span>{isSaving ? "Connecting" : "Connect URL"}</span>
-          </button>
-        </div>
-      </form>
-
-      <div className="repository-picker" aria-label="GitHub repository picker">
-        <div className="repository-picker-toolbar">
-          <div className="repository-search">
-            <Search aria-hidden="true" size={15} strokeWidth={1.5} />
-            <input
-              aria-label="Search GitHub repositories"
-              onChange={(event) => onRepositorySearchQueryChange(event.target.value)}
-              placeholder="Search repositories"
-              type="search"
-              value={repositorySearchQuery}
-            />
+        <div className="repository-connector-header">
+          <div>
+            <h2 id="repository-connector-title">Connect Repository</h2>
+            <p>
+              {onManualConnect
+                ? `Paste a GitHub URL or run setup inside ${targetProjectName ?? "this project"}.`
+                : `Run this inside ${targetProjectName ?? "your project"} to link the project and install local AI tool hooks.`}
+            </p>
           </div>
           <button
-            className="toolbar-button"
-            disabled={isLoadingRepositories}
-            onClick={onReloadRepositories}
+            aria-label="Close repository connector"
+            className="repository-connector-close"
+            onClick={onClose}
             type="button"
           >
-            <RefreshCw aria-hidden="true" size={15} strokeWidth={1.5} />
-            <span>{isLoadingRepositories ? "Loading" : "Reload"}</span>
+            <X aria-hidden="true" size={16} strokeWidth={1.5} />
           </button>
         </div>
 
-        {errorMessage ? (
-          <div className="repository-connector-message" data-error="true">
-            {errorMessage}
-          </div>
-        ) : null}
+        <SetupCommandBlock command={setupCommand} label="Project terminal" />
 
-        {repositoryMessage ? (
-          <div className="repository-connector-message">
-            <span>{repositoryMessage}</span>
-            <a href={connectGitHubUrl}>Connect GitHub access</a>
-          </div>
-        ) : null}
-
-        {isLoadingRepositories && repositories.length === 0 ? (
-          <RepositoryOptionsSkeleton />
-        ) : repositories.length > 0 ? (
-          <div
-            aria-busy={isLoadingRepositories || undefined}
-            className="repository-option-list loading-cascade"
-            data-loading={isLoadingRepositories ? "true" : undefined}
-          >
-            {repositories.map((repository) => (
+        {onManualConnect ? (
+          <form className="repository-url-form" onSubmit={submitManualRepository}>
+            <label htmlFor="repository-url">GitHub repository URL</label>
+            <div className="repository-url-row">
+              <input
+                autoComplete="off"
+                id="repository-url"
+                inputMode="url"
+                onChange={(event) => setManualRepositoryUrl(event.target.value)}
+                placeholder="https://github.com/owner/repo"
+                spellCheck={false}
+                type="url"
+                value={manualRepositoryUrl}
+              />
               <button
-                className="repository-option"
-                disabled={isSaving}
-                key={`${repository.full_name}-${repository.id ?? repository.html_url}`}
-                onClick={() => onSelectRepository(repository)}
-                type="button"
+                className="repository-url-submit"
+                disabled={!canSubmitManualRepository || isManualRepositorySaving}
+                type="submit"
               >
-                <span className="repository-option-main">
-                  <strong>{repository.full_name}</strong>
-                  <span>{repository.description ?? "No description"}</span>
-                </span>
-                <span className="repository-option-meta">
-                  <span>{repository.private ? "Private" : "Public"}</span>
-                  <span>
-                    <GitBranch aria-hidden="true" size={14} strokeWidth={1.5} />
-                    {repository.default_branch}
-                  </span>
-                  <span>{formatOptionalTimestamp(repository.updated_at, "Unknown")}</span>
-                </span>
+                {isManualRepositorySaving ? "Connecting" : "Connect"}
               </button>
-            ))}
-          </div>
-        ) : (
-          <div className="repository-connector-message">
-            {repositorySearchQuery.trim()
-              ? "No repositories match this search."
-              : "No repositories are available from GitHub yet."}
-          </div>
-        )}
-      </div>
-    </section>
+            </div>
+            {manualRepositoryError ? (
+              <p className="repository-connector-error">{manualRepositoryError}</p>
+            ) : null}
+          </form>
+        ) : null}
+      </section>
+    </div>
   );
 }
 
@@ -2390,6 +3261,243 @@ function CommunityPage({
   );
 }
 
+function AdminDashboard({
+  errorMessage,
+  isLoading,
+  onRefresh,
+  overview,
+}: {
+  errorMessage: string | null;
+  isLoading: boolean;
+  onRefresh: () => void;
+  overview: AdminOverview | null;
+}) {
+  const metrics = overview?.metrics;
+  const metricCards = [
+    {
+      icon: User,
+      label: "Users",
+      sublabel: `${formatCompactNumber(metrics?.github_connections ?? 0)} GitHub links`,
+      value: formatCompactNumber(metrics?.users ?? 0),
+    },
+    {
+      icon: Folder,
+      label: "Projects",
+      sublabel: `${formatCompactNumber(metrics?.tracked_files ?? 0)} tracked files`,
+      value: formatCompactNumber(metrics?.projects ?? 0),
+    },
+    {
+      icon: Activity,
+      label: "Events",
+      sublabel: `${formatCompactNumber(metrics?.events_24h ?? 0)} last 24h`,
+      value: formatCompactNumber(metrics?.events ?? 0),
+    },
+    {
+      icon: Bot,
+      label: "AI Traffic",
+      sublabel: `${formatCompactNumber(metrics?.responses ?? 0)} responses`,
+      value: formatCompactNumber(metrics?.prompts ?? 0),
+    },
+    {
+      icon: Database,
+      label: "Memory",
+      sublabel: `${formatCompactNumber(metrics?.sessions ?? 0)} sessions`,
+      value: formatCompactNumber(metrics?.memory_artifacts ?? 0),
+    },
+    {
+      icon: KeyRound,
+      label: "Collectors",
+      sublabel: "Active ingest tokens",
+      value: formatCompactNumber(metrics?.active_collector_tokens ?? 0),
+    },
+  ];
+
+  return (
+    <section className="admin-console" aria-label="Admin console">
+      <div className="admin-command-bar">
+        <div>
+          <span className="admin-kicker">Command surface</span>
+          <h2>Operational control</h2>
+        </div>
+        <div className="admin-command-actions">
+          <span className="status-pill">
+            {overview?.generated_at
+              ? `Updated ${formatOptionalTimestamp(overview.generated_at, "now")}`
+              : "Standing by"}
+          </span>
+          <button
+            className="toolbar-button"
+            disabled={isLoading}
+            onClick={onRefresh}
+            type="button"
+          >
+            <RefreshCw aria-hidden="true" size={16} strokeWidth={1.5} />
+            <span>{isLoading ? "Refreshing" : "Refresh"}</span>
+          </button>
+        </div>
+      </div>
+
+      {errorMessage ? (
+        <div className="auth-message" data-error="true">
+          {errorMessage}
+        </div>
+      ) : null}
+
+      <div className="admin-metric-grid">
+        {metricCards.map((metric) => {
+          const MetricIcon = metric.icon;
+          return (
+            <div className="admin-metric" key={metric.label}>
+              <MetricIcon aria-hidden="true" size={18} strokeWidth={1.5} />
+              <div>
+                <span>{metric.label}</span>
+                <strong>{metric.value}</strong>
+                <small>{metric.sublabel}</small>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="admin-grid">
+        <section className="admin-panel is-span-2" aria-label="Recent projects">
+          <div className="admin-panel-header">
+            <h3>Project Operations</h3>
+            <span>{overview?.recent_projects.length ?? 0} visible</span>
+          </div>
+          <div className="admin-table">
+            <div className="admin-table-row is-head">
+              <span>Project</span>
+              <span>Owner</span>
+              <span>Events</span>
+              <span>State</span>
+            </div>
+            {(overview?.recent_projects ?? []).map((project) => (
+              <div className="admin-table-row" key={project.id}>
+                <span>
+                  <strong>{project.name}</strong>
+                  <small>{project.latest_event_at ? formatRelativeTimestamp(project.latest_event_at) : "No activity"}</small>
+                </span>
+                <span>{project.owner.username}</span>
+                <span>{formatCompactNumber(project.counts.events)}</span>
+                <span>
+                  <span className="admin-state-dot" data-on={project.github_connected} />
+                  {project.github_connected ? "Repo linked" : "No repo"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="admin-panel" aria-label="Risk register">
+          <div className="admin-panel-header">
+            <h3>Risk Register</h3>
+            <span>{overview?.risks.length ?? 0}</span>
+          </div>
+          <div className="admin-risk-list">
+            {(overview?.risks ?? []).length > 0 ? (
+              overview?.risks.map((risk) => (
+                <div className="admin-risk" data-severity={risk.severity} key={risk.title}>
+                  <AlertTriangle aria-hidden="true" size={16} strokeWidth={1.5} />
+                  <div>
+                    <strong>{risk.title}</strong>
+                    <span>{risk.detail}</span>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="admin-empty-line">No active configuration risks.</div>
+            )}
+          </div>
+        </section>
+
+        <section className="admin-panel" aria-label="System controls">
+          <div className="admin-panel-header">
+            <h3>System Posture</h3>
+            <span>{overview?.system.admin_configured ? "Locked" : "Unconfigured"}</span>
+          </div>
+          <dl className="admin-kv-list">
+            <div>
+              <dt>Memory</dt>
+              <dd>{overview?.system.memory_generator ?? "unknown"}</dd>
+            </div>
+            <div>
+              <dt>Gemini</dt>
+              <dd>{overview?.system.gemini_configured ? "configured" : "off"}</dd>
+            </div>
+            <div>
+              <dt>OpenAI</dt>
+              <dd>{overview?.system.openai_configured ? "configured" : "off"}</dd>
+            </div>
+            <div>
+              <dt>Cookie</dt>
+              <dd>{overview?.system.session_cookie_secure ? "secure" : "dev"}</dd>
+            </div>
+            <div>
+              <dt>Community</dt>
+              <dd>{overview?.system.published_flows_enabled ? "on" : "paused"}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="admin-panel" aria-label="Event types">
+          <div className="admin-panel-header">
+            <h3>Event Types</h3>
+            <span>Ranked</span>
+          </div>
+          <div className="admin-breakdown">
+            {(overview?.breakdowns.events_by_type ?? []).map((item) => (
+              <div key={item.key}>
+                <span>{item.key}</span>
+                <strong>{formatCompactNumber(item.count)}</strong>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="admin-panel" aria-label="Recent events">
+          <div className="admin-panel-header">
+            <h3>Live Feed</h3>
+            <span>{overview?.recent_events.length ?? 0}</span>
+          </div>
+          <div className="admin-feed">
+            {(overview?.recent_events ?? []).map((event) => (
+              <div className="admin-feed-item" key={event.id}>
+                <span>{event.event_type}</span>
+                <strong>{event.tool}</strong>
+                <small>
+                  #{event.sequence} · {formatOptionalTimestamp(event.created_at, "Unknown")}
+                </small>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="admin-panel" aria-label="Recent users">
+          <div className="admin-panel-header">
+            <h3>Users</h3>
+            <span>{overview?.recent_users.length ?? 0}</span>
+          </div>
+          <div className="admin-user-list">
+            {(overview?.recent_users ?? []).map((user) => (
+              <div className="admin-user-row" key={user.id}>
+                <span className="sidebar-avatar" aria-hidden="true">
+                  {user.username.slice(0, 1).toUpperCase()}
+                </span>
+                <div>
+                  <strong>{user.username}</strong>
+                  <small>{user.email ?? "No email"} · {user.project_count} projects</small>
+                </div>
+                <span className="admin-state-dot" data-on={user.github_connected} />
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </section>
+  );
+}
+
 function WorkspaceApp() {
   const initialNavigationState = useMemo(readUrlNavigationState, []);
   const [activeItem, setActiveItem] = useState<SidebarItemId>(
@@ -2444,56 +3552,69 @@ function WorkspaceApp() {
   const [isRepositoryConnectorOpen, setIsRepositoryConnectorOpen] = useState(false);
   const [repositoryConnectorProjectId, setRepositoryConnectorProjectId] =
     useState<string | null>(null);
-  const [repositoryUrlInput, setRepositoryUrlInput] = useState("");
-  const [repositorySearchQuery, setRepositorySearchQuery] = useState("");
-  const [githubRepositoryOptions, setGithubRepositoryOptions] = useState<
-    GithubRepositoryOption[]
-  >([]);
-  const [githubRepositoriesMessage, setGithubRepositoriesMessage] =
-    useState<string | null>(null);
-  const [githubRepositoriesError, setGithubRepositoriesError] = useState<string | null>(
-    null,
-  );
-  const [repositoryConnectorError, setRepositoryConnectorError] = useState<
-    string | null
-  >(null);
-  const [isGithubRepositoriesLoading, setIsGithubRepositoriesLoading] =
-    useState(false);
-  const [isRepositorySaving, setIsRepositorySaving] = useState(false);
+  const [adminOverview, setAdminOverview] = useState<AdminOverview | null>(null);
+  const [adminError, setAdminError] = useState<string | null>(null);
+  const [isAdminLoading, setIsAdminLoading] = useState(false);
+  const [projectSearchQuery, setProjectSearchQuery] = useState("");
+  const [projectSortMode, setProjectSortMode] = useState<ProjectSortMode>("recent");
   const projects = useMemo(
     () => projectsFromEvents(events, projectSummaries),
     [events, projectSummaries],
   );
+  const previewMode = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("preview");
+  }, []);
+  const previewEmptyProjects = previewMode === "empty-projects";
+  const previewGithubUnlinkedProject = previewMode === "github-unlinked-project";
+  const previewProjectLoading = previewMode === "project-loading";
+  const projectCatalog = useMemo(() => {
+    if (!previewGithubUnlinkedProject) {
+      return projects;
+    }
+
+    const mockProject = mockGithubUnlinkedProject();
+    return [
+      mockProject,
+      ...projects.filter((project) => project.id !== mockProject.id),
+    ];
+  }, [previewGithubUnlinkedProject, projects]);
+  const displayProjects = previewEmptyProjects ? [] : projectCatalog;
+  const visibleProjects = useMemo(() => {
+    const query = projectSearchQuery.trim().toLowerCase();
+    const filteredProjects = query
+      ? displayProjects.filter((project) => project.name.toLowerCase().includes(query))
+      : displayProjects;
+
+    return [...filteredProjects].sort((left, right) => {
+      const leftTimestamp =
+        projectSortMode === "added" ? left.createdTimestamp : left.latestTimestamp;
+      const rightTimestamp =
+        projectSortMode === "added" ? right.createdTimestamp : right.latestTimestamp;
+      return new Date(rightTimestamp).getTime() - new Date(leftTimestamp).getTime();
+    });
+  }, [displayProjects, projectSearchQuery, projectSortMode]);
   const projectHeaderOptions = useMemo<ProjectHeaderProjectOption[]>(
     () =>
-      projects.map((project) => ({
+      projectCatalog.map((project) => ({
         id: project.id,
         latestUpdatedAt: project.latestUpdatedAt,
         name: project.name,
       })),
-    [projects],
+    [projectCatalog],
   );
   const selectedProject =
-    projects.find((project) => project.id === selectedProjectId) ?? null;
+    projectCatalog.find((project) => project.id === selectedProjectId) ?? null;
   const repositoryConnectorProject =
-    projects.find((project) => project.id === repositoryConnectorProjectId) ?? null;
-  const filteredGithubRepositoryOptions = useMemo(() => {
-    const query = repositorySearchQuery.trim().toLowerCase();
-    if (!query) {
-      return githubRepositoryOptions;
-    }
-    return githubRepositoryOptions.filter(
-      (repository) =>
-        repository.full_name.toLowerCase().includes(query) ||
-        repository.name.toLowerCase().includes(query) ||
-        (repository.description?.toLowerCase().includes(query) ?? false),
-    );
-  }, [githubRepositoryOptions, repositorySearchQuery]);
+    projectCatalog.find((project) => project.id === repositoryConnectorProjectId) ??
+    null;
   const activeTitle =
     activeItem === "projects"
       ? "Projects"
       : activeItem === "community"
         ? "Community"
+        : activeItem === "admin"
+          ? "Admin"
         : activeItem === "settings"
           ? "Settings"
           : "Profile";
@@ -2521,7 +3642,7 @@ function WorkspaceApp() {
     const requestedProject =
       requestedProjectId === null
         ? null
-        : projects.find((project) => project.id === requestedProjectId) ?? null;
+        : projectCatalog.find((project) => project.id === requestedProjectId) ?? null;
     const requestedProjectRouteKey = Object.prototype.hasOwnProperty.call(
       state,
       "selectedProjectRouteKey",
@@ -2581,7 +3702,76 @@ function WorkspaceApp() {
         throw new Error(`Project detail request failed with HTTP ${response.status}`);
       }
       const payload = (await response.json()) as ProjectDetailApiResponse;
-      setProjectDetail(projectDetailDataFromApi(payload, fallbackProject));
+      const draftsResponse = await fetch(
+        `${API_URL}/api/projects/${projectId}/memory/drafts`,
+        {
+          credentials: "include",
+          signal,
+        },
+      );
+      if (draftsResponse.status === 401) {
+        setAuthStatus("unauthenticated");
+        setCurrentUser(null);
+        setProjectDetail(null);
+        return;
+      }
+      if (!draftsResponse.ok) {
+        throw new Error(`Memory drafts request failed with HTTP ${draftsResponse.status}`);
+      }
+      const drafts =
+        (await draftsResponse.json()) as ProjectMemoryArtifactApiResponse[];
+      const pendingRangesResponse = await fetch(
+        `${API_URL}/api/projects/${projectId}/memory/pending`,
+        {
+          credentials: "include",
+          signal,
+        },
+      );
+      if (pendingRangesResponse.status === 401) {
+        setAuthStatus("unauthenticated");
+        setCurrentUser(null);
+        setProjectDetail(null);
+        return;
+      }
+      if (!pendingRangesResponse.ok) {
+        throw new Error(
+          `Memory pending ranges request failed with HTTP ${pendingRangesResponse.status}`,
+        );
+      }
+      const pendingRanges =
+        (await pendingRangesResponse.json()) as ProjectMemoryPendingRangeApiResponse[];
+      const projectMemoryResponse = await fetch(
+        `${API_URL}/api/projects/${projectId}/memory/project`,
+        {
+          credentials: "include",
+          signal,
+        },
+      );
+      if (projectMemoryResponse.status === 401) {
+        setAuthStatus("unauthenticated");
+        setCurrentUser(null);
+        setProjectDetail(null);
+        return;
+      }
+      if (!projectMemoryResponse.ok) {
+        throw new Error(
+          `Project memory request failed with HTTP ${projectMemoryResponse.status}`,
+        );
+      }
+      const projectMemory =
+        (await projectMemoryResponse.json()) as ProjectMemorySnapshotApiResponse;
+      const payloadWithDrafts = {
+        ...payload,
+        memory: {
+          latest_artifact_at: payload.memory?.latest_artifact_at ?? null,
+          recent_artifacts: payload.memory?.recent_artifacts ?? [],
+          total_artifacts: payload.memory?.total_artifacts ?? 0,
+          drafts,
+          pending_ranges: pendingRanges,
+          project_memory: projectMemory,
+        },
+      };
+      setProjectDetail(projectDetailDataFromApi(payloadWithDrafts, fallbackProject));
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         return;
@@ -2596,22 +3786,107 @@ function WorkspaceApp() {
     }
   };
 
-  const generateSessionMemory = async (sessionId: string) => {
+  const organizePendingMemory = async (sessionIds: string[]) => {
     if (!selectedProjectId) {
-      throw new Error("Select a project before generating memory.");
+      throw new Error("Select a project before organizing Pending Memory.");
+    }
+    const uniqueSessionIds = Array.from(new Set(sessionIds.filter(Boolean)));
+    if (uniqueSessionIds.length === 0) {
+      return {
+        message: "No Pending Memory is ready to organize.",
+        status: "no_draft" as const,
+      };
+    }
+
+    let createdCount = 0;
+    let generationFailureCount = 0;
+
+    for (const sessionId of uniqueSessionIds) {
+      const response = await fetch(
+        `${API_URL}/api/projects/${selectedProjectId}/sessions/${sessionId}/checkpoint`,
+        {
+          credentials: "include",
+          method: "POST",
+        },
+      );
+      if (response.status === 401) {
+        setAuthStatus("unauthenticated");
+        setCurrentUser(null);
+        throw new Error("Sign in again before organizing Pending Memory.");
+      }
+      if (!response.ok) {
+        const detail = await response
+          .json()
+          .then((payload) =>
+            typeof payload?.detail === "string" ? payload.detail : null,
+          )
+          .catch(() => null);
+        throw new Error(
+          detail ?? `Pending Memory organization failed with HTTP ${response.status}`,
+        );
+      }
+
+      const payload = (await response.json()) as {
+        draft?: ProjectMemoryArtifactApiResponse | null;
+        message?: string;
+        status?: string;
+      };
+      const draft = payload.draft ? projectMemoryArtifactFromApi(payload.draft) : null;
+      if (!draft) {
+        continue;
+      }
+      if (draft.fallbackReason || isGenericMemoryDraftResponse(draft)) {
+        generationFailureCount += 1;
+        continue;
+      }
+      createdCount += 1;
+    }
+    await loadProjectDetail(selectedProjectId, selectedProject);
+
+    if (createdCount === 0) {
+      return {
+        message:
+          generationFailureCount > 0
+            ? "Pending Memory organization failed to produce a valid Memory Draft."
+            : "No new Memory Draft was generated.",
+        status: "no_draft" as const,
+      };
+    }
+
+    return {
+      message: "Pending Memory batch was organized. Review the generated drafts.",
+      status: "draft_created" as const,
+    };
+  };
+
+  const saveMemoryDraft = async (
+    draftId: string,
+    updates?: {
+      outcome?: string;
+      reason?: string;
+      summary?: string;
+      title?: string;
+      why_it_matters?: string;
+      sections?: Array<{ summary: string; title: string }>;
+    },
+  ) => {
+    if (!selectedProjectId) {
+      throw new Error("Select a project before saving memory.");
     }
 
     const response = await fetch(
-      `${API_URL}/api/projects/${selectedProjectId}/sessions/${sessionId}/complete?force=true&regenerate=true`,
+      `${API_URL}/api/projects/${selectedProjectId}/memory/drafts/${draftId}/save`,
       {
+        body: updates ? JSON.stringify(updates) : undefined,
         credentials: "include",
+        headers: updates ? { "Content-Type": "application/json" } : undefined,
         method: "POST",
       },
     );
     if (response.status === 401) {
       setAuthStatus("unauthenticated");
       setCurrentUser(null);
-      throw new Error("Sign in again before generating memory.");
+      throw new Error("Sign in again before saving memory.");
     }
     if (!response.ok) {
       const detail = await response
@@ -2620,7 +3895,69 @@ function WorkspaceApp() {
           typeof payload?.detail === "string" ? payload.detail : null,
         )
         .catch(() => null);
-      throw new Error(detail ?? `Memory request failed with HTTP ${response.status}`);
+      throw new Error(detail ?? `Memory save failed with HTTP ${response.status}`);
+    }
+
+    await loadProjectDetail(selectedProjectId, selectedProject);
+  };
+
+  const ignoreMemoryDraft = async (draftId: string) => {
+    if (!selectedProjectId) {
+      throw new Error("Select a project before ignoring memory.");
+    }
+
+    const response = await fetch(
+      `${API_URL}/api/projects/${selectedProjectId}/memory/drafts/${draftId}/ignore`,
+      {
+        credentials: "include",
+        method: "POST",
+      },
+    );
+    if (response.status === 401) {
+      setAuthStatus("unauthenticated");
+      setCurrentUser(null);
+      throw new Error("Sign in again before ignoring memory.");
+    }
+    if (!response.ok) {
+      const detail = await response
+        .json()
+        .then((payload) =>
+          typeof payload?.detail === "string" ? payload.detail : null,
+        )
+        .catch(() => null);
+      throw new Error(detail ?? `Memory ignore failed with HTTP ${response.status}`);
+    }
+
+    await loadProjectDetail(selectedProjectId, selectedProject);
+  };
+
+  const compileProjectMemory = async () => {
+    if (!selectedProjectId) {
+      throw new Error("Select a project before compiling Project Memory.");
+    }
+
+    const response = await fetch(
+      `${API_URL}/api/projects/${selectedProjectId}/memory/project/compile?regenerate=true`,
+      {
+        credentials: "include",
+        method: "POST",
+      },
+    );
+    if (response.status === 401) {
+      setAuthStatus("unauthenticated");
+      setCurrentUser(null);
+      throw new Error("Sign in again before compiling Project Memory.");
+    }
+    if (!response.ok) {
+      const detail = await response
+        .json()
+        .then((payload) =>
+          typeof payload?.detail === "string" ? payload.detail : null,
+        )
+        .catch(() => null);
+      throw new Error(
+        detail ?? `Project Memory compile failed with HTTP ${response.status}`,
+      );
     }
 
     await loadProjectDetail(selectedProjectId, selectedProject);
@@ -2712,44 +4049,6 @@ function WorkspaceApp() {
     }
   };
 
-  const loadGithubRepositories = async () => {
-    setIsGithubRepositoriesLoading(true);
-    setGithubRepositoriesError(null);
-    setGithubRepositoriesMessage(null);
-    try {
-      const response = await fetch(`${API_URL}/api/projects/github/repositories`, {
-        credentials: "include",
-      });
-      if (response.status === 401) {
-        setAuthStatus("unauthenticated");
-        setCurrentUser(null);
-        setGithubRepositoryOptions([]);
-        return;
-      }
-      if (!response.ok) {
-        const detail = await response
-          .json()
-          .then((payload) =>
-            typeof payload?.detail === "string" ? payload.detail : null,
-          )
-          .catch(() => null);
-        throw new Error(detail ?? `GitHub repositories request failed with HTTP ${response.status}`);
-      }
-      const payload = (await response.json()) as GithubRepositoriesApiResponse;
-      setGithubRepositoryOptions(payload.repositories);
-      setGithubRepositoriesMessage(payload.available ? null : payload.message);
-    } catch (error) {
-      setGithubRepositoriesError(
-        error instanceof Error
-          ? error.message
-          : "GitHub repositories request failed",
-      );
-      setGithubRepositoryOptions([]);
-    } finally {
-      setIsGithubRepositoriesLoading(false);
-    }
-  };
-
   const loadEvents = async () => {
     setIsEventsLoading(true);
     setHasLoadedWorkspaceData(false);
@@ -2790,6 +4089,162 @@ function WorkspaceApp() {
     } finally {
       setIsEventsLoading(false);
     }
+  };
+
+  const saveRepositoryConnection = async (
+    projectId: string,
+    githubUrl: string,
+  ) => {
+    const response = await fetch(`${API_URL}/api/projects/${projectId}/repository`, {
+      body: JSON.stringify({ github_url: githubUrl }),
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      method: "PATCH",
+    });
+
+    if (response.status === 401) {
+      setAuthStatus("unauthenticated");
+      setCurrentUser(null);
+      throw new Error("Sign in again before connecting a repository.");
+    }
+
+    if (!response.ok) {
+      const detail = await response
+        .json()
+        .then((payload) =>
+          typeof payload?.detail === "string" ? payload.detail : null,
+        )
+        .catch(() => null);
+      throw new Error(detail ?? `Repository connection failed with HTTP ${response.status}`);
+    }
+
+    const updatedProject = (await response.json()) as ProjectSummary;
+    setProjectSummaries((currentProjects) => {
+      const nextProjects = currentProjects.map((project) =>
+        project.id === updatedProject.id ? updatedProject : project,
+      );
+      return nextProjects.some((project) => project.id === updatedProject.id)
+        ? nextProjects
+        : [updatedProject, ...currentProjects];
+    });
+
+    setProjectGithubFiles(null);
+    setProjectGithubFilesError(null);
+    setRepositoryFileContent(null);
+    setRepositoryFileContentError(null);
+    setRepositoryFileContentPath(null);
+
+    if (selectedProjectId === projectId) {
+      await loadProjectDetail(projectId, selectedProject);
+      await loadProjectGithubFiles(projectId);
+    }
+  };
+
+  const saveProjectDescription = async (description: string) => {
+    if (!selectedProjectId) {
+      throw new Error("Select a project before editing the description.");
+    }
+
+    const response = await fetch(
+      `${API_URL}/api/projects/${selectedProjectId}/description`,
+      {
+        body: JSON.stringify({ description }),
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      },
+    );
+
+    if (response.status === 401) {
+      setAuthStatus("unauthenticated");
+      setCurrentUser(null);
+      throw new Error("Sign in again before editing the project description.");
+    }
+
+    if (!response.ok) {
+      const detail = await response
+        .json()
+        .then((payload) =>
+          typeof payload?.detail === "string" ? payload.detail : null,
+        )
+        .catch(() => null);
+      throw new Error(detail ?? `Description update failed with HTTP ${response.status}`);
+    }
+
+    await loadProjectDetail(selectedProjectId, selectedProject);
+  };
+
+  const saveProjectMetadata = async ({
+    slug,
+    tags,
+    visibility,
+  }: {
+    slug?: string;
+    tags?: string[];
+    visibility?: "private" | "public";
+  }) => {
+    if (!selectedProjectId) {
+      throw new Error("Select a project before editing project metadata.");
+    }
+
+    const response = await fetch(
+      `${API_URL}/api/projects/${selectedProjectId}/metadata`,
+      {
+        body: JSON.stringify({
+          ...(slug !== undefined ? { slug } : {}),
+          ...(tags !== undefined ? { tags } : {}),
+          ...(visibility !== undefined ? { visibility } : {}),
+        }),
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      },
+    );
+
+    if (response.status === 401) {
+      setAuthStatus("unauthenticated");
+      setCurrentUser(null);
+      throw new Error("Sign in again before editing project metadata.");
+    }
+
+    if (!response.ok) {
+      const detail = await response
+        .json()
+        .then((payload) =>
+          typeof payload?.detail === "string" ? payload.detail : null,
+        )
+        .catch(() => null);
+      throw new Error(detail ?? `Project metadata update failed with HTTP ${response.status}`);
+    }
+
+    const updatedProject = (await response.json()) as ProjectSummary;
+    setProjectSummaries((currentProjects) =>
+      currentProjects.map((project) =>
+        project.id === updatedProject.id ? updatedProject : project,
+      ),
+    );
+
+    if (updatedProject.slug) {
+      setSelectedProjectRouteKey(updatedProject.slug);
+      writeUrlNavigationState(
+        normalizeUrlNavigationState({
+          ...currentNavigationState,
+          selectedProjectRouteKey: updatedProject.slug,
+        }),
+        "replace",
+      );
+    }
+    await loadProjectDetail(
+      selectedProjectId,
+      selectedProject
+        ? {
+            ...selectedProject,
+            slug: updatedProject.slug,
+            tags: updatedProject.tags ?? [],
+            visibility: updatedProject.visibility,
+          }
+        : null,
+    );
   };
 
   const loadPublishedFlows = async () => {
@@ -2855,6 +4310,43 @@ function WorkspaceApp() {
       );
     } finally {
       setIsPublishedFlowDetailLoading(false);
+    }
+  };
+
+  const loadAdminOverview = async (signal?: AbortSignal) => {
+    setIsAdminLoading(true);
+    setAdminError(null);
+    try {
+      const response = await fetch(`${API_URL}/api/admin/overview`, {
+        credentials: "include",
+        signal,
+      });
+      if (response.status === 401) {
+        setAuthStatus("unauthenticated");
+        setCurrentUser(null);
+        setAdminOverview(null);
+        return;
+      }
+      if (response.status === 403) {
+        setAdminOverview(null);
+        setAdminError("Admin access is not enabled for this GitHub account.");
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(`Admin overview request failed with HTTP ${response.status}`);
+      }
+      setAdminOverview((await response.json()) as AdminOverview);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+      setAdminError(
+        error instanceof Error ? error.message : "Admin overview request failed",
+      );
+    } finally {
+      if (!signal?.aborted) {
+        setIsAdminLoading(false);
+      }
     }
   };
 
@@ -3050,82 +4542,12 @@ function WorkspaceApp() {
 
   const openRepositoryConnector = (projectId: string | null = null) => {
     setRepositoryConnectorProjectId(projectId);
-    setRepositoryConnectorError(null);
-    setRepositoryUrlInput("");
-    setRepositorySearchQuery("");
     setIsRepositoryConnectorOpen(true);
-    void loadGithubRepositories();
   };
 
   const closeRepositoryConnector = () => {
     setIsRepositoryConnectorOpen(false);
     setRepositoryConnectorProjectId(null);
-    setRepositoryConnectorError(null);
-    setRepositoryUrlInput("");
-    setRepositorySearchQuery("");
-  };
-
-  const saveRepositoryConnection = async (githubUrl: string) => {
-    const trimmedUrl = githubUrl.trim();
-    if (!trimmedUrl) {
-      setRepositoryConnectorError("Enter a GitHub repository URL.");
-      return;
-    }
-
-    setIsRepositorySaving(true);
-    setRepositoryConnectorError(null);
-    try {
-      const isProjectUpdate = repositoryConnectorProjectId !== null;
-      const response = await fetch(
-        isProjectUpdate
-          ? `${API_URL}/api/projects/${repositoryConnectorProjectId}/repository`
-          : `${API_URL}/api/projects`,
-        {
-          body: JSON.stringify({ github_url: trimmedUrl }),
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          method: isProjectUpdate ? "PATCH" : "POST",
-        },
-      );
-      if (response.status === 401) {
-        setAuthStatus("unauthenticated");
-        setCurrentUser(null);
-        return;
-      }
-      if (!response.ok) {
-        const detail = await response
-          .json()
-          .then((payload) =>
-            typeof payload?.detail === "string" ? payload.detail : null,
-          )
-          .catch(() => null);
-        throw new Error(detail ?? `Repository connection failed with HTTP ${response.status}`);
-      }
-
-      const project = (await response.json()) as ProjectSummary;
-      closeRepositoryConnector();
-      await loadEvents();
-      navigateWorkspace({
-        activeDetailTab: "files",
-        activeItem: "projects",
-        repositoryFileContentPath: null,
-        selectedProjectId: project.id,
-        selectedProjectRouteKey: project.slug ?? project.id,
-      });
-      setProjectDetail(null);
-      setProjectGithubFiles(null);
-      setRepositoryFileContent(null);
-      setRepositoryFileContentError(null);
-      setRepositoryFileContentPath(null);
-      void loadProjectDetail(project.id, null);
-      void loadProjectGithubFiles(project.id);
-    } catch (error) {
-      setRepositoryConnectorError(
-        error instanceof Error ? error.message : "Repository connection failed",
-      );
-    } finally {
-      setIsRepositorySaving(false);
-    }
   };
 
   const loadSession = async () => {
@@ -3183,14 +4605,10 @@ function WorkspaceApp() {
     setRepositoryFileContent(null);
     setRepositoryFileContentError(null);
     setRepositoryFileContentPath(null);
+    setAdminOverview(null);
+    setAdminError(null);
     setIsRepositoryConnectorOpen(false);
     setRepositoryConnectorProjectId(null);
-    setRepositoryConnectorError(null);
-    setRepositoryUrlInput("");
-    setRepositorySearchQuery("");
-    setGithubRepositoryOptions([]);
-    setGithubRepositoriesMessage(null);
-    setGithubRepositoriesError(null);
     setAuthStatus("unauthenticated");
     writeUrlNavigationState(DEFAULT_URL_NAVIGATION_STATE, "replace");
   };
@@ -3226,6 +4644,28 @@ function WorkspaceApp() {
   }, [activeItem, authStatus, selectedPublishedFlowKey]);
 
   useEffect(() => {
+    if (authStatus !== "authenticated" || activeItem !== "admin") {
+      return;
+    }
+    if (!currentUser?.is_admin) {
+      navigateWorkspace(
+        {
+          activeItem: "projects",
+          repositoryFileContentPath: null,
+          selectedProjectId: null,
+          selectedProjectRouteKey: null,
+        },
+        "replace",
+      );
+      return;
+    }
+
+    const controller = new AbortController();
+    void loadAdminOverview(controller.signal);
+    return () => controller.abort();
+  }, [activeItem, authStatus, currentUser?.is_admin]);
+
+  useEffect(() => {
     writeUrlNavigationState(initialNavigationState, "replace");
   }, [initialNavigationState]);
 
@@ -3240,9 +4680,6 @@ function WorkspaceApp() {
       setRepositoryFileContentPath(nextState.repositoryFileContentPath);
       setIsRepositoryConnectorOpen(false);
       setRepositoryConnectorProjectId(null);
-      setRepositoryConnectorError(null);
-      setRepositoryUrlInput("");
-      setRepositorySearchQuery("");
     };
 
     window.addEventListener("popstate", handlePopState);
@@ -3255,7 +4692,7 @@ function WorkspaceApp() {
     }
 
     if (!selectedProjectId && selectedProjectRouteKey) {
-      const resolvedProject = projects.find((project) =>
+      const resolvedProject = projectCatalog.find((project) =>
         projectMatchesRouteKey(project, selectedProjectRouteKey),
       );
 
@@ -3288,9 +4725,9 @@ function WorkspaceApp() {
     }
 
     const resolvedProject =
-      projects.find((project) => project.id === selectedProjectId) ??
+      projectCatalog.find((project) => project.id === selectedProjectId) ??
       (selectedProjectRouteKey
-        ? projects.find((project) =>
+        ? projectCatalog.find((project) =>
             projectMatchesRouteKey(project, selectedProjectRouteKey),
           )
         : null);
@@ -3322,7 +4759,13 @@ function WorkspaceApp() {
         "replace",
       );
     }
-  }, [activeItem, hasLoadedWorkspaceData, projects, selectedProjectId, selectedProjectRouteKey]);
+  }, [
+    activeItem,
+    hasLoadedWorkspaceData,
+    projectCatalog,
+    selectedProjectId,
+    selectedProjectRouteKey,
+  ]);
 
   useEffect(() => {
     if (activeItem !== "projects" || (!selectedProjectId && !selectedProjectRouteKey)) {
@@ -3352,6 +4795,19 @@ function WorkspaceApp() {
       return;
     }
 
+    if (isMockGithubUnlinkedProject(selectedProjectId) && selectedProject) {
+      setProjectDetail(mockGithubUnlinkedProjectDetail(selectedProject));
+      setProjectDetailError(null);
+      setProjectGithubFiles(null);
+      setProjectGithubFilesError(null);
+      setRepositoryFileContent(null);
+      setRepositoryFileContentError(null);
+      setIsProjectDetailLoading(false);
+      setIsProjectGithubFilesLoading(false);
+      setIsRepositoryFileContentLoading(false);
+      return;
+    }
+
     const detailController = new AbortController();
     const githubFilesController = new AbortController();
     setProjectDetail(null);
@@ -3364,7 +4820,7 @@ function WorkspaceApp() {
       detailController.abort();
       githubFilesController.abort();
     };
-  }, [activeItem, selectedProjectId, selectedProjectRouteKey]);
+  }, [activeItem, selectedProject, selectedProjectId, selectedProjectRouteKey]);
 
   useEffect(() => {
     if (
@@ -3434,6 +4890,10 @@ function WorkspaceApp() {
     setRepositoryFileContentPath(null);
   };
   const selectSidebarItem = (item: SidebarItemId) => {
+    if (item === "admin" && !currentUser?.is_admin) {
+      return;
+    }
+
     if (item === "projects" && selectedProjectId) {
       closeProjectDetail();
       return;
@@ -3508,34 +4968,34 @@ function WorkspaceApp() {
         };
   const repositoryConnector = isRepositoryConnectorOpen ? (
     <RepositoryConnector
-      connectGitHubUrl={githubRepositoryConnectUrl()}
-      errorMessage={repositoryConnectorError ?? githubRepositoriesError}
-      isLoadingRepositories={isGithubRepositoriesLoading}
-      isSaving={isRepositorySaving}
-      mode={repositoryConnectorProjectId ? "connect" : "create"}
+      onManualConnect={
+        repositoryConnectorProjectId &&
+        !isMockGithubUnlinkedProject(repositoryConnectorProjectId)
+          ? (githubUrl) =>
+              saveRepositoryConnection(repositoryConnectorProjectId, githubUrl)
+          : undefined
+      }
       onClose={closeRepositoryConnector}
-      onReloadRepositories={loadGithubRepositories}
-      onRepositorySearchQueryChange={setRepositorySearchQuery}
-      onRepositoryUrlInputChange={setRepositoryUrlInput}
-      onSelectRepository={(repository) => {
-        void saveRepositoryConnection(repository.html_url);
-      }}
-      onSubmitUrl={() => {
-        void saveRepositoryConnection(repositoryUrlInput);
-      }}
-      repositories={filteredGithubRepositoryOptions}
-      repositoryMessage={githubRepositoriesMessage}
-      repositorySearchQuery={repositorySearchQuery}
-      repositoryUrlInput={repositoryUrlInput}
       targetProjectName={repositoryConnectorProject?.name}
     />
   ) : null;
+  const sidebarUserName = currentUser?.username ?? "Profile";
+  const sidebarUserInitial =
+    sidebarUserName.trim().charAt(0).toUpperCase() || "P";
+  const canUseAdmin = currentUser?.is_admin === true;
+  const connectedRepositoryCount = projectCatalog.filter((project) =>
+    Boolean(project.githubUrl),
+  ).length;
+  const latestProfileActivityLabel =
+    projectCatalog[0]?.latestActivityLabel ?? "No project activity";
 
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label="Primary navigation">
         <div className="sidebar-header">
-          <BrandLockup />
+          <div className="sidebar-brand">
+            <BrandLockup />
+          </div>
         </div>
 
         <div className="sidebar-divider" />
@@ -3573,6 +5033,23 @@ function WorkspaceApp() {
             Community
           </button>
           */}
+          {canUseAdmin ? (
+            <button
+              aria-pressed={activeItem === "admin"}
+              className="sidebar-item"
+              data-active={activeItem === "admin"}
+              onClick={() => selectSidebarItem("admin")}
+              type="button"
+            >
+              <Gauge
+                aria-hidden="true"
+                className="sidebar-icon"
+                size={18}
+                strokeWidth={1.5}
+              />
+              Admin
+            </button>
+          ) : null}
         </nav>
 
         <div className="sidebar-spacer" />
@@ -3582,18 +5059,22 @@ function WorkspaceApp() {
         <div className="sidebar-footer">
           <button
             aria-pressed={activeItem === "profile"}
-            className="sidebar-item profile-item"
+            className="sidebar-item profile-item sidebar-profile-card"
             data-active={activeItem === "profile"}
             onClick={() => selectSidebarItem("profile")}
             type="button"
           >
-            <User
-              aria-hidden="true"
-              className="sidebar-icon"
-              size={18}
-              strokeWidth={1.5}
-            />
-            <span>{currentUser?.username ?? "Profile"}</span>
+            <span className="sidebar-avatar" aria-hidden="true">
+              {currentUser?.avatar_url ? (
+                <img alt="" src={currentUser.avatar_url} />
+              ) : (
+                sidebarUserInitial
+              )}
+            </span>
+            <span className="sidebar-profile-copy">
+              <span>{sidebarUserName}</span>
+              <span>Profile</span>
+            </span>
           </button>
 
           <button
@@ -3612,7 +5093,11 @@ function WorkspaceApp() {
             <span>Settings</span>
           </button>
 
-          <button className="sidebar-item" onClick={logout} type="button">
+          <button
+            className="sidebar-item sidebar-item-danger"
+            onClick={logout}
+            type="button"
+          >
             <LogOut
               aria-hidden="true"
               className="sidebar-icon"
@@ -3637,11 +5122,15 @@ function WorkspaceApp() {
               isLoading={isProjectDetailLoading && projectDetail === null}
               isRefreshing={isProjectDetailLoading && projectDetail !== null}
               onActivityNavigationChange={selectActivityNavigation}
+              onCheckpointMemory={organizePendingMemory}
               onConnectRepository={() => openRepositoryConnector(selectedProject.id)}
-              onGenerateSessionMemory={generateSessionMemory}
+              onIgnoreMemoryDraft={ignoreMemoryDraft}
               onOpenAllProjects={closeProjectDetail}
               onProjectSelect={switchProjectDetail}
               onRepositoryFileSelect={selectRepositoryFile}
+              onSaveProjectMetadata={saveProjectMetadata}
+              onSaveDescription={saveProjectDescription}
+              onSaveMemoryDraft={saveMemoryDraft}
               onTabChange={selectProjectDetailTab}
               projectOptions={projectHeaderOptions}
               onRetry={() => {
@@ -3675,20 +5164,6 @@ function WorkspaceApp() {
                   />
                   <span>Connect Repository</span>
                 </button>
-                <button
-                  className="toolbar-button"
-                  disabled={isEventsLoading}
-                  onClick={loadEvents}
-                  type="button"
-                >
-                  <RefreshCw
-                    aria-hidden="true"
-                    size={16}
-                    strokeWidth={1.5}
-                  />
-                  <span>{isEventsLoading ? "Refreshing" : "Refresh"}</span>
-                </button>
-                <span className="status-pill">{projects.length} projects</span>
               </div>
             </header>
 
@@ -3696,17 +5171,12 @@ function WorkspaceApp() {
 
             <section
               className="projects-section"
-              aria-labelledby="projects-title"
+              aria-label="Projects"
             >
-              <div className="section-header">
-                <div>
-                  <h2 id="projects-title">Active projects</h2>
-                  <p>Recent AI workspaces and connected repository context.</p>
-                </div>
-              </div>
-
-              {isEventsLoading && projects.length === 0 ? (
-                <ProjectGridSkeleton />
+              {previewProjectLoading ? (
+                <ProjectListLoadingState delayMs={0} />
+              ) : isEventsLoading && displayProjects.length === 0 && !previewEmptyProjects ? (
+                <ProjectListLoadingState />
               ) : errorMessage ? (
                 <EmptyState
                   description={errorMessage}
@@ -3728,36 +5198,74 @@ function WorkspaceApp() {
                     <span>{isEventsLoading ? "Retrying" : "Retry"}</span>
                   </button>
                 </EmptyState>
-              ) : projects.length === 0 ? (
-                <EmptyState
-                  description={`${BRAND_NAME} is ready for the first collector upload from this workspace.`}
-                  eyebrow="Waiting for data"
-                  icon={Terminal}
-                  title="No events yet"
-                >
-                  <div className="empty-state-actions">
-                    <button
-                      className="empty-state-button"
-                      onClick={() => openRepositoryConnector(null)}
-                      type="button"
-                    >
-                      <Plus aria-hidden="true" size={16} strokeWidth={1.5} />
-                      <span>Connect Repository</span>
-                    </button>
-                  </div>
-                  <div className="empty-state-steps" aria-hidden="true">
-                    <span>Connect repo</span>
-                    <span>Install collector</span>
-                    <span>First event</span>
-                  </div>
-                </EmptyState>
+              ) : displayProjects.length === 0 ? (
+                <EmptyProjectsState />
               ) : (
-                <div
-                  aria-busy={isEventsLoading || undefined}
-                  className="projects-grid loading-cascade"
-                  data-loading={isEventsLoading ? "true" : undefined}
-                >
-                  {projects.map((project) => (
+                <>
+                  <div className="project-controls">
+                    <label className="project-search-control">
+                      <span className="bh-visually-hidden">Search projects</span>
+                      <Search aria-hidden="true" size={16} strokeWidth={1.5} />
+                      <input
+                        onChange={(event) => setProjectSearchQuery(event.target.value)}
+                        placeholder="Search projects"
+                        type="search"
+                        value={projectSearchQuery}
+                      />
+                    </label>
+
+                    <div className="project-sort-control" aria-label="Sort projects">
+                      <button
+                        aria-pressed={projectSortMode === "recent"}
+                        data-active={projectSortMode === "recent"}
+                        onClick={() => setProjectSortMode("recent")}
+                        type="button"
+                      >
+                        Recent work
+                      </button>
+                      <button
+                        aria-pressed={projectSortMode === "added"}
+                        data-active={projectSortMode === "added"}
+                        onClick={() => setProjectSortMode("added")}
+                        type="button"
+                      >
+                        Added
+                      </button>
+                    </div>
+                  </div>
+
+                  {visibleProjects.length === 0 ? (
+                    <section
+                      className="project-search-empty"
+                      aria-labelledby="project-search-empty-title"
+                    >
+                      <div className="project-search-empty-icon" aria-hidden="true">
+                        <Search size={18} strokeWidth={1.5} />
+                      </div>
+                      <div className="project-search-empty-copy">
+                        <span>No matches</span>
+                        <h2 id="project-search-empty-title">No projects found</h2>
+                        <p>
+                          No project names match{" "}
+                          <code>{projectSearchQuery.trim()}</code>.
+                        </p>
+                      </div>
+                      <button
+                        className="toolbar-button"
+                        onClick={() => setProjectSearchQuery("")}
+                        type="button"
+                      >
+                        <X aria-hidden="true" size={15} strokeWidth={1.5} />
+                        <span>Clear search</span>
+                      </button>
+                    </section>
+                  ) : (
+                    <div
+                      aria-busy={isEventsLoading || undefined}
+                      className="projects-grid loading-cascade"
+                      data-loading={isEventsLoading ? "true" : undefined}
+                    >
+                      {visibleProjects.map((project) => (
                   <article
                     aria-label={`Open ${project.name} details`}
                     className="project-card"
@@ -3793,18 +5301,10 @@ function WorkspaceApp() {
                           />
                         </a>
                       ) : (
-                        <button
-                          className="github-button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openRepositoryConnector(project.id);
-                          }}
-                          onKeyDown={(event) => event.stopPropagation()}
-                          type="button"
-                        >
+                        <span className="github-button is-unlinked">
                           <GitHubIcon />
-                          <span>Connect</span>
-                        </button>
+                          <span>Not linked</span>
+                        </span>
                       )}
                     </div>
 
@@ -3816,9 +5316,12 @@ function WorkspaceApp() {
                             size={15}
                             strokeWidth={1.5}
                           />
-                          Latest update
+                          Last activity
                         </dt>
-                        <dd>{project.latestUpdatedAt}</dd>
+                        <dd>
+                          <strong>{project.latestActivityLabel}</strong>
+                          <span>{project.latestUpdatedAt}</span>
+                        </dd>
                       </div>
                     </dl>
 
@@ -3828,19 +5331,19 @@ function WorkspaceApp() {
                         <dd>{project.sessions}</dd>
                       </div>
                       <div>
-                        <dt>Events</dt>
-                        <dd>{formatCompactNumber(project.events)}</dd>
+                        <dt>Prompts</dt>
+                        <dd>{formatCompactNumber(project.prompts)}</dd>
                       </div>
                       <div>
-                        <dt>Files</dt>
-                        <dd>{formatCompactNumber(project.filesChanged)}</dd>
+                        <dt>Tracked files</dt>
+                        <dd>{formatCompactNumber(project.trackedFiles)}</dd>
                       </div>
                     </dl>
 
-                    <div className="model-group" aria-label="Models used">
+                    <div className="model-group" aria-label="AI models used">
                       <span className="model-group-label">
                         <Bot aria-hidden="true" size={15} strokeWidth={1.5} />
-                        Model
+                        AI model
                       </span>
                       <div className="model-list">
                         {project.models.length > 0 ? project.models.map((model) => (
@@ -3854,8 +5357,10 @@ function WorkspaceApp() {
                     </div>
 
                   </article>
-                  ))}
-                </div>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </section>
           </>
@@ -3907,6 +5412,26 @@ function WorkspaceApp() {
               selectedFlow={selectedPublishedFlow}
             />
           </>
+        ) : activeItem === "admin" && canUseAdmin ? (
+          <>
+            <header className="page-header">
+              <div>
+                <h1>{activeTitle}</h1>
+              </div>
+              <div className="page-actions">
+                <span className="status-pill">Admin only</span>
+              </div>
+            </header>
+
+            <AdminDashboard
+              errorMessage={adminError}
+              isLoading={isAdminLoading}
+              onRefresh={() => {
+                void loadAdminOverview();
+              }}
+              overview={adminOverview}
+            />
+          </>
         ) : (
           <>
             <header className="page-header">
@@ -3916,54 +5441,29 @@ function WorkspaceApp() {
             </header>
 
             {activeItem === "profile" ? (
-              <EmptyState
-                description={
-                  currentUser?.email ??
-                  "Your GitHub account is connected to this workspace."
-                }
-                eyebrow="Profile"
-                icon={User}
-                title={currentUser?.username ?? "Profile"}
-              >
-                <div className="profile-summary">
-                  <div className="profile-avatar" aria-hidden="true">
-                    {currentUser?.avatar_url ? (
-                      <img alt="" src={currentUser.avatar_url} />
-                    ) : (
-                      <span>
-                        {(currentUser?.username ?? "U").slice(0, 1).toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-                  <div className="profile-summary-copy">
-                    <strong>{currentUser?.username ?? "Signed in"}</strong>
-                    <span>{currentUser?.email ?? "GitHub authenticated"}</span>
-                  </div>
-                  <span className="profile-status">Active session</span>
-                </div>
-              </EmptyState>
+              <UserProfilePage
+                connectedRepositoryCount={connectedRepositoryCount}
+                currentUser={currentUser}
+                latestActivityLabel={latestProfileActivityLabel}
+                onLogout={() => {
+                  void logout();
+                }}
+                projectCount={projectCatalog.length}
+              />
             ) : (
-              <EmptyState
-                description="Workspace controls will be grouped into focused sections as they become available."
-                eyebrow="Settings"
-                icon={Settings}
-                title="Settings are ready for configuration"
-              >
-                <div className="settings-preview-grid" aria-hidden="true">
-                  <div>
-                    <ShieldCheck size={17} strokeWidth={1.5} />
-                    <span>Security</span>
-                  </div>
-                  <div>
-                    <Terminal size={17} strokeWidth={1.5} />
-                    <span>Collector</span>
-                  </div>
-                  <div>
-                    <RefreshCw size={17} strokeWidth={1.5} />
-                    <span>Sync</span>
-                  </div>
-                </div>
-              </EmptyState>
+              <UserSettingsPage
+                apiUrl={API_URL}
+                canUseAdmin={canUseAdmin}
+                connectedRepositoryCount={connectedRepositoryCount}
+                currentUser={currentUser}
+                isRefreshing={isEventsLoading}
+                latestActivityLabel={latestProfileActivityLabel}
+                onOpenProfile={() => selectSidebarItem("profile")}
+                onRefreshWorkspace={() => {
+                  void loadEvents();
+                }}
+                projectCount={projectCatalog.length}
+              />
             )}
           </>
         )}

@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
 from app.core.encryption import maybe_decrypt_app_text_from_string
+from app.core.time import utc_now
 from app.models.code_change_patches import CodeChangePatch
 from app.models.events import Event
 from app.models.projects import Project
@@ -79,11 +80,6 @@ LANGUAGE_BY_EXTENSION = {
     ".yml": "YAML",
     ".yaml": "YAML",
 }
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
 
 def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None

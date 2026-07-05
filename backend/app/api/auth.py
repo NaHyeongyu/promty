@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import hashlib
 import hmac
 import json
@@ -15,11 +14,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.encoding import base64_urldecode, base64_urlencode
 from app.core.encryption import encrypt_github_token
 from app.core.security import (
     hash_collector_token,
     issue_collector_token,
     issue_web_access_token,
+    is_admin_user,
     require_web_user,
 )
 from app.db.session import get_db
@@ -37,15 +38,6 @@ GITHUB_CLI_SCOPE = "read:user user:email"
 GITHUB_WEB_SCOPE = "read:user user:email repo"
 
 
-def _base64_urlencode(value: bytes) -> str:
-    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
-
-
-def _base64_urldecode(value: str) -> bytes:
-    padding = "=" * (-len(value) % 4)
-    return base64.urlsafe_b64decode(f"{value}{padding}".encode("ascii"))
-
-
 def _state_secret() -> bytes:
     secret = (
         settings.oauth_state_secret
@@ -61,11 +53,11 @@ def _state_secret() -> bytes:
 
 
 def _encode_state(payload: dict[str, Any]) -> str:
-    body = _base64_urlencode(
+    body = base64_urlencode(
         json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
     )
     signature = hmac.new(_state_secret(), body.encode("ascii"), hashlib.sha256).digest()
-    return f"{body}.{_base64_urlencode(signature)}"
+    return f"{body}.{base64_urlencode(signature)}"
 
 
 def _decode_state(value: str) -> dict[str, Any]:
@@ -76,14 +68,14 @@ def _decode_state(value: str) -> dict[str, Any]:
 
     expected = hmac.new(_state_secret(), body.encode("ascii"), hashlib.sha256).digest()
     try:
-        actual = _base64_urldecode(signature)
+        actual = base64_urldecode(signature)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid OAuth state") from exc
     if not hmac.compare_digest(actual, expected):
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
 
     try:
-        payload = json.loads(_base64_urldecode(body))
+        payload = json.loads(base64_urldecode(body))
     except (json.JSONDecodeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail="Invalid OAuth state") from exc
     if not isinstance(payload, dict):
@@ -443,6 +435,7 @@ def read_current_user(user: User = Depends(require_web_user)) -> dict[str, Any]:
         "avatar_url": user.avatar_url,
         "github_repository_access": user.github_connection is not None
         and user.github_connection.revoked_at is None,
+        "is_admin": is_admin_user(user),
     }
 
 

@@ -1,4 +1,4 @@
-import { ExternalLink } from "lucide-react";
+import { siGithub } from "simple-icons";
 import type { ProjectDetailTab, ProjectDetailTabId } from "./types";
 
 type ProjectTabsProps = {
@@ -30,8 +30,15 @@ export function ProjectTabs({
               target="_blank"
               title="Open project files on GitHub"
             >
-              <span>Files on GitHub</span>
-              <ExternalLink aria-hidden="true" size={14} strokeWidth={1.7} />
+              <span>{tab.label}</span>
+              <svg
+                aria-hidden="true"
+                className="bh-project-tab-brand-icon"
+                role="img"
+                viewBox="0 0 24 24"
+              >
+                <path d={siGithub.path} />
+              </svg>
             </a>
           );
         }

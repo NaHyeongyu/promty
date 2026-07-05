@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -34,6 +35,7 @@ from app.services.github_repositories import (
 )
 from app.services.memory_artifacts import (
     MEMORY_ARTIFACT_TYPE,
+    REVIEW_STATE_VERIFIED,
     serialize_memory_artifact_summary,
 )
 
@@ -58,6 +60,72 @@ class ProjectRepositoryUpdateRequest(BaseModel):
     @validator("github_url", "default_branch", pre=True)
     def strip_string(cls, value: Any) -> Any:
         return value.strip() if isinstance(value, str) else value
+
+
+class ProjectDescriptionUpdateRequest(BaseModel):
+    description: str | None = Field(default=None, max_length=2000)
+
+    @validator("description", pre=True)
+    def strip_description(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value
+
+
+class ProjectMetadataUpdateRequest(BaseModel):
+    slug: str | None = Field(default=None, min_length=1, max_length=255)
+    tags: list[str] | None = None
+    visibility: str | None = Field(default=None)
+
+    @validator("slug", pre=True)
+    def normalize_slug(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return value
+        slug = _slugify_project_name(value)
+        if not slug:
+            raise ValueError("Project URL is required.")
+        return slug
+
+    @validator("tags", pre=True)
+    def normalize_tags(cls, value: Any) -> list[str] | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            raw_tags = value.split(",")
+        elif isinstance(value, list):
+            raw_tags = value
+        else:
+            return value
+
+        normalized_tags: list[str] = []
+        seen_tags: set[str] = set()
+        for tag in raw_tags:
+            if not isinstance(tag, str):
+                continue
+            normalized_tag = re.sub(r"\s+", " ", tag.strip().lower())
+            if not normalized_tag or normalized_tag in seen_tags:
+                continue
+            seen_tags.add(normalized_tag)
+            normalized_tags.append(normalized_tag[:40])
+            if len(normalized_tags) >= 12:
+                break
+        return normalized_tags
+
+    @validator("visibility", pre=True)
+    def normalize_visibility(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return value
+        visibility = value.strip().lower()
+        if visibility not in {"public", "private"}:
+            raise ValueError("Visibility must be public or private.")
+        return visibility
 
 
 def _normalize_github_url(remote_url: str | None) -> str | None:
@@ -290,9 +358,12 @@ def _project_for_user(db: Session, project_id: UUID, current_user: User) -> Proj
 def _project_summary(
     project: Project,
     *,
+    connected_models: list[str] | tuple[str, ...] = (),
     event_count: int = 0,
     latest_event_at: Any = None,
+    prompt_count: int = 0,
     session_count: int = 0,
+    tracked_files: int = 0,
 ) -> dict[str, Any]:
     return {
         "id": str(project.id),
@@ -301,8 +372,14 @@ def _project_summary(
         "git_remote": project.git_remote,
         "github_url": _normalize_github_url(project.git_remote),
         "default_branch": project.default_branch,
+        "created_at": project.created_at.isoformat(),
+        "tags": project.tags or [],
+        "visibility": project.visibility,
+        "connected_models": sorted(connected_models),
         "sessions": int(session_count or 0),
         "events": int(event_count or 0),
+        "prompts": int(prompt_count or 0),
+        "tracked_files": int(tracked_files or 0),
         "latest_event_at": latest_event_at.isoformat() if latest_event_at else None,
         "updated_at": project.updated_at.isoformat(),
     }
@@ -320,11 +397,35 @@ def _project_summary_with_counts(db: Session, project: Project) -> dict[str, Any
     latest_event_at = db.scalar(
         select(func.max(Event.created_at)).where(Event.project_id == project.id)
     )
+    prompt_count = db.scalar(
+        select(func.count())
+        .select_from(Event)
+        .where(Event.project_id == project.id, Event.event_type == "PromptSubmitted")
+    ) or 0
+    tracked_files = db.scalar(
+        select(func.count())
+        .select_from(ProjectFile)
+        .where(ProjectFile.project_id == project.id, ProjectFile.status != "deleted")
+    ) or 0
+    sessions = list(
+        db.execute(
+            select(PromptSession.model).where(
+                PromptSession.project_id == project.id
+            )
+        ).all()
+    )
     return _project_summary(
         project,
+        connected_models=[
+            model
+            for (session_model,) in sessions
+            if (model := _model_name(session_model)) is not None
+        ],
         event_count=event_count,
         latest_event_at=latest_event_at,
+        prompt_count=prompt_count,
         session_count=session_count,
+        tracked_files=tracked_files,
     )
 
 
@@ -364,13 +465,39 @@ def list_projects(
         .group_by(Project.id)
         .order_by(desc(func.max(Event.created_at)), desc(Project.updated_at))
     ).all()
+    project_ids = [project.id for project, *_ in rows]
+    prompt_counts = dict(
+        db.execute(
+            select(Event.project_id, func.count(Event.id))
+            .where(Event.project_id.in_(project_ids), Event.event_type == "PromptSubmitted")
+            .group_by(Event.project_id)
+        ).all()
+    )
+    tracked_file_counts = dict(
+        db.execute(
+            select(ProjectFile.project_id, func.count(ProjectFile.id))
+            .where(ProjectFile.project_id.in_(project_ids), ProjectFile.status != "deleted")
+            .group_by(ProjectFile.project_id)
+        ).all()
+    )
+    connected_models: dict[UUID, set[str]] = {project_id: set() for project_id in project_ids}
+    for project_id, model_value in db.execute(
+        select(PromptSession.project_id, PromptSession.model).where(
+            PromptSession.project_id.in_(project_ids)
+        )
+    ).all():
+        if (model := _model_name(model_value)) is not None:
+            connected_models.setdefault(project_id, set()).add(model)
 
     return [
         _project_summary(
             project,
+            connected_models=tuple(connected_models.get(project.id, set())),
             event_count=event_count,
             latest_event_at=latest_event_at,
+            prompt_count=prompt_counts.get(project.id, 0),
             session_count=session_count,
+            tracked_files=tracked_file_counts.get(project.id, 0),
         )
         for project, session_count, event_count, latest_event_at in rows
     ]
@@ -441,10 +568,19 @@ def read_project_detail(
 ) -> dict[str, Any]:
     project = _project_for_user(db, project_id, current_user)
     repository_url = _normalize_github_url(project.git_remote)
+    since_yesterday_at = datetime.now(timezone.utc) - timedelta(days=1)
     session_count = db.scalar(
         select(func.count())
         .select_from(PromptSession)
         .where(PromptSession.project_id == project.id)
+    ) or 0
+    session_count_since_yesterday = db.scalar(
+        select(func.count())
+        .select_from(PromptSession)
+        .where(
+            PromptSession.project_id == project.id,
+            PromptSession.started_at >= since_yesterday_at,
+        )
     ) or 0
     event_count = db.scalar(
         select(func.count()).select_from(Event).where(Event.project_id == project.id)
@@ -453,6 +589,15 @@ def read_project_detail(
         select(func.count())
         .select_from(Event)
         .where(Event.project_id == project.id, Event.event_type == "PromptSubmitted")
+    ) or 0
+    prompt_count_since_yesterday = db.scalar(
+        select(func.count())
+        .select_from(Event)
+        .where(
+            Event.project_id == project.id,
+            Event.event_type == "PromptSubmitted",
+            Event.created_at >= since_yesterday_at,
+        )
     ) or 0
     latest_activity_at = db.scalar(
         select(func.max(Event.created_at)).where(Event.project_id == project.id)
@@ -657,14 +802,46 @@ def read_project_detail(
         ).scalars()
     )
     last_modified_at = max((file.changed_at for file in active_files), default=None)
+    files_changed_since_yesterday = db.scalar(
+        select(func.count())
+        .select_from(ProjectFile)
+        .where(
+            ProjectFile.project_id == project.id,
+            ProjectFile.status != "deleted",
+            ProjectFile.changed_at >= since_yesterday_at,
+        )
+    ) or 0
     memory_artifacts = list(
         db.execute(
             select(Artifact)
-            .where(Artifact.project_id == project.id, Artifact.type == MEMORY_ARTIFACT_TYPE)
+            .where(
+                Artifact.project_id == project.id,
+                Artifact.type == MEMORY_ARTIFACT_TYPE,
+                Artifact.metadata_["review_state"].astext == REVIEW_STATE_VERIFIED,
+            )
             .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
             .limit(5)
         ).scalars()
     )
+    memory_artifact_count = db.scalar(
+        select(func.count())
+        .select_from(Artifact)
+        .where(
+            Artifact.project_id == project.id,
+            Artifact.type == MEMORY_ARTIFACT_TYPE,
+            Artifact.metadata_["review_state"].astext == REVIEW_STATE_VERIFIED,
+        )
+    ) or 0
+    memory_artifact_count_since_yesterday = db.scalar(
+        select(func.count())
+        .select_from(Artifact)
+        .where(
+            Artifact.project_id == project.id,
+            Artifact.type == MEMORY_ARTIFACT_TYPE,
+            Artifact.metadata_["review_state"].astext == REVIEW_STATE_VERIFIED,
+            Artifact.created_at >= since_yesterday_at,
+        )
+    ) or 0
 
     return {
         "project": {
@@ -672,6 +849,9 @@ def read_project_detail(
             "slug": project.slug,
             "name": project.name,
             "description": project.description,
+            "created_at": _iso(project.created_at),
+            "tags": project.tags or [],
+            "visibility": project.visibility,
             "repository_status": "Repository connected"
             if repository_url
             else "Repository not connected",
@@ -682,9 +862,13 @@ def read_project_detail(
         "metrics": {
             "connected_models": sorted(models),
             "connected_tools": sorted(tools),
+            "files_changed_since_yesterday": files_changed_since_yesterday,
             "latest_activity_at": _iso(latest_activity_at),
             "last_modified_at": _iso(last_modified_at or project.updated_at),
+            "memory_artifacts_since_yesterday": memory_artifact_count_since_yesterday,
+            "prompts_since_yesterday": prompt_count_since_yesterday,
             "repository_connected": repository_url is not None,
+            "sessions_since_yesterday": session_count_since_yesterday,
             "tracked_files": len(active_files),
             "total_events": event_count,
             "total_prompts": prompt_count,
@@ -720,15 +904,7 @@ def read_project_detail(
                 serialize_memory_artifact_summary(artifact, db=db)
                 for artifact in memory_artifacts
             ],
-            "total_artifacts": db.scalar(
-                select(func.count())
-                .select_from(Artifact)
-                .where(
-                    Artifact.project_id == project.id,
-                    Artifact.type == MEMORY_ARTIFACT_TYPE,
-                )
-            )
-            or 0,
+            "total_artifacts": memory_artifact_count,
         },
         "activities": [
             {
@@ -770,6 +946,70 @@ def update_project_repository(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Repository could not be connected to this project.",
+        ) from exc
+    db.refresh(project)
+    return _project_summary_with_counts(db, project)
+
+
+@router.patch("/{project_id}/description")
+def update_project_description(
+    project_id: UUID,
+    payload: ProjectDescriptionUpdateRequest,
+    current_user: User = Depends(require_web_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    project = _project_for_user(db, project_id, current_user)
+    project.description = payload.description
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Project description could not be updated.",
+        ) from exc
+    db.refresh(project)
+    return {
+        "description": project.description,
+        "id": str(project.id),
+        "updated_at": _iso(project.updated_at),
+    }
+
+
+@router.patch("/{project_id}/metadata")
+def update_project_metadata(
+    project_id: UUID,
+    payload: ProjectMetadataUpdateRequest,
+    current_user: User = Depends(require_web_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    project = _project_for_user(db, project_id, current_user)
+    if payload.slug is not None and payload.slug != project.slug:
+        existing_project_id = db.scalar(
+            select(Project.id).where(
+                Project.owner_id == current_user.id,
+                Project.slug == payload.slug,
+                Project.id != project.id,
+            )
+        )
+        if existing_project_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Project URL is already in use.",
+            )
+        project.slug = payload.slug
+    if payload.tags is not None:
+        project.tags = payload.tags
+    if payload.visibility is not None:
+        project.visibility = payload.visibility
+
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Project metadata could not be updated.",
         ) from exc
     db.refresh(project)
     return _project_summary_with_counts(db, project)

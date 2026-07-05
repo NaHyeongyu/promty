@@ -18,19 +18,24 @@ export type ActivityNavigationState = {
 };
 
 export type ProjectHeaderProps = {
+  lastActivityLabel?: string;
+  modelNames?: string[];
   name: string;
-  description: string;
   onOpenAllProjects?: () => void;
   onConnectRepository?: () => void;
   onProjectSelect?: (projectId: string) => void;
   projectOptions?: ProjectHeaderProjectOption[];
-  repositoryStatus: string;
+  repositoryStatus?: string;
   repositoryUrl?: string;
   selectedProjectId?: string;
 };
 
 export type ProjectDetailProject = ProjectHeaderProps & {
+  description: string;
   id: string;
+  slug?: string;
+  tags: string[];
+  visibility?: "private" | "public";
 };
 
 export type ProjectHeaderProjectOption = {
@@ -78,14 +83,20 @@ export type ProjectMemoryArtifactVersion = {
   }>;
   commitSha: string | null;
   createdAt: string | null;
+  draftConfidence: number | null;
+  draftGenerator: string | null;
+  draftType: string | null;
   endSequence: number | null;
+  fallbackReason: string | null;
   generator: string | null;
   id: string;
   memoryScope: string | null;
   model: string | null;
+  needsUserVerification: boolean | null;
   outcome: string | null;
   promptCount: number | null;
   reason: string | null;
+  requestedGenerator: string | null;
   sections: Array<{
     summary: string;
     title: string;
@@ -94,6 +105,7 @@ export type ProjectMemoryArtifactVersion = {
   sliceIndex: number | null;
   startSequence: number | null;
   summary: string | null;
+  suggestedUserAction: string | null;
   tags: string[];
   technologies: string[];
   title: string;
@@ -102,6 +114,7 @@ export type ProjectMemoryArtifactVersion = {
 };
 
 export type ProjectMemoryArtifact = {
+  artifactStage: string | null;
   changedFileCount: number;
   changedFiles: Array<{
     additions?: number | null;
@@ -111,14 +124,21 @@ export type ProjectMemoryArtifact = {
   }>;
   commitSha: string | null;
   createdAt: string | null;
+  draftConfidence: number | null;
+  draftGenerator: string | null;
+  draftType: string | null;
   endSequence: number | null;
+  fallbackReason: string | null;
   generator: string | null;
   id: string;
   memoryScope: string | null;
   model: string | null;
+  needsUserVerification: boolean | null;
   outcome: string | null;
   promptCount: number | null;
   reason: string | null;
+  reviewState: string | null;
+  requestedGenerator: string | null;
   sections: Array<{
     summary: string;
     title: string;
@@ -127,18 +147,62 @@ export type ProjectMemoryArtifact = {
   sliceIndex: number | null;
   startSequence: number | null;
   summary: string | null;
+  summaryLevel: number | null;
+  suggestedUserAction: string | null;
   tags: string[];
   technologies: string[];
   title: string;
+  triggerReason: string | null;
   updatedAt: string | null;
   versions: ProjectMemoryArtifactVersion[];
+  whyItMatters: string | null;
   windowReason: string | null;
 };
 
+export type ProjectMemorySnapshot = {
+  bodyMarkdown: string;
+  confidence: number | null;
+  sections: {
+    coreWorkflow: string[];
+    currentDirection: string;
+    importantDecisions: Array<{
+      decision: string;
+      reason: string;
+      sourceMemoryIds: string[];
+    }>;
+    instructionsForFutureAiAgents: string[];
+    openQuestions: string[];
+    productGoal: string;
+    rejectedDirections: Array<{
+      direction: string;
+      reason: string;
+      sourceMemoryIds: string[];
+    }>;
+    technicalAssumptions: string[];
+  };
+  sourceMemoryIds: string[];
+  warnings: string[];
+};
+
 export type ProjectMemoryStatus = {
+  drafts: ProjectMemoryArtifact[];
   latestArtifactAt: string | null;
+  pendingRanges: ProjectMemoryPendingRange[];
+  projectMemory: ProjectMemorySnapshot | null;
+  projectMemoryArtifact: ProjectMemoryArtifact | null;
   recentArtifacts: ProjectMemoryArtifact[];
   totalArtifacts: number;
+};
+
+export type ProjectMemoryPendingRange = {
+  canCheckpoint: boolean;
+  endSequence: number;
+  eventCount: number;
+  lastEventAt: string | null;
+  promptCount: number;
+  sessionId: string;
+  startSequence: number;
+  tool: string;
 };
 
 export type ActivityItem = {
