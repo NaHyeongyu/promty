@@ -61,9 +61,11 @@ type ProjectDetailPageProps = {
   activeTab: ProjectDetailTabId;
   data: ProjectDetailData;
   errorMessage?: string | null;
+  isProjectResolving?: boolean;
   isLoading?: boolean;
   isRefreshing?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
+  onCompileProjectMemory?: () => Promise<void>;
   onConnectRepository?: () => void;
   onOpenAllProjects?: () => void;
   onProjectSelect?: (projectId: string) => void;
@@ -75,11 +77,7 @@ type ProjectDetailPageProps = {
   }) => Promise<void>;
   onSaveDescription?: (description: string) => Promise<void>;
   onCheckpointMemory?: (sessionIds: string[]) => Promise<MemoryCheckpointResult>;
-  onSaveMemoryDraft?: (
-    draftId: string,
-    updates?: MemoryDraftSaveUpdates,
-  ) => Promise<void>;
-  onIgnoreMemoryDraft?: (draftId: string) => Promise<void>;
+  onSaveProjectMemory?: (bodyMarkdown: string) => Promise<void>;
   onPublishFlow?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
   onSaveFlowDraft?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
   onUpdateFlow?: (
@@ -98,14 +96,7 @@ type ProjectDetailPageProps = {
 
 type MemoryCheckpointResult = {
   message: string;
-  status: "draft_created" | "generation_failed" | "no_draft" | string;
-};
-
-type MemoryDraftSaveUpdates = {
-  sections?: Array<{ summary: string; title: string }>;
-  summary?: string;
-  title?: string;
-  why_it_matters?: string;
+  status: "generation_failed" | "memory_generated" | "no_memory" | string;
 };
 
 const defaultActivityNavigation: ActivityNavigationState = {
@@ -2244,32 +2235,18 @@ function OverviewPanel({
   );
 }
 
-function memoryArtifactIsGenericFallback(artifact: ProjectMemoryArtifact) {
-  return /^\d+ prompts and \d+ AI responses were captured/i.test(
-    artifact.summary ?? "",
-  );
-}
-
-function memoryArtifactIsReviewableDraft(artifact: ProjectMemoryArtifact) {
+function memoryArtifactIsGenerated(artifact: ProjectMemoryArtifact) {
   return (
-    artifact.artifactStage === "memory_draft" &&
-    artifact.reviewState === "draft" &&
-    artifact.summaryLevel === 2 &&
-    !artifact.fallbackReason &&
-    !memoryArtifactIsGenericFallback(artifact)
-  );
-}
-
-function memoryArtifactIsVerified(artifact: ProjectMemoryArtifact) {
-  return (
-    artifact.artifactStage === "verified_memory" &&
-    artifact.reviewState === "verified"
+    (artifact.artifactStage === "generated_memory" &&
+      artifact.reviewState === "generated") ||
+    (artifact.artifactStage === "verified_memory" &&
+      artifact.reviewState === "verified")
   );
 }
 
 function memoryTypeLabel(value: string | null) {
   if (!value) {
-    return "Memory draft";
+    return "Generated memory";
   }
 
   return value
@@ -2277,21 +2254,6 @@ function memoryTypeLabel(value: string | null) {
     .filter(Boolean)
     .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
     .join(" ");
-}
-
-function memoryConfidenceLabel(value: number | null) {
-  if (value === null) {
-    return "Confidence not reported";
-  }
-
-  const percent = Math.round(value * 100);
-  if (value >= 0.85) {
-    return `High confidence · ${percent}%`;
-  }
-  if (value >= 0.65) {
-    return `Medium confidence · ${percent}%`;
-  }
-  return `Low confidence · ${percent}%`;
 }
 
 function memoryTriggerLabel(value: string | null) {
@@ -2345,35 +2307,51 @@ function MemoryArtifactSections({ artifact }: { artifact: ProjectMemoryArtifact 
   );
 }
 
-function memoryEditableSections(artifact: ProjectMemoryArtifact) {
-  const orderedTitles = ["Summary", "Tasks", "Decisions", "Follow-ups"];
-  return orderedTitles.map((title) => {
-    const section = artifact.sections.find((item) => item.title === title);
-    return {
-      summary:
-        section?.summary ??
-        (title === "Summary" ? artifact.summary ?? "" : ""),
-      title,
-    };
-  });
+function MemoryDocumentSteps({
+  added,
+  generated,
+}: {
+  added: boolean;
+  generated: boolean;
+}) {
+  return (
+    <ol className="bh-memory-document-steps" aria-label="Documentation status">
+      <li data-complete="true">
+        <Check aria-hidden="true" size={14} strokeWidth={1.7} />
+        <span>Captured</span>
+      </li>
+      <li data-complete={generated ? "true" : "false"}>
+        {generated ? (
+          <Check aria-hidden="true" size={14} strokeWidth={1.7} />
+        ) : (
+          <span aria-hidden="true" />
+        )}
+        <span>Generated</span>
+      </li>
+      <li data-complete={added ? "true" : "false"}>
+        {added ? (
+          <Check aria-hidden="true" size={14} strokeWidth={1.7} />
+        ) : (
+          <span aria-hidden="true" />
+        )}
+        <span>Added</span>
+      </li>
+    </ol>
+  );
 }
 
 function MemoryPanel({
   data,
   onCheckpointMemory,
-  onIgnoreMemoryDraft,
-  onSaveMemoryDraft,
+  onCompileProjectMemory,
+  onSaveProjectMemory,
 }: {
   data: ProjectDetailData;
   onCheckpointMemory?: (sessionIds: string[]) => Promise<MemoryCheckpointResult>;
-  onIgnoreMemoryDraft?: (draftId: string) => Promise<void>;
-  onSaveMemoryDraft?: (
-    draftId: string,
-    updates?: MemoryDraftSaveUpdates,
-  ) => Promise<void>;
+  onCompileProjectMemory?: () => Promise<void>;
+  onSaveProjectMemory?: (bodyMarkdown: string) => Promise<void>;
 }) {
-  const draftInbox = data.memory.drafts.filter(memoryArtifactIsReviewableDraft);
-  const verifiedMemories = data.memory.recentArtifacts.filter(memoryArtifactIsVerified);
+  const generatedMemories = data.memory.recentArtifacts.filter(memoryArtifactIsGenerated);
   const checkpointableRanges = data.memory.pendingRanges.filter(
     (range) => range.canCheckpoint,
   );
@@ -2388,29 +2366,46 @@ function MemoryPanel({
   const pendingSessionCount = new Set(
     data.memory.pendingRanges.map((range) => range.sessionId),
   ).size;
+  const pendingBatchCount = data.memory.pendingRanges.length > 0 ? 1 : 0;
+  const projectMemorySourceCount =
+    data.memory.projectMemory?.sourceMemoryIds.length || generatedMemories.length;
+  const projectMemoryUpdatedAt =
+    data.memory.projectMemoryArtifact?.updatedAt ??
+    data.memory.projectMemoryArtifact?.createdAt ??
+    data.memory.latestArtifactAt;
+  const projectMemoryStateLabel = data.memory.projectMemory ? "Ready" : "Empty";
+  const projectMemoryFreshnessLabel = data.memory.projectMemory
+    ? pendingBatchCount > 0
+      ? `${pendingBatchCount} pending batch`
+      : projectMemoryUpdatedAt
+        ? `Updated ${projectMemoryUpdatedAt}`
+        : `${projectMemorySourceCount} memories included`
+    : pendingBatchCount > 0
+      ? "Ready to generate"
+      : "Empty";
+  const projectMemorySourceIds = new Set(data.memory.projectMemory?.sourceMemoryIds ?? []);
+  const completedMemories =
+    projectMemorySourceIds.size > 0
+      ? generatedMemories.filter((memory) => projectMemorySourceIds.has(memory.id))
+      : generatedMemories;
+  const completedDocumentCount =
+    completedMemories.length + (data.memory.projectMemory ? 1 : 0);
   const [checkpointStatus, setCheckpointStatus] = useState<string | null>(null);
   const [checkpointError, setCheckpointError] = useState<string | null>(null);
   const [isCheckpointing, setIsCheckpointing] = useState(false);
-  const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
-  const [draftEdit, setDraftEdit] = useState({
-    sections: [] as Array<{ summary: string; title: string }>,
-    summary: "",
-    title: "",
-    whyItMatters: "",
-  });
-  const [busyDraftId, setBusyDraftId] = useState<string | null>(null);
-  const [draftActionError, setDraftActionError] = useState<string | null>(null);
+  const [isEditingProjectMemory, setIsEditingProjectMemory] = useState(false);
+  const [isProjectMemoryRegenerating, setIsProjectMemoryRegenerating] = useState(false);
+  const [isProjectMemorySaving, setIsProjectMemorySaving] = useState(false);
+  const [projectMemoryDraft, setProjectMemoryDraft] = useState(
+    data.memory.projectMemory?.bodyMarkdown ?? "",
+  );
+  const [projectMemoryError, setProjectMemoryError] = useState<string | null>(null);
 
-  const startEditingDraft = (draft: ProjectMemoryArtifact) => {
-    setEditingDraftId(draft.id);
-    setDraftEdit({
-      sections: memoryEditableSections(draft),
-      summary: draft.summary ?? "",
-      title: draft.title,
-      whyItMatters: draft.whyItMatters ?? "",
-    });
-    setDraftActionError(null);
-  };
+  useEffect(() => {
+    if (!isEditingProjectMemory) {
+      setProjectMemoryDraft(data.memory.projectMemory?.bodyMarkdown ?? "");
+    }
+  }, [data.memory.projectMemory?.bodyMarkdown, isEditingProjectMemory]);
 
   const organizePendingBatch = async () => {
     if (!onCheckpointMemory || isCheckpointing) {
@@ -2429,60 +2424,45 @@ function MemoryPanel({
       setCheckpointStatus(result.message);
     } catch (error) {
       setCheckpointError(
-        error instanceof Error ? error.message : "Pending Memory organization failed.",
+        error instanceof Error ? error.message : "Pending Work organization failed.",
       );
     } finally {
       setIsCheckpointing(false);
     }
   };
 
-  const saveDraft = async (draft: ProjectMemoryArtifact, withEdits: boolean) => {
-    if (!onSaveMemoryDraft || busyDraftId) {
+  const saveProjectMemory = async () => {
+    if (!onSaveProjectMemory || isProjectMemorySaving) {
       return;
     }
-
-    setBusyDraftId(draft.id);
-    setDraftActionError(null);
+    setIsProjectMemorySaving(true);
+    setProjectMemoryError(null);
     try {
-      await onSaveMemoryDraft(
-        draft.id,
-        withEdits
-          ? {
-              summary: draftEdit.summary,
-              sections: draftEdit.sections,
-              title: draftEdit.title,
-              why_it_matters: draftEdit.whyItMatters,
-            }
-          : undefined,
-      );
-      setEditingDraftId(null);
+      await onSaveProjectMemory(projectMemoryDraft);
+      setIsEditingProjectMemory(false);
     } catch (error) {
-      setDraftActionError(
-        error instanceof Error ? error.message : "Memory draft save failed.",
+      setProjectMemoryError(
+        error instanceof Error ? error.message : "Project Memory save failed.",
       );
     } finally {
-      setBusyDraftId(null);
+      setIsProjectMemorySaving(false);
     }
   };
 
-  const ignoreDraft = async (draft: ProjectMemoryArtifact) => {
-    if (!onIgnoreMemoryDraft || busyDraftId) {
+  const regenerateProjectMemory = async () => {
+    if (!onCompileProjectMemory || isProjectMemoryRegenerating) {
       return;
     }
-
-    setBusyDraftId(draft.id);
-    setDraftActionError(null);
+    setIsProjectMemoryRegenerating(true);
+    setProjectMemoryError(null);
     try {
-      await onIgnoreMemoryDraft(draft.id);
-      if (editingDraftId === draft.id) {
-        setEditingDraftId(null);
-      }
+      await onCompileProjectMemory();
     } catch (error) {
-      setDraftActionError(
-        error instanceof Error ? error.message : "Memory draft ignore failed.",
+      setProjectMemoryError(
+        error instanceof Error ? error.message : "Project Memory regenerate failed.",
       );
     } finally {
-      setBusyDraftId(null);
+      setIsProjectMemoryRegenerating(false);
     }
   };
 
@@ -2491,25 +2471,14 @@ function MemoryPanel({
       <header className="bh-memory-toolbar">
         <div>
           <h2>Memory</h2>
-          <p>Batch organize Pending Memory, then save only the drafts that matter.</p>
+          <p>Keep project context up to date for future AI coding sessions.</p>
         </div>
-        <button
-          className="bh-memory-primary-action"
-          disabled={
-            checkpointableRanges.length === 0 || !onCheckpointMemory || isCheckpointing
-          }
-          onClick={() => void organizePendingBatch()}
-          type="button"
-        >
-          <Sparkles aria-hidden="true" size={16} strokeWidth={1.7} />
-          <span>{isCheckpointing ? "Organizing" : "Organize pending batch"}</span>
-        </button>
       </header>
 
       <div className="bh-memory-summary-strip" aria-label="Memory status summary">
-        <span>Pending: {data.memory.pendingRanges.length > 0 ? "1 batch" : "0 batches"}</span>
-        <span>Drafts: {draftInbox.length}</span>
-        <span>Saved: {verifiedMemories.length}</span>
+        <span>{pendingBatchCount} pending</span>
+        <span>{completedDocumentCount} completed</span>
+        <span>Project Memory: {projectMemoryStateLabel}</span>
       </div>
 
       {checkpointStatus ? (
@@ -2523,247 +2492,164 @@ function MemoryPanel({
         </div>
       ) : null}
 
-      <div className="bh-memory-flow">
-        <section className="bh-memory-section" aria-labelledby="memory-pending-title">
+      <div className="bh-memory-documentation">
+        {data.memory.pendingRanges.length > 0 ? (
+          <article className="bh-memory-document-request" aria-labelledby="memory-request-title">
+            <div className="bh-memory-document-row-main">
+              <h3 id="memory-request-title">Pending documentation</h3>
+              <p>
+                {pendingPromptCount} prompts · {pendingEventCount} events ·{" "}
+                {pendingSessionCount} sessions
+              </p>
+            </div>
+            <button
+              className="bh-memory-primary-action"
+              disabled={
+                checkpointableRanges.length === 0 || !onCheckpointMemory || isCheckpointing
+              }
+              onClick={() => void organizePendingBatch()}
+              type="button"
+            >
+              <Sparkles aria-hidden="true" size={16} strokeWidth={1.7} />
+              <span>{isCheckpointing ? "Generating" : "Generate"}</span>
+            </button>
+          </article>
+        ) : (
+          <div className="bh-memory-document-idle">
+            <strong>No pending documentation</strong>
+            <span>New captured work will appear here when it is ready to generate.</span>
+          </div>
+        )}
+
+        <section
+          className="bh-memory-document-section"
+          aria-labelledby="memory-completed-title"
+        >
           <div className="bh-memory-section-header">
             <div>
-              <span className="bh-memory-step-kicker">Backlog</span>
-              <h3 id="memory-pending-title">Pending Memory</h3>
-              <p>One backlog of stored work waiting for batch organization.</p>
+              <span className="bh-memory-step-kicker">Completed</span>
+              <h3 id="memory-completed-title">Completed documents</h3>
+              <p>Added to Project Memory.</p>
             </div>
-            <span>{data.memory.pendingRanges.length > 0 ? "1 batch" : "0 batches"}</span>
+            <span>{completedDocumentCount} documents</span>
           </div>
 
-          {data.memory.pendingRanges.length > 0 ? (
-            <article className="bh-memory-pending-row">
-              <div>
-                <strong>Pending Memory backlog</strong>
-                <span>
-                  {pendingPromptCount} prompts · {pendingEventCount} events ·{" "}
-                  {pendingSessionCount} sessions
-                </span>
-              </div>
-            </article>
-          ) : (
-            <div className="bh-memory-empty">
-              <strong>No Pending Memory</strong>
-              <span>All captured work is already covered by drafts or saved memory.</span>
-            </div>
-          )}
-        </section>
-
-        <section className="bh-memory-section" aria-labelledby="memory-drafts-title">
-          <div className="bh-memory-section-header">
-            <div>
-              <span className="bh-memory-step-kicker">Review</span>
-              <h3 id="memory-drafts-title">Draft Inbox</h3>
-              <p>Second-pass Memory Drafts waiting for review.</p>
-            </div>
-            <span>{draftInbox.length} drafts</span>
-          </div>
-
-          {draftActionError ? (
+          {projectMemoryError ? (
             <div className="bh-memory-status" data-error="true" role="alert">
-              {draftActionError}
+              {projectMemoryError}
             </div>
           ) : null}
 
-          {draftInbox.length > 0 ? (
-            <div className="bh-memory-draft-list">
-              {draftInbox.map((draft) => {
-                const isEditing = editingDraftId === draft.id;
-                const isBusy = busyDraftId === draft.id;
-
-                return (
-                  <article className="bh-memory-draft-card" key={draft.id}>
-                    <div className="bh-memory-card-meta">
-                      <span>{memoryTypeLabel(draft.draftType)}</span>
-                      <span>{memoryTriggerLabel(draft.triggerReason)}</span>
-                      <span>{memoryConfidenceLabel(draft.draftConfidence)}</span>
-                      {draft.needsUserVerification ? <span>Needs verification</span> : null}
+          {completedDocumentCount > 0 ? (
+            <div className="bh-memory-document-list">
+              {data.memory.projectMemory ? (
+                <details className="bh-memory-document-row" open>
+                  <summary>
+                    <div className="bh-memory-document-row-main">
+                      <span className="bh-memory-step-kicker">Project Memory</span>
+                      <strong>Project Memory snapshot</strong>
+                      <small>{projectMemoryFreshnessLabel}</small>
+                      <MemoryDocumentSteps generated added />
                     </div>
+                    <div className="bh-memory-document-actions">
+                      <button
+                        disabled={!onCompileProjectMemory || isProjectMemoryRegenerating}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          void regenerateProjectMemory();
+                        }}
+                        type="button"
+                      >
+                        {isProjectMemoryRegenerating ? "Regenerating" : "Regenerate"}
+                      </button>
+                    </div>
+                  </summary>
 
-                    {isEditing ? (
-                      <div className="bh-memory-edit-form">
-                        <label>
-                          <span>Title</span>
-                          <input
-                            onChange={(event) =>
-                              setDraftEdit((current) => ({
-                                ...current,
-                                title: event.target.value,
-                              }))
-                            }
-                            value={draftEdit.title}
-                          />
-                        </label>
-                        <label>
-                          <span>Summary</span>
-                          <textarea
-                            onChange={(event) =>
-                              setDraftEdit((current) => ({
-                                ...current,
-                                summary: event.target.value,
-                              }))
-                            }
-                            rows={4}
-                            value={draftEdit.summary}
-                          />
-                        </label>
-                        <div className="bh-memory-edit-section-grid">
-                          {draftEdit.sections.map((section, sectionIndex) => (
-                            <label key={section.title}>
-                              <span>{section.title}</span>
-                              <textarea
-                                onChange={(event) =>
-                                  setDraftEdit((current) => ({
-                                    ...current,
-                                    sections: current.sections.map((item, index) =>
-                                      index === sectionIndex
-                                        ? { ...item, summary: event.target.value }
-                                        : item,
-                                    ),
-                                  }))
-                                }
-                                rows={3}
-                                value={section.summary}
-                              />
-                            </label>
-                          ))}
-                        </div>
-                        <label>
-                          <span>Why it matters</span>
-                          <textarea
-                            onChange={(event) =>
-                              setDraftEdit((current) => ({
-                                ...current,
-                                whyItMatters: event.target.value,
-                              }))
-                            }
-                            rows={3}
-                            value={draftEdit.whyItMatters}
-                          />
-                        </label>
-                      </div>
-                    ) : (
-                      <div className="bh-memory-card-copy">
-                        <h4>{draft.title}</h4>
-                        <p>{draft.summary ?? "No summary provided."}</p>
-                        <details className="bh-memory-card-details">
-                          <summary>Details</summary>
-                          <MemoryArtifactSections artifact={draft} />
-                          <div>
-                            <strong>Why it matters</strong>
-                            <span>
-                              {draft.whyItMatters ?? "No importance note provided."}
-                            </span>
-                          </div>
-                        </details>
-                      </div>
-                    )}
-
-                    <div className="bh-memory-card-footer">
-                      <span>{memorySequenceLabel(draft)}</span>
+                  {isEditingProjectMemory ? (
+                    <div className="bh-memory-edit-form">
+                      <label>
+                        <span>Project Memory markdown</span>
+                        <textarea
+                          onChange={(event) => setProjectMemoryDraft(event.target.value)}
+                          rows={18}
+                          value={projectMemoryDraft}
+                        />
+                      </label>
                       <div className="bh-memory-card-actions">
-                        {isEditing ? (
-                          <>
-                            <button
-                              disabled={isBusy}
-                              onClick={() => void saveDraft(draft, true)}
-                              type="button"
-                            >
-                              Save to Memory
-                            </button>
-                            <button
-                              disabled={isBusy}
-                              onClick={() => setEditingDraftId(null)}
-                              type="button"
-                            >
-                              Cancel
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              disabled={!onSaveMemoryDraft || isBusy}
-                              onClick={() => void saveDraft(draft, false)}
-                              type="button"
-                            >
-                              Save to Memory
-                            </button>
-                            <button
-                              disabled={isBusy}
-                              onClick={() => startEditingDraft(draft)}
-                              type="button"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              disabled={!onIgnoreMemoryDraft || isBusy}
-                              onClick={() => void ignoreDraft(draft)}
-                              type="button"
-                            >
-                              Ignore
-                            </button>
-                          </>
-                        )}
+                        <button
+                          className="bh-memory-primary-action"
+                          disabled={!onSaveProjectMemory || isProjectMemorySaving}
+                          onClick={() => void saveProjectMemory()}
+                          type="button"
+                        >
+                          {isProjectMemorySaving ? "Saving" : "Save"}
+                        </button>
+                        <button
+                          disabled={isProjectMemorySaving}
+                          onClick={() => {
+                            setProjectMemoryDraft(data.memory.projectMemory?.bodyMarkdown ?? "");
+                            setIsEditingProjectMemory(false);
+                            setProjectMemoryError(null);
+                          }}
+                          type="button"
+                        >
+                          Cancel
+                        </button>
                       </div>
                     </div>
-                  </article>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="bh-memory-empty">
-              <strong>No drafts waiting for review</strong>
-              <span>
-                {data.memory.pendingRanges.length > 0
-                  ? "Pending Memory is ready. Organize the batch to create drafts."
-                  : "No memory work right now."}
-              </span>
-            </div>
-          )}
-        </section>
+                  ) : (
+                    <div className="bh-memory-document-preview">
+                      <pre>{data.memory.projectMemory.bodyMarkdown}</pre>
+                      <div className="bh-memory-card-actions">
+                        <button
+                          disabled={!onSaveProjectMemory}
+                          onClick={() => {
+                            setProjectMemoryDraft(data.memory.projectMemory?.bodyMarkdown ?? "");
+                            setIsEditingProjectMemory(true);
+                            setProjectMemoryError(null);
+                          }}
+                          type="button"
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </details>
+              ) : null}
 
-        <section className="bh-memory-section" aria-labelledby="memory-verified-title">
-          <div className="bh-memory-section-header">
-            <div>
-              <span className="bh-memory-step-kicker">Saved</span>
-              <h3 id="memory-verified-title">Verified Memory</h3>
-              <p>Saved memories that can be included in Project Memory.</p>
-            </div>
-            <span>{verifiedMemories.length} saved</span>
-          </div>
-
-          {verifiedMemories.length > 0 ? (
-            <div className="bh-memory-verified-list">
-              {verifiedMemories.map((memory) => (
-                <article className="bh-memory-verified-card" key={memory.id}>
-                  <div className="bh-memory-card-meta">
-                    <span>{memoryTypeLabel(memory.draftType)}</span>
-                    <span>{memory.updatedAt ?? memory.createdAt ?? "Date not reported"}</span>
-                  </div>
+              {completedMemories.map((memory) => (
+                <details className="bh-memory-document-row" key={memory.id}>
+                  <summary>
+                    <div className="bh-memory-document-row-main">
+                      <span className="bh-memory-step-kicker">
+                        {memoryTypeLabel(memory.draftType)}
+                      </span>
+                      <strong>{memory.title}</strong>
+                      <small>
+                        {memorySequenceLabel(memory)} ·{" "}
+                        {memory.updatedAt ?? memory.createdAt ?? "Date not reported"}
+                      </small>
+                      <MemoryDocumentSteps generated added />
+                    </div>
+                  </summary>
                   <div className="bh-memory-card-copy">
-                    <h4>{memory.title}</h4>
                     <p>{memory.summary ?? "No summary provided."}</p>
-                    <details className="bh-memory-card-details">
-                      <summary>Details</summary>
-                      <MemoryArtifactSections artifact={memory} />
-                      {memory.whyItMatters ? (
-                        <div>
-                          <strong>Why it matters</strong>
-                          <span>{memory.whyItMatters}</span>
-                        </div>
-                      ) : null}
-                    </details>
+                    <MemoryArtifactSections artifact={memory} />
+                    {memory.whyItMatters ? (
+                      <div>
+                        <strong>Why it matters</strong>
+                        <span>{memory.whyItMatters}</span>
+                      </div>
+                    ) : null}
                   </div>
-                </article>
+                </details>
               ))}
             </div>
           ) : (
             <div className="bh-memory-empty">
-              <strong>No verified memory yet</strong>
-              <span>Save a draft to promote it into Verified Memory.</span>
+              <strong>No completed documents yet</strong>
+              <span>Generate pending documentation to create the first completed document.</span>
             </div>
           )}
         </section>
@@ -2782,13 +2668,14 @@ function ProjectDetailLoadingSkeleton({
       <section
         aria-label="Loading activity"
         aria-live="polite"
-        className="bh-detail-skeleton bh-detail-skeleton-activity"
+        className="bh-detail-skeleton bh-detail-skeleton-activity bh-activity-layout"
+        data-view="prompts"
         role="status"
       >
         <div className="bh-activity-view-tabs bh-activity-view-tabs-skeleton">
-          <span className="skeleton-pill skeleton-pill-action" />
-          <span className="skeleton-pill skeleton-pill-action" />
-          <span className="skeleton-pill skeleton-pill-action" />
+          {Array.from({ length: 2 }).map((_, index) => (
+            <span className="skeleton-pill skeleton-pill-action" key={index} />
+          ))}
         </div>
 
         <div className="bh-prompt-activity-layout">
@@ -2796,6 +2683,11 @@ function ProjectDetailLoadingSkeleton({
             <div className="bh-prompt-search bh-prompt-search-skeleton">
               <span className="skeleton-icon" />
               <span className="skeleton-line skeleton-line-md" />
+            </div>
+            <div className="bh-work-type-filter bh-work-type-filter-skeleton">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <span className="skeleton-pill" key={index} />
+              ))}
             </div>
 
             <div className="bh-prompt-list">
@@ -2890,30 +2782,73 @@ function ProjectDetailLoadingSkeleton({
     <section
       aria-label="Loading project overview"
       aria-live="polite"
-      className="bh-detail-skeleton bh-detail-skeleton-overview"
+      className="bh-detail-skeleton bh-detail-skeleton-overview bh-overview-dashboard"
       role="status"
     >
-      <div className="bh-detail-skeleton-stats">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index}>
-            <span className="skeleton-line skeleton-line-title" />
-            <span className="skeleton-line skeleton-line-sm" />
-          </div>
-        ))}
-      </div>
-      <div className="bh-detail-skeleton-split">
-        <div className="bh-detail-skeleton-panel">
-          <span className="skeleton-line skeleton-line-section" />
-          {Array.from({ length: 5 }).map((_, index) => (
-            <span className="skeleton-line skeleton-line-md" key={index} />
-          ))}
-        </div>
-        <div className="bh-detail-skeleton-panel">
-          <span className="skeleton-line skeleton-line-section" />
+      <section className="bh-overview-statistics" aria-label="Loading statistics">
+        <dl>
           {Array.from({ length: 4 }).map((_, index) => (
-            <span className="skeleton-line skeleton-line-md" key={index} />
+            <div
+              className="bh-overview-stat-card bh-overview-stat-card-skeleton"
+              key={index}
+            >
+              <div className="bh-overview-stat-copy">
+                <dt>
+                  <span className="skeleton-line skeleton-line-sm" />
+                </dt>
+                <dd>
+                  <span className="skeleton-line skeleton-line-title" />
+                </dd>
+                <span className="skeleton-line skeleton-line-sm" />
+              </div>
+              <span className="bh-overview-stat-sparkline bh-overview-stat-sparkline-skeleton" />
+            </div>
           ))}
-        </div>
+        </dl>
+      </section>
+
+      <div className="bh-overview-detail-grid">
+        <section
+          className="bh-overview-card bh-overview-card-repository bh-overview-card-skeleton"
+        >
+          <div className="bh-overview-card-header">
+            <span className="skeleton-line skeleton-line-section" />
+            <span className="skeleton-pill skeleton-pill-action" />
+          </div>
+          <div className="bh-project-context-layout">
+            <div className="bh-project-context-links">
+              {Array.from({ length: 2 }).map((_, index) => (
+                <div className="bh-project-context-link-field" key={index}>
+                  <span className="skeleton-line skeleton-line-sm" />
+                  <span className="skeleton-line skeleton-line-description" />
+                </div>
+              ))}
+            </div>
+            <div className="bh-overview-card-divider" />
+            <div className="bh-project-context-grid">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <section className="bh-project-context-section" key={index}>
+                  <span className="skeleton-line skeleton-line-sm" />
+                  <span className="skeleton-line skeleton-line-md" />
+                </section>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section
+          className="bh-overview-card bh-overview-card-description bh-overview-card-skeleton"
+        >
+          <div className="bh-overview-card-header">
+            <span className="skeleton-line skeleton-line-section" />
+            <span className="skeleton-pill skeleton-pill-action" />
+          </div>
+          <div className="bh-overview-description-skeleton">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <span className="skeleton-line skeleton-line-md" key={index} />
+            ))}
+          </div>
+        </section>
       </div>
       {/* Community overview skeleton is paused for now.
       <div className="bh-detail-skeleton-community">
@@ -3545,12 +3480,12 @@ function ProjectPanel({
   isLoading,
   onActivityNavigationChange,
   onCheckpointMemory,
-  onIgnoreMemoryDraft,
+  onCompileProjectMemory,
   onPublishFlow,
   onSaveProjectMetadata,
   onSaveDescription,
   onSaveFlowDraft,
-  onSaveMemoryDraft,
+  onSaveProjectMemory,
   onUpdateFlow,
   onUploadFlowAsset,
   onRepositoryFileSelect,
@@ -3564,13 +3499,10 @@ function ProjectPanel({
   isLoading?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onCheckpointMemory?: (sessionIds: string[]) => Promise<MemoryCheckpointResult>;
-  onIgnoreMemoryDraft?: (draftId: string) => Promise<void>;
+  onCompileProjectMemory?: () => Promise<void>;
   onPublishFlow?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
   onSaveFlowDraft?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
-  onSaveMemoryDraft?: (
-    draftId: string,
-    updates?: MemoryDraftSaveUpdates,
-  ) => Promise<void>;
+  onSaveProjectMemory?: (bodyMarkdown: string) => Promise<void>;
   onUpdateFlow?: (
     flowKey: string,
     payload: PromptFlowUpdatePayload,
@@ -3625,8 +3557,8 @@ function ProjectPanel({
       <MemoryPanel
         data={data}
         onCheckpointMemory={onCheckpointMemory}
-        onIgnoreMemoryDraft={onIgnoreMemoryDraft}
-        onSaveMemoryDraft={onSaveMemoryDraft}
+        onCompileProjectMemory={onCompileProjectMemory}
+        onSaveProjectMemory={onSaveProjectMemory}
       />
     );
   }
@@ -3663,12 +3595,13 @@ export function ProjectDetailPage({
   activeTab,
   data,
   errorMessage,
+  isProjectResolving,
   isLoading,
   isRefreshing,
   onActivityNavigationChange,
   onCheckpointMemory,
+  onCompileProjectMemory,
   onConnectRepository,
-  onIgnoreMemoryDraft,
   onOpenAllProjects,
   onPublishFlow,
   onProjectSelect,
@@ -3677,7 +3610,7 @@ export function ProjectDetailPage({
   onSaveProjectMetadata,
   onSaveDescription,
   onSaveFlowDraft,
-  onSaveMemoryDraft,
+  onSaveProjectMemory,
   onTabChange,
   onUpdateFlow,
   onUploadFlowAsset,
@@ -3690,6 +3623,7 @@ export function ProjectDetailPage({
       aria-labelledby="project-detail-title"
     >
       <ProjectHeader
+        isLoading={isProjectResolving}
         lastActivityLabel={projectHeaderLastActivityLabel(data)}
         modelNames={projectHeaderModelNames(data)}
         name={data.project.name}
@@ -3724,12 +3658,12 @@ export function ProjectDetailPage({
           isLoading={isLoading}
           onActivityNavigationChange={onActivityNavigationChange}
           onCheckpointMemory={onCheckpointMemory}
-          onIgnoreMemoryDraft={onIgnoreMemoryDraft}
+          onCompileProjectMemory={onCompileProjectMemory}
           onPublishFlow={onPublishFlow}
           onSaveProjectMetadata={onSaveProjectMetadata}
           onSaveDescription={onSaveDescription}
           onSaveFlowDraft={onSaveFlowDraft}
-          onSaveMemoryDraft={onSaveMemoryDraft}
+          onSaveProjectMemory={onSaveProjectMemory}
           onUpdateFlow={onUpdateFlow}
           onUploadFlowAsset={onUploadFlowAsset}
           onRepositoryFileSelect={onRepositoryFileSelect}

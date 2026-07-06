@@ -27,6 +27,9 @@ export type {
   ProjectHeaderProjectOption,
   ProjectHeaderProps,
   ProjectMemoryArtifact,
+  ProjectMemoryArtifactStage,
+  ProjectMemoryReviewState,
+  ProjectMemoryScope,
   ProjectMemoryStatus,
   RepositoryFileContent,
 } from "./types";

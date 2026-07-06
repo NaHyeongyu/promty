@@ -18,6 +18,7 @@ export type ActivityNavigationState = {
 };
 
 export type ProjectHeaderProps = {
+  isLoading?: boolean;
   lastActivityLabel?: string;
   modelNames?: string[];
   name: string;
@@ -90,7 +91,7 @@ export type ProjectMemoryArtifactVersion = {
   fallbackReason: string | null;
   generator: string | null;
   id: string;
-  memoryScope: string | null;
+  memoryScope: ProjectMemoryScope | null;
   model: string | null;
   needsUserVerification: boolean | null;
   outcome: string | null;
@@ -113,8 +114,24 @@ export type ProjectMemoryArtifactVersion = {
   windowReason: string | null;
 };
 
+export type ProjectMemoryArtifactStage =
+  | "generated_memory"
+  | "memory_draft"
+  | "project_memory"
+  | "verified_memory";
+
+export type ProjectMemoryReviewState =
+  | "draft"
+  | "edited"
+  | "generated"
+  | "ignored"
+  | "saved"
+  | "verified";
+
+export type ProjectMemoryScope = "draft" | "generated" | "project" | "verified";
+
 export type ProjectMemoryArtifact = {
-  artifactStage: string | null;
+  artifactStage: ProjectMemoryArtifactStage | null;
   changedFileCount: number;
   changedFiles: Array<{
     additions?: number | null;
@@ -131,13 +148,13 @@ export type ProjectMemoryArtifact = {
   fallbackReason: string | null;
   generator: string | null;
   id: string;
-  memoryScope: string | null;
+  memoryScope: ProjectMemoryScope | null;
   model: string | null;
   needsUserVerification: boolean | null;
   outcome: string | null;
   promptCount: number | null;
   reason: string | null;
-  reviewState: string | null;
+  reviewState: ProjectMemoryReviewState | null;
   requestedGenerator: string | null;
   sections: Array<{
     summary: string;
