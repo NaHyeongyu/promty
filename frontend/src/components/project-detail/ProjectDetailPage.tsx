@@ -2555,7 +2555,7 @@ function MemoryPanel({
                       <button
                         disabled={!onCompileProjectMemory || isProjectMemoryRegenerating}
                         onClick={(event) => {
-                          event.preventDefault();
+                          event.stopPropagation();
                           void regenerateProjectMemory();
                         }}
                         type="button"
