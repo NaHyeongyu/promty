@@ -18,6 +18,7 @@ GEMINI_CHUNK_SUMMARY_GENERATOR = "gemini-chunk-summary-v1"
 GEMINI_MEMORY_DRAFT_GENERATOR = "gemini-memory-draft-v1"
 MAX_CHANGED_FILES = 60
 MAX_EVENT_TIMELINE = 80
+MAX_MEMORY_DRAFTS = 3
 MAX_PROMPTS = 10
 MAX_RESPONSE_SAMPLES = 3
 RETRYABLE_HTTP_STATUS_CODES = {429, 500, 502, 503, 504}
@@ -32,6 +33,10 @@ def _truncate(value: str | None, limit: int) -> str | None:
         return None
     cleaned = " ".join(value.split())
     return cleaned if len(cleaned) <= limit else f"{cleaned[: limit - 3].rstrip()}..."
+
+
+def _clean_text(value: Any) -> str:
+    return value.strip() if isinstance(value, str) else ""
 
 
 def _compact_files(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -302,7 +307,7 @@ def _build_chunk_summary_prompt(context: dict[str, Any]) -> str:
             "Your job is NOT to create a final user-facing memory.",
             "Your job is to compress one chunk of AI coding conversation into a structured intermediate summary.",
             "",
-            "This summary will be used later by another model to create user-facing Memory Drafts.",
+            "This summary will be used later by another model to create generated context memories.",
             "",
             "You are working inside Promty, a developer-focused product that turns AI coding conversations into work logs, decision notes, and reusable project memory.",
             "",
@@ -311,10 +316,9 @@ def _build_chunk_summary_prompt(context: dict[str, Any]) -> str:
             "→ Active Buffer",
             "→ every 20 PromptSubmitted events, create an internal chunk summary",
             "→ Pending Memory accumulates unorganized event ranges",
-            "→ user runs batch organization to create Memory Drafts",
-            "→ user Save/Edit/Ignore",
-            "→ Verified Memory",
-            "→ Project Memory",
+            "→ user runs batch organization",
+            "→ generated context memories are saved automatically",
+            "→ Project Memory is recompiled immediately",
             "",
             "This is a first-pass internal summary.",
             "Do not make it polished for the user.",
@@ -479,11 +483,11 @@ def _build_memory_draft_prompt(context: dict[str, Any]) -> str:
     }
     return "\n".join(
         [
-            "You are Promty's memory draft assistant.",
+            "You are Promty's generated context memory assistant.",
             "",
-            "Your job is to create user-facing Memory Drafts from internal chunk summaries, remaining event previews, and metadata.",
+            "Your job is to create user-facing generated context memories from internal chunk summaries, remaining event previews, and metadata.",
             "",
-            "These Memory Drafts will be shown to the user, who can Save, Edit, or Ignore them.",
+            "These generated memories are saved automatically and then used to recompile Project Memory.",
             "",
             "You are working inside Promty, a developer-focused product that turns AI coding conversations into work logs, decision notes, and reusable project memory.",
             "",
@@ -492,21 +496,26 @@ def _build_memory_draft_prompt(context: dict[str, Any]) -> str:
             "→ Active Buffer",
             "→ every 20 PromptSubmitted events, create an internal chunk summary",
             "→ Pending Memory accumulates unorganized event ranges",
-            "→ user runs batch organization to create Memory Drafts",
-            "→ user Save/Edit/Ignore",
-            "→ Verified Memory",
-            "→ Project Memory",
+            "→ user runs batch organization",
+            "→ generated context memories are saved automatically",
+            "→ Project Memory is recompiled immediately",
             "",
-            "This is a second-pass user-facing draft generation step.",
+            "This is a second-pass user-facing context memory generation step.",
             "Your job is NOT to create final Project Memory.",
-            "Your job is to create useful Memory Drafts that the user can review.",
-            "Each Memory Draft must be structured around Summary, Tasks, Decisions, and Follow-ups.",
+            "Your job is to create useful generated memories that preserve concrete project context.",
+            "Each generated memory must be structured around Summary, Tasks, Decisions, and Follow-ups.",
             "Tasks record what was done.",
             "Decisions record what was chosen, why it was chosen, and what communication led to it.",
             "",
             "Important:",
-            "Do not create one broad summary if there are multiple distinct decisions, topics, or work streams.",
-            "Split them into multiple memory_drafts.",
+            "Optimize for the memory UX: a Pending Memory batch should usually become one generated memory item.",
+            f"Return 1 memory_draft by default. Return at most {MAX_MEMORY_DRAFTS} memory_drafts.",
+            "Only split into multiple memory_drafts when the batch contains clearly separate work streams that would be confusing to review as one draft.",
+            "Do not split small decisions, policy updates, implementation steps, or follow-up items into separate drafts.",
+            "Put those items inside the draft's Summary, Tasks, Decisions, and Follow-ups sections instead.",
+            "For larger batches, preserve more detail inside those sections instead of compressing them to a fixed item count.",
+            "The amount of Tasks, Decisions, Follow-ups, and Open Questions should scale with the amount of meaningful work in the batch.",
+            "When unsure whether to split, keep one draft.",
             "",
             "Draft types:",
             "- work_log: concrete implementation or development progress",
@@ -524,13 +533,15 @@ def _build_memory_draft_prompt(context: dict[str, Any]) -> str:
             "6. For large user prompts, infer the issue mainly from the paired AI output, not from the missing raw content.",
             "7. Commit messages are metadata only. Use them as weak hints, not primary evidence. Do not treat commits as summary triggers.",
             "8. Changed file metadata can support implementation context. Do not infer exact code behavior from file names alone.",
-            "9. Prefer specific Memory Drafts over vague session summaries.",
+            "9. Prefer one specific batch-level generated memory item over many narrow cards.",
             '10. If the user rejected a direction, corrected the AI, or said something like "아니야", "현실성 없어", "다시 생각해보자", "이걸로 가자", capture that as an important product decision signal.',
             "11. Include rejected directions if they shaped the final direction.",
-            "12. Every Memory Draft must include source_event_ids and source_chunk_ids.",
+            "12. Every generated memory item must include source_event_ids and source_chunk_ids.",
             '13. Suggested user action: "save" if likely useful and clear, "edit" if useful but uncertain, "ignore" if vague or low-signal.',
             "14. Do not create fallback-style generic drafts such as counts of prompts and AI responses.",
-            "15. Return JSON only. Do not include markdown. Do not include explanations outside the JSON.",
+            "15. The best output for a normal batch is exactly one memory_drafts item with detailed sections.",
+            "16. Do not omit meaningful tasks or decisions just to keep section arrays short.",
+            "17. Return JSON only. Do not include markdown. Do not include explanations outside the JSON.",
             "",
             "Project context:",
             json.dumps(project_context, ensure_ascii=False),
@@ -625,22 +636,24 @@ def _build_memory_draft_prompt(context: dict[str, Any]) -> str:
 
 def _build_project_memory_prompt(context: dict[str, Any]) -> str:
     project_context = context.get("project_context")
-    verified_memories = (
-        context.get("verified_memories")
+    source_memories = (
+        context.get("source_memories")
+        if isinstance(context.get("source_memories"), list)
+        else context.get("verified_memories")
         if isinstance(context.get("verified_memories"), list)
         else []
     )
     previous_snapshot = context.get("previous_project_memory")
     source_memory_ids = [
         memory.get("id")
-        for memory in verified_memories
+        for memory in source_memories
         if isinstance(memory, dict) and isinstance(memory.get("id"), str)
     ]
     return "\n".join(
         [
             "You are Promty's Project Memory compiler.",
             "",
-            "Your job is to compile verified memories into a concise Project Memory document that can be given to future AI coding agents such as Codex, Claude Code, Cursor, or other AI coding tools.",
+            "Your job is to compile generated and user-edited memories into a concrete Project Memory document that can be given to future AI coding agents such as Codex, Claude Code, Cursor, or other AI coding tools.",
             "",
             "You are working inside Promty, a developer-focused product that turns AI coding conversations into work logs, decision notes, and reusable project memory.",
             "",
@@ -649,17 +662,17 @@ def _build_project_memory_prompt(context: dict[str, Any]) -> str:
             "→ Active Buffer",
             "→ every 20 PromptSubmitted events, create an internal chunk summary",
             "→ Pending Memory accumulates unorganized event ranges",
-            "→ user runs batch organization to create Memory Drafts",
-            "→ user Save/Edit/Ignore",
-            "→ Verified Memory",
-            "→ Project Memory",
+            "→ user runs batch organization",
+            "→ generated context memories are saved automatically",
+            "→ Project Memory is recompiled immediately",
+            "→ user may edit the final Project Memory snapshot later",
             "",
             "This is the final Project Memory compilation step.",
             "",
-            "Use only Verified Memories by default.",
+            "Use generated and user-edited source memories by default.",
             "Do not use internal chunk summaries.",
-            "Do not use ignored drafts.",
-            "Do not treat unverified Memory Drafts as source of truth unless they are explicitly marked as allowed.",
+            "Do not use ignored or removed memories.",
+            "Do not treat old unreviewed Memory Drafts as source of truth.",
             "",
             "Your output should help a future AI coding agent quickly understand:",
             "- what the product is",
@@ -672,22 +685,23 @@ def _build_project_memory_prompt(context: dict[str, Any]) -> str:
             "- what the future AI should avoid repeating",
             "",
             "Important rules:",
-            "1. Do not summarize raw conversations. Compile verified project knowledge.",
+            "1. Do not summarize raw conversations. Compile durable project context from source memories.",
             "2. Do not include internal chunk summaries.",
-            "3. Do not include ignored drafts.",
-            "4. If memories conflict, prefer the most recent verified memory unless an older one is explicitly marked as still active.",
+            "3. Do not include ignored or removed memories.",
+            "4. If memories conflict, prefer the most recent generated or user-edited memory unless an older one is explicitly marked as still active.",
             '5. If a memory is marked as superseded, archived, or rejected, include it only in "Rejected Directions" or "Superseded Decisions" if it helps explain the current direction.',
-            "6. Keep the output concise but useful. This document will be pasted into future AI coding sessions.",
+            "6. Preserve concrete context. Longer output is acceptable when it helps future AI agents understand the project.",
             "7. Do not include unnecessary emotional or conversational details.",
             "8. Preserve concrete decisions, numbers, thresholds, and policies.",
             "9. Use clear section headings.",
-            '10. Return JSON only. The JSON should contain a markdown string in "body_markdown".',
+            "10. Preserve user edits from the previous Project Memory snapshot unless newer source memories clearly supersede them.",
+            '11. Return JSON only. The JSON should contain a markdown string in "body_markdown".',
             "",
             "Project context:",
             json.dumps(project_context, ensure_ascii=False),
             "",
-            "Verified memories:",
-            json.dumps(verified_memories, ensure_ascii=False),
+            "Source memories:",
+            json.dumps(source_memories, ensure_ascii=False),
             "",
             "Optional previous project memory snapshot:",
             json.dumps(previous_snapshot, ensure_ascii=False),
@@ -940,12 +954,18 @@ def _source_chunk_ids_from_context(context: dict[str, Any]) -> list[str]:
     ]
 
 
-def _clean_string_list(value: Any, *, limit: int = 12, text_limit: int = 500) -> list[str]:
+def _clean_string_list(
+    value: Any,
+    *,
+    limit: int | None = 12,
+    text_limit: int = 500,
+) -> list[str]:
     if not isinstance(value, list):
         return []
+    items = value if limit is None else value[:limit]
     return [
         cleaned
-        for item in value[:limit]
+        for item in items
         if isinstance(item, str) and (cleaned := _truncate(item, text_limit))
     ]
 
@@ -1011,7 +1031,7 @@ def _clean_draft_nested_items(
         if "reason" in item:
             cleaned_item["reason"] = _truncate(item.get("reason"), 1000)
         cleaned.append(cleaned_item)
-    return cleaned[:12]
+    return cleaned
 
 
 def _clean_memory_drafts_response(value: Any, context: dict[str, Any]) -> dict[str, Any]:
@@ -1020,7 +1040,7 @@ def _clean_memory_drafts_response(value: Any, context: dict[str, Any]) -> dict[s
     parsed = value if isinstance(value, dict) else {}
     raw_drafts = parsed.get("memory_drafts") if isinstance(parsed.get("memory_drafts"), list) else []
     memory_drafts: list[dict[str, Any]] = []
-    for raw in raw_drafts:
+    for raw in raw_drafts[:MAX_MEMORY_DRAFTS]:
         if not isinstance(raw, dict):
             continue
         title = _truncate(raw.get("title"), 180)
@@ -1049,9 +1069,9 @@ def _clean_memory_drafts_response(value: Any, context: dict[str, Any]) -> dict[s
             ),
             "follow_ups": _clean_string_list(
                 details.get("follow_ups") or details.get("next_steps"),
-                limit=8,
+                limit=None,
             ),
-            "next_steps": _clean_string_list(details.get("next_steps"), limit=8),
+            "next_steps": _clean_string_list(details.get("next_steps"), limit=None),
             "open_questions": _clean_draft_nested_items(
                 details.get("open_questions"),
                 fallback_chunk_ids=draft_chunk_ids,
@@ -1068,9 +1088,9 @@ def _clean_memory_drafts_response(value: Any, context: dict[str, Any]) -> dict[s
             "summary": _truncate(details.get("summary"), 1000),
             "tasks": _clean_string_list(
                 details.get("tasks") or details.get("what_happened"),
-                limit=10,
+                limit=None,
             ),
-            "what_happened": _clean_string_list(details.get("what_happened"), limit=10),
+            "what_happened": _clean_string_list(details.get("what_happened"), limit=None),
             "why_started": _truncate(details.get("why_started"), 1000),
         }
         memory_drafts.append(
@@ -1116,7 +1136,9 @@ def _clean_memory_drafts_response(value: Any, context: dict[str, Any]) -> dict[s
 
 def _source_memory_ids_from_context(context: dict[str, Any]) -> list[str]:
     memories = (
-        context.get("verified_memories")
+        context.get("source_memories")
+        if isinstance(context.get("source_memories"), list)
+        else context.get("verified_memories")
         if isinstance(context.get("verified_memories"), list)
         else []
     )
@@ -1153,7 +1175,7 @@ def _clean_memory_id_items(
                 ),
             }
         )
-    return cleaned[:20]
+    return cleaned
 
 
 def _clean_project_memory_response(value: Any, context: dict[str, Any]) -> dict[str, Any]:
@@ -1161,8 +1183,8 @@ def _clean_project_memory_response(value: Any, context: dict[str, Any]) -> dict[
     parsed = value if isinstance(value, dict) else {}
     sections = parsed.get("sections") if isinstance(parsed.get("sections"), dict) else {}
     cleaned_sections = {
-        "core_workflow": _clean_string_list(sections.get("core_workflow"), limit=12),
-        "current_direction": _truncate(sections.get("current_direction"), 1600) or "",
+        "core_workflow": _clean_string_list(sections.get("core_workflow"), limit=None),
+        "current_direction": _clean_text(sections.get("current_direction")),
         "important_decisions": _clean_memory_id_items(
             sections.get("important_decisions"),
             fallback_ids=fallback_ids,
@@ -1170,10 +1192,10 @@ def _clean_project_memory_response(value: Any, context: dict[str, Any]) -> dict[
         ),
         "instructions_for_future_ai_agents": _clean_string_list(
             sections.get("instructions_for_future_ai_agents"),
-            limit=16,
+            limit=None,
         ),
-        "open_questions": _clean_string_list(sections.get("open_questions"), limit=12),
-        "product_goal": _truncate(sections.get("product_goal"), 1600) or "",
+        "open_questions": _clean_string_list(sections.get("open_questions"), limit=None),
+        "product_goal": _clean_text(sections.get("product_goal")),
         "rejected_directions": _clean_memory_id_items(
             sections.get("rejected_directions"),
             fallback_ids=fallback_ids,
@@ -1181,10 +1203,10 @@ def _clean_project_memory_response(value: Any, context: dict[str, Any]) -> dict[
         ),
         "technical_assumptions": _clean_string_list(
             sections.get("technical_assumptions"),
-            limit=16,
+            limit=None,
         ),
     }
-    body_markdown = _truncate(parsed.get("body_markdown"), 8000)
+    body_markdown = _clean_text(parsed.get("body_markdown"))
     if not body_markdown:
         body_markdown = "\n\n".join(
             part
@@ -1201,7 +1223,7 @@ def _clean_project_memory_response(value: Any, context: dict[str, Any]) -> dict[
         "sections": cleaned_sections,
         "snapshot_type": "project_memory",
         "source_memory_ids": _clean_source_ids(parsed.get("source_memory_ids"), fallback_ids),
-        "warnings": _clean_string_list(parsed.get("warnings"), limit=12),
+        "warnings": _clean_string_list(parsed.get("warnings"), limit=None),
     }
 
 

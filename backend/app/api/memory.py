@@ -16,19 +16,15 @@ from app.models.sessions import Session
 from app.models.users import User
 from app.services.memory_artifacts import (
     LOCAL_MEMORY_GENERATOR,
-    MEMORY_DRAFT_ARTIFACT_TYPE,
     compile_project_memory,
     complete_session_if_ready,
-    generate_memory_draft_for_session,
-    ignore_memory_draft,
-    list_project_memory_drafts,
+    generate_context_memories_for_session,
     list_project_memory_artifacts,
     list_project_memory_pending_ranges,
     get_latest_project_memory,
     serialize_memory_artifact,
     serialize_memory_artifact_summary,
-    save_memory_draft_as_verified,
-    update_memory_draft,
+    update_project_memory_snapshot,
 )
 from app.services.gemini_memory import (
     GEMINI_CHUNK_SUMMARY_GENERATOR,
@@ -45,15 +41,8 @@ from app.services.openai_memory import (
 router = APIRouter(prefix="/api/projects", tags=["memory"])
 
 
-class MemoryDraftUpdateRequest(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=255)
-    summary: str | None = None
-    why_it_matters: str | None = None
-    reason: str | None = None
-    outcome: str | None = None
-    tags: list[str] | None = None
-    technologies: list[str] | None = None
-    sections: list[dict[str, str]] | None = None
+class ProjectMemoryUpdateRequest(BaseModel):
+    body_markdown: str = Field(min_length=1)
 
 
 def _project_for_user(db: DBSession, project_id: UUID, user: User) -> Project:
@@ -74,30 +63,6 @@ def _session_for_project(db: DBSession, project: Project, session_id: UUID) -> S
             detail="Session not found",
         )
     return session
-
-
-def _draft_for_project(db: DBSession, project: Project, draft_id: UUID) -> Artifact:
-    draft = db.get(Artifact, draft_id)
-    if (
-        draft is None
-        or draft.project_id != project.id
-        or draft.type != MEMORY_DRAFT_ARTIFACT_TYPE
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Memory draft not found",
-        )
-    return draft
-
-
-def _draft_updates(payload: MemoryDraftUpdateRequest | None) -> dict[str, Any]:
-    if payload is None:
-        return {}
-    updates = payload.dict(exclude_unset=True)
-    why_it_matters = updates.pop("why_it_matters", None)
-    if why_it_matters is not None:
-        updates["reason"] = why_it_matters
-    return updates
 
 
 def _serialize_project_memory_snapshot(artifact: Artifact | None) -> dict[str, Any] | None:
@@ -240,18 +205,18 @@ def checkpoint_project_session(
     )
     if pending_range is None:
         return {
-            "draft": None,
+            "artifacts": [],
             "message": "No pending memory range for this session.",
             "status": "no_pending_range",
         }
     if not pending_range["can_checkpoint"]:
         return {
-            "draft": None,
+            "artifacts": [],
             "message": "Pending range has no prompts to summarize.",
             "pending_range": pending_range,
-            "status": "no_draft",
+            "status": "no_memory",
         }
-    draft = generate_memory_draft_for_session(
+    memories = generate_context_memories_for_session(
         db,
         session,
         end_sequence=pending_range["end_sequence"],
@@ -259,83 +224,25 @@ def checkpoint_project_session(
         start_sequence=pending_range["start_sequence"],
         trigger_reason="batch_organize",
     )
-    db.commit()
-    if draft is None:
+    if not memories:
+        project_memory = get_latest_project_memory(db, project_id=project.id)
+        db.commit()
         return {
-            "draft": None,
-            "message": "No draft was generated for this pending range.",
+            "artifacts": [],
+            "message": "No memory was generated for this pending range.",
             "pending_range": pending_range,
-            "status": "no_draft",
+            "project_memory": _serialize_project_memory_snapshot(project_memory),
+            "status": "no_memory",
         }
-    return {
-        "draft": serialize_memory_artifact(draft),
-        "pending_range": pending_range,
-        "status": "draft_created",
-    }
-
-
-@router.get("/{project_id}/memory/drafts")
-def list_project_memory_draft_artifacts(
-    project_id: UUID,
-    limit: int = Query(default=20, ge=1, le=100),
-    current_user: User = Depends(require_web_user),
-    db: DBSession = Depends(get_db),
-) -> list[dict[str, Any]]:
-    project = _project_for_user(db, project_id, current_user)
-    drafts = list_project_memory_drafts(db, project_id=project.id, limit=limit)
-    return [serialize_memory_artifact_summary(draft, db=db) for draft in drafts]
-
-
-@router.patch("/{project_id}/memory/drafts/{draft_id}")
-def update_project_memory_draft(
-    project_id: UUID,
-    draft_id: UUID,
-    payload: MemoryDraftUpdateRequest,
-    current_user: User = Depends(require_web_user),
-    db: DBSession = Depends(get_db),
-) -> dict[str, Any]:
-    project = _project_for_user(db, project_id, current_user)
-    draft = _draft_for_project(db, project, draft_id)
-    updated = update_memory_draft(db, draft, updates=_draft_updates(payload))
-    db.commit()
-    return {"draft": serialize_memory_artifact(updated)}
-
-
-@router.post("/{project_id}/memory/drafts/{draft_id}/save")
-def save_project_memory_draft(
-    project_id: UUID,
-    draft_id: UUID,
-    payload: MemoryDraftUpdateRequest | None = None,
-    current_user: User = Depends(require_web_user),
-    db: DBSession = Depends(get_db),
-) -> dict[str, Any]:
-    project = _project_for_user(db, project_id, current_user)
-    draft = _draft_for_project(db, project, draft_id)
-    verified = save_memory_draft_as_verified(
-        db,
-        draft,
-        updates=_draft_updates(payload),
-    )
     project_memory = compile_project_memory(db, project_id=project.id)
     db.commit()
     return {
-        "artifact": serialize_memory_artifact(verified),
+        "artifacts": [serialize_memory_artifact(memory) for memory in memories],
+        "message": "Pending Memory was organized and Project Memory was updated.",
+        "pending_range": pending_range,
         "project_memory": _serialize_project_memory_snapshot(project_memory),
+        "status": "memory_generated",
     }
-
-
-@router.post("/{project_id}/memory/drafts/{draft_id}/ignore")
-def ignore_project_memory_draft(
-    project_id: UUID,
-    draft_id: UUID,
-    current_user: User = Depends(require_web_user),
-    db: DBSession = Depends(get_db),
-) -> dict[str, Any]:
-    project = _project_for_user(db, project_id, current_user)
-    draft = _draft_for_project(db, project, draft_id)
-    ignored = ignore_memory_draft(db, draft)
-    db.commit()
-    return {"draft": serialize_memory_artifact(ignored)}
 
 
 @router.post("/{project_id}/memory/project/compile")
@@ -365,6 +272,23 @@ def read_project_memory_snapshot(
     return _serialize_project_memory_snapshot(
         get_latest_project_memory(db, project_id=project.id)
     )
+
+
+@router.patch("/{project_id}/memory/project")
+def update_project_memory(
+    project_id: UUID,
+    payload: ProjectMemoryUpdateRequest,
+    current_user: User = Depends(require_web_user),
+    db: DBSession = Depends(get_db),
+) -> dict[str, Any]:
+    project = _project_for_user(db, project_id, current_user)
+    artifact = update_project_memory_snapshot(
+        db,
+        body_markdown=payload.body_markdown,
+        project_id=project.id,
+    )
+    db.commit()
+    return _serialize_project_memory_snapshot(artifact) or {"artifact": None, "snapshot": None}
 
 
 @router.get("/{project_id}/artifacts")
