@@ -153,6 +153,8 @@ def normalize_event_payload(
             source=first_string(payloads, ("source",)),
             summary=first_value(payloads, ("summary",)),
             changes=first_value(payloads, ("changes",)) or [],
+            change_detection_complete=first_bool(payloads, ("change_detection_complete",)),
+            no_changes=first_bool(payloads, ("no_changes",)),
         )
 
     if event_type == "CommitCreated":

@@ -82,6 +82,8 @@ class FilesChangedPayload(PayloadModel):
     source: str | None = None
     summary: dict | None = None
     changes: list[dict] = Field(default_factory=list)
+    change_detection_complete: bool | None = None
+    no_changes: bool | None = None
 
 
 class CommitCreatedPayload(PayloadModel):

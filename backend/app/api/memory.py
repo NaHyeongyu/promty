@@ -16,6 +16,7 @@ from app.models.sessions import Session
 from app.models.users import User
 from app.services.memory_artifacts import (
     LOCAL_MEMORY_GENERATOR,
+    PENDING_MEMORY_DRAFT_GENERATOR,
     compile_project_memory,
     complete_session_if_ready,
     generate_context_memories_for_session,
@@ -27,14 +28,10 @@ from app.services.memory_artifacts import (
     update_project_memory_snapshot,
 )
 from app.services.gemini_memory import (
-    GEMINI_CHUNK_SUMMARY_GENERATOR,
     GEMINI_MEMORY_DRAFT_GENERATOR,
-    GEMINI_MEMORY_GENERATOR,
 )
 from app.services.openai_memory import (
-    OPENAI_CHUNK_SUMMARY_GENERATOR,
     OPENAI_MEMORY_DRAFT_GENERATOR,
-    OPENAI_MEMORY_GENERATOR,
     OPENAI_PROJECT_MEMORY_GENERATOR,
 )
 
@@ -83,7 +80,9 @@ def list_project_memory_pending(
     db: DBSession = Depends(get_db),
 ) -> list[dict[str, Any]]:
     project = _project_for_user(db, project_id, current_user)
-    return list_project_memory_pending_ranges(db, project_id=project.id, limit=limit)
+    ranges = list_project_memory_pending_ranges(db, project_id=project.id, limit=limit)
+    db.commit()
+    return ranges
 
 
 @router.get("/_memory/generator")
@@ -94,22 +93,19 @@ def read_memory_generator_status(
         provider = provider.strip().lower()
         if provider == "openai" and settings.openai_api_key:
             return {
-                "chunk": OPENAI_CHUNK_SUMMARY_GENERATOR,
                 "draft": OPENAI_MEMORY_DRAFT_GENERATOR,
-                "legacy": OPENAI_MEMORY_GENERATOR,
+                "pending_draft": PENDING_MEMORY_DRAFT_GENERATOR,
                 "project": OPENAI_PROJECT_MEMORY_GENERATOR,
             }[stage]
         if provider == "gemini" and settings.gemini_api_key:
             return {
-                "chunk": GEMINI_CHUNK_SUMMARY_GENERATOR,
                 "draft": GEMINI_MEMORY_DRAFT_GENERATOR,
-                "legacy": GEMINI_MEMORY_GENERATOR,
+                "pending_draft": PENDING_MEMORY_DRAFT_GENERATOR,
                 "project": "gemini-project-memory-v1",
             }[stage]
         return LOCAL_MEMORY_GENERATOR
 
     return {
-        "active_generator": active_generator(settings.memory_generator, stage="legacy"),
         "fallback_generator": LOCAL_MEMORY_GENERATOR,
         "gemini_configured": bool(settings.gemini_api_key),
         "gemini_max_retries": settings.gemini_max_retries,
@@ -118,16 +114,13 @@ def read_memory_generator_status(
         "openai_max_retries": settings.openai_max_retries,
         "openai_model": settings.openai_model,
         "generators": {
-            "chunk": active_generator(settings.memory_chunk_generator, stage="chunk"),
             "draft": active_generator(settings.memory_draft_generator, stage="draft"),
-            "legacy": active_generator(settings.memory_generator, stage="legacy"),
+            "pending_draft": PENDING_MEMORY_DRAFT_GENERATOR,
             "project": active_generator(settings.project_memory_generator, stage="project"),
         },
-        "requested_generator": settings.memory_generator,
         "requested_generators": {
-            "chunk": settings.memory_chunk_generator,
             "draft": settings.memory_draft_generator,
-            "legacy": settings.memory_generator,
+            "pending_draft": "local",
             "project": settings.project_memory_generator,
         },
         "timeout_seconds": {
@@ -170,6 +163,7 @@ def complete_project_session(
         ),
         None,
     )
+    db.commit()
     return {
         "artifact": None,
         "completion": {
@@ -195,27 +189,49 @@ def checkpoint_project_session(
 ) -> dict[str, Any]:
     project = _project_for_user(db, project_id, current_user)
     session = _session_for_project(db, project, session_id)
-    pending_range = next(
-        (
-            item
-            for item in list_project_memory_pending_ranges(db, project_id=project.id, limit=100)
-            if item["session_id"] == str(session.id)
-        ),
-        None,
-    )
-    if pending_range is None:
+    pending_ranges = [
+        item
+        for item in list_project_memory_pending_ranges(db, project_id=project.id, limit=100)
+        if item["session_id"] == str(session.id)
+    ]
+    if not pending_ranges:
+        db.commit()
         return {
             "artifacts": [],
             "message": "No pending memory range for this session.",
             "status": "no_pending_range",
         }
-    if not pending_range["can_checkpoint"]:
+    checkpointable_ranges = [item for item in pending_ranges if item["can_checkpoint"]]
+    if not checkpointable_ranges:
+        db.commit()
         return {
             "artifacts": [],
             "message": "Pending range has no prompts to summarize.",
-            "pending_range": pending_range,
+            "pending_range": pending_ranges[0],
             "status": "no_memory",
         }
+    start_sequences = [
+        item["start_sequence"]
+        for item in checkpointable_ranges
+        if isinstance(item.get("start_sequence"), int)
+    ]
+    end_sequences = [
+        item["end_sequence"]
+        for item in checkpointable_ranges
+        if isinstance(item.get("end_sequence"), int)
+    ]
+    pending_range = {
+        **checkpointable_ranges[0],
+        "end_sequence": max(end_sequences)
+        if end_sequences
+        else checkpointable_ranges[0]["end_sequence"],
+        "event_count": sum(item.get("event_count") or 0 for item in checkpointable_ranges),
+        "prompt_count": sum(item.get("prompt_count") or 0 for item in checkpointable_ranges),
+        "response_count": sum(item.get("response_count") or 0 for item in checkpointable_ranges),
+        "start_sequence": min(start_sequences)
+        if start_sequences
+        else checkpointable_ranges[0]["start_sequence"],
+    }
     memories = generate_context_memories_for_session(
         db,
         session,
