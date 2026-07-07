@@ -8,13 +8,10 @@ from urllib import error, parse, request
 
 from app.core.config import settings
 from app.schemas.memory import (
-    ChunkSummary,
     MemoryDraftGeneration,
     ProjectMemorySnapshot,
 )
 
-GEMINI_MEMORY_GENERATOR = "gemini-memory-slice-v1"
-GEMINI_CHUNK_SUMMARY_GENERATOR = "gemini-chunk-summary-v1"
 GEMINI_MEMORY_DRAFT_GENERATOR = "gemini-memory-draft-v1"
 MAX_CHANGED_FILES = 60
 MAX_EVENT_TIMELINE = 80
@@ -118,8 +115,10 @@ def _compact_event(event: dict[str, Any]) -> dict[str, Any]:
     elif event_type == "FilesChanged":
         files = payload.get("files") if isinstance(payload.get("files"), list) else []
         compact_payload = {
+            "change_detection_complete": payload.get("change_detection_complete") is True,
             "file_count": len(files),
             "files": files[:8],
+            "no_changes": payload.get("no_changes") is True,
         }
     elif event_type == "CommitCreated":
         compact_payload = {
@@ -179,8 +178,10 @@ def _compact_context(context: dict[str, Any]) -> dict[str, Any]:
     commits = context["commits"]
     responses = context["responses"]
     events = context["events"]
-    memory_chunks = (
-        context.get("memory_chunks") if isinstance(context.get("memory_chunks"), list) else []
+    pending_drafts = (
+        context.get("pending_drafts")
+        if isinstance(context.get("pending_drafts"), list)
+        else []
     )
 
     return {
@@ -198,13 +199,13 @@ def _compact_context(context: dict[str, Any]) -> dict[str, Any]:
         "event_count": context["event_count"],
         "event_timeline": [_compact_event(event) for event in events[-MAX_EVENT_TIMELINE:]],
         "evidence_bullets": _evidence_bullets(context),
-        "memory_chunks": memory_chunks,
         "omitted": {
             "changed_files": max(len(changed_files) - MAX_CHANGED_FILES, 0),
             "events": max(len(events) - MAX_EVENT_TIMELINE, 0),
             "prompts": max(len(prompts) - MAX_PROMPTS, 0),
             "responses": max(len(responses) - MAX_RESPONSE_SAMPLES, 0),
         },
+        "pending_drafts": pending_drafts,
         "prompts": _select_prompts(prompts),
         "response_count": context["response_count"],
         "response_samples": _compact_responses(responses),
@@ -218,236 +219,13 @@ def _compact_context(context: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _build_prompt(context: dict[str, Any], fallback_payload: dict[str, Any]) -> str:
-    compact_context = _compact_context(context)
-    return "\n".join(
-        [
-            "You are generating Promty project memory from a bounded AI development slice.",
-            "The slice may cover only part of a longer session.",
-            "Return strict JSON only. Do not include markdown fences.",
-            "",
-            "Goal:",
-            "- Explain what meaningful development task happened.",
-            "- Capture why it happened, how it changed, and the outcome.",
-            "- Ground the summary only in the compact evidence.",
-            "- Do not invent details omitted from the evidence.",
-            "- Commit events are metadata only; do not use commit messages as the reason, trigger, or main evidence.",
-            "- If a prompt is marked prompt_ai_preview_truncated, infer intent mainly from the paired AI output with the same turn_id.",
-            "- Prefer memory_chunks when present; they are internal first-pass summaries.",
-            "",
-            "JSON shape:",
-            json.dumps(
-                {
-                    "title": "short task title",
-                    "summary": "1-2 sentence factual summary",
-                    "reason": "why the change was requested or necessary",
-                    "outcome": "what was completed or left unresolved",
-                    "technologies": ["frameworks, languages, or tools involved"],
-                    "sections": [
-                        {
-                            "title": "short section title",
-                            "summary": "specific user-facing detail",
-                        }
-                    ],
-                    "tags": ["short", "lowercase", "tags"],
-                },
-                indent=2,
-            ),
-            "",
-            "Fallback local summary:",
-            json.dumps(
-                {
-                    "outcome": fallback_payload["outcome"],
-                    "reason": fallback_payload["reason"],
-                    "sections": fallback_payload["sections"],
-                    "summary": fallback_payload["summary"],
-                    "technologies": fallback_payload["technologies"],
-                    "title": fallback_payload["title"],
-                },
-                ensure_ascii=False,
-            ),
-            "",
-            "Session evidence:",
-            json.dumps(compact_context, ensure_ascii=False),
-        ]
-    )
-
-
-def _build_chunk_summary_prompt(context: dict[str, Any]) -> str:
-    compact_context = _compact_context(context)
-    slice_metadata = context.get("slice") if isinstance(context.get("slice"), dict) else {}
-    chunk_index = slice_metadata.get("slice_index") if isinstance(slice_metadata, dict) else None
-    project_context = {
-        "model": context.get("model"),
-        "project_id": context.get("project_id"),
-        "project_name": context.get("project_name"),
-        "session_id": context.get("session_id"),
-        "summary_level": 1,
-        "tool": context.get("tool"),
-        "window": slice_metadata or None,
-    }
-    events_json = {
-        "event_timeline": compact_context["event_timeline"],
-        "prompts": compact_context["prompts"],
-        "response_samples": compact_context["response_samples"],
-    }
-    changed_files_json = {
-        "changed_file_count": compact_context["changed_file_count"],
-        "changed_files": compact_context["changed_files"],
-        "omitted_changed_files": compact_context["omitted"]["changed_files"],
-    }
-    commits_json = {
-        **compact_context["commit_metadata"],
-        "commit_count": compact_context["commit_count"],
-    }
-    return "\n".join(
-        [
-            "You are Promty's internal chunk summary assistant.",
-            "",
-            "Your job is NOT to create a final user-facing memory.",
-            "Your job is to compress one chunk of AI coding conversation into a structured intermediate summary.",
-            "",
-            "This summary will be used later by another model to create generated context memories.",
-            "",
-            "You are working inside Promty, a developer-focused product that turns AI coding conversations into work logs, decision notes, and reusable project memory.",
-            "",
-            "The current Promty memory flow is:",
-            "Raw Events",
-            "→ Active Buffer",
-            "→ every 20 PromptSubmitted events, create an internal chunk summary",
-            "→ Pending Memory accumulates unorganized event ranges",
-            "→ user runs batch organization",
-            "→ generated context memories are saved automatically",
-            "→ Project Memory is recompiled immediately",
-            "",
-            "This is a first-pass internal summary.",
-            "Do not make it polished for the user.",
-            "Do not create final memory drafts.",
-            "Do not create project memory.",
-            "Only extract the important information from this chunk.",
-            "",
-            "Focus on:",
-            "- what the user was trying to do",
-            "- what problem, question, or decision was being discussed",
-            "- what explanation, cause, or direction the AI provided",
-            "- what direction the user accepted, rejected, or corrected",
-            "- important decisions or decision candidates",
-            "- rejected directions",
-            "- unresolved questions",
-            "- information that may be useful for future AI coding sessions",
-            "",
-            "Important rules:",
-            "1. Do not summarize every message. Extract only information that could matter for future project understanding.",
-            '2. Do not invent missing context. If something is unclear, put it in "uncertainties".',
-            "3. Separate confirmed facts from inferred points. Use confidence scores between 0 and 1.",
-            "4. If a user input or AI output is marked as large or truncated, do not pretend you saw the full content.",
-            "5. For large user prompts, infer the issue mainly from the paired AI output, not from the missing raw content.",
-            '6. If the cause comes from the AI answer, phrase it as "AI answer suggested..." or "AI 답변 기준으로는...".',
-            "7. Do not state an AI-suggested cause as confirmed truth unless the user explicitly confirmed it.",
-            "8. Commit messages are metadata only. Use them as weak hints, not as primary evidence. Do not treat commits as summary triggers.",
-            "9. Changed file metadata is allowed as supporting context. Do not assume exact code behavior from file names alone.",
-            '10. Pay special attention when the user corrects the direction, for example "아니야", "다시 생각해보자", "현실성 없어", "이걸로 가자", "이건 제외하자".',
-            "11. Every important claim must include source_event_ids.",
-            "12. Prompt count, session, and token thresholds are internal chunking criteria only.",
-            "13. Return JSON only. Do not include markdown. Do not include explanations outside the JSON.",
-            "",
-            "Project context:",
-            json.dumps(project_context, ensure_ascii=False),
-            "",
-            "Input events:",
-            json.dumps(events_json, ensure_ascii=False),
-            "",
-            "Changed file metadata:",
-            json.dumps(changed_files_json, ensure_ascii=False),
-            "",
-            "Commit metadata:",
-            json.dumps(commits_json, ensure_ascii=False),
-            "",
-            "Return this JSON schema:",
-            json.dumps(
-                {
-                    "chunk_index": chunk_index or 1,
-                    "summary_level": 1,
-                    "chunk_purpose": "internal_summary",
-                    "source_event_ids": ["event id"],
-                    "main_topics": ["topic"],
-                    "user_intents": [
-                        {
-                            "intent": "string",
-                            "source_event_ids": ["event id"],
-                            "confidence": 0.0,
-                        }
-                    ],
-                    "ai_explanations": [
-                        {
-                            "explanation": "string",
-                            "based_on": "ai_answer",
-                            "source_event_ids": ["event id"],
-                            "confidence": 0.0,
-                            "is_inferred": True,
-                        }
-                    ],
-                    "decisions_or_directions": [
-                        {
-                            "content": "string",
-                            "reason": None,
-                            "source_event_ids": ["event id"],
-                            "confidence": 0.0,
-                        }
-                    ],
-                    "rejected_directions": [
-                        {
-                            "content": "string",
-                            "reason": None,
-                            "source_event_ids": ["event id"],
-                            "confidence": 0.0,
-                        }
-                    ],
-                    "implementation_signals": [
-                        {
-                            "content": "string",
-                            "based_on": "changed_files",
-                            "source_event_ids": ["event id"],
-                            "confidence": 0.0,
-                        }
-                    ],
-                    "important_for_project_memory": [
-                        {
-                            "content": "string",
-                            "reason": "string",
-                            "source_event_ids": ["event id"],
-                            "confidence": 0.0,
-                        }
-                    ],
-                    "open_questions": [
-                        {
-                            "question": "string",
-                            "source_event_ids": ["event id"],
-                        }
-                    ],
-                    "uncertainties": [
-                        {
-                            "content": "string",
-                            "reason": "string",
-                            "source_event_ids": ["event id"],
-                        }
-                    ],
-                    "handoff_summary_for_second_pass": "string",
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-        ]
-    )
-
-
 def _build_memory_draft_prompt(context: dict[str, Any]) -> str:
     compact_context = _compact_context(context)
-    memory_chunks = compact_context["memory_chunks"]
-    source_chunk_ids = [
-        chunk.get("id")
-        for chunk in memory_chunks
-        if isinstance(chunk, dict) and isinstance(chunk.get("id"), str)
+    pending_drafts = compact_context["pending_drafts"]
+    source_draft_ids = [
+        draft.get("id")
+        for draft in pending_drafts
+        if isinstance(draft, dict) and isinstance(draft.get("id"), str)
     ]
     project_context = {
         "model": context.get("model"),
@@ -469,7 +247,7 @@ def _build_memory_draft_prompt(context: dict[str, Any]) -> str:
     remaining_events = {
         "event_timeline": remaining_event_previews,
         "omitted_note": (
-            "Only events after the last internal chunk are included here when chunk summaries exist."
+            "Pending draft evidence is authoritative; remaining event previews are secondary."
         ),
     }
     changed_files = {
@@ -485,7 +263,7 @@ def _build_memory_draft_prompt(context: dict[str, Any]) -> str:
         [
             "You are Promty's generated context memory assistant.",
             "",
-            "Your job is to create user-facing generated context memories from internal chunk summaries, remaining event previews, and metadata.",
+            "Your job is to create user-facing generated context memories from pending draft evidence packages.",
             "",
             "These generated memories are saved automatically and then used to recompile Project Memory.",
             "",
@@ -493,11 +271,10 @@ def _build_memory_draft_prompt(context: dict[str, Any]) -> str:
             "",
             "The current Promty memory flow is:",
             "Raw Events",
-            "→ Active Buffer",
-            "→ every 20 PromptSubmitted events, create an internal chunk summary",
-            "→ Pending Memory accumulates unorganized event ranges",
-            "→ user runs batch organization",
-            "→ generated context memories are saved automatically",
+            "→ pending drafts are created after prompt-count/session-end/idle triggers",
+            "→ each pending draft contains original user input, original AI output, and file-change evidence",
+            "→ the user clicks Generate once for pending drafts",
+            "→ generated context memories are saved to History",
             "→ Project Memory is recompiled immediately",
             "",
             "This is a second-pass user-facing context memory generation step.",
@@ -525,7 +302,7 @@ def _build_memory_draft_prompt(context: dict[str, Any]) -> str:
             "- process_note: workflow or process policy",
             "",
             "Important rules:",
-            "1. Use only the provided chunk summaries, remaining event previews, changed file metadata, and commit metadata.",
+            "1. Use only the provided pending draft evidence, changed file metadata, and commit metadata.",
             '2. Do not invent missing details. If something is unclear, put it in "overall_uncertainties" or mark the draft as needs_user_verification.',
             "3. Separate confirmed facts from inferred points. Use confidence scores between 0 and 1.",
             '4. If a cause came from an AI answer, phrase it as "AI answer suggested..." or "AI 답변 기준으로는...".',
@@ -536,7 +313,7 @@ def _build_memory_draft_prompt(context: dict[str, Any]) -> str:
             "9. Prefer one specific batch-level generated memory item over many narrow cards.",
             '10. If the user rejected a direction, corrected the AI, or said something like "아니야", "현실성 없어", "다시 생각해보자", "이걸로 가자", capture that as an important product decision signal.',
             "11. Include rejected directions if they shaped the final direction.",
-            "12. Every generated memory item must include source_event_ids and source_chunk_ids.",
+            "12. Every generated memory item must include source_event_ids and source_chunk_ids. Use source_chunk_ids to carry the pending draft ids.",
             '13. Suggested user action: "save" if likely useful and clear, "edit" if useful but uncertain, "ignore" if vague or low-signal.',
             "14. Do not create fallback-style generic drafts such as counts of prompts and AI responses.",
             "15. The best output for a normal batch is exactly one memory_drafts item with detailed sections.",
@@ -549,8 +326,8 @@ def _build_memory_draft_prompt(context: dict[str, Any]) -> str:
             "Finalize trigger:",
             json.dumps(finalize_trigger, ensure_ascii=False),
             "",
-            "Internal chunk summaries:",
-            json.dumps(memory_chunks, ensure_ascii=False),
+            "Pending draft evidence packages:",
+            json.dumps(pending_drafts, ensure_ascii=False),
             "",
             "Remaining event previews:",
             json.dumps(remaining_events, ensure_ascii=False),
@@ -566,7 +343,7 @@ def _build_memory_draft_prompt(context: dict[str, Any]) -> str:
                 {
                     "summary_level": 2,
                     "draft_generation_reason": "string",
-                    "source_chunk_ids": source_chunk_ids,
+                    "source_chunk_ids": source_draft_ids,
                     "source_event_ids": ["event id"],
                     "memory_drafts": [
                         {
@@ -585,7 +362,7 @@ def _build_memory_draft_prompt(context: dict[str, Any]) -> str:
                                         "decision": "string",
                                         "reason": "string",
                                         "source_event_ids": ["event id"],
-                                        "source_chunk_ids": source_chunk_ids,
+                                        "source_chunk_ids": source_draft_ids,
                                         "confidence": 0.0,
                                     }
                                 ],
@@ -594,7 +371,7 @@ def _build_memory_draft_prompt(context: dict[str, Any]) -> str:
                                         "content": "string",
                                         "reason": None,
                                         "source_event_ids": ["event id"],
-                                        "source_chunk_ids": source_chunk_ids,
+                                        "source_chunk_ids": source_draft_ids,
                                         "confidence": 0.0,
                                     }
                                 ],
@@ -602,7 +379,7 @@ def _build_memory_draft_prompt(context: dict[str, Any]) -> str:
                                     {
                                         "question": "string",
                                         "source_event_ids": ["event id"],
-                                        "source_chunk_ids": source_chunk_ids,
+                                        "source_chunk_ids": source_draft_ids,
                                     }
                                 ],
                                 "follow_ups": ["string"],
@@ -610,8 +387,8 @@ def _build_memory_draft_prompt(context: dict[str, Any]) -> str:
                             },
                             "evidence": {
                                 "source_event_ids": ["event id"],
-                                "source_chunk_ids": source_chunk_ids,
-                                "based_on": ["chunk_summary"],
+                                "source_chunk_ids": source_draft_ids,
+                                "based_on": ["user_direction", "paired_ai_output", "changed_files"],
                             },
                             "confidence": 0.0,
                             "needs_user_verification": False,
@@ -623,7 +400,7 @@ def _build_memory_draft_prompt(context: dict[str, Any]) -> str:
                             "content": "string",
                             "reason": "string",
                             "source_event_ids": ["event id"],
-                            "source_chunk_ids": source_chunk_ids,
+                            "source_chunk_ids": source_draft_ids,
                         }
                     ],
                 },
@@ -659,18 +436,17 @@ def _build_project_memory_prompt(context: dict[str, Any]) -> str:
             "",
             "The current Promty memory flow is:",
             "Raw Events",
-            "→ Active Buffer",
-            "→ every 20 PromptSubmitted events, create an internal chunk summary",
-            "→ Pending Memory accumulates unorganized event ranges",
-            "→ user runs batch organization",
-            "→ generated context memories are saved automatically",
+            "→ pending draft evidence is created after prompt-count/session-end/idle triggers",
+            "→ each pending draft contains original user input, original AI output, and file-change evidence",
+            "→ user runs Generate for pending drafts",
+            "→ generated context memories are saved to History",
             "→ Project Memory is recompiled immediately",
-            "→ user may edit the final Project Memory snapshot later",
+            "→ user may edit generated memories and the final Project Memory snapshot later",
             "",
             "This is the final Project Memory compilation step.",
             "",
             "Use generated and user-edited source memories by default.",
-            "Do not use internal chunk summaries.",
+            "Do not use pending draft evidence directly.",
             "Do not use ignored or removed memories.",
             "Do not treat old unreviewed Memory Drafts as source of truth.",
             "",
@@ -686,7 +462,7 @@ def _build_project_memory_prompt(context: dict[str, Any]) -> str:
             "",
             "Important rules:",
             "1. Do not summarize raw conversations. Compile durable project context from source memories.",
-            "2. Do not include internal chunk summaries.",
+            "2. Do not include pending draft evidence directly.",
             "3. Do not include ignored or removed memories.",
             "4. If memories conflict, prefer the most recent generated or user-edited memory unless an older one is explicitly marked as still active.",
             '5. If a memory is marked as superseded, archived, or rejected, include it only in "Rejected Directions" or "Superseded Decisions" if it helps explain the current direction.',
@@ -768,46 +544,6 @@ def _parse_json_text(text: str) -> dict[str, Any]:
     return parsed
 
 
-def _clean_tags(value: Any, fallback_tags: list[str]) -> list[str]:
-    if not isinstance(value, list):
-        return fallback_tags
-    tags = [
-        tag.strip().lower().replace(" ", "-")
-        for tag in value
-        if isinstance(tag, str) and tag.strip()
-    ]
-    return sorted(set(tags))[:12] or fallback_tags
-
-
-def _clean_technologies(value: Any, fallback_technologies: list[str]) -> list[str]:
-    if not isinstance(value, list):
-        return fallback_technologies
-    technologies = [
-        technology.strip()
-        for technology in value
-        if isinstance(technology, str) and technology.strip()
-    ]
-    deduped = list(dict.fromkeys(technologies))
-    return deduped[:12] or fallback_technologies
-
-
-def _clean_sections(value: Any, fallback_sections: list[dict[str, str]]) -> list[dict[str, str]]:
-    if not isinstance(value, list):
-        return fallback_sections
-
-    sections: list[dict[str, str]] = []
-    for item in value:
-        if not isinstance(item, dict):
-            continue
-        title = _truncate(item.get("title"), 80)
-        summary = _truncate(item.get("summary"), 360)
-        if not title or not summary:
-            continue
-        sections.append({"summary": summary, "title": title})
-
-    return sections[:6] or fallback_sections
-
-
 def _source_event_ids_from_context(context: dict[str, Any]) -> list[str]:
     ids = [
         prompt.get("id")
@@ -837,121 +573,18 @@ def _clean_source_ids(value: Any, fallback_ids: list[str]) -> list[str]:
     return ids or fallback_ids
 
 
-def _clean_chunk_items(
-    value: Any,
-    *,
-    allowed_based_on: set[str] | None = None,
-    fallback_ids: list[str],
-    required_text_key: str,
-) -> list[dict[str, Any]]:
-    if not isinstance(value, list):
-        return []
-    cleaned: list[dict[str, Any]] = []
-    for item in value:
-        if not isinstance(item, dict):
-            continue
-        text = _truncate(item.get(required_text_key), 1000)
-        if not text:
-            continue
-        cleaned_item: dict[str, Any] = {
-            required_text_key: text,
-            "source_event_ids": _clean_source_ids(
-                item.get("source_event_ids"),
-                fallback_ids,
-            ),
-        }
-        if "confidence" in item:
-            cleaned_item["confidence"] = _clean_confidence(item.get("confidence"))
-        if "reason" in item:
-            cleaned_item["reason"] = _truncate(item.get("reason"), 1000)
-        if "is_inferred" in item:
-            cleaned_item["is_inferred"] = item.get("is_inferred") is True
-        if "based_on" in item:
-            based_on = item.get("based_on")
-            cleaned_item["based_on"] = (
-                based_on
-                if isinstance(based_on, str)
-                and (allowed_based_on is None or based_on in allowed_based_on)
-                else "user_input"
-            )
-        cleaned.append(cleaned_item)
-    return cleaned[:12]
-
-
-def _clean_chunk_summary(value: Any, context: dict[str, Any]) -> dict[str, Any]:
-    fallback_ids = _source_event_ids_from_context(context)
-    slice_metadata = context.get("slice") if isinstance(context.get("slice"), dict) else {}
-    chunk_index = slice_metadata.get("slice_index") if isinstance(slice_metadata, dict) else None
-    parsed = value if isinstance(value, dict) else {}
-    return {
-        "ai_explanations": _clean_chunk_items(
-            parsed.get("ai_explanations"),
-            allowed_based_on={"ai_answer", "user_input", "changed_files", "commit_metadata"},
-            fallback_ids=fallback_ids,
-            required_text_key="explanation",
-        ),
-        "chunk_index": chunk_index if isinstance(chunk_index, int) else parsed.get("chunk_index", 1),
-        "chunk_purpose": "internal_summary",
-        "decisions_or_directions": _clean_chunk_items(
-            parsed.get("decisions_or_directions"),
-            fallback_ids=fallback_ids,
-            required_text_key="content",
-        ),
-        "handoff_summary_for_second_pass": _truncate(
-            parsed.get("handoff_summary_for_second_pass"),
-            1600,
-        )
-        or "Internal chunk summary could not identify a clear handoff.",
-        "implementation_signals": _clean_chunk_items(
-            parsed.get("implementation_signals"),
-            allowed_based_on={"changed_files", "commit_metadata", "ai_answer", "user_input"},
-            fallback_ids=fallback_ids,
-            required_text_key="content",
-        ),
-        "important_for_project_memory": _clean_chunk_items(
-            parsed.get("important_for_project_memory"),
-            fallback_ids=fallback_ids,
-            required_text_key="content",
-        ),
-        "main_topics": [
-            _truncate(item, 120)
-            for item in parsed.get("main_topics", [])
-            if isinstance(item, str) and item.strip()
-        ][:8],
-        "open_questions": _clean_chunk_items(
-            parsed.get("open_questions"),
-            fallback_ids=fallback_ids,
-            required_text_key="question",
-        ),
-        "rejected_directions": _clean_chunk_items(
-            parsed.get("rejected_directions"),
-            fallback_ids=fallback_ids,
-            required_text_key="content",
-        ),
-        "source_event_ids": _clean_source_ids(parsed.get("source_event_ids"), fallback_ids),
-        "summary_level": 1,
-        "uncertainties": _clean_chunk_items(
-            parsed.get("uncertainties"),
-            fallback_ids=fallback_ids,
-            required_text_key="content",
-        ),
-        "user_intents": _clean_chunk_items(
-            parsed.get("user_intents"),
-            fallback_ids=fallback_ids,
-            required_text_key="intent",
-        ),
-    }
-
-
 def _source_chunk_ids_from_context(context: dict[str, Any]) -> list[str]:
-    memory_chunks = (
-        context.get("memory_chunks") if isinstance(context.get("memory_chunks"), list) else []
+    pending_drafts = (
+        context.get("pending_drafts")
+        if isinstance(context.get("pending_drafts"), list)
+        else []
     )
-    return [
-        chunk.get("id")
-        for chunk in memory_chunks
-        if isinstance(chunk, dict) and isinstance(chunk.get("id"), str) and chunk.get("id")
+    pending_ids = [
+        draft.get("id")
+        for draft in pending_drafts
+        if isinstance(draft, dict) and isinstance(draft.get("id"), str) and draft.get("id")
     ]
+    return pending_ids
 
 
 def _clean_string_list(
@@ -987,16 +620,16 @@ def _clean_suggested_action(value: Any, *, confidence: float, needs_verification
 def _clean_based_on(value: Any) -> list[str]:
     allowed = {
         "changed_files",
-        "chunk_summary",
         "commit_metadata",
         "paired_ai_output",
+        "pending_draft",
         "remaining_event_preview",
         "user_direction",
     }
     if not isinstance(value, list):
-        return ["chunk_summary"]
+        return ["pending_draft"]
     cleaned = [item for item in value if isinstance(item, str) and item in allowed]
-    return cleaned or ["chunk_summary"]
+    return cleaned or ["pending_draft"]
 
 
 def _clean_draft_nested_items(
@@ -1120,7 +753,7 @@ def _clean_memory_drafts_response(value: Any, context: dict[str, Any]) -> dict[s
             parsed.get("draft_generation_reason"),
             500,
         )
-        or "Memory draft generation ran from available chunk summaries and event previews.",
+        or "Memory draft generation ran from pending draft evidence packages.",
         "memory_drafts": memory_drafts,
         "overall_uncertainties": _clean_draft_nested_items(
             parsed.get("overall_uncertainties"),
@@ -1314,33 +947,6 @@ def _gemini_retry_delay(
     fallback_delay = max(settings.gemini_retry_base_seconds, 0.1) * (2**attempt)
     delay = header_delay or body_delay or fallback_delay
     return max(0.1, min(delay, max(settings.gemini_retry_max_sleep_seconds, 0.1)))
-
-
-def generate_gemini_memory_payload(
-    *,
-    context: dict[str, Any],
-    fallback_payload: dict[str, Any],
-) -> dict[str, Any]:
-    generated = _request_gemini_json(_build_prompt(context, fallback_payload))
-    return {
-        **fallback_payload,
-        "generator": GEMINI_MEMORY_GENERATOR,
-        "outcome": _truncate(generated.get("outcome"), 1000) or fallback_payload["outcome"],
-        "reason": _truncate(generated.get("reason"), 1200) or fallback_payload["reason"],
-        "sections": _clean_sections(generated.get("sections"), fallback_payload["sections"]),
-        "summary": _truncate(generated.get("summary"), 800) or fallback_payload["summary"],
-        "tags": _clean_tags(generated.get("tags"), fallback_payload["tags"]),
-        "technologies": _clean_technologies(
-            generated.get("technologies"),
-            fallback_payload["technologies"],
-        ),
-        "title": _truncate(generated.get("title"), 180) or fallback_payload["title"],
-    }
-
-
-def generate_gemini_chunk_summary(context: dict[str, Any]) -> dict[str, Any]:
-    generated = _request_gemini_json(_build_chunk_summary_prompt(context))
-    return ChunkSummary.parse_obj(_clean_chunk_summary(generated, context)).dict()
 
 
 def generate_gemini_memory_drafts(context: dict[str, Any]) -> dict[str, Any]:

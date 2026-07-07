@@ -1,4 +1,7 @@
+from types import SimpleNamespace
+
 from app.services.gemini_memory import MAX_MEMORY_DRAFTS, _clean_memory_drafts_response
+from app.services.memory_artifacts import _events_have_generation_inputs
 
 
 def _raw_draft(index: int) -> dict:
@@ -12,8 +15,8 @@ def _raw_draft(index: int) -> dict:
             "tasks": [f"Task {index}"],
         },
         "evidence": {
-            "based_on": ["chunk_summary"],
-            "source_chunk_ids": ["chunk-1"],
+            "based_on": ["pending_draft"],
+            "source_chunk_ids": ["pending-draft-1"],
             "source_event_ids": [f"event-{index}"],
         },
         "needs_user_verification": False,
@@ -28,14 +31,14 @@ def _raw_draft(index: int) -> dict:
 def test_memory_draft_cleaner_caps_drafts_for_review_ux() -> None:
     context = {
         "events": [{"event_type": "PromptSubmitted", "id": "event-fallback"}],
-        "memory_chunks": [{"id": "chunk-1"}],
+        "pending_drafts": [{"id": "pending-draft-1"}],
         "prompt_events": [{"id": "event-fallback"}],
     }
     generated = {
         "draft_generation_reason": "Model split the batch too much.",
         "memory_drafts": [_raw_draft(index) for index in range(MAX_MEMORY_DRAFTS + 2)],
         "overall_uncertainties": [],
-        "source_chunk_ids": ["chunk-1"],
+        "source_chunk_ids": ["pending-draft-1"],
         "source_event_ids": ["event-fallback"],
     }
 
@@ -51,7 +54,7 @@ def test_memory_draft_cleaner_preserves_detail_item_counts() -> None:
     item_count = 24
     context = {
         "events": [{"event_type": "PromptSubmitted", "id": "event-fallback"}],
-        "memory_chunks": [{"id": "chunk-1"}],
+        "pending_drafts": [{"id": "pending-draft-1"}],
         "prompt_events": [{"id": "event-fallback"}],
     }
     draft = _raw_draft(1)
@@ -61,7 +64,7 @@ def test_memory_draft_cleaner_preserves_detail_item_counts() -> None:
                 "confidence": 0.7,
                 "decision": f"Decision {index}",
                 "reason": f"Reason {index}",
-                "source_chunk_ids": ["chunk-1"],
+                "source_chunk_ids": ["pending-draft-1"],
                 "source_event_ids": [f"event-{index}"],
             }
             for index in range(item_count)
@@ -70,7 +73,7 @@ def test_memory_draft_cleaner_preserves_detail_item_counts() -> None:
         "open_questions": [
             {
                 "question": f"Question {index}",
-                "source_chunk_ids": ["chunk-1"],
+                "source_chunk_ids": ["pending-draft-1"],
                 "source_event_ids": [f"event-{index}"],
             }
             for index in range(item_count)
@@ -82,7 +85,7 @@ def test_memory_draft_cleaner_preserves_detail_item_counts() -> None:
         "draft_generation_reason": "Large batch should keep proportionally rich detail.",
         "memory_drafts": [draft],
         "overall_uncertainties": [],
-        "source_chunk_ids": ["chunk-1"],
+        "source_chunk_ids": ["pending-draft-1"],
         "source_event_ids": ["event-fallback"],
     }
 
@@ -93,3 +96,39 @@ def test_memory_draft_cleaner_preserves_detail_item_counts() -> None:
     assert len(details["decisions"]) == item_count
     assert len(details["follow_ups"]) == item_count
     assert len(details["open_questions"]) == item_count
+
+
+def test_memory_generation_inputs_require_response_and_file_marker_after_latest_prompt() -> None:
+    def event(
+        event_type: str,
+        sequence: int,
+        payload: dict | None = None,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(event_type=event_type, payload=payload or {}, sequence=sequence)
+
+    assert not _events_have_generation_inputs([event("PromptSubmitted", 1)])
+    assert not _events_have_generation_inputs(
+        [event("PromptSubmitted", 1), event("ResponseReceived", 2, {"response": "done"})]
+    )
+    assert not _events_have_generation_inputs(
+        [
+            event("PromptSubmitted", 1),
+            event("ResponseReceived", 2),
+            event("FilesChanged", 3),
+        ]
+    )
+    assert _events_have_generation_inputs(
+        [
+            event("PromptSubmitted", 1),
+            event("ResponseReceived", 2, {"response": "done"}),
+            event("FilesChanged", 3),
+        ]
+    )
+    assert not _events_have_generation_inputs(
+        [
+            event("PromptSubmitted", 1),
+            event("ResponseReceived", 2, {"response": "done"}),
+            event("FilesChanged", 3),
+            event("PromptSubmitted", 4),
+        ]
+    )

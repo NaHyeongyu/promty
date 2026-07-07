@@ -133,6 +133,8 @@ class FilesChangedPayload(PayloadBase):
     source: str | None = None
     summary: dict[str, Any] | None = None
     changes: list[dict[str, Any]] = field(default_factory=list)
+    change_detection_complete: bool | None = None
+    no_changes: bool | None = None
 
 
 @dataclass(slots=True)

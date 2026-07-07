@@ -268,7 +268,11 @@ def add_events(
         session = db.get(Session, session_id)
         if session is None:
             continue
-        generate_due_memory_artifacts_for_session(db, session)
+        generate_due_memory_artifacts_for_session(
+            db,
+            session,
+            finalize=session.ended_at is not None,
+        )
 
     db.commit()
     return event_ids

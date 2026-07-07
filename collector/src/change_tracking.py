@@ -541,9 +541,6 @@ def detect_changes(record: dict[str, Any], cwd: str | Path | None = None) -> Cha
         return None
 
     changes = _changed_paths(baseline_snapshot, current_snapshot)
-    if not changes:
-        return None
-
     payload = {
         "files": [change["path"] for change in changes],
         "cwd": record.get("cwd"),
@@ -563,6 +560,8 @@ def detect_changes(record: dict[str, Any], cwd: str | Path | None = None) -> Cha
         "source": "git",
         "summary": _summarize_changes(changes),
         "changes": changes,
+        "change_detection_complete": True,
+        "no_changes": not changes,
     }
     return ChangeDetectionResult(
         baseline=record,
