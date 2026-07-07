@@ -7,28 +7,18 @@ from urllib import error, request
 
 from app.core.config import settings
 from app.schemas.memory import (
-    ChunkSummary,
     MemoryDraftGeneration,
     ProjectMemorySnapshot,
 )
 from app.services.gemini_memory import (
     GeminiMemoryGenerationError,
-    _build_chunk_summary_prompt,
     _build_memory_draft_prompt,
     _build_project_memory_prompt,
-    _build_prompt,
-    _clean_chunk_summary,
     _clean_memory_drafts_response,
     _clean_project_memory_response,
-    _clean_sections,
-    _clean_tags,
-    _clean_technologies,
     _parse_json_text,
-    _truncate,
 )
 
-OPENAI_MEMORY_GENERATOR = "openai-memory-slice-v1"
-OPENAI_CHUNK_SUMMARY_GENERATOR = "openai-chunk-summary-v1"
 OPENAI_MEMORY_DRAFT_GENERATOR = "openai-memory-draft-v1"
 OPENAI_PROJECT_MEMORY_GENERATOR = "openai-project-memory-v1"
 RETRYABLE_HTTP_STATUS_CODES = {429, 500, 502, 503, 504}
@@ -139,33 +129,6 @@ def _request_openai_json(prompt: str) -> dict[str, Any]:
     if last_error is not None:
         raise last_error
     raise OpenAIMemoryGenerationError("OpenAI request failed.")
-
-
-def generate_openai_memory_payload(
-    *,
-    context: dict[str, Any],
-    fallback_payload: dict[str, Any],
-) -> dict[str, Any]:
-    generated = _request_openai_json(_build_prompt(context, fallback_payload))
-    return {
-        **fallback_payload,
-        "generator": OPENAI_MEMORY_GENERATOR,
-        "outcome": _truncate(generated.get("outcome"), 1000) or fallback_payload["outcome"],
-        "reason": _truncate(generated.get("reason"), 1200) or fallback_payload["reason"],
-        "sections": _clean_sections(generated.get("sections"), fallback_payload["sections"]),
-        "summary": _truncate(generated.get("summary"), 800) or fallback_payload["summary"],
-        "tags": _clean_tags(generated.get("tags"), fallback_payload["tags"]),
-        "technologies": _clean_technologies(
-            generated.get("technologies"),
-            fallback_payload["technologies"],
-        ),
-        "title": _truncate(generated.get("title"), 180) or fallback_payload["title"],
-    }
-
-
-def generate_openai_chunk_summary(context: dict[str, Any]) -> dict[str, Any]:
-    generated = _request_openai_json(_build_chunk_summary_prompt(context))
-    return ChunkSummary.parse_obj(_clean_chunk_summary(generated, context)).dict()
 
 
 def generate_openai_memory_drafts(context: dict[str, Any]) -> dict[str, Any]:

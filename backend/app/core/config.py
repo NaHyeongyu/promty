@@ -218,18 +218,6 @@ class Settings:
             20.0,
         )
     )
-    memory_generator: str = field(
-        default_factory=lambda: _str_env_any(
-            ("PROMTY_MEMORY_GENERATOR", "PROMPTHUB_MEMORY_GENERATOR"),
-            "openai",
-        )
-    )
-    memory_chunk_generator: str = field(
-        default_factory=lambda: _str_env_any(
-            ("PROMTY_MEMORY_CHUNK_GENERATOR", "PROMPTHUB_MEMORY_CHUNK_GENERATOR"),
-            "local",
-        )
-    )
     memory_draft_generator: str = field(
         default_factory=lambda: _str_env_any(
             ("PROMTY_MEMORY_DRAFT_GENERATOR", "PROMPTHUB_MEMORY_DRAFT_GENERATOR"),

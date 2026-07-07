@@ -100,8 +100,6 @@ def _operational_risks() -> list[dict[str, str]]:
     external_memory_enabled = any(
         generator.strip().lower() in {"gemini", "openai"}
         for generator in (
-            settings.memory_generator,
-            settings.memory_chunk_generator,
             settings.memory_draft_generator,
             settings.project_memory_generator,
         )
@@ -235,11 +233,8 @@ def read_admin_overview(
             "cors_origins": list(settings.cors_origins),
             "gemini_configured": bool(settings.gemini_api_key),
             "openai_configured": bool(settings.openai_api_key),
-            "memory_generator": settings.memory_generator,
             "memory_generators": {
-                "chunk": settings.memory_chunk_generator,
                 "draft": settings.memory_draft_generator,
-                "legacy": settings.memory_generator,
                 "project": settings.project_memory_generator,
             },
             "published_flows_enabled": False,

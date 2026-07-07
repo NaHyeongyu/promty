@@ -485,7 +485,10 @@ type AdminOverview = {
     app_url: string;
     cors_origins: string[];
     gemini_configured: boolean;
-    memory_generator: string;
+    memory_generators: {
+      draft?: string;
+      project?: string;
+    };
     openai_configured?: boolean;
     published_flows_enabled: boolean;
     session_cookie_secure: boolean;
@@ -3466,7 +3469,13 @@ function AdminDashboard({
           <dl className="admin-kv-list">
             <div>
               <dt>Memory</dt>
-              <dd>{overview?.system.memory_generator ?? "unknown"}</dd>
+              <dd>
+                {overview?.system.memory_generators
+                  ? `${overview.system.memory_generators.draft ?? "unknown"} / ${
+                      overview.system.memory_generators.project ?? "unknown"
+                    }`
+                  : "unknown"}
+              </dd>
             </div>
             <div>
               <dt>Gemini</dt>

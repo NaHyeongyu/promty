@@ -10,59 +10,6 @@ class SourceConfidenceItem(BaseModel):
     confidence: float = Field(default=0.5, ge=0, le=1)
 
 
-class ChunkUserIntent(SourceConfidenceItem):
-    intent: str
-
-
-class ChunkAiExplanation(SourceConfidenceItem):
-    explanation: str
-    based_on: Literal["ai_answer", "user_input", "changed_files", "commit_metadata"]
-    is_inferred: bool = False
-
-
-class ChunkDirection(SourceConfidenceItem):
-    content: str
-    reason: str | None = None
-
-
-class ChunkImplementationSignal(SourceConfidenceItem):
-    content: str
-    based_on: Literal["changed_files", "commit_metadata", "ai_answer", "user_input"]
-
-
-class ChunkImportantMemory(SourceConfidenceItem):
-    content: str
-    reason: str
-
-
-class ChunkOpenQuestion(BaseModel):
-    question: str
-    source_event_ids: list[str] = Field(default_factory=list)
-
-
-class ChunkUncertainty(BaseModel):
-    content: str
-    reason: str
-    source_event_ids: list[str] = Field(default_factory=list)
-
-
-class ChunkSummary(BaseModel):
-    chunk_index: int = 1
-    summary_level: Literal[1] = 1
-    chunk_purpose: Literal["internal_summary"] = "internal_summary"
-    source_event_ids: list[str] = Field(default_factory=list)
-    main_topics: list[str] = Field(default_factory=list)
-    user_intents: list[ChunkUserIntent] = Field(default_factory=list)
-    ai_explanations: list[ChunkAiExplanation] = Field(default_factory=list)
-    decisions_or_directions: list[ChunkDirection] = Field(default_factory=list)
-    rejected_directions: list[ChunkDirection] = Field(default_factory=list)
-    implementation_signals: list[ChunkImplementationSignal] = Field(default_factory=list)
-    important_for_project_memory: list[ChunkImportantMemory] = Field(default_factory=list)
-    open_questions: list[ChunkOpenQuestion] = Field(default_factory=list)
-    uncertainties: list[ChunkUncertainty] = Field(default_factory=list)
-    handoff_summary_for_second_pass: str
-
-
 class DraftDecision(BaseModel):
     decision: str
     reason: str
@@ -103,14 +50,14 @@ class MemoryDraftEvidence(BaseModel):
     source_chunk_ids: list[str] = Field(default_factory=list)
     based_on: list[
         Literal[
-            "chunk_summary",
+            "pending_draft",
             "remaining_event_preview",
             "paired_ai_output",
             "changed_files",
             "commit_metadata",
             "user_direction",
         ]
-    ] = Field(default_factory=lambda: ["chunk_summary"])
+    ] = Field(default_factory=lambda: ["pending_draft"])
 
 
 class MemoryDraftItem(BaseModel):
