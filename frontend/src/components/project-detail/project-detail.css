@@ -4740,27 +4740,12 @@ button.bh-file-tree-row:focus-visible {
   outline-offset: 2px;
 }
 
-.bh-markdown-editor,
 .bh-markdown-preview {
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--bh-color-border);
   border-radius: var(--bh-radius-sm);
   background: var(--bh-color-surface);
-}
-
-.bh-markdown-editor:focus-within {
-  border-color: var(--bh-color-border-hover);
-  outline: 2px solid var(--bh-color-primary);
-  outline-offset: 2px;
-}
-
-.bh-markdown-editor .cm-editor {
-  min-height: 260px;
-}
-
-.bh-markdown-editor .cm-scroller {
-  overflow: auto;
 }
 
 .bh-markdown-preview {

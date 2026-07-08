@@ -274,7 +274,6 @@ def add_events(
             finalize=session.ended_at is not None,
         )
 
-    db.commit()
     return event_ids
 
 

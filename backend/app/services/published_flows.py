@@ -1,67 +1,54 @@
 from __future__ import annotations
 
-import hashlib
-from pathlib import Path
 import re
-from datetime import datetime
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import desc, func, or_, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.config import settings
-from app.core.encryption import maybe_decrypt_app_text_from_string
 from app.core.time import utc_now
-from app.models.code_change_patches import CodeChangePatch
 from app.models.events import Event
 from app.models.projects import Project
 from app.models.published_flows import (
     PublishedFlow,
-    PublishedFlowAsset,
     PublishedFlowFile,
     PublishedFlowItem,
 )
 from app.models.sessions import Session as PromptSession
 from app.models.users import User
 from app.services.event_payload_security import (
-    CODE_CHANGE_PATCH_PURPOSE,
     decrypt_event_payload,
 )
+from app.services.published_flow_access import (
+    can_read_flow as _can_read_flow,
+    flow_for_owner as _flow_for_owner,
+    readable_flow_filter as _readable_flow_filter,
+)
+from app.services.published_flow_redaction import (
+    normalize_tags as _normalize_tags,
+    optional_redacted_text as _optional_redacted_text,
+    redact_text as _redact_text,
+)
+from app.services.published_flow_serializers import (
+    serialize_flow_detail,
+    serialize_flow_summary,
+)
+from app.services.prompt_activity import (
+    files_changed_by_prompt_from_events,
+    patch_file_changes_by_prompt,
+    payload_model as _payload_model,
+    payload_prompt as _payload_prompt,
+    response_payloads_by_prompt,
+    string_or_none as _string_or_none,
+    tool_label as _tool_label,
+)
 
-MAX_TAGS = 12
-MAX_TAG_LENGTH = 40
 MAX_TITLE_LENGTH = 255
 VALID_FLOW_STATUSES = {"archived", "draft", "published"}
 VALID_CREATE_FLOW_STATUSES = {"draft", "published"}
 VALID_FLOW_VISIBILITIES = {"private", "public", "unlisted"}
-ASSET_CONTENT_TYPES = {
-    "image/gif": ".gif",
-    "image/jpeg": ".jpg",
-    "image/png": ".png",
-    "image/webp": ".webp",
-}
-
-SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
-    (
-        re.compile(
-            r"(?i)\b(api[_-]?key|authorization|password|secret|token)\b"
-            r"(\s*[:=]\s*)(['\"]?)[^\s'\",;}]{8,}(['\"]?)"
-        ),
-        r"\1\2\3[redacted]\4",
-    ),
-    (re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b"), "[redacted-openai-key]"),
-    (re.compile(r"\bghp_[A-Za-z0-9_]{20,}\b"), "[redacted-github-token]"),
-    (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"), "[redacted-github-token]"),
-    (re.compile(r"/Users/[^/\s]+"), "/Users/[local-user]"),
-    (re.compile(r"/home/[^/\s]+"), "/home/[local-user]"),
-    (
-        re.compile(r"(?i)\b([A-Z]:)[\\/]+Users[\\/]+[^\\/\s]+"),
-        r"\1\\Users\\[local-user]",
-    ),
-)
 
 LANGUAGE_BY_EXTENSION = {
     ".css": "CSS",
@@ -80,109 +67,6 @@ LANGUAGE_BY_EXTENSION = {
     ".yml": "YAML",
     ".yaml": "YAML",
 }
-
-def _iso(value: datetime | None) -> str | None:
-    return value.isoformat() if value else None
-
-
-def _tool_label(tool: str | None) -> str | None:
-    if tool is None:
-        return None
-    labels = {
-        "claude-code": "Claude Code",
-        "codex-cli": "Codex",
-        "cursor": "Cursor",
-        "gemini-cli": "Gemini CLI",
-    }
-    return labels.get(tool, tool)
-
-
-def _payload_model(payload: dict[str, Any], tool: str) -> str:
-    model = payload.get("model")
-    return model if isinstance(model, str) and model else _tool_label(tool) or tool
-
-
-def _payload_prompt(payload: dict[str, Any]) -> str:
-    prompt = payload.get("prompt")
-    if isinstance(prompt, str) and prompt.strip():
-        return prompt.strip()
-    return "Untitled prompt"
-
-
-def _string_or_none(value: Any) -> str | None:
-    return value if isinstance(value, str) and value else None
-
-
-def _first_int(*values: Any) -> int | None:
-    for value in values:
-        if isinstance(value, int):
-            return value
-    return None
-
-
-def _redact_text(value: str | None) -> str | None:
-    if value is None:
-        return None
-    redacted = value
-    for pattern, replacement in SECRET_PATTERNS:
-        redacted = pattern.sub(replacement, redacted)
-    return redacted
-
-
-def _normalize_tags(tags: list[str]) -> list[str]:
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for tag in tags:
-        value = tag.strip().strip("#").lower()
-        if not value or value in seen:
-            continue
-        seen.add(value)
-        normalized.append(value[:MAX_TAG_LENGTH])
-        if len(normalized) >= MAX_TAGS:
-            break
-    return normalized
-
-
-def _asset_root() -> Path:
-    return Path(settings.published_flow_asset_root).expanduser().resolve()
-
-
-def _asset_path(storage_key: str) -> Path:
-    root = _asset_root()
-    path = (root / storage_key).resolve()
-    if root != path and root not in path.parents:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Published flow asset path is invalid",
-        )
-    return path
-
-
-def _sniff_image_content_type(content: bytes) -> str | None:
-    if content.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "image/png"
-    if content.startswith(b"\xff\xd8\xff"):
-        return "image/jpeg"
-    if content.startswith((b"GIF87a", b"GIF89a")):
-        return "image/gif"
-    if len(content) >= 12 and content.startswith(b"RIFF") and content[8:12] == b"WEBP":
-        return "image/webp"
-    return None
-
-
-def _safe_file_name(value: str | None, content_type: str) -> str:
-    fallback = f"image{ASSET_CONTENT_TYPES[content_type]}"
-    if not value:
-        return fallback
-    name = Path(value).name.strip().replace("\x00", "")
-    if not name or name in {".", ".."}:
-        return fallback
-    return name[:255]
-
-
-def _markdown_alt_text(value: str | None, fallback: str) -> str:
-    raw = (value or fallback).strip() or "Image"
-    return raw.replace("\n", " ").replace("\r", " ").replace("[", "(").replace("]", ")")[:255]
 
 
 def _slugify(value: str) -> str:
@@ -207,65 +91,6 @@ def _language_from_path(path: str) -> str | None:
         if lowered.endswith(extension):
             return language
     return None
-
-
-def _file_changes_from_files_changed(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    changes = payload.get("changes")
-    if isinstance(changes, list):
-        file_changes: list[dict[str, Any]] = []
-        for change in changes:
-            if not isinstance(change, dict):
-                continue
-            path = change.get("path")
-            if not isinstance(path, str) or not path:
-                continue
-            file_changes.append(
-                {
-                    "path": path,
-                    "status": change.get("status")
-                    if isinstance(change.get("status"), str)
-                    else "changed",
-                    "additions": _first_int(
-                        change.get("additions"),
-                        change.get("insertions_delta"),
-                    ),
-                    "deletions": _first_int(
-                        change.get("deletions_delta"),
-                        change.get("deletions"),
-                    ),
-                    "patch": change.get("patch") if isinstance(change.get("patch"), str) else None,
-                }
-            )
-        if file_changes:
-            return file_changes
-
-    files = payload.get("files")
-    if isinstance(files, list):
-        return [
-            {
-                "path": path,
-                "status": "changed",
-                "additions": 0,
-                "deletions": 0,
-                "patch": None,
-            }
-            for path in files
-            if isinstance(path, str) and path
-        ]
-    return []
-
-
-def _file_change_from_patch(patch: CodeChangePatch) -> dict[str, Any]:
-    return {
-        "additions": patch.additions or 0,
-        "deletions": patch.deletions or 0,
-        "patch": maybe_decrypt_app_text_from_string(
-            patch.patch,
-            purpose=CODE_CHANGE_PATCH_PURPOSE,
-        ),
-        "path": patch.path,
-        "status": patch.status,
-    }
 
 
 def _project_for_user(db: Session, project_id: UUID, user: User) -> Project:
@@ -342,36 +167,16 @@ def _prompt_responses(
     events: list[Event],
     payloads: dict[UUID, dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
-    prompt_responses: dict[str, dict[str, Any]] = {}
-    prompt_by_turn: dict[str, str] = {}
-    latest_prompt: Event | None = None
-
-    for event in events:
-        payload = payloads[event.id]
-        if event.event_type == "PromptSubmitted":
-            latest_prompt = event
-            turn_id = payload.get("turn_id")
-            if turn_id is not None:
-                prompt_by_turn[str(turn_id)] = str(event.id)
-            continue
-
-        if event.event_type != "ResponseReceived":
-            continue
-
-        prompt_event_id = _string_or_none(payload.get("prompt_event_id"))
-        if prompt_event_id is None:
-            turn_id = payload.get("turn_id")
-            if turn_id is not None:
-                prompt_event_id = prompt_by_turn.get(str(turn_id))
-        if prompt_event_id is None and latest_prompt is not None:
-            prompt_event_id = str(latest_prompt.id)
-        if prompt_event_id is not None:
-            prompt_responses[prompt_event_id] = {
-                "response": _redact_text(_string_or_none(payload.get("response"))),
-                "response_received_at": event.created_at,
-            }
-
-    return prompt_responses
+    return {
+        prompt_event_id: {
+            "response": _redact_text(_string_or_none(payload.get("response"))),
+            "response_received_at": event.created_at,
+        }
+        for prompt_event_id, (event, payload) in response_payloads_by_prompt(
+            events,
+            payloads,
+        ).items()
+    }
 
 
 def _prompt_file_changes(
@@ -382,40 +187,22 @@ def _prompt_file_changes(
     prompt_event_ids: set[str],
     project_id: UUID,
 ) -> dict[str, list[dict[str, Any]]]:
-    prompt_changes: dict[str, list[dict[str, Any]]] = {}
     prompt_event_uuids = [UUID(prompt_event_id) for prompt_event_id in prompt_event_ids]
     if not prompt_event_uuids:
-        return prompt_changes
+        return {}
 
-    patch_rows = list(
-        db.execute(
-            select(CodeChangePatch)
-            .where(
-                CodeChangePatch.project_id == project_id,
-                CodeChangePatch.prompt_event_id.in_(prompt_event_uuids),
-            )
-            .order_by(CodeChangePatch.created_at, CodeChangePatch.path)
-        ).scalars()
+    prompt_changes = patch_file_changes_by_prompt(
+        db,
+        project_id=project_id,
+        prompt_event_ids=prompt_event_uuids,
     )
-    for patch in patch_rows:
-        if patch.prompt_event_id is None:
-            continue
-        prompt_changes.setdefault(str(patch.prompt_event_id), []).append(
-            _file_change_from_patch(patch)
-        )
-
-    for event in events:
-        if event.event_type != "FilesChanged":
-            continue
-        payload = payloads[event.id]
-        prompt_event_id = payload.get("prompt_event_id")
-        if (
-            not isinstance(prompt_event_id, str)
-            or prompt_event_id not in prompt_event_ids
-            or prompt_event_id in prompt_changes
-        ):
-            continue
-        prompt_changes[prompt_event_id] = _file_changes_from_files_changed(payload)
+    for prompt_event_id, changes in files_changed_by_prompt_from_events(
+        events,
+        payloads,
+        existing_prompt_ids=set(prompt_changes),
+        prompt_event_ids=prompt_event_ids,
+    ).items():
+        prompt_changes.setdefault(prompt_event_id, []).extend(changes)
 
     return prompt_changes
 
@@ -433,53 +220,6 @@ def _default_summary(selected_events: list[Event], file_count: int) -> str:
         f"A {len(selected_events)}-{prompt_label} development flow with "
         f"{file_count} changed {file_label}."
     )
-
-
-def _readable_flow_filter(current_user: User):
-    return or_(
-        PublishedFlow.author_id == current_user.id,
-        (
-            (PublishedFlow.status == "published")
-            & (PublishedFlow.visibility.in_(["public", "unlisted"]))
-        ),
-    )
-
-
-def _can_read_flow(flow: PublishedFlow, current_user: User) -> bool:
-    if flow.author_id == current_user.id:
-        return True
-    return flow.status == "published" and flow.visibility in {"public", "unlisted"}
-
-
-def _flow_by_key(db: Session, flow_key: str) -> PublishedFlow | None:
-    try:
-        flow_id = UUID(flow_key)
-    except ValueError:
-        flow_id = None
-
-    statement = select(PublishedFlow)
-    if flow_id is not None:
-        statement = statement.where(PublishedFlow.id == flow_id)
-    else:
-        statement = statement.where(PublishedFlow.slug == flow_key)
-    return db.scalar(statement)
-
-
-def _flow_for_owner(db: Session, *, current_user: User, flow_key: str) -> PublishedFlow:
-    flow = _flow_by_key(db, flow_key)
-    if flow is None or flow.author_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Published flow not found",
-        )
-    return flow
-
-
-def _optional_redacted_text(value: str | None) -> str | None:
-    if value is None:
-        return None
-    stripped = value.strip()
-    return _redact_text(stripped) if stripped else None
 
 
 def _apply_flow_status(flow: PublishedFlow, status_value: str) -> None:
@@ -715,14 +455,7 @@ def create_published_flow(
                 )
             )
 
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Published flow could not be created because it conflicts with existing data.",
-        ) from exc
+    db.flush()
 
     saved_flow = get_published_flow(db, flow_key=str(flow.id), current_user=current_user)
     return saved_flow
@@ -776,14 +509,7 @@ def update_published_flow(
         _apply_flow_status(flow, status_value)
 
     flow.updated_at = utc_now()
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Published flow could not be updated because it conflicts with existing data.",
-        ) from exc
+    db.flush()
 
     return get_published_flow(db, flow_key=str(flow.id), current_user=current_user)
 
@@ -797,151 +523,8 @@ def archive_published_flow(
     flow = _flow_for_owner(db, current_user=current_user, flow_key=flow_key)
     _apply_flow_status(flow, "archived")
     flow.updated_at = utc_now()
-    db.commit()
+    db.flush()
     return get_published_flow(db, flow_key=str(flow.id), current_user=current_user)
-
-
-def serialize_flow_asset(flow: PublishedFlow, asset: PublishedFlowAsset) -> dict[str, Any]:
-    url = (
-        f"{settings.api_public_url.rstrip('/')}"
-        f"/api/published-flows/{flow.slug}/assets/{asset.id}"
-    )
-    alt_text = _markdown_alt_text(asset.alt_text, asset.file_name)
-    return {
-        "alt_text": asset.alt_text,
-        "byte_size": asset.byte_size,
-        "content_type": asset.content_type,
-        "created_at": _iso(asset.created_at),
-        "file_name": asset.file_name,
-        "id": str(asset.id),
-        "markdown": f"![{alt_text}]({url})",
-        "sha256": asset.sha256,
-        "url": url,
-    }
-
-
-def create_published_flow_asset(
-    db: Session,
-    *,
-    alt_text: str | None,
-    content: bytes,
-    content_type: str | None,
-    current_user: User,
-    file_name: str | None,
-    flow_key: str,
-) -> dict[str, Any]:
-    flow = _flow_for_owner(db, current_user=current_user, flow_key=flow_key)
-    if flow.status == "archived":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Archived prompt flows cannot accept new assets",
-        )
-
-    max_bytes = max(settings.published_flow_asset_max_bytes, 1)
-    if not content:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Image file is empty",
-        )
-    if len(content) > max_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Image file must be {max_bytes} bytes or smaller",
-        )
-
-    detected_content_type = _sniff_image_content_type(content)
-    if detected_content_type is None:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Only PNG, JPEG, WEBP, and GIF images are supported",
-        )
-    declared_content_type = (content_type or "").split(";", 1)[0].strip().lower()
-    expected_content_types = {detected_content_type, "application/octet-stream"}
-    if detected_content_type == "image/jpeg":
-        expected_content_types.add("image/jpg")
-    if declared_content_type and declared_content_type not in expected_content_types:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Image content type does not match the uploaded file",
-        )
-
-    asset_id = uuid4()
-    extension = ASSET_CONTENT_TYPES[detected_content_type]
-    storage_key = f"{flow.id}/{asset_id}{extension}"
-    path = _asset_path(storage_key)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(content)
-
-    cleaned_alt_text = _optional_redacted_text(alt_text) if alt_text else None
-    asset = PublishedFlowAsset(
-        alt_text=cleaned_alt_text[:255] if cleaned_alt_text else None,
-        author_id=current_user.id,
-        byte_size=len(content),
-        content_type=detected_content_type,
-        file_name=_safe_file_name(file_name, detected_content_type),
-        id=asset_id,
-        published_flow_id=flow.id,
-        sha256=hashlib.sha256(content).hexdigest(),
-        storage_key=storage_key,
-    )
-    db.add(asset)
-    flow.updated_at = utc_now()
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        try:
-            path.unlink()
-        except OSError:
-            pass
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Image asset could not be saved because it conflicts with existing data.",
-        ) from exc
-    except Exception:
-        db.rollback()
-        try:
-            path.unlink()
-        except OSError:
-            pass
-        raise
-
-    return serialize_flow_asset(flow, asset)
-
-
-def get_published_flow_asset(
-    db: Session,
-    *,
-    asset_id: UUID,
-    current_user: User,
-    flow_key: str,
-) -> tuple[PublishedFlowAsset, Path]:
-    flow = _flow_by_key(db, flow_key)
-    if flow is None or not _can_read_flow(flow, current_user):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Published flow not found",
-        )
-
-    asset = db.scalar(
-        select(PublishedFlowAsset).where(
-            PublishedFlowAsset.id == asset_id,
-            PublishedFlowAsset.published_flow_id == flow.id,
-        )
-    )
-    if asset is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Image asset not found",
-        )
-
-    path = _asset_path(asset.storage_key)
-    if not path.is_file():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Image asset file not found",
-        )
-    return asset, path
 
 
 def list_published_flows(
@@ -1004,93 +587,3 @@ def get_published_flow(
         )
 
     return serialize_flow_detail(flow, current_user=current_user)
-
-
-def serialize_flow_summary(flow: PublishedFlow, *, current_user: User) -> dict[str, Any]:
-    return {
-        "author": {
-            "avatar_url": flow.author.avatar_url if flow.author else None,
-            "id": str(flow.author_id) if flow.author_id else None,
-            "username": flow.author.username if flow.author else "Unknown",
-        },
-        "created_at": _iso(flow.created_at),
-        "file_count": flow.file_count,
-        "id": str(flow.id),
-        "is_owner": flow.author_id == current_user.id,
-        "metrics": flow.metrics or {},
-        "model_name": flow.model_name,
-        "prompt_count": flow.prompt_count,
-        "published_at": _iso(flow.published_at),
-        "slug": flow.slug,
-        "status": flow.status,
-        "summary": flow.summary,
-        "tags": flow.tags or [],
-        "title": flow.title,
-        "tool_name": flow.tool_name,
-        "updated_at": _iso(flow.updated_at),
-        "visibility": flow.visibility,
-    }
-
-
-def serialize_flow_detail(flow: PublishedFlow, *, current_user: User) -> dict[str, Any]:
-    payload = serialize_flow_summary(flow, current_user=current_user)
-    payload.update(
-        {
-            "context_summary": flow.context_summary,
-            "end_sequence": flow.end_sequence,
-            "assets": [
-                serialize_flow_asset(flow, asset)
-                for asset in flow.assets
-            ],
-            "files": [
-                {
-                    "additions": file.additions,
-                    "change_type": file.change_type,
-                    "deletions": file.deletions,
-                    "diff": file.diff,
-                    "file_path": file.file_path,
-                    "id": str(file.id),
-                    "is_included": file.is_included,
-                    "language": file.language,
-                    "source_event_id": str(file.source_event_id)
-                    if file.source_event_id
-                    else None,
-                }
-                for file in flow.files
-            ],
-            "items": [
-                {
-                    "files_changed": item.files_changed,
-                    "id": str(item.id),
-                    "is_included": item.is_included,
-                    "item_order": item.item_order,
-                    "model_name": item.model_name,
-                    "prompt_text": item.prompt_text,
-                    "response_received_at": _iso(item.response_received_at),
-                    "response_text": item.response_text,
-                    "sequence": item.sequence,
-                    "source_event_id": str(item.source_event_id)
-                    if item.source_event_id
-                    else None,
-                    "submitted_at": _iso(item.submitted_at),
-                    "tool_name": item.tool_name,
-                }
-                for item in flow.items
-            ],
-            "notes": flow.notes,
-            "source_project_id": str(flow.source_project_id)
-            if flow.source_project_id
-            else None,
-            "source_session_id": str(flow.source_session_id)
-            if flow.source_session_id
-            else None,
-            "source_start_event_id": str(flow.source_start_event_id)
-            if flow.source_start_event_id
-            else None,
-            "source_end_event_id": str(flow.source_end_event_id)
-            if flow.source_end_event_id
-            else None,
-            "start_sequence": flow.start_sequence,
-        }
-    )
-    return payload

@@ -9,7 +9,6 @@ from fastapi import HTTPException, status
 from sqlalchemy import case, desc, func, select
 from sqlalchemy.orm import Session
 
-from app.core.encryption import maybe_decrypt_app_text_from_string
 from app.models.artifacts import Artifact
 from app.models.code_change_patches import CodeChangePatch
 from app.models.events import Event
@@ -18,12 +17,24 @@ from app.models.projects import Project
 from app.models.sessions import Session as PromptSession
 from app.models.users import User
 from app.services.event_payload_security import (
-    CODE_CHANGE_PATCH_PURPOSE,
     decrypt_event_payload,
 )
-from app.services.memory_artifacts import (
+from app.services.memory.constants import (
     PROJECT_MEMORY_ARTIFACT_TYPE,
+)
+from app.services.memory.serializers import (
     serialize_memory_artifact_summary,
+)
+from app.services.prompt_activity import (
+    files_changed_by_prompt_from_events,
+    format_response_summary,
+    iso,
+    model_name,
+    patch_file_changes_by_prompt,
+    payload_model,
+    payload_prompt,
+    response_payloads_by_prompt,
+    tool_label,
 )
 
 RECENT_ACTIVITY_LIMIT = 50
@@ -46,150 +57,6 @@ def normalize_github_url(remote_url: str | None) -> str | None:
         if match:
             return f"https://github.com/{match.group('owner')}/{match.group('repo')}"
     return value if value.startswith("https://github.com/") else None
-
-
-def iso(value: Any) -> str | None:
-    return value.isoformat() if value else None
-
-
-def tool_label(tool: str) -> str:
-    labels = {
-        "claude-code": "Claude Code",
-        "codex-cli": "Codex",
-        "cursor": "Cursor",
-        "gemini-cli": "Gemini CLI",
-    }
-    return labels.get(tool, tool)
-
-
-TOOL_MODEL_ALIASES = {
-    "claude code",
-    "claude-code",
-    "codex",
-    "codex-cli",
-    "cursor",
-    "gemini cli",
-    "gemini-cli",
-}
-
-
-def model_name(value: Any) -> str | None:
-    if not isinstance(value, str):
-        return None
-    model = value.strip()
-    if not model or model.lower() in TOOL_MODEL_ALIASES:
-        return None
-    return model
-
-
-def payload_model(payload: dict[str, Any], tool: str) -> str:
-    return model_name(payload.get("model")) or tool_label(tool)
-
-
-def payload_prompt(payload: dict[str, Any]) -> str:
-    prompt = payload.get("prompt")
-    if isinstance(prompt, str) and prompt.strip():
-        return prompt.strip()
-    return "Untitled prompt"
-
-
-def string_or_none(value: Any) -> str | None:
-    return value if isinstance(value, str) and value else None
-
-
-def response_summary(event: Event, payload: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "response": string_or_none(payload.get("response")),
-        "response_original_length": payload.get("response_original_length")
-        if isinstance(payload.get("response_original_length"), int)
-        else None,
-        "response_received_at": iso(event.created_at),
-        "response_source": string_or_none(payload.get("response_source")),
-        "response_storage_limit": payload.get("response_storage_limit")
-        if isinstance(payload.get("response_storage_limit"), int)
-        else None,
-        "response_truncated": payload.get("response_truncated") is True,
-    }
-
-
-def first_int(*values: Any) -> int | None:
-    for value in values:
-        if isinstance(value, int):
-            return value
-    return None
-
-
-def file_changes_from_files_changed(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    changes = payload.get("changes")
-    if isinstance(changes, list):
-        file_changes: list[dict[str, Any]] = []
-        for change in changes:
-            if not isinstance(change, dict):
-                continue
-            path = change.get("path")
-            if not isinstance(path, str) or not path:
-                continue
-            file_changes.append(
-                {
-                    "path": path,
-                    "status": change.get("status")
-                    if isinstance(change.get("status"), str)
-                    else "changed",
-                    "additions": first_int(
-                        change.get("additions"),
-                        change.get("insertions_delta"),
-                    ),
-                    "deletions": first_int(
-                        change.get("deletions_delta"),
-                        change.get("deletions"),
-                    ),
-                    "old_path": change.get("old_path")
-                    if isinstance(change.get("old_path"), str)
-                    else None,
-                    "patch": change.get("patch") if isinstance(change.get("patch"), str) else None,
-                    "patch_omitted_reason": change.get("patch_omitted_reason")
-                    if isinstance(change.get("patch_omitted_reason"), str)
-                    else None,
-                    "patch_truncated": change.get("patch_truncated") is True,
-                    "binary": change.get("binary") is True,
-                }
-            )
-        if file_changes:
-            return file_changes
-
-    files = payload.get("files")
-    if isinstance(files, list):
-        return [
-            {
-                "path": path,
-                "status": "changed",
-                "additions": None,
-                "deletions": None,
-            }
-            for path in files
-            if isinstance(path, str) and path
-        ]
-    return []
-
-
-def file_change_from_patch(patch: CodeChangePatch) -> dict[str, Any]:
-    return {
-        "additions": patch.additions,
-        "binary": patch.binary,
-        "deletions": patch.deletions,
-        "event_id": str(patch.event_id),
-        "old_path": patch.old_path,
-        "patch": maybe_decrypt_app_text_from_string(
-            patch.patch,
-            purpose=CODE_CHANGE_PATCH_PURPOSE,
-        ),
-        "patch_omitted_reason": patch.metadata_.get("patch_omitted_reason")
-        if isinstance(patch.metadata_, dict)
-        else None,
-        "patch_truncated": patch.patch_truncated,
-        "path": patch.path,
-        "status": patch.status,
-    }
 
 
 def build_file_tree(paths: list[str]) -> list[dict[str, Any]]:
@@ -250,10 +117,6 @@ def project_for_user(db: Session, project_id: UUID, current_user: User) -> Proje
             detail="Project not found",
         )
     return project
-
-
-def _event_sort_key(event: Event) -> tuple[datetime, int]:
-    return event.created_at, event.sequence
 
 
 def _session_metadata_for_project(db: Session, project_id: UUID) -> tuple[set[str], set[str]]:
@@ -375,26 +238,12 @@ def _prompt_file_changes(
     prompt_event_id_strings = {str(prompt_event_id) for prompt_event_id in prompt_event_ids}
 
     prompt_changes: dict[str, list[dict[str, Any]]] = {}
-    patch_rows = (
-        list(
-            db.execute(
-                select(CodeChangePatch)
-                .where(
-                    CodeChangePatch.project_id == project_id,
-                    CodeChangePatch.prompt_event_id.in_(prompt_event_id_values),
-                )
-                .order_by(CodeChangePatch.created_at.desc(), CodeChangePatch.path)
-            ).scalars()
-        )
-        if prompt_event_id_values
-        else []
+    prompt_changes = patch_file_changes_by_prompt(
+        db,
+        descending=True,
+        project_id=project_id,
+        prompt_event_ids=prompt_event_id_values,
     )
-    for patch in patch_rows:
-        if patch.prompt_event_id is None:
-            continue
-        prompt_changes.setdefault(str(patch.prompt_event_id), []).append(
-            file_change_from_patch(patch)
-        )
 
     if not prompt_events:
         return prompt_changes
@@ -414,16 +263,17 @@ def _prompt_file_changes(
             .limit(PROMPT_RELATED_EVENT_LIMIT)
         ).scalars()
     )
-    for event in fallback_events:
-        payload = decrypt_event_payload(event.event_type, event.payload)
-        prompt_event_id = payload.get("prompt_event_id")
-        if not isinstance(prompt_event_id, str) or prompt_event_id not in prompt_event_id_strings:
-            continue
-        if prompt_event_id in prompt_changes:
-            continue
-        prompt_changes.setdefault(prompt_event_id, []).extend(
-            file_changes_from_files_changed(payload)
-        )
+    fallback_payloads = {
+        event.id: decrypt_event_payload(event.event_type, event.payload)
+        for event in fallback_events
+    }
+    for prompt_event_id, changes in files_changed_by_prompt_from_events(
+        fallback_events,
+        fallback_payloads,
+        existing_prompt_ids=set(prompt_changes),
+        prompt_event_ids=prompt_event_id_strings,
+    ).items():
+        prompt_changes.setdefault(prompt_event_id, []).extend(changes)
 
     return prompt_changes
 
@@ -454,31 +304,17 @@ def _prompt_responses(
         ).scalars()
     )
 
-    prompt_responses: dict[str, dict[str, Any]] = {}
-    prompt_by_session_turn: dict[tuple[UUID, str], str] = {}
-    latest_prompt_by_session: dict[UUID, Event] = {}
-    for event in sorted([*prompt_events, *response_events], key=_event_sort_key):
-        if event.event_type == "PromptSubmitted":
-            payload = prompt_payloads[event.id]
-            latest_prompt_by_session[event.session_id] = event
-            turn_id = payload.get("turn_id")
-            if turn_id is not None:
-                prompt_by_session_turn[(event.session_id, str(turn_id))] = str(event.id)
-            continue
-
-        payload = decrypt_event_payload(event.event_type, event.payload)
-        prompt_event_id = string_or_none(payload.get("prompt_event_id"))
-        if prompt_event_id is None:
-            turn_id = payload.get("turn_id")
-            if turn_id is not None:
-                prompt_event_id = prompt_by_session_turn.get((event.session_id, str(turn_id)))
-        if prompt_event_id is None:
-            prompt_event = latest_prompt_by_session.get(event.session_id)
-            prompt_event_id = str(prompt_event.id) if prompt_event else None
-        if prompt_event_id is not None:
-            prompt_responses[prompt_event_id] = response_summary(event, payload)
-
-    return prompt_responses
+    response_payloads = {
+        event.id: decrypt_event_payload(event.event_type, event.payload)
+        for event in response_events
+    }
+    return {
+        prompt_event_id: format_response_summary(event, payload)
+        for prompt_event_id, (event, payload) in response_payloads_by_prompt(
+            [*prompt_events, *response_events],
+            {**prompt_payloads, **response_payloads},
+        ).items()
+    }
 
 
 def read_project_detail_response(

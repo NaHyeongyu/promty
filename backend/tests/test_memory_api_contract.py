@@ -3,13 +3,13 @@ from uuid import uuid4
 
 from app.api.memory import _serialize_project_memory_snapshot
 from app.models.artifacts import Artifact
-from app.services.memory_artifacts import (
+from app.services.memory.constants import (
     MEMORY_ARTIFACT_TYPE,
     PROJECT_MEMORY_ARTIFACT_TYPE,
     REVIEW_STATE_EDITED,
     REVIEW_STATE_GENERATED,
-    serialize_memory_artifact,
 )
+from app.services.memory.serializers import serialize_memory_artifact
 
 
 def _artifact(*, artifact_type: str = MEMORY_ARTIFACT_TYPE) -> Artifact:

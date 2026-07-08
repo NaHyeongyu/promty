@@ -318,21 +318,6 @@ export type ProjectDetailData = {
   repositoryFilesTruncated?: boolean;
 };
 
-export type PromptFlowPublishPayload = {
-  context_summary?: string | null;
-  end_prompt_event_id?: string | null;
-  notes?: string | null;
-  prompt_event_ids?: string[];
-  project_id: string;
-  session_id?: string | null;
-  start_prompt_event_id?: string | null;
-  status: "draft" | "published";
-  summary?: string | null;
-  tags: string[];
-  title?: string | null;
-  visibility: "private" | "public" | "unlisted";
-};
-
 export type PromptFlowUpdatePayload = {
   context_summary?: string | null;
   notes?: string | null;

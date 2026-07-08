@@ -23,6 +23,7 @@ def create_events(
 ) -> EventBatchResponse:
     try:
         event_ids = add_events(db, batch.events, owner=ingest_owner)
+        db.commit()
     except EventIngestConflict as exc:
         db.rollback()
         raise HTTPException(

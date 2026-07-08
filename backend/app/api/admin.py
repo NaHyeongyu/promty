@@ -19,7 +19,7 @@ from app.models.projects import Project
 from app.models.sessions import Session as PromptSession
 from app.models.tokens import CollectorToken
 from app.models.users import User
-from app.services.memory_artifacts import MEMORY_ARTIFACT_TYPE
+from app.services.memory.constants import MEMORY_ARTIFACT_TYPE
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 

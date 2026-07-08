@@ -1,5 +1,10 @@
-import { siClaude, siCursor, siGooglegemini, type SimpleIcon } from "simple-icons";
-import { SiOpenai } from "react-icons/si";
+import {
+  siClaude,
+  siCursor,
+  siGooglegemini,
+  type SimpleIcon,
+} from "simple-icons";
+import { Bot } from "lucide-react";
 import "./AiModelBadge.css";
 
 type AiModelBadgeInfo = {
@@ -81,9 +86,16 @@ export function AiModelBadge({
         >
           <path d={badge.icon.path} />
         </svg>
-      ) : (
-        <SiOpenai aria-hidden="true" className="ai-model-badge-icon" />
-      )}
+      ) : null}
+      {!badge.icon ? (
+        <Bot
+          aria-hidden="true"
+          className="ai-model-badge-icon"
+          data-icon-style="line"
+          size={16}
+          strokeWidth={1.8}
+        />
+      ) : null}
       <span className="ai-model-badge-copy">
         <strong>{badge.aiName}</strong>
         <span>{badge.modelName}</span>

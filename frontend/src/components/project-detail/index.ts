@@ -16,7 +16,6 @@ export type {
   PublishedFlowAsset,
   PublishedFlowDetail,
   PromptActivityItem,
-  PromptFlowPublishPayload,
   PromptFlowUpdatePayload,
   ProjectCommunityFlow,
   ProjectCommunityStatus,

@@ -10,13 +10,15 @@ from app.schemas.memory import (
     MemoryDraftGeneration,
     ProjectMemorySnapshot,
 )
-from app.services.gemini_memory import (
-    GeminiMemoryGenerationError,
-    _build_memory_draft_prompt,
-    _build_project_memory_prompt,
-    _clean_memory_drafts_response,
-    _clean_project_memory_response,
-    _parse_json_text,
+from app.services.memory.cleaners import (
+    clean_memory_drafts_response,
+    clean_project_memory_response,
+    parse_json_text,
+)
+from app.services.memory.errors import MemoryGenerationError
+from app.services.memory.prompts import (
+    build_memory_draft_prompt,
+    build_project_memory_prompt,
 )
 
 OPENAI_MEMORY_DRAFT_GENERATOR = "openai-memory-draft-v1"
@@ -25,7 +27,7 @@ RETRYABLE_HTTP_STATUS_CODES = {429, 500, 502, 503, 504}
 OPENAI_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
 
 
-class OpenAIMemoryGenerationError(GeminiMemoryGenerationError):
+class OpenAIMemoryGenerationError(MemoryGenerationError):
     pass
 
 
@@ -111,7 +113,11 @@ def _request_openai_json(prompt: str) -> dict[str, Any]:
                 timeout=max(settings.openai_timeout_seconds, 1),
             ) as response:
                 response_payload = json.loads(response.read().decode("utf-8"))
-            return _parse_json_text(_extract_text(response_payload))
+            return parse_json_text(
+                _extract_text(response_payload),
+                error_cls=OpenAIMemoryGenerationError,
+                provider="OpenAI",
+            )
         except error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
             last_error = OpenAIMemoryGenerationError(
@@ -132,14 +138,14 @@ def _request_openai_json(prompt: str) -> dict[str, Any]:
 
 
 def generate_openai_memory_drafts(context: dict[str, Any]) -> dict[str, Any]:
-    generated = _request_openai_json(_build_memory_draft_prompt(context))
+    generated = _request_openai_json(build_memory_draft_prompt(context))
     return MemoryDraftGeneration.parse_obj(
-        _clean_memory_drafts_response(generated, context)
+        clean_memory_drafts_response(generated, context)
     ).dict()
 
 
 def generate_openai_project_memory(context: dict[str, Any]) -> dict[str, Any]:
-    generated = _request_openai_json(_build_project_memory_prompt(context))
+    generated = _request_openai_json(build_project_memory_prompt(context))
     return ProjectMemorySnapshot.parse_obj(
-        _clean_project_memory_response(generated, context)
+        clean_project_memory_response(generated, context)
     ).dict()

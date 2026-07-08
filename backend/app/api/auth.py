@@ -6,16 +6,14 @@ import json
 import secrets
 import time
 from typing import Any
-from urllib import error, parse, request
+from urllib import parse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.encoding import base64_urldecode, base64_urlencode
-from app.core.encryption import encrypt_github_token
 from app.core.security import (
     hash_collector_token,
     issue_collector_token,
@@ -24,18 +22,19 @@ from app.core.security import (
     require_web_user,
 )
 from app.db.session import get_db
-from app.models.github_connections import GitHubConnection
 from app.models.tokens import CollectorToken
 from app.models.users import User
+from app.services.github_oauth import (
+    GITHUB_CLI_SCOPE,
+    GITHUB_WEB_SCOPE,
+    build_github_authorization_url,
+    exchange_code_for_token,
+    upsert_github_connection,
+    upsert_github_user,
+)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
-GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
-GITHUB_USER_URL = "https://api.github.com/user"
-GITHUB_EMAILS_URL = "https://api.github.com/user/emails"
 STATE_TTL_SECONDS = 600
-GITHUB_CLI_SCOPE = "read:user user:email"
-GITHUB_WEB_SCOPE = "read:user user:email repo"
 
 
 def _state_secret() -> bytes:
@@ -124,172 +123,11 @@ def _require_web_oauth_nonce(payload: dict[str, Any], request: Request) -> None:
         raise HTTPException(status_code=400, detail="Invalid OAuth state cookie")
 
 
-def _json_request(url: str, *, token: str | None = None) -> dict[str, Any] | list[Any]:
-    headers = {
-        "Accept": "application/json",
-        "User-Agent": "PromptHub",
-    }
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    req = request.Request(url, headers=headers)
-    try:
-        with request.urlopen(req, timeout=10) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except error.HTTPError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"GitHub API request failed: HTTP {exc.code}",
-        ) from exc
-    except (error.URLError, json.JSONDecodeError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="GitHub API request failed",
-        ) from exc
-
-
-def _exchange_code_for_token(code: str) -> dict[str, Any]:
-    if not settings.github_client_id or not settings.github_client_secret:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="GitHub OAuth is not configured",
-        )
-
-    body = parse.urlencode(
-        {
-            "client_id": settings.github_client_id,
-            "client_secret": settings.github_client_secret,
-            "code": code,
-            "redirect_uri": f"{settings.api_public_url.rstrip('/')}/api/auth/github/callback",
-        }
-    ).encode("utf-8")
-    req = request.Request(
-        GITHUB_TOKEN_URL,
-        data=body,
-        headers={"Accept": "application/json", "User-Agent": "PromptHub"},
-        method="POST",
-    )
-    try:
-        with request.urlopen(req, timeout=10) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except (error.URLError, json.JSONDecodeError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="GitHub token exchange failed",
-        ) from exc
-
-    if not isinstance(payload, dict):
-        raise HTTPException(status_code=400, detail="GitHub token exchange failed")
-    access_token = payload.get("access_token")
-    if not isinstance(access_token, str) or not access_token:
-        raise HTTPException(status_code=400, detail="GitHub token exchange failed")
-    return payload
-
-
-def _fetch_primary_email(access_token: str) -> str | None:
-    payload = _json_request(GITHUB_EMAILS_URL, token=access_token)
-    if not isinstance(payload, list):
-        return None
-
-    for item in payload:
-        if not isinstance(item, dict):
-            continue
-        if item.get("primary") is True and item.get("verified") is True:
-            email = item.get("email")
-            return email if isinstance(email, str) else None
-    return None
-
-
-def _unique_username(db: Session, username: str, github_id: str) -> str:
-    existing = db.scalar(select(User).where(User.username == username))
-    if existing is None or existing.github_id == github_id:
-        return username
-    return f"{username}-{github_id}"
-
-
-def _available_email(db: Session, email: str | None, github_id: str) -> str | None:
-    if not email:
-        return None
-    existing = db.scalar(select(User).where(User.email == email))
-    if existing is None or existing.github_id == github_id:
-        return email
-    return None
-
-
-def _upsert_user(db: Session, access_token: str) -> User:
-    payload = _json_request(GITHUB_USER_URL, token=access_token)
-    if not isinstance(payload, dict):
-        raise HTTPException(status_code=502, detail="Invalid GitHub user response")
-
-    github_id_value = payload.get("id")
-    login_value = payload.get("login")
-    if github_id_value is None or not isinstance(login_value, str):
-        raise HTTPException(status_code=502, detail="Invalid GitHub user response")
-
-    github_id = str(github_id_value)
-    username = _unique_username(db, login_value, github_id)
-    email_value = payload.get("email")
-    email = email_value if isinstance(email_value, str) else None
-    if email is None:
-        email = _fetch_primary_email(access_token)
-    email = _available_email(db, email, github_id)
-    avatar_value = payload.get("avatar_url")
-    avatar_url = avatar_value if isinstance(avatar_value, str) else None
-
-    user = db.scalar(select(User).where(User.github_id == github_id))
-    if user is None:
-        user = User(
-            github_id=github_id,
-            email=email,
-            username=username,
-            avatar_url=avatar_url,
-        )
-        db.add(user)
-    else:
-        user.email = email
-        user.username = username
-        user.avatar_url = avatar_url
-    db.flush()
-    return user
-
-
-def _upsert_github_connection(
-    db: Session,
-    *,
-    access_token: str,
-    scopes: str | None,
-    token_type: str | None,
-    user: User,
-) -> None:
-    connection = db.scalar(
-        select(GitHubConnection).where(GitHubConnection.user_id == user.id)
-    )
-    if connection is None:
-        connection = GitHubConnection(
-            user_id=user.id,
-            access_token_encrypted=encrypt_github_token(access_token),
-            scopes=scopes,
-            token_type=token_type,
-        )
-        db.add(connection)
-    else:
-        connection.access_token_encrypted = encrypt_github_token(access_token)
-        connection.scopes = scopes
-        connection.token_type = token_type
-        connection.revoked_at = None
-    db.flush()
-
-
 @router.get("/github/start")
 def start_github_login(
     redirect_uri: str = Query(...),
     state: str = Query(...),
 ) -> RedirectResponse:
-    if not settings.github_client_id or not settings.github_client_secret:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="GitHub OAuth is not configured",
-        )
-
     cli_redirect_uri = _validate_cli_redirect_uri(redirect_uri)
     oauth_state = _encode_state(
         {
@@ -299,17 +137,9 @@ def start_github_login(
             "mode": "cli",
         }
     )
-    callback_url = f"{settings.api_public_url.rstrip('/')}/api/auth/github/callback"
-    github_url = (
-        f"{GITHUB_AUTHORIZE_URL}?"
-        + parse.urlencode(
-            {
-                "client_id": settings.github_client_id,
-                "redirect_uri": callback_url,
-                "scope": GITHUB_CLI_SCOPE,
-                "state": oauth_state,
-            }
-        )
+    github_url = build_github_authorization_url(
+        scope=GITHUB_CLI_SCOPE,
+        state=oauth_state,
     )
     return RedirectResponse(github_url, status_code=status.HTTP_302_FOUND)
 
@@ -318,12 +148,6 @@ def start_github_login(
 def start_github_web_login(
     return_to: str | None = Query(default=None),
 ) -> RedirectResponse:
-    if not settings.github_client_id or not settings.github_client_secret:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="GitHub OAuth is not configured",
-        )
-
     nonce = secrets.token_urlsafe(32)
     oauth_state = _encode_state(
         {
@@ -333,17 +157,9 @@ def start_github_web_login(
             "web_nonce_hash": _nonce_hash(nonce),
         }
     )
-    callback_url = f"{settings.api_public_url.rstrip('/')}/api/auth/github/callback"
-    github_url = (
-        f"{GITHUB_AUTHORIZE_URL}?"
-        + parse.urlencode(
-            {
-                "client_id": settings.github_client_id,
-                "redirect_uri": callback_url,
-                "scope": GITHUB_WEB_SCOPE,
-                "state": oauth_state,
-            }
-        )
+    github_url = build_github_authorization_url(
+        scope=GITHUB_WEB_SCOPE,
+        state=oauth_state,
     )
     response = RedirectResponse(github_url, status_code=status.HTTP_302_FOUND)
     response.set_cookie(
@@ -369,14 +185,14 @@ def finish_github_login(
     if payload.get("mode") == "web":
         _require_web_oauth_nonce(payload, request)
 
-    token_payload = _exchange_code_for_token(code)
+    token_payload = exchange_code_for_token(code)
     access_token = str(token_payload["access_token"])
-    user = _upsert_user(db, access_token)
+    user = upsert_github_user(db, access_token)
 
     if payload.get("mode") == "web":
         scopes = token_payload.get("scope")
         token_type = token_payload.get("token_type")
-        _upsert_github_connection(
+        upsert_github_connection(
             db,
             access_token=access_token,
             scopes=scopes if isinstance(scopes, str) else None,

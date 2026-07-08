@@ -16,24 +16,22 @@ from app.models.projects import Project
 from app.models.sessions import Session
 from app.models.users import User
 from app.services.memory_artifacts import (
-    LOCAL_MEMORY_GENERATOR,
-    PENDING_MEMORY_DRAFT_GENERATOR,
-    PROJECT_MEMORY_ARTIFACT_TYPE,
     compile_project_memory,
     complete_session_if_ready,
     generate_context_memories_for_session,
     list_project_memory_pending_ranges,
     get_latest_project_memory,
-    serialize_memory_artifact,
-    serialize_memory_artifact_summary,
     update_project_memory_snapshot,
 )
-from app.services.gemini_memory import (
-    GEMINI_MEMORY_DRAFT_GENERATOR,
+from app.services.memory.constants import (
+    LOCAL_MEMORY_GENERATOR,
+    PENDING_MEMORY_DRAFT_GENERATOR,
+    PROJECT_MEMORY_ARTIFACT_TYPE,
 )
-from app.services.openai_memory import (
-    OPENAI_MEMORY_DRAFT_GENERATOR,
-    OPENAI_PROJECT_MEMORY_GENERATOR,
+from app.services.memory.providers import configured_generator_for_provider
+from app.services.memory.serializers import (
+    serialize_memory_artifact,
+    serialize_memory_artifact_summary,
 )
 
 router = APIRouter(prefix="/api/projects", tags=["memory"])
@@ -90,22 +88,6 @@ def list_project_memory_pending(
 def read_memory_generator_status(
     _current_user: User = Depends(require_web_user),
 ) -> dict[str, Any]:
-    def active_generator(provider: str, *, stage: str) -> str:
-        provider = provider.strip().lower()
-        if provider == "openai" and settings.openai_api_key:
-            return {
-                "draft": OPENAI_MEMORY_DRAFT_GENERATOR,
-                "pending_draft": PENDING_MEMORY_DRAFT_GENERATOR,
-                "project": OPENAI_PROJECT_MEMORY_GENERATOR,
-            }[stage]
-        if provider == "gemini" and settings.gemini_api_key:
-            return {
-                "draft": GEMINI_MEMORY_DRAFT_GENERATOR,
-                "pending_draft": PENDING_MEMORY_DRAFT_GENERATOR,
-                "project": "gemini-project-memory-v1",
-            }[stage]
-        return LOCAL_MEMORY_GENERATOR
-
     return {
         "fallback_generator": LOCAL_MEMORY_GENERATOR,
         "gemini_configured": bool(settings.gemini_api_key),
@@ -115,9 +97,15 @@ def read_memory_generator_status(
         "openai_max_retries": settings.openai_max_retries,
         "openai_model": settings.openai_model,
         "generators": {
-            "draft": active_generator(settings.memory_draft_generator, stage="draft"),
+            "draft": configured_generator_for_provider(
+                settings.memory_draft_generator,
+                stage="draft",
+            ),
             "pending_draft": PENDING_MEMORY_DRAFT_GENERATOR,
-            "project": active_generator(settings.project_memory_generator, stage="project"),
+            "project": configured_generator_for_provider(
+                settings.project_memory_generator,
+                stage="project",
+            ),
         },
         "requested_generators": {
             "draft": settings.memory_draft_generator,
