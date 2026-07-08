@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -53,19 +53,21 @@ class PublishedFlowCreateRequest(BaseModel):
     title: str | None = Field(default=None, max_length=255)
     visibility: str = Field(default="public")
 
-    @validator(
+    @field_validator(
         "context_summary",
         "notes",
         "status",
         "summary",
         "title",
         "visibility",
-        pre=True,
+        mode="before",
     )
+    @classmethod
     def strip_string(cls, value: Any) -> Any:
         return value.strip() if isinstance(value, str) else value
 
-    @validator("tags", pre=True)
+    @field_validator("tags", mode="before")
+    @classmethod
     def normalize_tags_input(cls, value: Any) -> list[str]:
         if value is None:
             return []
@@ -75,8 +77,7 @@ class PublishedFlowCreateRequest(BaseModel):
             return [item for item in value if isinstance(item, str)]
         return []
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class PublishedFlowUpdateRequest(BaseModel):
@@ -88,19 +89,21 @@ class PublishedFlowUpdateRequest(BaseModel):
     title: str | None = Field(default=None, max_length=255)
     visibility: str | None = None
 
-    @validator(
+    @field_validator(
         "context_summary",
         "notes",
         "status",
         "summary",
         "title",
         "visibility",
-        pre=True,
+        mode="before",
     )
+    @classmethod
     def strip_string(cls, value: Any) -> Any:
         return value.strip() if isinstance(value, str) else value
 
-    @validator("tags", pre=True)
+    @field_validator("tags", mode="before")
+    @classmethod
     def normalize_tags_input(cls, value: Any) -> list[str] | None:
         if value is None:
             return None
@@ -110,8 +113,7 @@ class PublishedFlowUpdateRequest(BaseModel):
             return [item for item in value if isinstance(item, str)]
         return []
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 @router.get("")

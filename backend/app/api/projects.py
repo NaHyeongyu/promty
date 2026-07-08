@@ -5,7 +5,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -51,7 +51,8 @@ class ProjectCreateRequest(BaseModel):
     github_url: str = Field(..., min_length=1, max_length=2048)
     default_branch: str | None = Field(default=None, max_length=255)
 
-    @validator("name", "description", "github_url", "default_branch", pre=True)
+    @field_validator("name", "description", "github_url", "default_branch", mode="before")
+    @classmethod
     def strip_string(cls, value: Any) -> Any:
         return value.strip() if isinstance(value, str) else value
 
@@ -60,7 +61,8 @@ class ProjectRepositoryUpdateRequest(BaseModel):
     github_url: str = Field(..., min_length=1, max_length=2048)
     default_branch: str | None = Field(default=None, max_length=255)
 
-    @validator("github_url", "default_branch", pre=True)
+    @field_validator("github_url", "default_branch", mode="before")
+    @classmethod
     def strip_string(cls, value: Any) -> Any:
         return value.strip() if isinstance(value, str) else value
 
@@ -68,7 +70,8 @@ class ProjectRepositoryUpdateRequest(BaseModel):
 class ProjectDescriptionUpdateRequest(BaseModel):
     description: str | None = Field(default=None, max_length=2000)
 
-    @validator("description", pre=True)
+    @field_validator("description", mode="before")
+    @classmethod
     def strip_description(cls, value: Any) -> Any:
         if value is None:
             return None
@@ -83,7 +86,8 @@ class ProjectMetadataUpdateRequest(BaseModel):
     tags: list[str] | None = None
     visibility: str | None = Field(default=None)
 
-    @validator("slug", pre=True)
+    @field_validator("slug", mode="before")
+    @classmethod
     def normalize_slug(cls, value: Any) -> Any:
         if value is None:
             return None
@@ -94,7 +98,8 @@ class ProjectMetadataUpdateRequest(BaseModel):
             raise ValueError("Project URL is required.")
         return slug
 
-    @validator("tags", pre=True)
+    @field_validator("tags", mode="before")
+    @classmethod
     def normalize_tags(cls, value: Any) -> list[str] | None:
         if value is None:
             return None
@@ -119,7 +124,8 @@ class ProjectMetadataUpdateRequest(BaseModel):
                 break
         return normalized_tags
 
-    @validator("visibility", pre=True)
+    @field_validator("visibility", mode="before")
+    @classmethod
     def normalize_visibility(cls, value: Any) -> str | None:
         if value is None:
             return None
