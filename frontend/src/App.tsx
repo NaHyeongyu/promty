@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   ArrowRight,
   Bot,
+  Bookmark,
   Check,
   Clock,
   Copy,
@@ -79,6 +80,7 @@ type Project = {
   trackedFiles: number;
   models: string[];
   githubUrl?: string;
+  isBookmarked: boolean;
 };
 
 const MOCK_GITHUB_UNLINKED_PROJECT_ID = "mock-github-unlinked-project";
@@ -108,6 +110,7 @@ type ProjectSummary = {
   name: string;
   git_remote: string | null;
   github_url: string | null;
+  is_bookmarked?: boolean;
   default_branch: string;
   created_at: string;
   connected_models: string[];
@@ -281,6 +284,7 @@ type ProjectDetailApiResponse = {
     default_branch: string;
     description: string | null;
     id: string;
+    is_bookmarked?: boolean;
     name: string;
     repository_status: string;
     repository_url: string | null;
@@ -846,6 +850,23 @@ function currentWorkspaceReturnUrl() {
   )}`;
 }
 
+async function copyTextToClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+}
+
 function formatCompactNumber(value: number) {
   return Intl.NumberFormat("en", {
     maximumFractionDigits: 1,
@@ -1016,6 +1037,7 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
       events: number;
       filesChanged: number;
       githubUrl: string | null;
+      isBookmarked: boolean;
       latestTimestamp: string;
       models: Set<string>;
       name: string;
@@ -1037,6 +1059,7 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
       events: 0,
       filesChanged: 0,
       githubUrl: normalizeGithubUrl(summary.github_url ?? summary.git_remote),
+      isBookmarked: summary.is_bookmarked === true,
       latestTimestamp: summary.latest_event_at ?? summary.updated_at,
       models: new Set<string>(summary.connected_models ?? []),
       name: summary.name,
@@ -1061,6 +1084,7 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
         events: 0,
         filesChanged: 0,
         githubUrl: githubUrlFromEvent(event),
+        isBookmarked: false,
         latestTimestamp: event.timestamp,
         models: new Set<string>(),
         name: projectNameFromEvent(event),
@@ -1108,6 +1132,7 @@ function projectsFromEvents(events: EventRecord[], summaries: ProjectSummary[]):
     trackedFiles: value.summaryTrackedFiles ?? value.filesChanged,
     models: Array.from(value.models).sort(),
     githubUrl: value.githubUrl ?? undefined,
+    isBookmarked: value.isBookmarked,
     tags: value.tags,
     visibility: value.visibility,
   })).sort(
@@ -1125,6 +1150,7 @@ function mockGithubUnlinkedProject(): Project {
     events: 42,
     filesChanged: 12,
     id: MOCK_GITHUB_UNLINKED_PROJECT_ID,
+    isBookmarked: true,
     latestActivityLabel: formatRelativeTimestamp(timestamp) ?? formatTimestamp(timestamp),
     latestTimestamp: timestamp,
     latestUpdatedAt: formatTimestamp(timestamp),
@@ -1267,6 +1293,7 @@ function mockGithubUnlinkedProjectDetail(project: Project): ProjectDetailData {
     project: {
       description: "Frontend preview data for the GitHub unlinked project state.",
       id: project.id,
+      isBookmarked: project.isBookmarked,
       name: project.name,
       repositoryStatus: "Repository not connected",
       repositoryUrl: undefined,
@@ -1305,6 +1332,7 @@ function emptyProjectDetailData(project: Project | null): ProjectDetailData {
     project: {
       description: "",
       id: project?.id ?? "",
+      isBookmarked: project?.isBookmarked ?? false,
       name: project?.name ?? "Project",
       repositoryStatus: project?.githubUrl
         ? "Repository connected"
@@ -1327,12 +1355,6 @@ function projectDetailUrl(projectKey: string) {
     tab: "overview",
   });
   return `${window.location.origin}/?${params.toString()}`;
-}
-
-function isGenericMemoryDraftResponse(artifact: ProjectMemoryArtifact) {
-  return /^\d+ prompts and \d+ AI responses were captured/i.test(
-    artifact.summary ?? "",
-  );
 }
 
 function projectMemoryPendingRangeFromApi(
@@ -1701,6 +1723,7 @@ function projectDetailDataFromApi(
     project: {
       description: projectDescription,
       id: payload.project.id,
+      isBookmarked: payload.project.is_bookmarked === true,
       name: payload.project.name || fallbackProject?.name || "Project",
       repositoryStatus: payload.project.repository_status,
       repositoryUrl,
@@ -3613,6 +3636,10 @@ function WorkspaceApp() {
   const [isAdminLoading, setIsAdminLoading] = useState(false);
   const [projectSearchQuery, setProjectSearchQuery] = useState("");
   const [projectSortMode, setProjectSortMode] = useState<ProjectSortMode>("recent");
+  const [bookmarkUpdatingProjectId, setBookmarkUpdatingProjectId] = useState<string | null>(
+    null,
+  );
+  const [copiedProjectId, setCopiedProjectId] = useState<string | null>(null);
   const projects = useMemo(
     () => projectsFromEvents(events, projectSummaries),
     [events, projectSummaries],
@@ -3635,7 +3662,28 @@ function WorkspaceApp() {
       ...projects.filter((project) => project.id !== mockProject.id),
     ];
   }, [previewGithubUnlinkedProject, projects]);
+  useEffect(() => {
+    if (!copiedProjectId) {
+      return undefined;
+    }
+    const timerId = window.setTimeout(() => {
+      setCopiedProjectId(null);
+    }, 1800);
+    return () => window.clearTimeout(timerId);
+  }, [copiedProjectId]);
   const displayProjects = previewEmptyProjects ? [] : projectCatalog;
+  const bookmarkedProjects = useMemo(
+    () =>
+      projectCatalog
+        .filter((project) => project.isBookmarked)
+        .sort(
+          (left, right) =>
+            new Date(right.latestTimestamp).getTime() -
+            new Date(left.latestTimestamp).getTime(),
+        ),
+    [projectCatalog],
+  );
+  const sidebarBookmarkedProjects = bookmarkedProjects.slice(0, 6);
   const visibleProjects = useMemo(() => {
     const query = projectSearchQuery.trim().toLowerCase();
     const filteredProjects = query
@@ -3734,6 +3782,101 @@ function WorkspaceApp() {
     }
 
     writeUrlNavigationState(nextState, mode);
+  };
+
+  const projectShareUrl = (
+    project: Project,
+    tab: ProjectDetailTabId = "overview",
+  ) =>
+    `${window.location.origin}${window.location.pathname}${buildUrlNavigationSearch(
+      normalizeUrlNavigationState({
+        ...DEFAULT_URL_NAVIGATION_STATE,
+        activeDetailTab: tab,
+        activeItem: "projects",
+        selectedProjectId: project.id,
+        selectedProjectRouteKey: projectRouteKey(project),
+      }),
+    )}`;
+
+  const mergeProjectSummary = (updatedProject: ProjectSummary) => {
+    setProjectSummaries((currentProjects) => {
+      const nextProjects = currentProjects.map((project) =>
+        project.id === updatedProject.id ? updatedProject : project,
+      );
+      return nextProjects.some((project) => project.id === updatedProject.id)
+        ? nextProjects
+        : [updatedProject, ...currentProjects];
+    });
+    setProjectDetail((currentDetail) =>
+      currentDetail?.project.id === updatedProject.id
+        ? {
+            ...currentDetail,
+            project: {
+              ...currentDetail.project,
+              isBookmarked: updatedProject.is_bookmarked === true,
+              slug: updatedProject.slug ?? currentDetail.project.slug,
+              tags: updatedProject.tags ?? currentDetail.project.tags,
+              visibility: updatedProject.visibility,
+            },
+          }
+        : currentDetail,
+    );
+  };
+
+  const shareProject = async (
+    project: Project,
+    tab: ProjectDetailTabId = "overview",
+  ) => {
+    try {
+      await copyTextToClipboard(projectShareUrl(project, tab));
+      setCopiedProjectId(project.id);
+    } catch {
+      setErrorMessage("Project link could not be copied.");
+    }
+  };
+
+  const toggleProjectBookmark = async (
+    project: Project,
+    nextIsBookmarked = !project.isBookmarked,
+  ) => {
+    if (isMockGithubUnlinkedProject(project.id)) {
+      return;
+    }
+
+    setBookmarkUpdatingProjectId(project.id);
+    setErrorMessage(null);
+    try {
+      const response = await fetch(`${API_URL}/api/projects/${project.id}/bookmark`, {
+        body: JSON.stringify({ is_bookmarked: nextIsBookmarked }),
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      });
+
+      if (response.status === 401) {
+        setAuthStatus("unauthenticated");
+        setCurrentUser(null);
+        throw new Error("Sign in again before saving projects.");
+      }
+
+      if (!response.ok) {
+        const detail = await response
+          .json()
+          .then((payload) =>
+            typeof payload?.detail === "string" ? payload.detail : null,
+          )
+          .catch(() => null);
+        throw new Error(detail ?? `Project bookmark update failed with HTTP ${response.status}`);
+      }
+
+      mergeProjectSummary((await response.json()) as ProjectSummary);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Project bookmark update failed.",
+      );
+    } finally {
+      setBookmarkUpdatingProjectId(null);
+    }
   };
 
   const loadProjectDetail = async (
@@ -3836,7 +3979,7 @@ function WorkspaceApp() {
       };
     }
 
-    let generatedCount = 0;
+    let projectMemoryGenerated = false;
 
     for (const sessionId of uniqueSessionIds) {
       const response = await fetch(
@@ -3864,19 +4007,17 @@ function WorkspaceApp() {
       }
 
       const payload = (await response.json()) as {
-        artifacts?: ProjectMemoryArtifactApiResponse[];
         message?: string;
         project_memory?: ProjectMemorySnapshotApiResponse | null;
         status?: string;
       };
-      const artifacts = (payload.artifacts ?? []).map(projectMemoryArtifactFromApi);
-      generatedCount += artifacts.filter(
-        (artifact) => !artifact.fallbackReason && !isGenericMemoryDraftResponse(artifact),
-      ).length;
+      if (payload.project_memory?.snapshot) {
+        projectMemoryGenerated = true;
+      }
     }
     await loadProjectDetail(selectedProjectId, selectedProject);
 
-    if (generatedCount === 0) {
+    if (!projectMemoryGenerated) {
       return {
         message: "No new memory was generated.",
         status: "no_memory" as const,
@@ -3884,7 +4025,7 @@ function WorkspaceApp() {
     }
 
     return {
-      message: "Pending Memory was organized and Project Memory was updated.",
+      message: "Project Memory document was generated.",
       status: "memory_generated" as const,
     };
   };
@@ -5013,6 +5154,39 @@ function WorkspaceApp() {
             />
             Projects
           </button>
+          <section className="sidebar-saved-section" aria-label="Saved projects">
+            <div className="sidebar-saved-header">
+              <span>Saved</span>
+              <small>{bookmarkedProjects.length}</small>
+            </div>
+            {sidebarBookmarkedProjects.length > 0 ? (
+              <div className="sidebar-saved-list">
+                {sidebarBookmarkedProjects.map((project) => (
+                  <button
+                    className="sidebar-saved-project"
+                    data-active={project.id === selectedProjectId ? "true" : undefined}
+                    key={project.id}
+                    onClick={() => openProjectDetail(project.id)}
+                    title={project.name}
+                    type="button"
+                  >
+                    <Bookmark
+                      aria-hidden="true"
+                      fill="currentColor"
+                      size={14}
+                      strokeWidth={1.5}
+                    />
+                    <span>
+                      <strong>{project.name}</strong>
+                      <small>{project.latestActivityLabel}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="sidebar-saved-empty">No saved projects</p>
+            )}
+          </section>
           {/* Community navigation is paused for now.
           <button
             aria-pressed={activeItem === "community"}
@@ -5121,7 +5295,15 @@ function WorkspaceApp() {
                 isResolvingProjectDetail ||
                 (isProjectDetailLoading && projectDetail === null)
               }
+              isBookmarkUpdating={
+                selectedProject
+                  ? bookmarkUpdatingProjectId === selectedProject.id
+                  : false
+              }
               isRefreshing={isProjectDetailLoading && projectDetail !== null}
+              isShareCopied={
+                selectedProject ? copiedProjectId === selectedProject.id : false
+              }
               onActivityNavigationChange={selectActivityNavigation}
               onCheckpointMemory={selectedProject ? organizePendingMemory : undefined}
               onCompileProjectMemory={selectedProject ? compileProjectMemory : undefined}
@@ -5133,10 +5315,24 @@ function WorkspaceApp() {
               onOpenAllProjects={closeProjectDetail}
               onProjectSelect={selectedProject ? switchProjectDetail : undefined}
               onRepositoryFileSelect={selectedProject ? selectRepositoryFile : undefined}
+              onShareProject={
+                selectedProject
+                  ? () => {
+                      void shareProject(selectedProject, activeDetailTab);
+                    }
+                  : undefined
+              }
               onSaveProjectMetadata={selectedProject ? saveProjectMetadata : undefined}
               onSaveDescription={selectedProject ? saveProjectDescription : undefined}
               onSaveProjectMemory={selectedProject ? saveProjectMemory : undefined}
               onTabChange={selectProjectDetailTab}
+              onToggleBookmark={
+                selectedProject
+                  ? () => {
+                      void toggleProjectBookmark(selectedProject);
+                    }
+                  : undefined
+              }
               projectOptions={projectHeaderOptions}
               onRetry={
                 selectedProject

@@ -18,13 +18,18 @@ export type ActivityNavigationState = {
 };
 
 export type ProjectHeaderProps = {
+  isBookmarked?: boolean;
+  isBookmarkUpdating?: boolean;
   isLoading?: boolean;
+  isShareCopied?: boolean;
   lastActivityLabel?: string;
   modelNames?: string[];
   name: string;
   onOpenAllProjects?: () => void;
   onConnectRepository?: () => void;
   onProjectSelect?: (projectId: string) => void;
+  onShareProject?: () => void;
+  onToggleBookmark?: () => void;
   projectOptions?: ProjectHeaderProjectOption[];
   repositoryStatus?: string;
   repositoryUrl?: string;
@@ -34,6 +39,7 @@ export type ProjectHeaderProps = {
 export type ProjectDetailProject = ProjectHeaderProps & {
   description: string;
   id: string;
+  isBookmarked: boolean;
   slug?: string;
   tags: string[];
   visibility?: "private" | "public";

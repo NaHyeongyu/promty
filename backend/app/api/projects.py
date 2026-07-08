@@ -34,9 +34,7 @@ from app.services.github_repositories import (
     repository_metadata_from_url,
 )
 from app.services.memory_artifacts import (
-    MEMORY_ARTIFACT_TYPE,
-    REVIEW_STATE_GENERATED,
-    REVIEW_STATE_VERIFIED,
+    PROJECT_MEMORY_ARTIFACT_TYPE,
     serialize_memory_artifact_summary,
 )
 
@@ -127,6 +125,10 @@ class ProjectMetadataUpdateRequest(BaseModel):
         if visibility not in {"public", "private"}:
             raise ValueError("Visibility must be public or private.")
         return visibility
+
+
+class ProjectBookmarkUpdateRequest(BaseModel):
+    is_bookmarked: bool
 
 
 def _normalize_github_url(remote_url: str | None) -> str | None:
@@ -374,6 +376,7 @@ def _project_summary(
         "github_url": _normalize_github_url(project.git_remote),
         "default_branch": project.default_branch,
         "created_at": project.created_at.isoformat(),
+        "is_bookmarked": bool(project.is_bookmarked),
         "tags": project.tags or [],
         "visibility": project.visibility,
         "connected_models": sorted(connected_models),
@@ -817,10 +820,7 @@ def read_project_detail(
             select(Artifact)
             .where(
                 Artifact.project_id == project.id,
-                Artifact.type == MEMORY_ARTIFACT_TYPE,
-                Artifact.metadata_["review_state"].astext.in_(
-                    [REVIEW_STATE_GENERATED, REVIEW_STATE_VERIFIED]
-                ),
+                Artifact.type == PROJECT_MEMORY_ARTIFACT_TYPE,
             )
             .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
             .limit(5)
@@ -831,10 +831,7 @@ def read_project_detail(
         .select_from(Artifact)
         .where(
             Artifact.project_id == project.id,
-            Artifact.type == MEMORY_ARTIFACT_TYPE,
-            Artifact.metadata_["review_state"].astext.in_(
-                [REVIEW_STATE_GENERATED, REVIEW_STATE_VERIFIED]
-            ),
+            Artifact.type == PROJECT_MEMORY_ARTIFACT_TYPE,
         )
     ) or 0
     memory_artifact_count_since_yesterday = db.scalar(
@@ -842,10 +839,7 @@ def read_project_detail(
         .select_from(Artifact)
         .where(
             Artifact.project_id == project.id,
-            Artifact.type == MEMORY_ARTIFACT_TYPE,
-            Artifact.metadata_["review_state"].astext.in_(
-                [REVIEW_STATE_GENERATED, REVIEW_STATE_VERIFIED]
-            ),
+            Artifact.type == PROJECT_MEMORY_ARTIFACT_TYPE,
             Artifact.created_at >= since_yesterday_at,
         )
     ) or 0
@@ -857,6 +851,7 @@ def read_project_detail(
             "name": project.name,
             "description": project.description,
             "created_at": _iso(project.created_at),
+            "is_bookmarked": bool(project.is_bookmarked),
             "tags": project.tags or [],
             "visibility": project.visibility,
             "repository_status": "Repository connected"
@@ -1018,6 +1013,20 @@ def update_project_metadata(
             status_code=status.HTTP_409_CONFLICT,
             detail="Project metadata could not be updated.",
         ) from exc
+    db.refresh(project)
+    return _project_summary_with_counts(db, project)
+
+
+@router.patch("/{project_id}/bookmark")
+def update_project_bookmark(
+    project_id: UUID,
+    payload: ProjectBookmarkUpdateRequest,
+    current_user: User = Depends(require_web_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    project = _project_for_user(db, project_id, current_user)
+    project.is_bookmarked = payload.is_bookmarked
+    db.commit()
     db.refresh(project)
     return _project_summary_with_counts(db, project)
 

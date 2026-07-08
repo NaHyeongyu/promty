@@ -5,9 +5,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import settings
+from app.models.artifacts import Artifact
 from app.core.security import require_web_user
 from app.db.session import get_db
 from app.models.artifacts import Artifact
@@ -17,10 +19,10 @@ from app.models.users import User
 from app.services.memory_artifacts import (
     LOCAL_MEMORY_GENERATOR,
     PENDING_MEMORY_DRAFT_GENERATOR,
+    PROJECT_MEMORY_ARTIFACT_TYPE,
     compile_project_memory,
     complete_session_if_ready,
     generate_context_memories_for_session,
-    list_project_memory_artifacts,
     list_project_memory_pending_ranges,
     get_latest_project_memory,
     serialize_memory_artifact,
@@ -253,8 +255,8 @@ def checkpoint_project_session(
     project_memory = compile_project_memory(db, project_id=project.id)
     db.commit()
     return {
-        "artifacts": [serialize_memory_artifact(memory) for memory in memories],
-        "message": "Pending Memory was organized and Project Memory was updated.",
+        "artifacts": [],
+        "message": "Project Memory document was generated.",
         "pending_range": pending_range,
         "project_memory": _serialize_project_memory_snapshot(project_memory),
         "status": "memory_generated",
@@ -315,5 +317,15 @@ def list_project_artifacts(
     db: DBSession = Depends(get_db),
 ) -> list[dict[str, Any]]:
     project = _project_for_user(db, project_id, current_user)
-    artifacts = list_project_memory_artifacts(db, project_id=project.id, limit=limit)
+    artifacts = list(
+        db.execute(
+            select(Artifact)
+            .where(
+                Artifact.project_id == project.id,
+                Artifact.type == PROJECT_MEMORY_ARTIFACT_TYPE,
+            )
+            .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
+            .limit(limit)
+        ).scalars()
+    )
     return [serialize_memory_artifact_summary(artifact, db=db) for artifact in artifacts]

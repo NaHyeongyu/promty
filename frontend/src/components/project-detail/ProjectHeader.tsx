@@ -1,16 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Clock, ExternalLink, Folder, Link, Search } from "lucide-react";
+import {
+  Bookmark,
+  Check,
+  ChevronDown,
+  Clock,
+  ExternalLink,
+  Folder,
+  Link,
+  Search,
+  Share2,
+} from "lucide-react";
 import { AiModelBadge } from "./AiModelBadge";
 import type { ProjectHeaderProps } from "./types";
 
 export function ProjectHeader({
+  isBookmarked = false,
+  isBookmarkUpdating = false,
   isLoading,
+  isShareCopied = false,
   lastActivityLabel,
   modelNames = [],
   name,
   onOpenAllProjects,
   onConnectRepository,
   onProjectSelect,
+  onShareProject,
+  onToggleBookmark,
   projectOptions = [],
   repositoryUrl,
   selectedProjectId,
@@ -185,6 +200,41 @@ export function ProjectHeader({
       </div>
 
       <div className="bh-project-header-actions">
+        {onToggleBookmark && !isLoading ? (
+          <button
+            aria-label={isBookmarked ? "Remove saved project" : "Save project"}
+            aria-pressed={isBookmarked}
+            className="bh-icon-button"
+            data-active={isBookmarked ? "true" : undefined}
+            disabled={isBookmarkUpdating}
+            onClick={onToggleBookmark}
+            title={isBookmarked ? "Remove saved project" : "Save project"}
+            type="button"
+          >
+            <Bookmark
+              aria-hidden="true"
+              fill={isBookmarked ? "currentColor" : "none"}
+              size={17}
+              strokeWidth={1.5}
+            />
+          </button>
+        ) : null}
+        {onShareProject && !isLoading ? (
+          <button
+            aria-label={isShareCopied ? "Project link copied" : "Copy project link"}
+            className="bh-icon-button"
+            data-active={isShareCopied ? "true" : undefined}
+            onClick={onShareProject}
+            title={isShareCopied ? "Project link copied" : "Copy project link"}
+            type="button"
+          >
+            {isShareCopied ? (
+              <Check aria-hidden="true" size={17} strokeWidth={1.5} />
+            ) : (
+              <Share2 aria-hidden="true" size={17} strokeWidth={1.5} />
+            )}
+          </button>
+        ) : null}
         {repositoryUrl ? (
           <a
             aria-label="Open repository"
