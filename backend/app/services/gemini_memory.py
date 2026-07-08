@@ -844,7 +844,7 @@ def _clean_project_memory_response(value: Any, context: dict[str, Any]) -> dict[
         body_markdown = "\n\n".join(
             part
             for part in (
-                f"# Project Memory",
+                "# Project Memory",
                 f"## Product Goal\n{cleaned_sections['product_goal']}",
                 f"## Current Direction\n{cleaned_sections['current_direction']}",
             )

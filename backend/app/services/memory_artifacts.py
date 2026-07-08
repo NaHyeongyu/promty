@@ -832,11 +832,7 @@ def _memory_slice_artifacts(db: DBSession, session: Session) -> list[Artifact]:
     return [
         artifact
         for artifact in artifacts
-        if _slice_metadata(artifact)
-        and (
-            metadata := artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}
-        ).get("artifact_stage")
-        == PENDING_DRAFT_STAGE
+        if _slice_metadata(artifact).get("artifact_stage") == PENDING_DRAFT_STAGE
     ]
 
 
