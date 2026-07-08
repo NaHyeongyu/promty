@@ -34,9 +34,7 @@ from app.services.github_repositories import (
     repository_metadata_from_url,
 )
 from app.services.memory_artifacts import (
-    MEMORY_ARTIFACT_TYPE,
-    REVIEW_STATE_GENERATED,
-    REVIEW_STATE_VERIFIED,
+    PROJECT_MEMORY_ARTIFACT_TYPE,
     serialize_memory_artifact_summary,
 )
 
@@ -817,10 +815,7 @@ def read_project_detail(
             select(Artifact)
             .where(
                 Artifact.project_id == project.id,
-                Artifact.type == MEMORY_ARTIFACT_TYPE,
-                Artifact.metadata_["review_state"].astext.in_(
-                    [REVIEW_STATE_GENERATED, REVIEW_STATE_VERIFIED]
-                ),
+                Artifact.type == PROJECT_MEMORY_ARTIFACT_TYPE,
             )
             .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
             .limit(5)
@@ -831,10 +826,7 @@ def read_project_detail(
         .select_from(Artifact)
         .where(
             Artifact.project_id == project.id,
-            Artifact.type == MEMORY_ARTIFACT_TYPE,
-            Artifact.metadata_["review_state"].astext.in_(
-                [REVIEW_STATE_GENERATED, REVIEW_STATE_VERIFIED]
-            ),
+            Artifact.type == PROJECT_MEMORY_ARTIFACT_TYPE,
         )
     ) or 0
     memory_artifact_count_since_yesterday = db.scalar(
@@ -842,10 +834,7 @@ def read_project_detail(
         .select_from(Artifact)
         .where(
             Artifact.project_id == project.id,
-            Artifact.type == MEMORY_ARTIFACT_TYPE,
-            Artifact.metadata_["review_state"].astext.in_(
-                [REVIEW_STATE_GENERATED, REVIEW_STATE_VERIFIED]
-            ),
+            Artifact.type == PROJECT_MEMORY_ARTIFACT_TYPE,
             Artifact.created_at >= since_yesterday_at,
         )
     ) or 0

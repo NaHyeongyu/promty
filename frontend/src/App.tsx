@@ -1329,12 +1329,6 @@ function projectDetailUrl(projectKey: string) {
   return `${window.location.origin}/?${params.toString()}`;
 }
 
-function isGenericMemoryDraftResponse(artifact: ProjectMemoryArtifact) {
-  return /^\d+ prompts and \d+ AI responses were captured/i.test(
-    artifact.summary ?? "",
-  );
-}
-
 function projectMemoryPendingRangeFromApi(
   range: ProjectMemoryPendingRangeApiResponse,
 ) {
@@ -3836,7 +3830,7 @@ function WorkspaceApp() {
       };
     }
 
-    let generatedCount = 0;
+    let projectMemoryGenerated = false;
 
     for (const sessionId of uniqueSessionIds) {
       const response = await fetch(
@@ -3864,19 +3858,17 @@ function WorkspaceApp() {
       }
 
       const payload = (await response.json()) as {
-        artifacts?: ProjectMemoryArtifactApiResponse[];
         message?: string;
         project_memory?: ProjectMemorySnapshotApiResponse | null;
         status?: string;
       };
-      const artifacts = (payload.artifacts ?? []).map(projectMemoryArtifactFromApi);
-      generatedCount += artifacts.filter(
-        (artifact) => !artifact.fallbackReason && !isGenericMemoryDraftResponse(artifact),
-      ).length;
+      if (payload.project_memory?.snapshot) {
+        projectMemoryGenerated = true;
+      }
     }
     await loadProjectDetail(selectedProjectId, selectedProject);
 
-    if (generatedCount === 0) {
+    if (!projectMemoryGenerated) {
       return {
         message: "No new memory was generated.",
         status: "no_memory" as const,
@@ -3884,7 +3876,7 @@ function WorkspaceApp() {
     }
 
     return {
-      message: "Pending Memory was organized and Project Memory was updated.",
+      message: "Project Memory document was generated.",
       status: "memory_generated" as const,
     };
   };
