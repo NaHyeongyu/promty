@@ -1,7 +1,6 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from app.api.memory import _serialize_project_memory_snapshot
 from app.models.artifacts import Artifact
 from app.services.memory.constants import (
     MEMORY_ARTIFACT_TYPE,
@@ -10,6 +9,7 @@ from app.services.memory.constants import (
     REVIEW_STATE_GENERATED,
 )
 from app.services.memory.serializers import serialize_memory_artifact
+from app.services.memory_workflows import serialize_project_memory_snapshot
 
 
 def _artifact(*, artifact_type: str = MEMORY_ARTIFACT_TYPE) -> Artifact:
@@ -107,7 +107,7 @@ def test_project_memory_snapshot_serializer_matches_frontend_contract() -> None:
         "user_edited": True,
     }
 
-    serialized = _serialize_project_memory_snapshot(artifact)
+    serialized = serialize_project_memory_snapshot(artifact)
 
     assert serialized is not None
     assert serialized["artifact"]["changed_file_count"] == 1

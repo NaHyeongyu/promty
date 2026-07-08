@@ -125,3 +125,7 @@ class ProjectMemorySnapshot(BaseModel):
         if not value.strip():
             raise ValueError("body_markdown must not be empty")
         return value
+
+
+class ProjectMemoryUpdateRequest(BaseModel):
+    body_markdown: str = Field(min_length=1)

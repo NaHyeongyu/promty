@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.exc import IntegrityError
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.api.transactions import commit_or_conflict as _commit_or_conflict
 from app.core.security import require_web_user
 from app.db.session import get_db
 from app.models.users import User
@@ -36,17 +36,6 @@ from app.services.project_views import (
 )
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
-
-
-def _commit_or_conflict(db: Session, *, detail: str) -> None:
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=detail,
-        ) from exc
 
 
 @router.get("")

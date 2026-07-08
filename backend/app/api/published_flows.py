@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.transactions import commit_or_conflict as _commit_or_conflict
 from app.core.config import settings
 from app.core.security import require_web_user
 from app.db.session import get_db
@@ -29,17 +29,6 @@ from app.services.published_flows import (
 )
 
 router = APIRouter(prefix="/api/published-flows", tags=["published-flows"])
-
-
-def _commit_or_conflict(db: Session, *, detail: str) -> None:
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=detail,
-        ) from exc
 
 
 @router.get("")
