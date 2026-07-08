@@ -9,6 +9,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import settings
+from app.models.artifacts import Artifact
 from app.core.security import require_web_user
 from app.db.session import get_db
 from app.models.artifacts import Artifact
