@@ -64,12 +64,15 @@ type ProjectDetailPageProps = {
   isProjectResolving?: boolean;
   isLoading?: boolean;
   isRefreshing?: boolean;
+  isBookmarkUpdating?: boolean;
+  isShareCopied?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onCompileProjectMemory?: () => Promise<void>;
   onConnectRepository?: () => void;
   onOpenAllProjects?: () => void;
   onProjectSelect?: (projectId: string) => void;
   onRepositoryFileSelect?: (path: string) => void;
+  onShareProject?: () => void;
   onSaveProjectMetadata?: (metadata: {
     slug?: string;
     tags?: string[];
@@ -78,6 +81,7 @@ type ProjectDetailPageProps = {
   onSaveDescription?: (description: string) => Promise<void>;
   onCheckpointMemory?: (sessionIds: string[]) => Promise<MemoryCheckpointResult>;
   onSaveProjectMemory?: (bodyMarkdown: string) => Promise<void>;
+  onToggleBookmark?: () => void;
   onPublishFlow?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
   onSaveFlowDraft?: (payload: PromptFlowPublishPayload) => Promise<PublishedFlowDetail>;
   onUpdateFlow?: (
@@ -2235,39 +2239,6 @@ function OverviewPanel({
   );
 }
 
-function MemoryDocumentSteps({
-  added,
-  generated,
-}: {
-  added: boolean;
-  generated: boolean;
-}) {
-  return (
-    <ol className="bh-memory-document-steps" aria-label="Documentation status">
-      <li data-complete="true">
-        <Check aria-hidden="true" size={14} strokeWidth={1.7} />
-        <span>Captured</span>
-      </li>
-      <li data-complete={generated ? "true" : "false"}>
-        {generated ? (
-          <Check aria-hidden="true" size={14} strokeWidth={1.7} />
-        ) : (
-          <span aria-hidden="true" />
-        )}
-        <span>Generated</span>
-      </li>
-      <li data-complete={added ? "true" : "false"}>
-        {added ? (
-          <Check aria-hidden="true" size={14} strokeWidth={1.7} />
-        ) : (
-          <span aria-hidden="true" />
-        )}
-        <span>Added</span>
-      </li>
-    </ol>
-  );
-}
-
 function MemoryPanel({
   data,
   onCheckpointMemory,
@@ -2282,17 +2253,7 @@ function MemoryPanel({
   const checkpointableRanges = data.memory.pendingRanges.filter(
     (range) => range.canCheckpoint,
   );
-  const pendingPromptCount = data.memory.pendingRanges.reduce(
-    (total, range) => total + range.promptCount,
-    0,
-  );
-  const pendingEventCount = data.memory.pendingRanges.reduce(
-    (total, range) => total + range.eventCount,
-    0,
-  );
-  const pendingSessionCount = new Set(
-    data.memory.pendingRanges.map((range) => range.sessionId),
-  ).size;
+  const hasPendingDocumentation = data.memory.pendingRanges.length > 0;
   const pendingBatchCount = data.memory.pendingRanges.length > 0 ? 1 : 0;
   const projectMemoryUpdatedAt =
     data.memory.projectMemoryArtifact?.updatedAt ??
@@ -2304,38 +2265,12 @@ function MemoryPanel({
       ? `${pendingBatchCount} pending batch`
       : projectMemoryUpdatedAt
         ? `Updated ${projectMemoryUpdatedAt}`
-        : "Generated document"
+        : "Ready"
     : pendingBatchCount > 0
       ? "Ready to generate"
       : "Empty";
-  const completedDocumentCount = data.memory.projectMemory ? 1 : 0;
-  const completedDocumentLabel = `${completedDocumentCount} ${
-    completedDocumentCount === 1 ? "document" : "documents"
-  }`;
-  const generationSteps = [
-    {
-      detail: `Preparing ${pendingSessionCount.toLocaleString()} captured work ${
-        pendingSessionCount === 1 ? "session" : "sessions"
-      }`,
-      label: "Preparing context",
-    },
-    {
-      detail: `Organizing ${pendingPromptCount.toLocaleString()} inputs and ${pendingEventCount.toLocaleString()} activity records`,
-      label: "Organizing activity",
-    },
-    {
-      detail: "Generating one Project Memory document",
-      label: "Generating document",
-    },
-    {
-      detail: "Updating Project Memory",
-      label: "Updating memory",
-    },
-  ];
   const [checkpointStatus, setCheckpointStatus] = useState<string | null>(null);
   const [checkpointError, setCheckpointError] = useState<string | null>(null);
-  const [generationStepIndex, setGenerationStepIndex] = useState(0);
-  const [isGenerationTakingLong, setIsGenerationTakingLong] = useState(false);
   const [isCheckpointing, setIsCheckpointing] = useState(false);
   const [isEditingProjectMemory, setIsEditingProjectMemory] = useState(false);
   const [isProjectMemoryRegenerating, setIsProjectMemoryRegenerating] = useState(false);
@@ -2350,32 +2285,6 @@ function MemoryPanel({
       setProjectMemoryDraft(data.memory.projectMemory?.bodyMarkdown ?? "");
     }
   }, [data.memory.projectMemory?.bodyMarkdown, isEditingProjectMemory]);
-
-  useEffect(() => {
-    if (!isCheckpointing) {
-      setGenerationStepIndex(0);
-      setIsGenerationTakingLong(false);
-      return undefined;
-    }
-
-    setGenerationStepIndex(0);
-    setIsGenerationTakingLong(false);
-    const timers = [
-      window.setTimeout(() => setGenerationStepIndex(1), 900),
-      window.setTimeout(() => setGenerationStepIndex(2), 2200),
-      window.setTimeout(() => setGenerationStepIndex(3), 4200),
-      window.setTimeout(() => setIsGenerationTakingLong(true), 7000),
-    ];
-    return () => {
-      timers.forEach((timerId) => window.clearTimeout(timerId));
-    };
-  }, [isCheckpointing]);
-
-  const activeGenerationStep =
-    generationSteps[Math.min(generationStepIndex, generationSteps.length - 1)];
-  const generationSupportCopy = isGenerationTakingLong
-    ? "Still working through a larger activity set. You can keep browsing."
-    : activeGenerationStep.detail;
 
   const organizePendingBatch = async () => {
     if (!onCheckpointMemory || isCheckpointing) {
@@ -2446,8 +2355,7 @@ function MemoryPanel({
       </header>
 
       <div className="bh-memory-summary-strip" aria-label="Memory status summary">
-        <span>{pendingBatchCount} pending</span>
-        <span>{completedDocumentCount} completed</span>
+        <span>{hasPendingDocumentation ? "Update ready" : "No pending update"}</span>
         <span>Project Memory: {projectMemoryStateLabel}</span>
       </div>
 
@@ -2457,7 +2365,7 @@ function MemoryPanel({
         </div>
       ) : null}
       <div className="bh-memory-documentation">
-        {data.memory.pendingRanges.length > 0 ? (
+        {hasPendingDocumentation ? (
           <article
             aria-busy={isCheckpointing}
             aria-labelledby="memory-request-title"
@@ -2465,11 +2373,8 @@ function MemoryPanel({
             data-generating={isCheckpointing ? "true" : "false"}
           >
             <div className="bh-memory-document-row-main">
-              <h3 id="memory-request-title">Pending documentation</h3>
-              <p>
-                {pendingPromptCount} prompts · {pendingEventCount} events ·{" "}
-                {pendingSessionCount} sessions
-              </p>
+              <h3 id="memory-request-title">Project Memory update ready</h3>
+              <p>Generate one updated memory document from captured work.</p>
             </div>
             <button
               className="bh-memory-primary-action"
@@ -2492,32 +2397,9 @@ function MemoryPanel({
               >
                 <div className="bh-memory-generation-progress" aria-hidden="true" />
                 <div className="bh-memory-generation-status-copy">
-                  <strong>{activeGenerationStep.label}</strong>
-                  <span>{generationSupportCopy}</span>
+                  <strong>Generating Project Memory</strong>
+                  <span>The final document will appear below when it is ready.</span>
                 </div>
-                <ol
-                  className="bh-memory-generation-steps"
-                  aria-label="Memory generation progress"
-                >
-                  {generationSteps.map((step, index) => {
-                    const stepState =
-                      index < generationStepIndex
-                        ? "complete"
-                        : index === generationStepIndex
-                          ? "active"
-                          : "pending";
-                    return (
-                      <li data-state={stepState} key={step.label}>
-                        <span className="bh-memory-generation-step-marker">
-                          {stepState === "complete" ? (
-                            <Check aria-hidden="true" size={12} strokeWidth={1.8} />
-                          ) : null}
-                        </span>
-                        <span>{step.label}</span>
-                      </li>
-                    );
-                  })}
-                </ol>
               </div>
             ) : checkpointError ? (
               <div className="bh-memory-generation-status" data-error="true" role="alert">
@@ -2530,8 +2412,8 @@ function MemoryPanel({
           </article>
         ) : (
           <div className="bh-memory-document-idle">
-            <strong>No pending documentation</strong>
-            <span>New captured work will appear here when it is ready to generate.</span>
+            <strong>No pending update</strong>
+            <span>New captured work will appear here when Project Memory is ready to refresh.</span>
           </div>
         )}
 
@@ -2541,14 +2423,11 @@ function MemoryPanel({
         >
           <div className="bh-memory-section-header">
             <div>
-              <span className="bh-memory-step-kicker">Completed</span>
-              <h3 id="memory-completed-title">Completed documents</h3>
-              <p>Added to Project Memory.</p>
+              <span className="bh-memory-step-kicker">Result</span>
+              <h3 id="memory-completed-title">Project Memory</h3>
+              <p>Final memory document for future coding sessions.</p>
             </div>
-            <span>
-              {completedDocumentLabel}
-              {isCheckpointing ? " · 1 generating" : ""}
-            </span>
+            <span>{isCheckpointing ? "Generating" : projectMemoryFreshnessLabel}</span>
           </div>
 
           {projectMemoryError ? (
@@ -2557,7 +2436,7 @@ function MemoryPanel({
             </div>
           ) : null}
 
-          {completedDocumentCount > 0 || isCheckpointing ? (
+          {data.memory.projectMemory || isCheckpointing ? (
             <div className="bh-memory-document-list">
               {isCheckpointing ? (
                 <article
@@ -2566,8 +2445,8 @@ function MemoryPanel({
                 >
                   <div className="bh-memory-document-row-main">
                     <span className="bh-memory-step-kicker">Generating</span>
-                    <strong>New memory document</strong>
-                    <small>{activeGenerationStep.detail}</small>
+                    <strong>Project Memory document</strong>
+                    <small>The finished document will appear here.</small>
                     <div className="bh-memory-document-placeholder-lines" aria-hidden="true">
                       <span />
                       <span />
@@ -2582,9 +2461,8 @@ function MemoryPanel({
                   <summary>
                     <div className="bh-memory-document-row-main">
                       <span className="bh-memory-step-kicker">Project Memory</span>
-                      <strong>Project Memory snapshot</strong>
+                      <strong>Project Memory document</strong>
                       <small>{projectMemoryFreshnessLabel}</small>
-                      <MemoryDocumentSteps generated added />
                     </div>
                     <div className="bh-memory-document-actions">
                       <button
@@ -2656,8 +2534,8 @@ function MemoryPanel({
             </div>
           ) : (
             <div className="bh-memory-empty">
-              <strong>No completed documents yet</strong>
-              <span>Generate pending documentation to create the first completed document.</span>
+              <strong>No Project Memory yet</strong>
+              <span>Generate the pending update to create the first memory document.</span>
             </div>
           )}
         </section>
@@ -3606,6 +3484,8 @@ export function ProjectDetailPage({
   isProjectResolving,
   isLoading,
   isRefreshing,
+  isBookmarkUpdating,
+  isShareCopied,
   onActivityNavigationChange,
   onCheckpointMemory,
   onCompileProjectMemory,
@@ -3615,10 +3495,12 @@ export function ProjectDetailPage({
   onProjectSelect,
   onRepositoryFileSelect,
   onRetry,
+  onShareProject,
   onSaveProjectMetadata,
   onSaveDescription,
   onSaveFlowDraft,
   onSaveProjectMemory,
+  onToggleBookmark,
   onTabChange,
   onUpdateFlow,
   onUploadFlowAsset,
@@ -3631,13 +3513,18 @@ export function ProjectDetailPage({
       aria-labelledby="project-detail-title"
     >
       <ProjectHeader
+        isBookmarked={data.project.isBookmarked}
+        isBookmarkUpdating={isBookmarkUpdating}
         isLoading={isProjectResolving}
+        isShareCopied={isShareCopied}
         lastActivityLabel={projectHeaderLastActivityLabel(data)}
         modelNames={projectHeaderModelNames(data)}
         name={data.project.name}
         onConnectRepository={data.project.repositoryUrl ? undefined : onConnectRepository}
         onOpenAllProjects={onOpenAllProjects}
         onProjectSelect={onProjectSelect}
+        onShareProject={onShareProject}
+        onToggleBookmark={onToggleBookmark}
         projectOptions={projectOptions}
         repositoryUrl={data.project.repositoryUrl}
         selectedProjectId={data.project.id}

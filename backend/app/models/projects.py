@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -29,6 +29,7 @@ class Project(Base):
     slug: Mapped[str] = mapped_column(String(255), index=True)
     description: Mapped[str | None] = mapped_column(Text)
     tags: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
+    is_bookmarked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     visibility: Mapped[str] = mapped_column(String(16), default="private")
     git_remote: Mapped[str | None] = mapped_column(String(2048))
     local_path_hash: Mapped[str | None] = mapped_column(String(128), index=True)

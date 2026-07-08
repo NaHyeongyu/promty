@@ -127,6 +127,10 @@ class ProjectMetadataUpdateRequest(BaseModel):
         return visibility
 
 
+class ProjectBookmarkUpdateRequest(BaseModel):
+    is_bookmarked: bool
+
+
 def _normalize_github_url(remote_url: str | None) -> str | None:
     if not remote_url:
         return None
@@ -372,6 +376,7 @@ def _project_summary(
         "github_url": _normalize_github_url(project.git_remote),
         "default_branch": project.default_branch,
         "created_at": project.created_at.isoformat(),
+        "is_bookmarked": bool(project.is_bookmarked),
         "tags": project.tags or [],
         "visibility": project.visibility,
         "connected_models": sorted(connected_models),
@@ -846,6 +851,7 @@ def read_project_detail(
             "name": project.name,
             "description": project.description,
             "created_at": _iso(project.created_at),
+            "is_bookmarked": bool(project.is_bookmarked),
             "tags": project.tags or [],
             "visibility": project.visibility,
             "repository_status": "Repository connected"
@@ -1007,6 +1013,20 @@ def update_project_metadata(
             status_code=status.HTTP_409_CONFLICT,
             detail="Project metadata could not be updated.",
         ) from exc
+    db.refresh(project)
+    return _project_summary_with_counts(db, project)
+
+
+@router.patch("/{project_id}/bookmark")
+def update_project_bookmark(
+    project_id: UUID,
+    payload: ProjectBookmarkUpdateRequest,
+    current_user: User = Depends(require_web_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    project = _project_for_user(db, project_id, current_user)
+    project.is_bookmarked = payload.is_bookmarked
+    db.commit()
     db.refresh(project)
     return _project_summary_with_counts(db, project)
 

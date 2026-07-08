@@ -250,6 +250,7 @@
 .bh-icon-button {
   width: var(--bh-interactive-min-size);
   padding: 0;
+  cursor: pointer;
   transition:
     background-color var(--bh-duration-fast) var(--bh-ease-out),
     border-color var(--bh-duration-fast) var(--bh-ease-out),
@@ -274,6 +275,18 @@
   border-color: var(--bh-color-border-hover);
   color: var(--bh-color-text-primary);
   background: var(--bh-color-surface-hover);
+}
+
+.bh-icon-button[data-active="true"] {
+  border-color: var(--bh-color-primary-border);
+  color: var(--bh-color-text-primary);
+  background: var(--bh-color-primary-subtle);
+}
+
+.bh-icon-button:disabled {
+  color: var(--bh-color-text-disabled);
+  cursor: not-allowed;
+  opacity: 0.72;
 }
 
 .bh-header-action-button.is-primary {
@@ -2145,69 +2158,6 @@
   content: "";
 }
 
-.bh-memory-generation-steps {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--bh-space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.bh-memory-generation-steps li {
-  display: inline-flex;
-  min-width: 0;
-  min-height: 30px;
-  align-items: center;
-  gap: var(--bh-space-2);
-  border: 1px solid var(--bh-color-border);
-  border-radius: var(--bh-radius-sm);
-  padding: 0 var(--bh-space-2);
-  color: var(--bh-color-text-muted);
-  background: var(--bh-color-surface);
-  font-size: var(--bh-font-size-caption);
-  font-weight: var(--bh-font-weight-label);
-  line-height: var(--bh-line-height-heading);
-}
-
-.bh-memory-generation-steps li[data-state="active"] {
-  border-color: var(--bh-color-primary-border);
-  color: var(--bh-color-text-primary);
-  background: var(--bh-color-primary-subtle);
-}
-
-.bh-memory-generation-steps li[data-state="complete"] {
-  border-color: var(--bh-color-border-hover);
-  color: var(--bh-color-text-secondary);
-}
-
-.bh-memory-generation-steps li > span:last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.bh-memory-generation-step-marker {
-  display: inline-flex;
-  width: 16px;
-  height: 16px;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid currentcolor;
-  border-radius: 999px;
-}
-
-.bh-memory-generation-steps li[data-state="active"] .bh-memory-generation-step-marker {
-  border-color: var(--bh-button-primary-bg-hover);
-  background: var(--bh-button-primary-bg-hover);
-  box-shadow: 0 0 0 3px rgb(107 123 147 / 14%);
-}
-
-.bh-memory-generation-steps li[data-state="complete"] .bh-memory-generation-step-marker {
-  border-color: var(--bh-color-text-secondary);
-}
-
 .bh-memory-document-idle {
   display: grid;
   gap: var(--bh-space-1);
@@ -2332,47 +2282,6 @@
   font-weight: var(--bh-font-weight-label);
   line-height: var(--bh-line-height-heading);
   white-space: nowrap;
-}
-
-.bh-memory-document-steps {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--bh-space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.bh-memory-document-steps li {
-  display: inline-flex;
-  min-height: 22px;
-  align-items: center;
-  gap: var(--bh-space-1);
-  border: 1px solid var(--bh-color-border);
-  border-radius: var(--bh-radius-sm);
-  padding: 0 var(--bh-space-2);
-  color: var(--bh-color-text-muted);
-  background: var(--bh-color-surface-secondary);
-  font-size: var(--bh-font-size-caption);
-  font-weight: var(--bh-font-weight-label);
-  line-height: var(--bh-line-height-heading);
-}
-
-.bh-memory-document-steps li[data-complete="true"] {
-  border-color: var(--bh-color-border-hover);
-  color: var(--bh-color-text-secondary);
-}
-
-.bh-memory-document-steps li > svg,
-.bh-memory-document-steps li > span[aria-hidden="true"] {
-  width: 12px;
-  height: 12px;
-  flex: 0 0 auto;
-}
-
-.bh-memory-document-steps li > span[aria-hidden="true"] {
-  border: 1px solid currentcolor;
-  border-radius: 999px;
 }
 
 .bh-memory-document-actions {
@@ -5456,10 +5365,6 @@ button.bh-file-tree-row:focus-visible {
 
   .bh-memory-context-item summary small {
     white-space: normal;
-  }
-
-  .bh-memory-generation-steps {
-    grid-template-columns: 1fr;
   }
 
   .bh-memory-document-actions {
