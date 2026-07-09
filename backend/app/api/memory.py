@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session as DBSession
 
+
 from app.core.security import require_web_user
 from app.db.session import get_db
 from app.models.users import User
