@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Sparkles, X } from "lucide-react";
+import { ChevronRight, Sparkles, X } from "lucide-react";
 import type {
   ProjectDetailData,
   ProjectMemoryArtifact,
@@ -38,6 +38,19 @@ function memoryArtifactMeta(artifact: ProjectMemoryArtifact) {
   ]
     .filter((item): item is string => Boolean(item))
     .join(" · ");
+}
+
+function memoryArtifactStats(artifact: ProjectMemoryArtifact) {
+  return [
+    artifact.promptCount && artifact.promptCount > 0
+      ? { label: "Prompts", value: artifact.promptCount.toString() }
+      : null,
+    artifact.changedFileCount > 0
+      ? { label: "Files", value: artifact.changedFileCount.toString() }
+      : null,
+    artifact.model ? { label: "Model", value: artifact.model } : null,
+    artifact.reviewState ? { label: "State", value: artifact.reviewState } : null,
+  ].filter((item): item is { label: string; value: string } => item !== null);
 }
 
 function memoryArtifactSequenceRange(artifact: ProjectMemoryArtifact) {
@@ -112,6 +125,7 @@ function MemoryArtifactCard({
 }) {
   const meta = memoryArtifactMeta(artifact);
   const dateRange = formatMemoryDateRange(artifact.firstEventAt, artifact.lastEventAt);
+  const stats = memoryArtifactStats(artifact);
 
   return (
     <button
@@ -122,14 +136,28 @@ function MemoryArtifactCard({
       onClick={() => onSelect(artifact)}
       type="button"
     >
-      <span>{artifact.title}</span>
-      <small>
-        {[dateRange, meta || memoryArtifactKind(artifact)]
-          .filter(Boolean)
-          .join(" · ")}
-      </small>
+      <span className="bh-memory-context-card-header">
+        <span className="bh-memory-context-kind">{memoryArtifactKind(artifact)}</span>
+        {dateRange ? <span className="bh-memory-context-date">{dateRange}</span> : null}
+      </span>
+      <span className="bh-memory-context-title-row">
+        <span className="bh-memory-context-title">{artifact.title}</span>
+        <ChevronRight aria-hidden="true" size={16} strokeWidth={1.6} />
+      </span>
       {artifact.summary ? (
         <span className="bh-memory-context-summary">{artifact.summary}</span>
+      ) : null}
+      {stats.length > 0 ? (
+        <span className="bh-memory-context-stat-row">
+          {stats.map((stat) => (
+            <span key={`${artifact.id}-${stat.label}`}>
+              <strong>{stat.value}</strong>
+              <small>{stat.label}</small>
+            </span>
+          ))}
+        </span>
+      ) : meta ? (
+        <small className="bh-memory-context-fallback-meta">{meta}</small>
       ) : null}
     </button>
   );
@@ -427,7 +455,7 @@ export function MemoryPanel({
       <div className="bh-memory-summary-strip" aria-label="Memory status summary">
         <span>{hasPendingDocumentation ? "Update ready" : "No pending update"}</span>
         <span>Project Memory: {projectMemoryStateLabel}</span>
-        <span>Generated: {generatedArtifacts.length}</span>
+        <span>Recent memories: {generatedArtifacts.length}</span>
       </div>
 
       {checkpointStatus ? (
@@ -501,7 +529,7 @@ export function MemoryPanel({
             </div>
             <span>
               {generatedArtifacts.length > 0
-                ? `${generatedArtifacts.length} recent`
+                ? `${generatedArtifacts.length} shown`
                 : "Empty"}
             </span>
           </div>
