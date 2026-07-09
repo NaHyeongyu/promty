@@ -4,6 +4,7 @@ import type {
   ProjectGithubFilesApiResponse,
   ProjectMemoryPendingRangeApiResponse,
   ProjectMemorySnapshotApiResponse,
+  ProjectPromptActivitiesApiResponse,
   ProjectSummary,
 } from "../workspace/types";
 import { requestJson, requestJsonBody, requestVoid } from "./client";
@@ -133,6 +134,43 @@ export function fetchProjectGithubFiles(
     { signal },
     {
       errorMessage: "GitHub files request failed",
+    },
+  );
+}
+
+export function fetchProjectPromptActivities({
+  cursor,
+  limit,
+  projectId,
+  query,
+  sessionId,
+  signal,
+}: {
+  cursor?: string | null;
+  limit: number;
+  projectId: string;
+  query?: string;
+  sessionId?: string | null;
+  signal?: AbortSignal;
+}): Promise<ProjectPromptActivitiesApiResponse> {
+  const params = new URLSearchParams({
+    limit: String(limit),
+  });
+  if (cursor) {
+    params.set("cursor", cursor);
+  }
+  if (query?.trim()) {
+    params.set("q", query.trim());
+  }
+  if (sessionId) {
+    params.set("session_id", sessionId);
+  }
+
+  return requestJson<ProjectPromptActivitiesApiResponse>(
+    `/api/projects/${encodeURIComponent(projectId)}/prompt-activities?${params}`,
+    { signal },
+    {
+      errorMessage: "Prompt activity request failed",
     },
   );
 }

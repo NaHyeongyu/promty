@@ -27,7 +27,7 @@ def test_prompt_search_hashes_do_not_store_plaintext_tokens() -> None:
     hashes = prompt_search_hashes_for_text("very-secret-prompt-value")
 
     assert hashes
-    assert all(len(value) == 64 for value in hashes)
+    assert all(len(value) == 32 for value in hashes)
     assert "secret" not in hashes
     assert "very-secret-prompt-value" not in hashes
 

@@ -1,5 +1,7 @@
 import type {
   ProjectDetailData,
+  PromptActivityItem,
+  PromptActivityPage,
   ProjectMemoryArtifactStage,
   ProjectMemoryReviewState,
   ProjectMemoryScope,
@@ -24,6 +26,8 @@ import type {
   ProjectMemoryArtifactApiResponse,
   ProjectMemoryPendingRangeApiResponse,
   ProjectMemorySnapshotApiResponse,
+  ProjectPromptActivitiesApiResponse,
+  ProjectPromptActivityApiItem,
 } from "./types";
 
 export function emptyProjectDetailData(project: Project | null): ProjectDetailData {
@@ -290,37 +294,7 @@ export function projectDetailDataFromApi(
       responses: activity.responses,
       startedAt: formatOptionalTimestamp(activity.started_at, "Unknown"),
     })),
-    promptActivities: (payload.prompt_activities ?? []).map((activity) => ({
-      fileChanges: (activity.file_changes ?? []).map((change) => ({
-        additions: change.additions,
-        binary: change.binary,
-        deletions: change.deletions,
-        oldPath: change.old_path,
-        patch: change.patch,
-        patchOmittedReason: change.patch_omitted_reason,
-        patchTruncated: change.patch_truncated,
-        path: change.path,
-        status: change.status,
-      })),
-      filesChanged: activity.files_changed ?? activity.file_changes?.length ?? 0,
-      id: activity.id,
-      model: activity.model,
-      prompt: activity.prompt,
-      promptOriginalLength: activity.prompt_original_length,
-      promptStorageLimit: activity.prompt_storage_limit,
-      promptTruncated: activity.prompt_truncated,
-      response: activity.response,
-      responseOriginalLength: activity.response_original_length,
-      responseReceivedAt: activity.response_received_at
-        ? formatOptionalTimestamp(activity.response_received_at, "Unknown")
-        : null,
-      responseSource: activity.response_source,
-      responseStorageLimit: activity.response_storage_limit,
-      responseTruncated: activity.response_truncated,
-      sequence: activity.sequence,
-      sessionId: activity.session_id,
-      submittedAt: formatOptionalTimestamp(activity.submitted_at, "Unknown"),
-    })),
+    promptActivities: (payload.prompt_activities ?? []).map(promptActivityItemFromApi),
     community: {
       draftFlows: community?.draft_flows ?? 0,
       latestFlowAt: community?.latest_flow_at
@@ -449,6 +423,58 @@ export function projectDetailDataFromApi(
     repositoryFilesMessage: payload.project.repository_url
       ? "GitHub repository files are loading."
       : "This project does not have a GitHub repository remote.",
+  };
+}
+
+export function promptActivityItemFromApi(
+  activity: ProjectPromptActivityApiItem,
+): PromptActivityItem {
+  return {
+    fileChanges: (activity.file_changes ?? []).map((change) => ({
+      additions: change.additions,
+      binary: change.binary,
+      deletions: change.deletions,
+      oldPath: change.old_path,
+      patch: change.patch,
+      patchOmittedReason: change.patch_omitted_reason,
+      patchTruncated: change.patch_truncated,
+      path: change.path,
+      status: change.status,
+    })),
+    filesChanged: activity.files_changed ?? activity.file_changes?.length ?? 0,
+    id: activity.id,
+    model: activity.model,
+    prompt: activity.prompt,
+    promptOriginalLength: activity.prompt_original_length,
+    promptStorageLimit: activity.prompt_storage_limit,
+    promptTruncated: activity.prompt_truncated,
+    response: activity.response,
+    responseOriginalLength: activity.response_original_length,
+    responseReceivedAt: activity.response_received_at
+      ? formatOptionalTimestamp(activity.response_received_at, "Unknown")
+      : null,
+    responseSource: activity.response_source,
+    responseStorageLimit: activity.response_storage_limit,
+    responseTruncated: activity.response_truncated,
+    sequence: activity.sequence,
+    sessionId: activity.session_id,
+    submittedAt: formatOptionalTimestamp(activity.submitted_at, "Unknown"),
+  };
+}
+
+export function promptActivityPageFromApi(
+  payload: ProjectPromptActivitiesApiResponse,
+): PromptActivityPage {
+  return {
+    cursor: payload.cursor,
+    hasMore: payload.has_more,
+    items: payload.items.map(promptActivityItemFromApi),
+    limit: payload.limit,
+    nextCursor: payload.next_cursor,
+    query: payload.query,
+    scanned: payload.scanned,
+    sessionId: payload.session_id,
+    total: payload.total,
   };
 }
 

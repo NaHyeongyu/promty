@@ -20,11 +20,12 @@ SEARCH_TERM_RE = re.compile(
     re.IGNORECASE,
 )
 MIN_TERM_CHARS = 2
+PREFIX_TOKEN_CHARS = 2
 NGRAM_SIZE = 3
-MAX_PREFIX_CHARS = 24
 MAX_TERM_CHARS = 80
 MAX_INDEX_HASHES = 1024
 MAX_QUERY_HASHES = 64
+HASH_HEX_CHARS = 32
 
 
 class PromptSearchConfigurationError(RuntimeError):
@@ -44,11 +45,12 @@ def _search_secret() -> str:
 
 
 def _hash_token(token: str) -> str:
-    return hmac.new(
+    digest = hmac.new(
         _search_secret().encode("utf-8"),
         f"{PROMPT_SEARCH_PURPOSE}:{token}".encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
+    return digest[:HASH_HEX_CHARS]
 
 
 def _terms(value: str) -> list[str]:
@@ -61,8 +63,8 @@ def _terms(value: str) -> list[str]:
 
 def _index_variants(term: str) -> list[str]:
     variants: list[str] = [term]
-    prefix_end = min(len(term), MAX_PREFIX_CHARS)
-    variants.extend(term[:size] for size in range(MIN_TERM_CHARS, prefix_end + 1))
+    if len(term) >= PREFIX_TOKEN_CHARS:
+        variants.append(term[:PREFIX_TOKEN_CHARS])
     if len(term) >= NGRAM_SIZE:
         variants.extend(
             term[index : index + NGRAM_SIZE]

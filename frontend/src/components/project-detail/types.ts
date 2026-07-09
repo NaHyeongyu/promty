@@ -271,6 +271,18 @@ export type PromptActivityItem = {
   submittedAt: string;
 };
 
+export type PromptActivityPage = {
+  cursor: string | null;
+  hasMore: boolean;
+  items: PromptActivityItem[];
+  limit: number;
+  nextCursor: string | null;
+  query: string | null;
+  scanned?: number;
+  sessionId: string | null;
+  total: number | null;
+};
+
 export type FileTreeNode = {
   name: string;
   path?: string;

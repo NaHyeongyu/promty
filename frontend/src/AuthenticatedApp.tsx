@@ -30,6 +30,12 @@ import {
 } from "./hooks/useWorkspaceNavigationState";
 import { useWorkspaceData } from "./hooks/useWorkspaceData";
 import {
+  useWorkspaceAdminEffect,
+  useWorkspaceCommunityEffects,
+  useWorkspaceProjectResourceEffects,
+  useWorkspaceProjectRouteEffect,
+} from "./hooks/useWorkspaceEffects";
+import {
   DEFAULT_URL_NAVIGATION_STATE,
   currentWorkspaceReturnUrl,
   normalizeUrlNavigationState,
@@ -39,10 +45,7 @@ import {
   type UrlNavigationWriteMode,
 } from "./workspace/navigation";
 import { emptyProjectDetailData } from "./workspace/projectDetailMappers";
-import {
-  isMockGithubUnlinkedProject,
-  mockGithubUnlinkedProjectDetail,
-} from "./workspace/previewData";
+import { isMockGithubUnlinkedProject } from "./workspace/previewData";
 import type { AuthStatus, AuthUser, Project, SidebarItemId } from "./workspace/types";
 
 function githubRepositoryConnectUrl() {
@@ -298,185 +301,47 @@ export function AuthenticatedApp() {
     void loadSession();
   }, []);
 
-  useEffect(() => {
-    if (
-      !COMMUNITY_FEATURE_ENABLED ||
-      authStatus !== "authenticated" ||
-      activeItem !== "community"
-    ) {
-      return;
-    }
-    void loadPublishedFlows();
-  }, [activeItem, authStatus]);
-
-  useEffect(() => {
-    if (
-      !COMMUNITY_FEATURE_ENABLED ||
-      authStatus !== "authenticated" ||
-      activeItem !== "community" ||
-      !selectedPublishedFlowKey
-    ) {
-      return;
-    }
-    if (selectedPublishedFlow?.slug === selectedPublishedFlowKey) {
-      return;
-    }
-    void loadPublishedFlowDetail(selectedPublishedFlowKey);
-  }, [activeItem, authStatus, selectedPublishedFlowKey]);
-
-  useEffect(() => {
-    if (authStatus !== "authenticated" || activeItem !== "admin") {
-      return;
-    }
-    if (!currentUser?.is_admin) {
-      navigateWorkspace(
-        {
-          activeItem: "projects",
-          repositoryFileContentPath: null,
-          selectedProjectId: null,
-          selectedProjectRouteKey: null,
-        },
-        "replace",
-      );
-      return;
-    }
-
-    const controller = new AbortController();
-    void loadAdminOverview(controller.signal);
-    return () => controller.abort();
-  }, [activeItem, authStatus, currentUser?.is_admin]);
-
-  useEffect(() => {
-    if (!hasLoadedWorkspaceData || activeItem !== "projects") {
-      return;
-    }
-
-    if (!selectedProjectId && selectedProjectRouteKey) {
-      const resolvedProject = projectCatalog.find((project) =>
-        projectMatchesRouteKey(project, selectedProjectRouteKey),
-      );
-
-      if (resolvedProject) {
-        navigateWorkspace(
-          {
-            selectedProjectId: resolvedProject.id,
-            selectedProjectRouteKey: projectRouteKey(resolvedProject),
-          },
-          "replace",
-        );
-        return;
-      }
-
-      navigateWorkspace(
-        {
-          activeDetailTab: "overview",
-          activeItem: "projects",
-          repositoryFileContentPath: null,
-          selectedProjectId: null,
-          selectedProjectRouteKey: null,
-        },
-        "replace",
-      );
-      return;
-    }
-
-    if (!selectedProjectId) {
-      return;
-    }
-
-    const resolvedProject =
-      projectCatalog.find((project) => project.id === selectedProjectId) ??
-      (selectedProjectRouteKey
-        ? projectCatalog.find((project) =>
-            projectMatchesRouteKey(project, selectedProjectRouteKey),
-          )
-        : null);
-    if (!resolvedProject) {
-      navigateWorkspace(
-        {
-          activeDetailTab: "overview",
-          activeItem: "projects",
-          repositoryFileContentPath: null,
-          selectedProjectId: null,
-          selectedProjectRouteKey: null,
-        },
-        "replace",
-      );
-      return;
-    }
-
-    const resolvedProjectRouteKey = projectRouteKey(resolvedProject);
-    if (
-      resolvedProjectRouteKey &&
-      (selectedProjectId !== resolvedProject.id ||
-        selectedProjectRouteKey !== resolvedProjectRouteKey)
-    ) {
-      navigateWorkspace(
-        {
-          selectedProjectId: resolvedProject.id,
-          selectedProjectRouteKey: resolvedProjectRouteKey,
-        },
-        "replace",
-      );
-    }
-  }, [
+  useWorkspaceCommunityEffects({
+    activeItem,
+    authStatus,
+    loadPublishedFlowDetail,
+    loadPublishedFlows,
+    selectedPublishedFlow,
+    selectedPublishedFlowKey,
+  });
+  useWorkspaceAdminEffect({
+    activeItem,
+    authStatus,
+    currentUserIsAdmin: currentUser?.is_admin,
+    loadAdminOverview,
+    navigateWorkspace,
+  });
+  useWorkspaceProjectRouteEffect({
     activeItem,
     hasLoadedWorkspaceData,
+    navigateWorkspace,
     projectCatalog,
+    projectMatchesRouteKey,
+    projectRouteKey,
     selectedProjectId,
     selectedProjectRouteKey,
-  ]);
-
-  useEffect(() => {
-    if (activeItem !== "projects" || (!selectedProjectId && !selectedProjectRouteKey)) {
-      clearProjectDetail();
-      clearRepositoryFiles();
-      return;
-    }
-
-    if (!selectedProjectId) {
-      clearProjectDetail();
-      clearRepositoryBrowserState();
-      return;
-    }
-
-    if (isMockGithubUnlinkedProject(selectedProjectId) && selectedProject) {
-      setProjectDetail(mockGithubUnlinkedProjectDetail(selectedProject));
-      clearRepositoryBrowserState();
-      return;
-    }
-
-    const detailController = new AbortController();
-    const githubFilesController = new AbortController();
-    clearProjectDetail();
-    clearRepositoryBrowserState();
-    void loadProjectDetail(selectedProjectId, selectedProject, detailController.signal);
-    void loadProjectGithubFiles(selectedProjectId, githubFilesController.signal);
-    return () => {
-      detailController.abort();
-      githubFilesController.abort();
-    };
-  }, [activeItem, selectedProject, selectedProjectId, selectedProjectRouteKey]);
-
-  useEffect(() => {
-    if (
-      !selectedProjectId ||
-      activeItem !== "projects" ||
-      activeDetailTab !== "files" ||
-      !repositoryFileContentPath
-    ) {
-      clearRepositoryFileContentState();
-      return;
-    }
-
-    const controller = new AbortController();
-    void loadRepositoryFileContent(
-      selectedProjectId,
-      repositoryFileContentPath,
-      controller.signal,
-    );
-    return () => controller.abort();
-  }, [activeDetailTab, activeItem, repositoryFileContentPath, selectedProjectId]);
+  });
+  useWorkspaceProjectResourceEffects({
+    activeDetailTab,
+    activeItem,
+    clearProjectDetail,
+    clearRepositoryBrowserState,
+    clearRepositoryFileContentState,
+    clearRepositoryFiles,
+    loadProjectDetail,
+    loadProjectGithubFiles,
+    loadRepositoryFileContent,
+    repositoryFileContentPath,
+    selectedProject,
+    selectedProjectId,
+    selectedProjectRouteKey,
+    setProjectDetail,
+  });
 
   const openProjectDetail = (projectId: string) => {
     closeRepositoryConnector();

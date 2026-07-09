@@ -236,6 +236,22 @@ export type ProjectDetailApiResponse = {
   };
 };
 
+export type ProjectPromptActivityApiItem = NonNullable<
+  ProjectDetailApiResponse["prompt_activities"]
+>[number];
+
+export type ProjectPromptActivitiesApiResponse = {
+  cursor: string | null;
+  has_more: boolean;
+  items: ProjectPromptActivityApiItem[];
+  limit: number;
+  next_cursor: string | null;
+  query: string | null;
+  scanned?: number;
+  session_id: string | null;
+  total: number | null;
+};
+
 export type ProjectMemoryArtifactApiResponse =
   NonNullable<ProjectDetailApiResponse["memory"]>["recent_artifacts"][number];
 
