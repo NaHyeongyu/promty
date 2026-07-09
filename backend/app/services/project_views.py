@@ -1,19 +1,22 @@
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, case, desc, func, select
+from sqlalchemy import and_, case, desc, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.encoding import base64_urldecode, base64_urlencode
 from app.models.artifacts import Artifact
 from app.models.code_change_patches import CodeChangePatch
 from app.models.events import Event
 from app.models.project_files import ProjectFile
 from app.models.projects import Project
+from app.models.prompt_search_documents import PromptSearchDocument
 from app.models.sessions import Session as PromptSession
 from app.models.users import User
 from app.services.event_payload_security import (
@@ -36,10 +39,12 @@ from app.services.prompt_activity import (
     response_payloads_by_prompt,
     tool_label,
 )
+from app.services.prompt_search import prompt_search_hashes_for_query
 
 RECENT_ACTIVITY_LIMIT = 50
-PROMPT_DETAIL_LIMIT = 100
 PROMPT_RELATED_EVENT_LIMIT = 1000
+
+PromptActivityCursor = tuple[datetime, int, UUID]
 
 
 def normalize_github_url(remote_url: str | None) -> str | None:
@@ -213,20 +218,6 @@ def _activity_summaries(db: Session, project_id: UUID) -> tuple[list[dict[str, A
     return activities, tools
 
 
-def _prompt_detail_events(db: Session, project_id: UUID) -> list[Event]:
-    return list(
-        db.execute(
-            select(Event)
-            .where(
-                Event.project_id == project_id,
-                Event.event_type == "PromptSubmitted",
-            )
-            .order_by(desc(Event.created_at), desc(Event.sequence))
-            .limit(PROMPT_DETAIL_LIMIT)
-        ).scalars()
-    )
-
-
 def _prompt_file_changes(
     db: Session,
     *,
@@ -317,6 +308,238 @@ def _prompt_responses(
     }
 
 
+def _prompt_activity_items(
+    db: Session,
+    *,
+    project_id: UUID,
+    prompt_events: list[Event],
+    prompt_payloads: dict[UUID, dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    if not prompt_events:
+        return []
+
+    payloads = prompt_payloads or {
+        event.id: decrypt_event_payload(event.event_type, event.payload)
+        for event in prompt_events
+    }
+    prompt_changes = _prompt_file_changes(
+        db,
+        project_id=project_id,
+        prompt_events=prompt_events,
+    )
+    prompt_responses = _prompt_responses(
+        db,
+        project_id=project_id,
+        prompt_events=prompt_events,
+        prompt_payloads=payloads,
+    )
+
+    return [
+        {
+            "file_changes": prompt_changes.get(str(event.id), []),
+            "files_changed": len(
+                {change["path"] for change in prompt_changes.get(str(event.id), [])}
+            ),
+            "id": str(event.id),
+            "model": payload_model(payloads[event.id], event.tool),
+            "prompt": payload_prompt(payloads[event.id]),
+            "prompt_original_length": payloads[event.id].get("prompt_original_length")
+            if isinstance(payloads[event.id].get("prompt_original_length"), int)
+            else None,
+            "prompt_storage_limit": payloads[event.id].get("prompt_storage_limit")
+            if isinstance(payloads[event.id].get("prompt_storage_limit"), int)
+            else None,
+            "prompt_truncated": payloads[event.id].get("prompt_truncated") is True,
+            **prompt_responses.get(str(event.id), {}),
+            "sequence": event.sequence,
+            "session_id": str(event.session_id),
+            "submitted_at": iso(event.created_at),
+        }
+        for event in prompt_events
+    ]
+
+
+def _encode_prompt_activity_cursor(event: Event) -> str:
+    payload = {
+        "created_at": event.created_at.isoformat(),
+        "id": str(event.id),
+        "sequence": event.sequence,
+    }
+    return base64_urlencode(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    )
+
+
+def _decode_prompt_activity_cursor(value: str | None) -> PromptActivityCursor | None:
+    if not value:
+        return None
+
+    try:
+        payload = json.loads(base64_urldecode(value))
+        created_at_value = payload["created_at"]
+        sequence = payload["sequence"]
+        event_id = UUID(payload["id"])
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid prompt activity cursor",
+        ) from exc
+
+    if not isinstance(created_at_value, str) or not isinstance(sequence, int):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid prompt activity cursor",
+        )
+
+    try:
+        created_at = datetime.fromisoformat(created_at_value)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid prompt activity cursor",
+        ) from exc
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    return created_at, sequence, event_id
+
+
+def _prompt_activity_order_by() -> tuple[Any, Any, Any]:
+    return desc(Event.created_at), desc(Event.sequence), desc(Event.id)
+
+
+def _apply_prompt_activity_cursor(statement: Any, cursor: PromptActivityCursor | None) -> Any:
+    if cursor is None:
+        return statement
+
+    created_at, sequence, event_id = cursor
+    return statement.where(
+        or_(
+            Event.created_at < created_at,
+            and_(Event.created_at == created_at, Event.sequence < sequence),
+            and_(
+                Event.created_at == created_at,
+                Event.sequence == sequence,
+                Event.id < event_id,
+            ),
+        )
+    )
+
+
+def read_project_prompt_activities_response(
+    project_id: UUID,
+    current_user: User,
+    db: Session,
+    *,
+    limit: int,
+    cursor: str | None = None,
+    query: str | None = None,
+    session_id: UUID | None = None,
+) -> dict[str, Any]:
+    project = project_for_user(db, project_id, current_user)
+    normalized_query = re.sub(r"\s+", " ", query.strip().lower()) if query else ""
+    decoded_cursor = _decode_prompt_activity_cursor(cursor)
+    base_query = select(Event).where(
+        Event.project_id == project.id,
+        Event.event_type == "PromptSubmitted",
+    )
+    total_query = select(func.count(Event.id)).where(
+        Event.project_id == project.id,
+        Event.event_type == "PromptSubmitted",
+    )
+    if session_id is not None:
+        base_query = base_query.where(Event.session_id == session_id)
+        total_query = total_query.where(Event.session_id == session_id)
+
+    if not normalized_query:
+        total = int(db.scalar(total_query) or 0)
+        prompt_events = list(
+            db.execute(
+                _apply_prompt_activity_cursor(base_query, decoded_cursor)
+                .order_by(*_prompt_activity_order_by())
+                .limit(limit + 1)
+            ).scalars()
+        )
+        page_events = prompt_events[:limit]
+        has_more = len(prompt_events) > limit
+        return {
+            "cursor": cursor,
+            "has_more": has_more,
+            "items": _prompt_activity_items(
+                db,
+                project_id=project.id,
+                prompt_events=page_events,
+            ),
+            "limit": limit,
+            "next_cursor": _encode_prompt_activity_cursor(page_events[-1])
+            if has_more and page_events
+            else None,
+            "query": None,
+            "scanned": len(page_events),
+            "session_id": str(session_id) if session_id else None,
+            "total": total,
+        }
+
+    query_hashes = prompt_search_hashes_for_query(normalized_query)
+    if not query_hashes:
+        return {
+            "cursor": cursor,
+            "has_more": False,
+            "items": [],
+            "limit": limit,
+            "next_cursor": None,
+            "query": normalized_query,
+            "scanned": 0,
+            "session_id": str(session_id) if session_id else None,
+            "total": None,
+        }
+
+    search_query = (
+        select(Event)
+        .join(
+            PromptSearchDocument,
+            PromptSearchDocument.prompt_event_id == Event.id,
+        )
+        .where(
+            Event.project_id == project.id,
+            Event.event_type == "PromptSubmitted",
+            PromptSearchDocument.project_id == project.id,
+            PromptSearchDocument.token_hashes.contains(query_hashes),
+        )
+    )
+    if session_id is not None:
+        search_query = search_query.where(
+            Event.session_id == session_id,
+            PromptSearchDocument.session_id == session_id,
+        )
+
+    matched_events = list(
+        db.execute(
+            _apply_prompt_activity_cursor(search_query, decoded_cursor)
+            .order_by(*_prompt_activity_order_by())
+            .limit(limit + 1)
+        ).scalars()
+    )
+    page_events = matched_events[:limit]
+    has_more = len(matched_events) > limit
+    return {
+        "cursor": cursor,
+        "has_more": has_more,
+        "items": _prompt_activity_items(
+            db,
+            project_id=project.id,
+            prompt_events=page_events,
+        ),
+        "limit": limit,
+        "next_cursor": _encode_prompt_activity_cursor(page_events[-1])
+        if has_more and page_events
+        else None,
+        "query": normalized_query,
+        "scanned": len(page_events),
+        "session_id": str(session_id) if session_id else None,
+        "total": None,
+    }
+
+
 def read_project_detail_response(
     project_id: UUID,
     current_user: User,
@@ -367,49 +590,6 @@ def read_project_detail_response(
     models, tools = _session_metadata_for_project(db, project.id)
     activities, activity_tools = _activity_summaries(db, project.id)
     tools.update(activity_tools)
-
-    prompt_events = _prompt_detail_events(db, project.id)
-    prompt_payloads = {
-        event.id: decrypt_event_payload(event.event_type, event.payload) for event in prompt_events
-    }
-    for payload in prompt_payloads.values():
-        if (model := model_name(payload.get("model"))) is not None:
-            models.add(model)
-
-    prompt_changes = _prompt_file_changes(
-        db,
-        project_id=project.id,
-        prompt_events=prompt_events,
-    )
-    prompt_responses = _prompt_responses(
-        db,
-        project_id=project.id,
-        prompt_events=prompt_events,
-        prompt_payloads=prompt_payloads,
-    )
-    prompt_activities = [
-        {
-            "file_changes": prompt_changes.get(str(event.id), []),
-            "files_changed": len(
-                {change["path"] for change in prompt_changes.get(str(event.id), [])}
-            ),
-            "id": str(event.id),
-            "model": payload_model(prompt_payloads[event.id], event.tool),
-            "prompt": payload_prompt(prompt_payloads[event.id]),
-            "prompt_original_length": prompt_payloads[event.id].get("prompt_original_length")
-            if isinstance(prompt_payloads[event.id].get("prompt_original_length"), int)
-            else None,
-            "prompt_storage_limit": prompt_payloads[event.id].get("prompt_storage_limit")
-            if isinstance(prompt_payloads[event.id].get("prompt_storage_limit"), int)
-            else None,
-            "prompt_truncated": prompt_payloads[event.id].get("prompt_truncated") is True,
-            **prompt_responses.get(str(event.id), {}),
-            "sequence": event.sequence,
-            "session_id": str(event.session_id),
-            "submitted_at": iso(event.created_at),
-        }
-        for event in prompt_events
-    ]
 
     active_file_rows = list(
         db.execute(
@@ -481,6 +661,6 @@ def read_project_detail_response(
             "total_artifacts": memory_artifact_count,
         },
         "activities": activities,
-        "prompt_activities": prompt_activities,
+        "prompt_activities": [],
         "files": build_file_tree(active_file_paths),
     }

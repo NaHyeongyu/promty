@@ -9,6 +9,7 @@ from app.models.events import Event
 from app.models.github_connections import GitHubConnection
 from app.models.project_files import ProjectFile
 from app.models.projects import Project
+from app.models.prompt_search_documents import PromptSearchDocument
 from app.models.published_flows import (
     PublishedFlow,
     PublishedFlowAsset,
@@ -32,6 +33,7 @@ __all__ = [
     "GitHubConnection",
     "Project",
     "ProjectFile",
+    "PromptSearchDocument",
     "PublishedFlow",
     "PublishedFlowAsset",
     "PublishedFlowComment",

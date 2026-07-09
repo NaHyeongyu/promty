@@ -33,6 +33,7 @@ from app.services.project_management import (
 from app.services.project_views import (
     project_for_user as _project_for_user,
     read_project_detail_response,
+    read_project_prompt_activities_response,
 )
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -83,6 +84,27 @@ def read_project_detail(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     return read_project_detail_response(project_id, current_user, db)
+
+
+@router.get("/{project_id}/prompt-activities")
+def read_project_prompt_activities(
+    project_id: UUID,
+    limit: int = Query(default=50, ge=1, le=100),
+    cursor: str | None = Query(default=None, max_length=512),
+    q: str | None = Query(default=None, max_length=120),
+    session_id: UUID | None = Query(default=None),
+    current_user: User = Depends(require_web_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return read_project_prompt_activities_response(
+        project_id,
+        current_user,
+        db,
+        limit=limit,
+        cursor=cursor,
+        query=q,
+        session_id=session_id,
+    )
 
 
 @router.patch("/{project_id}/repository")

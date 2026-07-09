@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
-import time
 from typing import Any
 from urllib import error, parse, request
 
@@ -20,6 +18,12 @@ from app.services.memory.errors import MemoryGenerationError
 from app.services.memory.prompts import (
     build_memory_draft_prompt,
     build_project_memory_prompt,
+)
+from app.services.memory.retry import (
+    bounded_retry_delay,
+    retry_after_header_delay,
+    retry_delay_from_text,
+    sleep_before_retry,
 )
 
 GEMINI_MEMORY_DRAFT_GENERATOR = "gemini-memory-draft-v1"
@@ -99,12 +103,12 @@ def _request_gemini_json(prompt: str) -> dict[str, Any]:
             )
             if exc.code not in RETRYABLE_HTTP_STATUS_CODES or attempt >= max_retries:
                 raise last_error from exc
-            time.sleep(_gemini_retry_delay(exc, detail, attempt))
+            sleep_before_retry(_gemini_retry_delay(exc, detail, attempt))
         except (error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             last_error = GeminiMemoryGenerationError(f"Gemini request failed: {exc}")
             if attempt >= max_retries:
                 raise last_error from exc
-            time.sleep(_gemini_retry_delay(None, "", attempt))
+            sleep_before_retry(_gemini_retry_delay(None, "", attempt))
 
     if last_error is not None:
         raise last_error
@@ -116,26 +120,13 @@ def _gemini_retry_delay(
     detail: str,
     attempt: int,
 ) -> float:
-    header_delay = None
-    if exc is not None:
-        retry_after = exc.headers.get("Retry-After")
-        if retry_after:
-            try:
-                header_delay = float(retry_after)
-            except ValueError:
-                header_delay = None
-
-    body_delay = None
-    match = re.search(r"retry\s+in\s+([0-9]+(?:\.[0-9]+)?)s", detail, flags=re.IGNORECASE)
-    if match:
-        try:
-            body_delay = float(match.group(1))
-        except ValueError:
-            body_delay = None
-
-    fallback_delay = max(settings.gemini_retry_base_seconds, 0.1) * (2**attempt)
-    delay = header_delay or body_delay or fallback_delay
-    return max(0.1, min(delay, max(settings.gemini_retry_max_sleep_seconds, 0.1)))
+    return bounded_retry_delay(
+        attempt=attempt,
+        base_seconds=settings.gemini_retry_base_seconds,
+        body_delay=retry_delay_from_text(detail),
+        header_delay=retry_after_header_delay(exc.headers) if exc is not None else None,
+        max_sleep_seconds=settings.gemini_retry_max_sleep_seconds,
+    )
 
 
 def generate_gemini_memory_drafts(context: dict[str, Any]) -> dict[str, Any]:

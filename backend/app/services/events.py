@@ -18,6 +18,7 @@ from app.services.event_payload_security import (
     encrypt_event_payload,
 )
 from app.services.memory_artifacts import generate_due_memory_artifacts_for_session
+from app.services.prompt_search import upsert_prompt_search_document
 from app.services.project_resources import sync_project_resources_from_event
 
 SYSTEM_USER_ID = uuid5(NAMESPACE_DNS, "prompthub.system_user")
@@ -240,6 +241,7 @@ def add_events(
 
         if existing is not None:
             _ensure_replayed_event_matches(existing, event, payload)
+            upsert_prompt_search_document(db, existing, payload)
             event_ids.append(str(event.id))
             continue
 
@@ -258,6 +260,7 @@ def add_events(
         )
         db.add(event_row)
         db.flush()
+        upsert_prompt_search_document(db, event_row, payload)
         sync_project_resources_from_event(db, event_row, payload)
         if event.session_id is not None:
             touched_session_ids.add(event.session_id)
