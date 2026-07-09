@@ -60,7 +60,7 @@ function formatMemoryDate(value: string | null | undefined) {
   if (Number.isNaN(date.getTime())) {
     return null;
   }
-  return Intl.DateTimeFormat("ko-KR", {
+  return Intl.DateTimeFormat("en-US", {
     day: "numeric",
     month: "long",
     year: "numeric",
