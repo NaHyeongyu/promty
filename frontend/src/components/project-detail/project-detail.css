@@ -2194,6 +2194,20 @@
   overflow: hidden;
 }
 
+.bh-memory-current-document {
+  display: grid;
+  gap: 0;
+}
+
+.bh-memory-document-current-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--bh-space-3);
+  border-bottom: 1px solid var(--bh-color-border);
+  padding: var(--bh-space-3);
+}
+
 .bh-memory-document-placeholder {
   padding: var(--bh-space-3);
   border-color: var(--bh-color-primary-border);
@@ -5684,6 +5698,7 @@ button.bh-file-tree-row:focus-visible {
 
   .bh-memory-toolbar,
   .bh-memory-document-request,
+  .bh-memory-document-current-header,
   .bh-memory-document-row summary,
   .bh-memory-edit-section-grid,
   .bh-memory-section-header,
