@@ -1,5 +1,6 @@
 import type {
   ProjectDetailApiResponse,
+  ProjectFilesApiResponse,
   ProjectGithubFileContentApiResponse,
   ProjectGithubFilesApiResponse,
   ProjectMemoryPendingRangeApiResponse,
@@ -134,6 +135,19 @@ export function fetchProjectGithubFiles(
     { signal },
     {
       errorMessage: "GitHub files request failed",
+    },
+  );
+}
+
+export function fetchProjectFiles(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<ProjectFilesApiResponse> {
+  return requestJson<ProjectFilesApiResponse>(
+    `/api/projects/${encodeURIComponent(projectId)}/files`,
+    { signal },
+    {
+      errorMessage: "Tracked files request failed",
     },
   );
 }

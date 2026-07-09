@@ -207,7 +207,7 @@ export type ProjectDetailApiResponse = {
     session_id: string;
     submitted_at: string | null;
   }>;
-  files: FileTreeNode[];
+  files?: FileTreeNode[];
   metrics: {
     connected_models: string[];
     connected_tools?: string[];
@@ -252,6 +252,13 @@ export type ProjectPromptActivitiesApiResponse = {
   scanned?: number;
   session_id: string | null;
   total: number | null;
+};
+
+export type ProjectFilesApiResponse = {
+  files: FileTreeNode[];
+  limit: number;
+  total: number;
+  truncated: boolean;
 };
 
 export type ProjectMemoryArtifactApiResponse =

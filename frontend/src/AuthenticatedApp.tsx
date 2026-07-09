@@ -20,6 +20,7 @@ import { useAdminOverview } from "./hooks/useAdminOverview";
 import { useProjectActions } from "./hooks/useProjectActions";
 import { useProjectCatalog } from "./hooks/useProjectCatalog";
 import { useProjectDetail } from "./hooks/useProjectDetail";
+import { useProjectFiles } from "./hooks/useProjectFiles";
 import { useProjectSharing } from "./hooks/useProjectSharing";
 import { usePublishedFlows } from "./hooks/usePublishedFlows";
 import { useRepositoryConnector } from "./hooks/useRepositoryConnector";
@@ -86,6 +87,15 @@ export function AuthenticatedApp() {
     projectDetailError,
     setProjectDetail,
   } = useProjectDetail({ onUnauthorized: handleUnauthorized });
+  const {
+    clearProjectFiles,
+    isProjectFilesLoading,
+    loadProjectFiles,
+    projectFiles,
+    projectFilesError,
+    projectFilesTotal,
+    projectFilesTruncated,
+  } = useProjectFiles({ onUnauthorized: handleUnauthorized });
   const {
     clearRepositoryBrowserState,
     clearRepositoryFileContent,
@@ -289,6 +299,7 @@ export function AuthenticatedApp() {
     clearWorkspaceData();
     applyNavigationState(DEFAULT_URL_NAVIGATION_STATE);
     clearProjectDetail();
+    clearProjectFiles();
     clearRepositoryFiles();
     clearPublishedFlows();
     clearAdminOverview();
@@ -330,10 +341,12 @@ export function AuthenticatedApp() {
     activeDetailTab,
     activeItem,
     clearProjectDetail,
+    clearProjectFiles,
     clearRepositoryBrowserState,
     clearRepositoryFileContentState,
     clearRepositoryFiles,
     loadProjectDetail,
+    loadProjectFiles,
     loadProjectGithubFiles,
     loadRepositoryFileContent,
     repositoryFileContentPath,
@@ -359,6 +372,7 @@ export function AuthenticatedApp() {
 
     closeRepositoryConnector();
     clearProjectDetail();
+    clearProjectFiles();
     clearRepositoryBrowserState();
     navigateWorkspace({
       activeDetailTab,
@@ -377,6 +391,7 @@ export function AuthenticatedApp() {
       selectedProjectId: null,
     });
     clearProjectDetail();
+    clearProjectFiles();
     clearRepositoryFiles();
   };
   const selectSidebarItem = (item: SidebarItemId) => {
@@ -438,6 +453,11 @@ export function AuthenticatedApp() {
       ? null
       : {
           ...(projectDetail ?? emptyProjectDetailData(selectedProject)),
+          files: projectFiles,
+          filesError: projectFilesError,
+          filesLoading: isProjectFilesLoading,
+          filesTotal: projectFilesTotal,
+          filesTruncated: projectFilesTruncated,
           repositoryFileContent,
           repositoryFileContentError: repositoryFileContentError ?? undefined,
           repositoryFileContentLoading: isRepositoryFileContentLoading,
@@ -555,6 +575,7 @@ export function AuthenticatedApp() {
                 selectedProject
                   ? () => {
                       void loadProjectDetail(selectedProject.id, selectedProject);
+                      void loadProjectFiles(selectedProject.id);
                       void loadProjectGithubFiles(selectedProject.id);
                       if (repositoryFileContentPath) {
                         void loadRepositoryFileContent(

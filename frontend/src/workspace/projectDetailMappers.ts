@@ -320,7 +320,7 @@ export function projectDetailDataFromApi(
       })),
       totalFlows: community?.total_flows ?? 0,
     },
-    files: payload.files,
+    files: payload.files ?? [],
     memory: {
       drafts: memoryDrafts.map(projectMemoryArtifactFromApi),
       latestArtifactAt: memory?.latest_artifact_at

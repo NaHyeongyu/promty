@@ -316,6 +316,10 @@ export type ProjectDetailData = {
   activities: ActivityItem[];
   community: ProjectCommunityStatus;
   files: FileTreeNode[];
+  filesError?: string | null;
+  filesLoading?: boolean;
+  filesTotal?: number | null;
+  filesTruncated?: boolean;
   memory: ProjectMemoryStatus;
   overview: OverviewItem[];
   promptActivities: PromptActivityItem[];

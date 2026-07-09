@@ -4409,6 +4409,16 @@
   line-height: var(--bh-line-height-body);
 }
 
+.bh-files-inline-status {
+  border: 1px solid var(--bh-color-border);
+  border-radius: var(--bh-radius-sm);
+  padding: var(--bh-space-2) var(--bh-space-3);
+  color: var(--bh-color-text-secondary);
+  background: var(--bh-color-surface-secondary);
+  font-size: var(--bh-font-size-caption);
+  line-height: var(--bh-line-height-body);
+}
+
 .bh-file-tree ul {
   margin: 0;
   padding: 0;

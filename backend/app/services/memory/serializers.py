@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DBSession
 
 from app.models.artifact_generation_jobs import ArtifactGenerationJob
@@ -82,22 +82,6 @@ def _artifact_event_range(
             return _iso(first_event_at), _iso(last_event_at or first_event_at)
 
     return None, None
-
-
-def _artifact_versions(
-    db: DBSession,
-    artifact: Artifact,
-    *,
-    limit: int = 8,
-) -> list[ArtifactVersion]:
-    return list(
-        db.execute(
-            select(ArtifactVersion)
-            .where(ArtifactVersion.artifact_id == artifact.id)
-            .order_by(desc(ArtifactVersion.version))
-            .limit(limit)
-        ).scalars()
-    )
 
 
 def serialize_artifact_version(version: ArtifactVersion) -> dict[str, Any]:
@@ -218,10 +202,6 @@ def serialize_memory_artifact_summary(
         "updated_at": _iso(artifact.updated_at),
         "why_it_matters": artifact.reason,
         "window_reason": metadata.get("window_reason"),
-        "versions": [
-            serialize_artifact_version(version)
-            for version in _artifact_versions(db, artifact)
-        ],
     }
 
 
