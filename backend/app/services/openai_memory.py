@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import time
 from typing import Any
 from urllib import error, request
 
@@ -10,13 +9,20 @@ from app.schemas.memory import (
     MemoryDraftGeneration,
     ProjectMemorySnapshot,
 )
-from app.services.gemini_memory import (
-    GeminiMemoryGenerationError,
-    _build_memory_draft_prompt,
-    _build_project_memory_prompt,
-    _clean_memory_drafts_response,
-    _clean_project_memory_response,
-    _parse_json_text,
+from app.services.memory.cleaners import (
+    clean_memory_drafts_response,
+    clean_project_memory_response,
+    parse_json_text,
+)
+from app.services.memory.errors import MemoryGenerationError
+from app.services.memory.prompts import (
+    build_memory_draft_prompt,
+    build_project_memory_prompt,
+)
+from app.services.memory.retry import (
+    bounded_retry_delay,
+    retry_after_header_delay,
+    sleep_before_retry,
 )
 
 OPENAI_MEMORY_DRAFT_GENERATOR = "openai-memory-draft-v1"
@@ -25,7 +31,7 @@ RETRYABLE_HTTP_STATUS_CODES = {429, 500, 502, 503, 504}
 OPENAI_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
 
 
-class OpenAIMemoryGenerationError(GeminiMemoryGenerationError):
+class OpenAIMemoryGenerationError(MemoryGenerationError):
     pass
 
 
@@ -60,18 +66,12 @@ def _extract_text(response_payload: dict[str, Any]) -> str:
 
 
 def _retry_delay(exc: error.HTTPError | None, attempt: int) -> float:
-    header_delay = None
-    if exc is not None:
-        retry_after = exc.headers.get("Retry-After")
-        if retry_after:
-            try:
-                header_delay = float(retry_after)
-            except ValueError:
-                header_delay = None
-
-    fallback_delay = max(settings.openai_retry_base_seconds, 0.1) * (2**attempt)
-    delay = header_delay or fallback_delay
-    return max(0.1, min(delay, max(settings.openai_retry_max_sleep_seconds, 0.1)))
+    return bounded_retry_delay(
+        attempt=attempt,
+        base_seconds=settings.openai_retry_base_seconds,
+        header_delay=retry_after_header_delay(exc.headers) if exc is not None else None,
+        max_sleep_seconds=settings.openai_retry_max_sleep_seconds,
+    )
 
 
 def _request_openai_json(prompt: str) -> dict[str, Any]:
@@ -111,7 +111,11 @@ def _request_openai_json(prompt: str) -> dict[str, Any]:
                 timeout=max(settings.openai_timeout_seconds, 1),
             ) as response:
                 response_payload = json.loads(response.read().decode("utf-8"))
-            return _parse_json_text(_extract_text(response_payload))
+            return parse_json_text(
+                _extract_text(response_payload),
+                error_cls=OpenAIMemoryGenerationError,
+                provider="OpenAI",
+            )
         except error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
             last_error = OpenAIMemoryGenerationError(
@@ -119,12 +123,12 @@ def _request_openai_json(prompt: str) -> dict[str, Any]:
             )
             if exc.code not in RETRYABLE_HTTP_STATUS_CODES or attempt >= max_retries:
                 raise last_error from exc
-            time.sleep(_retry_delay(exc, attempt))
+            sleep_before_retry(_retry_delay(exc, attempt))
         except (error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             last_error = OpenAIMemoryGenerationError(f"OpenAI request failed: {exc}")
             if attempt >= max_retries:
                 raise last_error from exc
-            time.sleep(_retry_delay(None, attempt))
+            sleep_before_retry(_retry_delay(None, attempt))
 
     if last_error is not None:
         raise last_error
@@ -132,14 +136,14 @@ def _request_openai_json(prompt: str) -> dict[str, Any]:
 
 
 def generate_openai_memory_drafts(context: dict[str, Any]) -> dict[str, Any]:
-    generated = _request_openai_json(_build_memory_draft_prompt(context))
+    generated = _request_openai_json(build_memory_draft_prompt(context))
     return MemoryDraftGeneration.parse_obj(
-        _clean_memory_drafts_response(generated, context)
+        clean_memory_drafts_response(generated, context)
     ).dict()
 
 
 def generate_openai_project_memory(context: dict[str, Any]) -> dict[str, Any]:
-    generated = _request_openai_json(_build_project_memory_prompt(context))
+    generated = _request_openai_json(build_project_memory_prompt(context))
     return ProjectMemorySnapshot.parse_obj(
-        _clean_project_memory_response(generated, context)
+        clean_project_memory_response(generated, context)
     ).dict()

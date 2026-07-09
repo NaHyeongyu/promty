@@ -5,17 +5,23 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field, validator
 from sqlalchemy.orm import Session
 
+from app.api.transactions import commit_or_conflict as _commit_or_conflict
 from app.core.config import settings
 from app.core.security import require_web_user
 from app.db.session import get_db
 from app.models.users import User
-from app.services.published_flows import (
-    archive_published_flow,
+from app.schemas.published_flows import (
+    PublishedFlowCreateRequest,
+    PublishedFlowUpdateRequest,
+)
+from app.services.published_flow_assets import (
     create_published_flow_asset,
     get_published_flow_asset,
+)
+from app.services.published_flows import (
+    archive_published_flow,
     create_published_flow,
     get_published_flow,
     list_published_flows,
@@ -23,81 +29,6 @@ from app.services.published_flows import (
 )
 
 router = APIRouter(prefix="/api/published-flows", tags=["published-flows"])
-
-
-class PublishedFlowCreateRequest(BaseModel):
-    context_summary: str | None = Field(default=None, max_length=4000)
-    end_prompt_event_id: UUID | None = None
-    notes: str | None = Field(default=None, max_length=20000)
-    prompt_event_ids: list[UUID] | None = None
-    project_id: UUID
-    session_id: UUID | None = None
-    start_prompt_event_id: UUID | None = None
-    status: str = Field(default="published")
-    summary: str | None = Field(default=None, max_length=2000)
-    tags: list[str] = Field(default_factory=list)
-    title: str | None = Field(default=None, max_length=255)
-    visibility: str = Field(default="public")
-
-    @validator(
-        "context_summary",
-        "notes",
-        "status",
-        "summary",
-        "title",
-        "visibility",
-        pre=True,
-    )
-    def strip_string(cls, value: Any) -> Any:
-        return value.strip() if isinstance(value, str) else value
-
-    @validator("tags", pre=True)
-    def normalize_tags_input(cls, value: Any) -> list[str]:
-        if value is None:
-            return []
-        if isinstance(value, str):
-            return [item for item in value.split(",") if item.strip()]
-        if isinstance(value, list):
-            return [item for item in value if isinstance(item, str)]
-        return []
-
-    class Config:
-        extra = "forbid"
-
-
-class PublishedFlowUpdateRequest(BaseModel):
-    context_summary: str | None = Field(default=None, max_length=4000)
-    notes: str | None = Field(default=None, max_length=20000)
-    status: str | None = None
-    summary: str | None = Field(default=None, max_length=2000)
-    tags: list[str] | None = None
-    title: str | None = Field(default=None, max_length=255)
-    visibility: str | None = None
-
-    @validator(
-        "context_summary",
-        "notes",
-        "status",
-        "summary",
-        "title",
-        "visibility",
-        pre=True,
-    )
-    def strip_string(cls, value: Any) -> Any:
-        return value.strip() if isinstance(value, str) else value
-
-    @validator("tags", pre=True)
-    def normalize_tags_input(cls, value: Any) -> list[str] | None:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            return [item for item in value.split(",") if item.strip()]
-        if isinstance(value, list):
-            return [item for item in value if isinstance(item, str)]
-        return []
-
-    class Config:
-        extra = "forbid"
 
 
 @router.get("")
@@ -116,7 +47,7 @@ def publish_flow(
     current_user: User = Depends(require_web_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    return create_published_flow(
+    response = create_published_flow(
         db,
         context_summary=payload.context_summary,
         current_user=current_user,
@@ -132,6 +63,11 @@ def publish_flow(
         title=payload.title,
         visibility=payload.visibility,
     )
+    _commit_or_conflict(
+        db,
+        detail="Published flow could not be created because it conflicts with existing data.",
+    )
+    return response
 
 
 @router.get("/{flow_key}")
@@ -150,7 +86,7 @@ def update_flow(
     current_user: User = Depends(require_web_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    return update_published_flow(
+    response = update_published_flow(
         db,
         context_summary=payload.context_summary,
         current_user=current_user,
@@ -163,6 +99,11 @@ def update_flow(
         title=payload.title,
         visibility=payload.visibility,
     )
+    _commit_or_conflict(
+        db,
+        detail="Published flow could not be updated because it conflicts with existing data.",
+    )
+    return response
 
 
 @router.post("/{flow_key}/archive")
@@ -171,7 +112,12 @@ def archive_flow(
     current_user: User = Depends(require_web_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    return archive_published_flow(db, current_user=current_user, flow_key=flow_key)
+    response = archive_published_flow(db, current_user=current_user, flow_key=flow_key)
+    _commit_or_conflict(
+        db,
+        detail="Published flow could not be archived because it conflicts with existing data.",
+    )
+    return response
 
 
 @router.post("/{flow_key}/assets")

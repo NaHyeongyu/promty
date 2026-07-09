@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class SourceConfidenceItem(BaseModel):
@@ -119,8 +119,13 @@ class ProjectMemorySnapshot(BaseModel):
     confidence: float = Field(default=0.5, ge=0, le=1)
     warnings: list[str] = Field(default_factory=list)
 
-    @validator("body_markdown")
+    @field_validator("body_markdown")
+    @classmethod
     def require_body(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("body_markdown must not be empty")
         return value
+
+
+class ProjectMemoryUpdateRequest(BaseModel):
+    body_markdown: str = Field(min_length=1)

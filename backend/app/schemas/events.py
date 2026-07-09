@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Union
+from typing import Any, Literal, Union
 from uuid import UUID
 
-from pydantic import BaseModel, Field, root_validator, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 SupportedTool = Literal["claude-code", "codex-cli", "cursor", "gemini-cli"]
 EventType = Literal[
@@ -18,8 +18,7 @@ EventType = Literal[
 
 
 class PayloadModel(BaseModel):
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class SessionStartedPayload(PayloadModel):
@@ -132,8 +131,11 @@ class EventCreate(BaseModel):
     timestamp: datetime
     payload: EventPayload
 
-    @root_validator(pre=True)
-    def coerce_typed_payload(cls, values: dict) -> dict:
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_typed_payload(cls, values: Any) -> Any:
+        if not isinstance(values, dict):
+            return values
         event_type = values.get("event_type")
         payload_model = PAYLOAD_BY_EVENT_TYPE.get(event_type)
         if payload_model is not None and isinstance(values.get("payload"), dict):
@@ -145,14 +147,14 @@ class EventCreate(BaseModel):
             values["payload"] = payload_model(**payload)
         return values
 
-    @validator("timestamp")
+    @field_validator("timestamp")
+    @classmethod
     def require_timezone(cls, value: datetime) -> datetime:
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("timestamp must be timezone-aware")
         return value
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class EventRead(EventCreate):
@@ -160,7 +162,7 @@ class EventRead(EventCreate):
 
 
 class EventBatchCreate(BaseModel):
-    events: list[EventCreate] = Field(..., min_items=1, max_items=500)
+    events: list[EventCreate] = Field(..., min_length=1, max_length=500)
 
 
 class EventBatchResponse(BaseModel):

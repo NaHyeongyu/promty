@@ -6,3 +6,4 @@ import os
 os.environ.setdefault("PROMPTHUB_APP_ENCRYPTION_KEY", "test-app-encryption-secret")
 os.environ.setdefault("PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_KEY", "test-github-token-secret")
 os.environ.setdefault("PROMPTHUB_JWT_SECRET", "test-jwt-secret")
+os.environ.setdefault("PROMPTHUB_OAUTH_STATE_SECRET", "test-oauth-state-secret")

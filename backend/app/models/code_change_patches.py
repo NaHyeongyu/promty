@@ -16,6 +16,13 @@ class CodeChangePatch(Base):
     __tablename__ = "code_change_patches"
     __table_args__ = (
         Index("ix_code_change_patches_project_prompt", "project_id", "prompt_event_id"),
+        Index(
+            "ix_code_change_patches_project_prompt_created_path",
+            "project_id",
+            "prompt_event_id",
+            "created_at",
+            "path",
+        ),
         Index("ix_code_change_patches_project_created_at", "project_id", "created_at"),
         Index("ix_code_change_patches_event_id", "event_id"),
         Index("ix_code_change_patches_session_id", "session_id"),

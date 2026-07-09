@@ -1,0 +1,362 @@
+import { useEffect, useRef } from "react";
+import { COMMUNITY_FEATURE_ENABLED } from "../config";
+import type { ProjectDetailData, ProjectDetailTabId } from "../components/project-detail";
+import type {
+  AuthStatus,
+  Project,
+  PublishedFlowDetailResponse,
+  SidebarItemId,
+} from "../workspace/types";
+import {
+  isMockGithubUnlinkedProject,
+  mockGithubUnlinkedProjectDetail,
+} from "../workspace/previewData";
+import type {
+  UrlNavigationState,
+  UrlNavigationWriteMode,
+} from "../workspace/navigation";
+
+type NavigateWorkspace = (
+  state: Partial<UrlNavigationState>,
+  mode?: UrlNavigationWriteMode,
+) => void;
+
+function useLatestRef<T>(value: T) {
+  const ref = useRef(value);
+  useEffect(() => {
+    ref.current = value;
+  }, [value]);
+  return ref;
+}
+
+export function useWorkspaceCommunityEffects({
+  activeItem,
+  authStatus,
+  loadPublishedFlowDetail,
+  loadPublishedFlows,
+  selectedPublishedFlow,
+  selectedPublishedFlowKey,
+}: {
+  activeItem: SidebarItemId;
+  authStatus: AuthStatus;
+  loadPublishedFlowDetail: (flowKey: string) => Promise<void>;
+  loadPublishedFlows: () => Promise<void>;
+  selectedPublishedFlow: PublishedFlowDetailResponse | null;
+  selectedPublishedFlowKey: string | null;
+}) {
+  const loadPublishedFlowsRef = useLatestRef(loadPublishedFlows);
+  const loadPublishedFlowDetailRef = useLatestRef(loadPublishedFlowDetail);
+  const selectedPublishedFlowRef = useLatestRef(selectedPublishedFlow);
+
+  useEffect(() => {
+    if (
+      !COMMUNITY_FEATURE_ENABLED ||
+      authStatus !== "authenticated" ||
+      activeItem !== "community"
+    ) {
+      return;
+    }
+    void loadPublishedFlowsRef.current();
+  }, [activeItem, authStatus, loadPublishedFlowsRef]);
+
+  useEffect(() => {
+    if (
+      !COMMUNITY_FEATURE_ENABLED ||
+      authStatus !== "authenticated" ||
+      activeItem !== "community" ||
+      !selectedPublishedFlowKey
+    ) {
+      return;
+    }
+    if (selectedPublishedFlowRef.current?.slug === selectedPublishedFlowKey) {
+      return;
+    }
+    void loadPublishedFlowDetailRef.current(selectedPublishedFlowKey);
+  }, [
+    activeItem,
+    authStatus,
+    loadPublishedFlowDetailRef,
+    selectedPublishedFlowKey,
+    selectedPublishedFlowRef,
+  ]);
+}
+
+export function useWorkspaceAdminEffect({
+  activeItem,
+  authStatus,
+  currentUserIsAdmin,
+  loadAdminOverview,
+  navigateWorkspace,
+}: {
+  activeItem: SidebarItemId;
+  authStatus: AuthStatus;
+  currentUserIsAdmin: boolean | undefined;
+  loadAdminOverview: (signal?: AbortSignal) => Promise<void>;
+  navigateWorkspace: NavigateWorkspace;
+}) {
+  const loadAdminOverviewRef = useLatestRef(loadAdminOverview);
+  const navigateWorkspaceRef = useLatestRef(navigateWorkspace);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated" || activeItem !== "admin") {
+      return;
+    }
+    if (!currentUserIsAdmin) {
+      navigateWorkspaceRef.current(
+        {
+          activeItem: "projects",
+          repositoryFileContentPath: null,
+          selectedProjectId: null,
+          selectedProjectRouteKey: null,
+        },
+        "replace",
+      );
+      return;
+    }
+
+    const controller = new AbortController();
+    void loadAdminOverviewRef.current(controller.signal);
+    return () => controller.abort();
+  }, [
+    activeItem,
+    authStatus,
+    currentUserIsAdmin,
+    loadAdminOverviewRef,
+    navigateWorkspaceRef,
+  ]);
+}
+
+export function useWorkspaceProjectRouteEffect({
+  activeItem,
+  hasLoadedWorkspaceData,
+  navigateWorkspace,
+  projectCatalog,
+  projectMatchesRouteKey,
+  projectRouteKey,
+  selectedProjectId,
+  selectedProjectRouteKey,
+}: {
+  activeItem: SidebarItemId;
+  hasLoadedWorkspaceData: boolean;
+  navigateWorkspace: NavigateWorkspace;
+  projectCatalog: Project[];
+  projectMatchesRouteKey: (project: Project, routeKey: string) => boolean;
+  projectRouteKey: (project: Project | null | undefined) => string | null;
+  selectedProjectId: string | null;
+  selectedProjectRouteKey: string | null;
+}) {
+  const navigateWorkspaceRef = useLatestRef(navigateWorkspace);
+  const projectMatchesRouteKeyRef = useLatestRef(projectMatchesRouteKey);
+  const projectRouteKeyRef = useLatestRef(projectRouteKey);
+
+  useEffect(() => {
+    if (!hasLoadedWorkspaceData || activeItem !== "projects") {
+      return;
+    }
+
+    if (!selectedProjectId && selectedProjectRouteKey) {
+      const resolvedProject = projectCatalog.find((project) =>
+        projectMatchesRouteKeyRef.current(project, selectedProjectRouteKey),
+      );
+
+      if (resolvedProject) {
+        navigateWorkspaceRef.current(
+          {
+            selectedProjectId: resolvedProject.id,
+            selectedProjectRouteKey: projectRouteKeyRef.current(resolvedProject),
+          },
+          "replace",
+        );
+        return;
+      }
+
+      navigateWorkspaceRef.current(
+        {
+          activeDetailTab: "overview",
+          activeItem: "projects",
+          repositoryFileContentPath: null,
+          selectedProjectId: null,
+          selectedProjectRouteKey: null,
+        },
+        "replace",
+      );
+      return;
+    }
+
+    if (!selectedProjectId) {
+      return;
+    }
+
+    const resolvedProject =
+      projectCatalog.find((project) => project.id === selectedProjectId) ??
+      (selectedProjectRouteKey
+        ? projectCatalog.find((project) =>
+            projectMatchesRouteKeyRef.current(project, selectedProjectRouteKey),
+          )
+        : null);
+    if (!resolvedProject) {
+      navigateWorkspaceRef.current(
+        {
+          activeDetailTab: "overview",
+          activeItem: "projects",
+          repositoryFileContentPath: null,
+          selectedProjectId: null,
+          selectedProjectRouteKey: null,
+        },
+        "replace",
+      );
+      return;
+    }
+
+    const resolvedProjectRouteKey = projectRouteKeyRef.current(resolvedProject);
+    if (
+      resolvedProjectRouteKey &&
+      (selectedProjectId !== resolvedProject.id ||
+        selectedProjectRouteKey !== resolvedProjectRouteKey)
+    ) {
+      navigateWorkspaceRef.current(
+        {
+          selectedProjectId: resolvedProject.id,
+          selectedProjectRouteKey: resolvedProjectRouteKey,
+        },
+        "replace",
+      );
+    }
+  }, [
+    activeItem,
+    hasLoadedWorkspaceData,
+    navigateWorkspaceRef,
+    projectCatalog,
+    projectMatchesRouteKeyRef,
+    projectRouteKeyRef,
+    selectedProjectId,
+    selectedProjectRouteKey,
+  ]);
+}
+
+export function useWorkspaceProjectResourceEffects({
+  activeDetailTab,
+  activeItem,
+  clearProjectDetail,
+  clearRepositoryBrowserState,
+  clearRepositoryFileContentState,
+  clearRepositoryFiles,
+  loadProjectDetail,
+  loadProjectGithubFiles,
+  loadRepositoryFileContent,
+  repositoryFileContentPath,
+  selectedProject,
+  selectedProjectId,
+  selectedProjectRouteKey,
+  setProjectDetail,
+}: {
+  activeDetailTab: ProjectDetailTabId;
+  activeItem: SidebarItemId;
+  clearProjectDetail: () => void;
+  clearRepositoryBrowserState: () => void;
+  clearRepositoryFileContentState: () => void;
+  clearRepositoryFiles: () => void;
+  loadProjectDetail: (
+    projectId: string,
+    fallbackProject: Project | null,
+    signal?: AbortSignal,
+  ) => Promise<void>;
+  loadProjectGithubFiles: (projectId: string, signal?: AbortSignal) => Promise<void>;
+  loadRepositoryFileContent: (
+    projectId: string,
+    path: string,
+    signal?: AbortSignal,
+  ) => Promise<void>;
+  repositoryFileContentPath: string | null;
+  selectedProject: Project | null;
+  selectedProjectId: string | null;
+  selectedProjectRouteKey: string | null;
+  setProjectDetail: (data: ProjectDetailData | null) => void;
+}) {
+  const clearProjectDetailRef = useLatestRef(clearProjectDetail);
+  const clearRepositoryBrowserStateRef = useLatestRef(clearRepositoryBrowserState);
+  const clearRepositoryFileContentStateRef = useLatestRef(
+    clearRepositoryFileContentState,
+  );
+  const clearRepositoryFilesRef = useLatestRef(clearRepositoryFiles);
+  const loadProjectDetailRef = useLatestRef(loadProjectDetail);
+  const loadProjectGithubFilesRef = useLatestRef(loadProjectGithubFiles);
+  const loadRepositoryFileContentRef = useLatestRef(loadRepositoryFileContent);
+  const setProjectDetailRef = useLatestRef(setProjectDetail);
+
+  useEffect(() => {
+    if (activeItem !== "projects" || (!selectedProjectId && !selectedProjectRouteKey)) {
+      clearProjectDetailRef.current();
+      clearRepositoryFilesRef.current();
+      return;
+    }
+
+    if (!selectedProjectId) {
+      clearProjectDetailRef.current();
+      clearRepositoryBrowserStateRef.current();
+      return;
+    }
+
+    if (isMockGithubUnlinkedProject(selectedProjectId) && selectedProject) {
+      setProjectDetailRef.current(mockGithubUnlinkedProjectDetail(selectedProject));
+      clearRepositoryBrowserStateRef.current();
+      return;
+    }
+
+    const detailController = new AbortController();
+    const githubFilesController = new AbortController();
+    clearProjectDetailRef.current();
+    clearRepositoryBrowserStateRef.current();
+    void loadProjectDetailRef.current(
+      selectedProjectId,
+      selectedProject,
+      detailController.signal,
+    );
+    void loadProjectGithubFilesRef.current(
+      selectedProjectId,
+      githubFilesController.signal,
+    );
+    return () => {
+      detailController.abort();
+      githubFilesController.abort();
+    };
+  }, [
+    activeItem,
+    clearProjectDetailRef,
+    clearRepositoryBrowserStateRef,
+    clearRepositoryFilesRef,
+    loadProjectDetailRef,
+    loadProjectGithubFilesRef,
+    selectedProject,
+    selectedProjectId,
+    selectedProjectRouteKey,
+    setProjectDetailRef,
+  ]);
+
+  useEffect(() => {
+    if (
+      !selectedProjectId ||
+      activeItem !== "projects" ||
+      activeDetailTab !== "files" ||
+      !repositoryFileContentPath
+    ) {
+      clearRepositoryFileContentStateRef.current();
+      return;
+    }
+
+    const controller = new AbortController();
+    void loadRepositoryFileContentRef.current(
+      selectedProjectId,
+      repositoryFileContentPath,
+      controller.signal,
+    );
+    return () => controller.abort();
+  }, [
+    activeDetailTab,
+    activeItem,
+    clearRepositoryFileContentStateRef,
+    loadRepositoryFileContentRef,
+    repositoryFileContentPath,
+    selectedProjectId,
+  ]);
+}

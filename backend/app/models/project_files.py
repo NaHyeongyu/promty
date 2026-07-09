@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -17,6 +17,18 @@ class ProjectFile(Base):
     __table_args__ = (
         UniqueConstraint("project_id", "path", name="uq_project_files_project_path"),
         Index("ix_project_files_project_changed_at", "project_id", "changed_at"),
+        Index(
+            "ix_project_files_active_project_path",
+            "project_id",
+            "path",
+            postgresql_where=text("status <> 'deleted'"),
+        ),
+        Index(
+            "ix_project_files_active_project_changed_at",
+            "project_id",
+            "changed_at",
+            postgresql_where=text("status <> 'deleted'"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)

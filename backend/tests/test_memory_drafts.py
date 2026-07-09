@@ -1,7 +1,8 @@
 from types import SimpleNamespace
 
-from app.services.gemini_memory import MAX_MEMORY_DRAFTS, _clean_memory_drafts_response
-from app.services.memory_artifacts import _events_have_generation_inputs
+from app.services.memory.cleaners import clean_memory_drafts_response
+from app.services.memory.prompts import MAX_MEMORY_DRAFTS
+from app.services.memory.windows import events_have_generation_inputs
 
 
 def _raw_draft(index: int) -> dict:
@@ -42,7 +43,7 @@ def test_memory_draft_cleaner_caps_drafts_for_review_ux() -> None:
         "source_event_ids": ["event-fallback"],
     }
 
-    cleaned = _clean_memory_drafts_response(generated, context)
+    cleaned = clean_memory_drafts_response(generated, context)
 
     assert len(cleaned["memory_drafts"]) == MAX_MEMORY_DRAFTS
     assert [draft["title"] for draft in cleaned["memory_drafts"]] == [
@@ -89,7 +90,7 @@ def test_memory_draft_cleaner_preserves_detail_item_counts() -> None:
         "source_event_ids": ["event-fallback"],
     }
 
-    cleaned = _clean_memory_drafts_response(generated, context)
+    cleaned = clean_memory_drafts_response(generated, context)
     details = cleaned["memory_drafts"][0]["details"]
 
     assert len(details["tasks"]) == item_count
@@ -106,25 +107,25 @@ def test_memory_generation_inputs_require_response_and_file_marker_after_latest_
     ) -> SimpleNamespace:
         return SimpleNamespace(event_type=event_type, payload=payload or {}, sequence=sequence)
 
-    assert not _events_have_generation_inputs([event("PromptSubmitted", 1)])
-    assert not _events_have_generation_inputs(
+    assert not events_have_generation_inputs([event("PromptSubmitted", 1)])
+    assert not events_have_generation_inputs(
         [event("PromptSubmitted", 1), event("ResponseReceived", 2, {"response": "done"})]
     )
-    assert not _events_have_generation_inputs(
+    assert not events_have_generation_inputs(
         [
             event("PromptSubmitted", 1),
             event("ResponseReceived", 2),
             event("FilesChanged", 3),
         ]
     )
-    assert _events_have_generation_inputs(
+    assert events_have_generation_inputs(
         [
             event("PromptSubmitted", 1),
             event("ResponseReceived", 2, {"response": "done"}),
             event("FilesChanged", 3),
         ]
     )
-    assert not _events_have_generation_inputs(
+    assert not events_have_generation_inputs(
         [
             event("PromptSubmitted", 1),
             event("ResponseReceived", 2, {"response": "done"}),

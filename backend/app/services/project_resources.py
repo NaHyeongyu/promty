@@ -134,16 +134,12 @@ def _upsert_project_file(
     db: DBSession,
     *,
     event: Event,
+    project_files_by_path: dict[str, ProjectFile],
     path: str,
     status: str,
     metadata: dict[str, Any],
 ) -> None:
-    project_file = db.scalar(
-        select(ProjectFile).where(
-            ProjectFile.project_id == event.project_id,
-            ProjectFile.path == path,
-        )
-    )
+    project_file = project_files_by_path.get(path)
     if project_file is None:
         if status == "deleted":
             return
@@ -153,7 +149,7 @@ def _upsert_project_file(
             kind="file",
         )
         db.add(project_file)
-        db.flush()
+        project_files_by_path[path] = project_file
 
     project_file.last_event_id = event.id
     project_file.status = "deleted" if status == "deleted" else "active"
@@ -166,15 +162,34 @@ def sync_project_resources_from_event(db: DBSession, event: Event, payload: dict
         return
 
     prompt_event_id = _uuid_or_none(payload.get("prompt_event_id"))
+    normalized_changes: list[tuple[str, str, dict[str, Any], dict[str, Any]]] = []
     for change in _changes_from_payload(payload):
         path = _clean_path(change.get("path"))
         if path is None:
             continue
         status = _status(change.get("status"))
         metadata = _resource_metadata(change)
+        normalized_changes.append((path, status, metadata, change))
+
+    if not normalized_changes:
+        return
+
+    changed_paths = sorted({path for path, *_ in normalized_changes})
+    project_files_by_path = {
+        project_file.path: project_file
+        for project_file in db.execute(
+            select(ProjectFile).where(
+                ProjectFile.project_id == event.project_id,
+                ProjectFile.path.in_(changed_paths),
+            )
+        ).scalars()
+    }
+
+    for path, status, metadata, change in normalized_changes:
         _upsert_project_file(
             db,
             event=event,
+            project_files_by_path=project_files_by_path,
             path=path,
             status=status,
             metadata=metadata,

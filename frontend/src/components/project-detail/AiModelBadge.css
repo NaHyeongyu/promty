@@ -36,6 +36,11 @@
   fill: currentcolor;
 }
 
+.ai-model-badge-icon[data-icon-style="line"] {
+  fill: none;
+  stroke: currentcolor;
+}
+
 .ai-model-badge[data-brand="openai"] .ai-model-badge-icon,
 .ai-model-badge[data-brand="cursor"] .ai-model-badge-icon {
   color: var(--bh-color-text-primary);

@@ -44,6 +44,13 @@ class Event(Base):
         Index("ix_events_event_type_created_at", "event_type", "created_at"),
         Index("ix_events_session_created_at", "session_id", "created_at"),
         Index("ix_events_project_session_created_at", "project_id", "session_id", "created_at"),
+        Index(
+            "ix_events_project_event_type_created_at_sequence",
+            "project_id",
+            "event_type",
+            "created_at",
+            "sequence",
+        ),
         Index("ix_events_payload_gin", "payload", postgresql_using="gin"),
     )
 
