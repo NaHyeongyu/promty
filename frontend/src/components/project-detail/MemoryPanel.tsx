@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { Sparkles, X } from "lucide-react";
 import type {
   ProjectDetailData,
   ProjectMemoryArtifact,
@@ -39,46 +39,188 @@ function memoryArtifactMeta(artifact: ProjectMemoryArtifact) {
     .join(" · ");
 }
 
+function memoryArtifactSequenceRange(artifact: ProjectMemoryArtifact) {
+  if (artifact.startSequence === null && artifact.endSequence === null) {
+    return null;
+  }
+  if (artifact.startSequence !== null && artifact.endSequence !== null) {
+    return `Events ${artifact.startSequence}-${artifact.endSequence}`;
+  }
+  return artifact.startSequence !== null
+    ? `From event ${artifact.startSequence}`
+    : `Through event ${artifact.endSequence}`;
+}
+
 function MemoryArtifactCard({
   artifact,
-  open = false,
+  isSelected = false,
+  onSelect,
 }: {
   artifact: ProjectMemoryArtifact;
-  open?: boolean;
+  isSelected?: boolean;
+  onSelect: (artifact: ProjectMemoryArtifact) => void;
+}) {
+  const meta = memoryArtifactMeta(artifact);
+
+  return (
+    <button
+      aria-haspopup="dialog"
+      aria-pressed={isSelected}
+      className="bh-memory-context-item"
+      data-selected={isSelected ? "true" : "false"}
+      onClick={() => onSelect(artifact)}
+      type="button"
+    >
+      <span>{artifact.title}</span>
+      <small>{meta || memoryArtifactKind(artifact)}</small>
+      {artifact.summary ? (
+        <span className="bh-memory-context-summary">{artifact.summary}</span>
+      ) : null}
+    </button>
+  );
+}
+
+function MemoryArtifactDetailDrawer({
+  artifact,
+  onClose,
+}: {
+  artifact: ProjectMemoryArtifact;
+  onClose: () => void;
 }) {
   const sections = artifact.sections.filter(
     (section) => section.title.trim() && section.summary.trim(),
   );
-  const meta = memoryArtifactMeta(artifact);
   const outcome =
     artifact.outcome && artifact.outcome !== artifact.summary ? artifact.outcome : null;
+  const sequenceRange = memoryArtifactSequenceRange(artifact);
+  const changedFiles = artifact.changedFiles.filter((file) => file.path.trim());
+  const tags = Array.from(new Set([...artifact.tags, ...artifact.technologies].filter(Boolean)));
+  const metadataRows = [
+    { label: "Type", value: memoryArtifactKind(artifact) },
+    { label: "Updated", value: artifact.updatedAt ?? artifact.createdAt },
+    { label: "Model", value: artifact.model },
+    { label: "Prompt count", value: artifact.promptCount?.toString() ?? null },
+    { label: "Changed files", value: artifact.changedFileCount.toString() },
+    { label: "Sequence", value: sequenceRange },
+    { label: "Confidence", value: artifact.draftConfidence?.toFixed(2) ?? null },
+    { label: "Review", value: artifact.reviewState },
+  ].filter((row) => row.value);
 
   return (
-    <details className="bh-memory-context-item" open={open}>
-      <summary>
-        <span>{artifact.title}</span>
-        <small>{meta || memoryArtifactKind(artifact)}</small>
-      </summary>
-      <div className="bh-memory-card-copy">
-        <div className="bh-memory-card-meta">
-          <span>{memoryArtifactKind(artifact)}</span>
-          {artifact.draftType ? <span>{artifact.draftType}</span> : null}
-          {artifact.needsUserVerification ? <span>Needs review</span> : null}
+    <div
+      className="bh-memory-detail-overlay"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+      role="presentation"
+    >
+      <section
+        aria-labelledby="memory-detail-title"
+        aria-modal="true"
+        className="bh-memory-detail-drawer"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            onClose();
+          }
+        }}
+        role="dialog"
+        tabIndex={-1}
+      >
+        <div className="bh-memory-detail-header">
+          <div>
+            <span>{memoryArtifactKind(artifact)}</span>
+            <h2 id="memory-detail-title">{artifact.title}</h2>
+          </div>
+          <button
+            aria-label="Close memory details"
+            className="bh-icon-button"
+            onClick={onClose}
+            type="button"
+          >
+            <X aria-hidden="true" size={16} strokeWidth={1.5} />
+          </button>
         </div>
-        {artifact.summary ? <p>{artifact.summary}</p> : null}
-        {outcome ? <p>{outcome}</p> : null}
-        {sections.length > 0 ? (
-          <div className="bh-memory-structured-sections">
-            {sections.map((section) => (
-              <div key={`${artifact.id}-${section.title}`}>
-                <strong>{section.title}</strong>
-                <p>{section.summary}</p>
+
+        <div className="bh-memory-detail-body">
+          <dl className="bh-memory-detail-meta">
+            {metadataRows.map((row) => (
+              <div key={row.label}>
+                <dt>{row.label}</dt>
+                <dd>{row.value}</dd>
               </div>
             ))}
-          </div>
-        ) : null}
-      </div>
-    </details>
+          </dl>
+
+          <article className="bh-memory-detail-section">
+            <span className="bh-memory-step-kicker">Summary</span>
+            <p>{artifact.summary || "No summary is available for this memory."}</p>
+          </article>
+
+          {outcome ? (
+            <article className="bh-memory-detail-section">
+              <span className="bh-memory-step-kicker">Outcome</span>
+              <p>{outcome}</p>
+            </article>
+          ) : null}
+
+          {sections.length > 0 ? (
+            <article className="bh-memory-detail-section">
+              <span className="bh-memory-step-kicker">Structured Notes</span>
+              <div className="bh-memory-detail-section-list">
+                {sections.map((section) => (
+                  <section key={`${artifact.id}-${section.title}`}>
+                    <h3>{section.title}</h3>
+                    <p>{section.summary}</p>
+                  </section>
+                ))}
+              </div>
+            </article>
+          ) : null}
+
+          {changedFiles.length > 0 ? (
+            <article className="bh-memory-detail-section">
+              <span className="bh-memory-step-kicker">Changed Files</span>
+              <ul className="bh-memory-detail-file-list">
+                {changedFiles.slice(0, 12).map((file) => (
+                  <li key={`${artifact.id}-${file.path}`}>
+                    <span>{file.path}</span>
+                    {file.status ? <small>{file.status}</small> : null}
+                  </li>
+                ))}
+              </ul>
+              {changedFiles.length > 12 ? (
+                <small className="bh-memory-detail-muted">
+                  {changedFiles.length - 12} more files not shown.
+                </small>
+              ) : null}
+            </article>
+          ) : null}
+
+          {tags.length > 0 || artifact.generator || artifact.triggerReason ? (
+            <article className="bh-memory-detail-section">
+              <span className="bh-memory-step-kicker">Metadata</span>
+              {tags.length > 0 ? (
+                <div className="bh-memory-detail-chip-list">
+                  {tags.slice(0, 16).map((tag) => (
+                    <span key={tag}>{tag}</span>
+                  ))}
+                </div>
+              ) : null}
+              {artifact.generator ? (
+                <p className="bh-memory-detail-muted">Generator: {artifact.generator}</p>
+              ) : null}
+              {artifact.triggerReason ? (
+                <p className="bh-memory-detail-muted">
+                  Trigger: {artifact.triggerReason}
+                </p>
+              ) : null}
+            </article>
+          ) : null}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -119,16 +261,41 @@ export function MemoryPanel({
   const [isEditingProjectMemory, setIsEditingProjectMemory] = useState(false);
   const [isProjectMemoryRegenerating, setIsProjectMemoryRegenerating] = useState(false);
   const [isProjectMemorySaving, setIsProjectMemorySaving] = useState(false);
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [projectMemoryDraft, setProjectMemoryDraft] = useState(
     data.memory.projectMemory?.bodyMarkdown ?? "",
   );
   const [projectMemoryError, setProjectMemoryError] = useState<string | null>(null);
+  const selectedArtifact =
+    generatedArtifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
 
   useEffect(() => {
     if (!isEditingProjectMemory) {
       setProjectMemoryDraft(data.memory.projectMemory?.bodyMarkdown ?? "");
     }
   }, [data.memory.projectMemory?.bodyMarkdown, isEditingProjectMemory]);
+
+  useEffect(() => {
+    if (!selectedArtifactId) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelectedArtifactId(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedArtifactId]);
+
+  useEffect(() => {
+    if (
+      selectedArtifactId &&
+      !generatedArtifacts.some((artifact) => artifact.id === selectedArtifactId)
+    ) {
+      setSelectedArtifactId(null);
+    }
+  }, [generatedArtifacts, selectedArtifactId]);
 
   const organizePendingBatch = async () => {
     if (!onCheckpointMemory || isCheckpointing) {
@@ -281,11 +448,12 @@ export function MemoryPanel({
 
           {generatedArtifacts.length > 0 ? (
             <div className="bh-memory-context-list">
-              {generatedArtifacts.map((artifact, index) => (
+              {generatedArtifacts.map((artifact) => (
                 <MemoryArtifactCard
                   artifact={artifact}
                   key={artifact.id}
-                  open={index === 0}
+                  isSelected={artifact.id === selectedArtifactId}
+                  onSelect={(selectedArtifact) => setSelectedArtifactId(selectedArtifact.id)}
                 />
               ))}
             </div>
@@ -430,6 +598,12 @@ export function MemoryPanel({
           )}
         </section>
       </div>
+      {selectedArtifact ? (
+        <MemoryArtifactDetailDrawer
+          artifact={selectedArtifact}
+          onClose={() => setSelectedArtifactId(null)}
+        />
+      ) : null}
     </section>
   );
 }
