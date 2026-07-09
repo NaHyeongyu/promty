@@ -9,10 +9,20 @@ from sqlalchemy.orm import Session as DBSession
 from app.models.artifact_generation_jobs import ArtifactGenerationJob
 from app.models.artifact_versions import ArtifactVersion
 from app.models.artifacts import Artifact
+from app.services.memory.constants import PROJECT_MEMORY_ARTIFACT_TYPE
 
 
 def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
+
+
+def _artifact_stage(artifact: Artifact, metadata: dict[str, Any]) -> str | None:
+    stage = metadata.get("artifact_stage")
+    if isinstance(stage, str) and stage:
+        return stage
+    if artifact.type == PROJECT_MEMORY_ARTIFACT_TYPE:
+        return "project_memory"
+    return None
 
 
 def _artifact_versions(
@@ -67,7 +77,7 @@ def serialize_memory_artifact(artifact: Artifact) -> dict[str, Any]:
         "changed_files": artifact.changed_files,
         "commit_sha": artifact.commit_sha,
         "created_at": _iso(artifact.created_at),
-        "artifact_stage": metadata.get("artifact_stage"),
+        "artifact_stage": _artifact_stage(artifact, metadata),
         "draft_confidence": metadata.get("draft_confidence"),
         "draft_generator": metadata.get("draft_generator"),
         "draft_type": metadata.get("draft_type"),
@@ -113,7 +123,7 @@ def serialize_memory_artifact_summary(
         "changed_files": artifact.changed_files,
         "commit_sha": artifact.commit_sha,
         "created_at": _iso(artifact.created_at),
-        "artifact_stage": metadata.get("artifact_stage"),
+        "artifact_stage": _artifact_stage(artifact, metadata),
         "draft_confidence": metadata.get("draft_confidence"),
         "draft_generator": metadata.get("draft_generator"),
         "draft_type": metadata.get("draft_type"),

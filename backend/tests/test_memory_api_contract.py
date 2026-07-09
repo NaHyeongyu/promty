@@ -111,6 +111,7 @@ def test_project_memory_snapshot_serializer_matches_frontend_contract() -> None:
 
     assert serialized is not None
     assert serialized["artifact"]["changed_file_count"] == 1
+    assert serialized["artifact"]["artifact_stage"] == "project_memory"
     assert serialized["artifact"]["memory_scope"] == "project"
     assert serialized["artifact"]["review_state"] == "edited"
     assert serialized["snapshot"]["body_markdown"].startswith("# Project Memory")

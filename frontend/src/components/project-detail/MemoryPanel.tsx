@@ -1,11 +1,86 @@
 import { useEffect, useState } from "react";
 import { Sparkles } from "lucide-react";
-import type { ProjectDetailData } from "./types";
+import type {
+  ProjectDetailData,
+  ProjectMemoryArtifact,
+} from "./types";
 
 export type MemoryCheckpointResult = {
   message: string;
   status: "generation_failed" | "memory_generated" | "no_memory" | string;
 };
+
+function isGeneratedMemoryArtifact(artifact: ProjectMemoryArtifact) {
+  return (
+    artifact.artifactStage === "generated_memory" ||
+    artifact.artifactStage === "verified_memory" ||
+    artifact.memoryScope === "generated" ||
+    artifact.memoryScope === "verified"
+  );
+}
+
+function memoryArtifactKind(artifact: ProjectMemoryArtifact) {
+  if (artifact.memoryScope === "verified" || artifact.artifactStage === "verified_memory") {
+    return "Verified memory";
+  }
+  return "Generated memory";
+}
+
+function memoryArtifactMeta(artifact: ProjectMemoryArtifact) {
+  return [
+    artifact.updatedAt ?? artifact.createdAt,
+    artifact.promptCount && artifact.promptCount > 0
+      ? `${artifact.promptCount} prompts`
+      : null,
+    artifact.changedFileCount > 0 ? `${artifact.changedFileCount} files` : null,
+    artifact.model,
+  ]
+    .filter((item): item is string => Boolean(item))
+    .join(" · ");
+}
+
+function MemoryArtifactCard({
+  artifact,
+  open = false,
+}: {
+  artifact: ProjectMemoryArtifact;
+  open?: boolean;
+}) {
+  const sections = artifact.sections.filter(
+    (section) => section.title.trim() && section.summary.trim(),
+  );
+  const meta = memoryArtifactMeta(artifact);
+  const outcome =
+    artifact.outcome && artifact.outcome !== artifact.summary ? artifact.outcome : null;
+
+  return (
+    <details className="bh-memory-context-item" open={open}>
+      <summary>
+        <span>{artifact.title}</span>
+        <small>{meta || memoryArtifactKind(artifact)}</small>
+      </summary>
+      <div className="bh-memory-card-copy">
+        <div className="bh-memory-card-meta">
+          <span>{memoryArtifactKind(artifact)}</span>
+          {artifact.draftType ? <span>{artifact.draftType}</span> : null}
+          {artifact.needsUserVerification ? <span>Needs review</span> : null}
+        </div>
+        {artifact.summary ? <p>{artifact.summary}</p> : null}
+        {outcome ? <p>{outcome}</p> : null}
+        {sections.length > 0 ? (
+          <div className="bh-memory-structured-sections">
+            {sections.map((section) => (
+              <div key={`${artifact.id}-${section.title}`}>
+                <strong>{section.title}</strong>
+                <p>{section.summary}</p>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </details>
+  );
+}
 
 export function MemoryPanel({
   data,
@@ -21,6 +96,7 @@ export function MemoryPanel({
   const checkpointableRanges = data.memory.pendingRanges.filter(
     (range) => range.canCheckpoint,
   );
+  const generatedArtifacts = data.memory.recentArtifacts.filter(isGeneratedMemoryArtifact);
   const hasPendingDocumentation = data.memory.pendingRanges.length > 0;
   const pendingBatchCount = data.memory.pendingRanges.length > 0 ? 1 : 0;
   const projectMemoryUpdatedAt =
@@ -125,6 +201,7 @@ export function MemoryPanel({
       <div className="bh-memory-summary-strip" aria-label="Memory status summary">
         <span>{hasPendingDocumentation ? "Update ready" : "No pending update"}</span>
         <span>Project Memory: {projectMemoryStateLabel}</span>
+        <span>Generated: {generatedArtifacts.length}</span>
       </div>
 
       {checkpointStatus ? (
@@ -187,6 +264,41 @@ export function MemoryPanel({
 
         <section
           className="bh-memory-document-section"
+          aria-labelledby="memory-generated-title"
+        >
+          <div className="bh-memory-section-header">
+            <div>
+              <span className="bh-memory-step-kicker">Generated</span>
+              <h3 id="memory-generated-title">Generated memories</h3>
+              <p>Saved context generated from completed work.</p>
+            </div>
+            <span>
+              {generatedArtifacts.length > 0
+                ? `${generatedArtifacts.length} recent`
+                : "Empty"}
+            </span>
+          </div>
+
+          {generatedArtifacts.length > 0 ? (
+            <div className="bh-memory-context-list">
+              {generatedArtifacts.map((artifact, index) => (
+                <MemoryArtifactCard
+                  artifact={artifact}
+                  key={artifact.id}
+                  open={index === 0}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="bh-memory-empty">
+              <strong>No generated memories yet</strong>
+              <span>Generate the pending update to create reviewable memory items.</span>
+            </div>
+          )}
+        </section>
+
+        <section
+          className="bh-memory-document-section"
           aria-labelledby="memory-completed-title"
         >
           <div className="bh-memory-section-header">
@@ -225,7 +337,7 @@ export function MemoryPanel({
               ) : null}
 
               {data.memory.projectMemory ? (
-                <details className="bh-memory-document-row" open>
+                <details className="bh-memory-document-row">
                   <summary>
                     <div className="bh-memory-document-row-main">
                       <span className="bh-memory-step-kicker">Project Memory</span>
@@ -280,7 +392,17 @@ export function MemoryPanel({
                     </div>
                   ) : (
                     <div className="bh-memory-document-preview">
-                      <pre>{data.memory.projectMemory.bodyMarkdown}</pre>
+                      <div className="bh-memory-card-copy">
+                        <strong>Compiled Project Memory</strong>
+                        <p>
+                          {data.memory.projectMemory.sourceMemoryIds.length > 0
+                            ? `Compiled from ${data.memory.projectMemory.sourceMemoryIds.length} generated memories.`
+                            : "Compiled memory document is available."}
+                        </p>
+                        {data.memory.projectMemory.warnings.length > 0 ? (
+                          <p>{data.memory.projectMemory.warnings.join(" ")}</p>
+                        ) : null}
+                      </div>
                       <div className="bh-memory-card-actions">
                         <button
                           disabled={!onSaveProjectMemory}

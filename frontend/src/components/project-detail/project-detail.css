@@ -2573,6 +2573,14 @@
   min-width: 0;
 }
 
+.bh-memory-structured-sections p {
+  display: block;
+  margin: 0;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+  white-space: pre-wrap;
+}
+
 .bh-memory-structured-sections strong {
   font-size: var(--bh-font-size-caption);
   text-transform: uppercase;

@@ -4,7 +4,6 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import desc, select
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import settings
@@ -15,7 +14,6 @@ from app.models.users import User
 from app.services.memory.constants import (
     LOCAL_MEMORY_GENERATOR,
     PENDING_MEMORY_DRAFT_GENERATOR,
-    PROJECT_MEMORY_ARTIFACT_TYPE,
 )
 from app.services.memory.providers import configured_generator_for_provider
 from app.services.memory.serializers import (
@@ -26,6 +24,7 @@ from app.services.memory_artifacts import (
     compile_project_memory,
     generate_context_memories_for_session,
     get_latest_project_memory,
+    list_project_memory_history_artifacts,
     list_project_memory_pending_ranges,
     update_project_memory_snapshot,
 )
@@ -288,15 +287,9 @@ def list_project_artifacts_response(
     user: User,
 ) -> list[dict[str, Any]]:
     project = project_for_user(db, project_id, user)
-    artifacts = list(
-        db.execute(
-            select(Artifact)
-            .where(
-                Artifact.project_id == project.id,
-                Artifact.type == PROJECT_MEMORY_ARTIFACT_TYPE,
-            )
-            .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
-            .limit(limit)
-        ).scalars()
+    artifacts = list_project_memory_history_artifacts(
+        db,
+        limit=limit,
+        project_id=project.id,
     )
     return [serialize_memory_artifact_summary(artifact, db=db) for artifact in artifacts]

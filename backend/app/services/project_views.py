@@ -11,7 +11,6 @@ from sqlalchemy import and_, case, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.encoding import base64_urldecode, base64_urlencode
-from app.models.artifacts import Artifact
 from app.models.code_change_patches import CodeChangePatch
 from app.models.events import Event
 from app.models.project_files import ProjectFile
@@ -22,8 +21,9 @@ from app.models.users import User
 from app.services.event_payload_security import (
     decrypt_event_payload,
 )
-from app.services.memory.constants import (
-    PROJECT_MEMORY_ARTIFACT_TYPE,
+from app.services.memory_artifacts import (
+    count_project_memory_history_artifacts,
+    list_project_memory_history_artifacts,
 )
 from app.services.memory.serializers import (
     serialize_memory_artifact_summary,
@@ -574,18 +574,15 @@ def read_project_detail_response(
             func.max(Event.created_at),
         ).where(Event.project_id == project.id)
     ).one()
-    (
-        memory_artifact_count,
-        memory_artifact_count_since_yesterday,
-    ) = db.execute(
-        select(
-            func.count(Artifact.id),
-            func.count(case((Artifact.created_at >= since_yesterday_at, 1))),
-        ).where(
-            Artifact.project_id == project.id,
-            Artifact.type == PROJECT_MEMORY_ARTIFACT_TYPE,
-        )
-    ).one()
+    memory_artifact_count = count_project_memory_history_artifacts(
+        db,
+        project_id=project.id,
+    )
+    memory_artifact_count_since_yesterday = count_project_memory_history_artifacts(
+        db,
+        project_id=project.id,
+        since=since_yesterday_at,
+    )
 
     models, tools = _session_metadata_for_project(db, project.id)
     activities, activity_tools = _activity_summaries(db, project.id)
@@ -609,16 +606,10 @@ def read_project_detail_response(
     files_changed_since_yesterday = sum(
         1 for _path, changed_at in active_file_rows if changed_at >= since_yesterday_at
     )
-    memory_artifacts = list(
-        db.execute(
-            select(Artifact)
-            .where(
-                Artifact.project_id == project.id,
-                Artifact.type == PROJECT_MEMORY_ARTIFACT_TYPE,
-            )
-            .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
-            .limit(5)
-        ).scalars()
+    memory_artifacts = list_project_memory_history_artifacts(
+        db,
+        limit=10,
+        project_id=project.id,
     )
 
     return {

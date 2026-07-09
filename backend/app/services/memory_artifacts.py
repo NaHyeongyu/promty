@@ -30,7 +30,9 @@ from app.services.memory.providers import (
 from app.services.memory.session_completion import complete_session_if_ready
 from app.services.memory.project_memory import (
     compile_project_memory as compile_project_memory,
+    count_project_memory_history_artifacts as count_project_memory_history_artifacts,
     get_latest_project_memory as get_latest_project_memory,
+    list_project_memory_history_artifacts as list_project_memory_history_artifacts,
     list_project_memory_artifacts as list_project_memory_artifacts,
     update_project_memory_snapshot as update_project_memory_snapshot,
 )
