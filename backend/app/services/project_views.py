@@ -206,7 +206,7 @@ def _activity_summaries(db: Session, project_id: UUID) -> tuple[list[dict[str, A
         activities.append(
             {
                 "events": int(event_count or 0),
-                "files_changed": int(file_counts.get(session_id, 0) or 0),
+                "id": str(session_id) if session_id is not None else None,
                 "id": str(session_id),
                 "last_activity_at": iso(last_activity_at),
                 "model": session_model or tool_label(session_tool or "unknown"),
