@@ -114,8 +114,10 @@ export type ProjectDetailApiResponse = {
       draft_type?: string | null;
       end_sequence?: number | null;
       fallback_reason?: string | null;
+      first_event_at?: string | null;
       generator: string | null;
       id: string;
+      last_event_at?: string | null;
       memory_scope?: string | null;
       model: string | null;
       needs_user_verification?: boolean | null;
@@ -287,6 +289,7 @@ export type ProjectMemoryPendingRangeApiResponse = {
   can_checkpoint: boolean;
   end_sequence: number;
   event_count: number;
+  first_event_at: string | null;
   last_event_at: string | null;
   prompt_count: number;
   session_id: string;

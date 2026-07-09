@@ -3,6 +3,7 @@ import { Sparkles, X } from "lucide-react";
 import type {
   ProjectDetailData,
   ProjectMemoryArtifact,
+  ProjectMemoryPendingRange,
 } from "./types";
 
 export type MemoryCheckpointResult = {
@@ -51,6 +52,55 @@ function memoryArtifactSequenceRange(artifact: ProjectMemoryArtifact) {
     : `Through event ${artifact.endSequence}`;
 }
 
+function formatMemoryDate(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return Intl.DateTimeFormat("ko-KR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
+function formatMemoryDateRange(
+  firstEventAt: string | null | undefined,
+  lastEventAt: string | null | undefined,
+) {
+  const start = formatMemoryDate(firstEventAt);
+  const end = formatMemoryDate(lastEventAt ?? firstEventAt);
+  if (!start && !end) {
+    return null;
+  }
+  if (!start) {
+    return end;
+  }
+  if (!end) {
+    return start;
+  }
+  return `${start} - ${end}`;
+}
+
+function combinedMemoryDateRange(
+  items: Array<{ firstEventAt: string | null; lastEventAt: string | null }>,
+) {
+  const timestamps = items
+    .flatMap((item) => [item.firstEventAt, item.lastEventAt])
+    .map((value) => (value ? new Date(value).getTime() : Number.NaN))
+    .filter((value) => !Number.isNaN(value));
+  if (timestamps.length === 0) {
+    return null;
+  }
+  return formatMemoryDateRange(
+    new Date(Math.min(...timestamps)).toISOString(),
+    new Date(Math.max(...timestamps)).toISOString(),
+  );
+}
+
 function MemoryArtifactCard({
   artifact,
   isSelected = false,
@@ -61,6 +111,7 @@ function MemoryArtifactCard({
   onSelect: (artifact: ProjectMemoryArtifact) => void;
 }) {
   const meta = memoryArtifactMeta(artifact);
+  const dateRange = formatMemoryDateRange(artifact.firstEventAt, artifact.lastEventAt);
 
   return (
     <button
@@ -72,7 +123,11 @@ function MemoryArtifactCard({
       type="button"
     >
       <span>{artifact.title}</span>
-      <small>{meta || memoryArtifactKind(artifact)}</small>
+      <small>
+        {[dateRange, meta || memoryArtifactKind(artifact)]
+          .filter(Boolean)
+          .join(" · ")}
+      </small>
       {artifact.summary ? (
         <span className="bh-memory-context-summary">{artifact.summary}</span>
       ) : null}
@@ -93,9 +148,11 @@ function MemoryArtifactDetailDrawer({
   const outcome =
     artifact.outcome && artifact.outcome !== artifact.summary ? artifact.outcome : null;
   const sequenceRange = memoryArtifactSequenceRange(artifact);
+  const dateRange = formatMemoryDateRange(artifact.firstEventAt, artifact.lastEventAt);
   const changedFiles = artifact.changedFiles.filter((file) => file.path.trim());
   const tags = Array.from(new Set([...artifact.tags, ...artifact.technologies].filter(Boolean)));
   const metadataRows = [
+    { label: "Covered dates", value: dateRange },
     { label: "Type", value: memoryArtifactKind(artifact) },
     { label: "Updated", value: artifact.updatedAt ?? artifact.createdAt },
     { label: "Model", value: artifact.model },
@@ -239,6 +296,8 @@ export function MemoryPanel({
     (range) => range.canCheckpoint,
   );
   const generatedArtifacts = data.memory.recentArtifacts.filter(isGeneratedMemoryArtifact);
+  const pendingDateRange = combinedMemoryDateRange(data.memory.pendingRanges);
+  const resultDateRange = combinedMemoryDateRange(generatedArtifacts);
   const hasPendingDocumentation = data.memory.pendingRanges.length > 0;
   const pendingBatchCount = data.memory.pendingRanges.length > 0 ? 1 : 0;
   const projectMemoryUpdatedAt =
@@ -387,6 +446,7 @@ export function MemoryPanel({
             <div className="bh-memory-document-row-main">
               <h3 id="memory-request-title">Project Memory update ready</h3>
               <p>Generate one updated memory document from captured work.</p>
+              {pendingDateRange ? <small>Range: {pendingDateRange}</small> : null}
             </div>
             <button
               className="bh-memory-primary-action"
@@ -510,7 +570,11 @@ export function MemoryPanel({
                     <div className="bh-memory-document-row-main">
                       <span className="bh-memory-step-kicker">Project Memory</span>
                       <strong>Project Memory document</strong>
-                      <small>{projectMemoryFreshnessLabel}</small>
+                      <small>
+                        {[projectMemoryFreshnessLabel, resultDateRange]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </small>
                     </div>
                     <div className="bh-memory-document-actions">
                       <button
@@ -567,6 +631,7 @@ export function MemoryPanel({
                             ? `Compiled from ${data.memory.projectMemory.sourceMemoryIds.length} generated memories.`
                             : "Compiled memory document is available."}
                         </p>
+                        {resultDateRange ? <p>Source range: {resultDateRange}</p> : null}
                         {data.memory.projectMemory.warnings.length > 0 ? (
                           <p>{data.memory.projectMemory.warnings.join(" ")}</p>
                         ) : null}

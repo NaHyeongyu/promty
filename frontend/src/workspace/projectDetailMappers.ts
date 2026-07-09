@@ -79,9 +79,8 @@ function projectMemoryPendingRangeFromApi(
     canCheckpoint: range.can_checkpoint,
     endSequence: range.end_sequence,
     eventCount: range.event_count,
-    lastEventAt: range.last_event_at
-      ? formatOptionalTimestamp(range.last_event_at, "Unknown")
-      : null,
+    firstEventAt: range.first_event_at ?? null,
+    lastEventAt: range.last_event_at ?? null,
     promptCount: range.prompt_count,
     sessionId: range.session_id,
     startSequence: range.start_sequence,
@@ -149,8 +148,10 @@ function projectMemoryArtifactFromApi(
     draftType: artifact.draft_type ?? null,
     endSequence: artifact.end_sequence ?? null,
     fallbackReason: artifact.fallback_reason ?? null,
+    firstEventAt: artifact.first_event_at ?? null,
     generator: artifact.generator,
     id: artifact.id,
+    lastEventAt: artifact.last_event_at ?? null,
     memoryScope: projectMemoryScopeFromApi(artifact.memory_scope),
     model: artifact.model,
     needsUserVerification: artifact.needs_user_verification ?? null,

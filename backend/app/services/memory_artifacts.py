@@ -320,6 +320,20 @@ def _pending_memory_drafts_for_session(
     return pending
 
 
+def _evidence_event_range(evidence: dict[str, Any]) -> tuple[str | None, str | None]:
+    events = evidence.get("events") if isinstance(evidence.get("events"), list) else []
+    timestamps = sorted(
+        timestamp
+        for event in events
+        if isinstance(event, dict)
+        and isinstance((timestamp := event.get("timestamp")), str)
+        and timestamp
+    )
+    if timestamps:
+        return timestamps[0], timestamps[-1]
+    return None, None
+
+
 def _pending_draft_range(artifact: Artifact) -> dict[str, Any]:
     metadata = artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}
     evidence = metadata.get("draft_evidence") if isinstance(metadata.get("draft_evidence"), dict) else {}
@@ -328,13 +342,15 @@ def _pending_draft_range(artifact: Artifact) -> dict[str, Any]:
     changed_files = (
         evidence.get("changed_files") if isinstance(evidence.get("changed_files"), list) else []
     )
+    first_event_at, last_event_at = _evidence_event_range(evidence)
     return {
         "can_checkpoint": True,
         "draft_id": str(artifact.id),
         "end_sequence": metadata.get("end_sequence"),
         "event_count": metadata.get("event_count") or 0,
         "file_change_event_count": 1,
-        "last_event_at": _iso(artifact.updated_at),
+        "first_event_at": first_event_at or _iso(artifact.created_at),
+        "last_event_at": last_event_at or _iso(artifact.updated_at),
         "prompt_count": len(prompts) or len(artifact.prompt_event_ids or []),
         "response_count": len(responses),
         "session_id": str(artifact.session_id),

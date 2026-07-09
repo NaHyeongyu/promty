@@ -152,8 +152,10 @@ export type ProjectMemoryArtifact = {
   draftType: string | null;
   endSequence: number | null;
   fallbackReason: string | null;
+  firstEventAt: string | null;
   generator: string | null;
   id: string;
+  lastEventAt: string | null;
   memoryScope: ProjectMemoryScope | null;
   model: string | null;
   needsUserVerification: boolean | null;
@@ -221,6 +223,7 @@ export type ProjectMemoryPendingRange = {
   canCheckpoint: boolean;
   endSequence: number;
   eventCount: number;
+  firstEventAt: string | null;
   lastEventAt: string | null;
   promptCount: number;
   sessionId: string;
