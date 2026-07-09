@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -14,6 +14,15 @@ from app.db.session import Base
 
 class Artifact(Base):
     __tablename__ = "artifacts"
+    __table_args__ = (
+        Index(
+            "ix_artifacts_project_type_updated_created",
+            "project_id",
+            "type",
+            "updated_at",
+            "created_at",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     schema_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)

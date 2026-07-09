@@ -4,7 +4,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import desc, func, select
+from sqlalchemy import case, desc, func, nullslast, select
 from sqlalchemy.orm import Session
 
 from app.models.events import Event
@@ -112,42 +112,68 @@ def project_summary_with_counts(db: Session, project: Project) -> dict[str, Any]
 
 
 def list_project_summaries(db: Session, *, current_user: User) -> list[dict[str, Any]]:
+    owned_project_ids = select(Project.id).where(Project.owner_id == current_user.id)
+    session_stats = (
+        select(
+            PromptSession.project_id.label("project_id"),
+            func.count(PromptSession.id).label("session_count"),
+        )
+        .where(PromptSession.project_id.in_(owned_project_ids))
+        .group_by(PromptSession.project_id)
+        .subquery()
+    )
+    event_stats = (
+        select(
+            Event.project_id.label("project_id"),
+            func.count(Event.id).label("event_count"),
+            func.count(case((Event.event_type == "PromptSubmitted", 1))).label(
+                "prompt_count",
+            ),
+            func.max(Event.created_at).label("latest_event_at"),
+        )
+        .where(Event.project_id.in_(owned_project_ids))
+        .group_by(Event.project_id)
+        .subquery()
+    )
+    tracked_file_stats = (
+        select(
+            ProjectFile.project_id.label("project_id"),
+            func.count(ProjectFile.id).label("tracked_files"),
+        )
+        .where(
+            ProjectFile.project_id.in_(owned_project_ids),
+            ProjectFile.status != "deleted",
+        )
+        .group_by(ProjectFile.project_id)
+        .subquery()
+    )
     rows = db.execute(
         select(
             Project,
-            func.count(func.distinct(PromptSession.id)).label("session_count"),
-            func.count(func.distinct(Event.id)).label("event_count"),
-            func.max(Event.created_at).label("latest_event_at"),
+            session_stats.c.session_count,
+            event_stats.c.event_count,
+            event_stats.c.latest_event_at,
+            event_stats.c.prompt_count,
+            tracked_file_stats.c.tracked_files,
         )
-        .outerjoin(PromptSession, PromptSession.project_id == Project.id)
-        .outerjoin(Event, Event.project_id == Project.id)
+        .outerjoin(session_stats, session_stats.c.project_id == Project.id)
+        .outerjoin(event_stats, event_stats.c.project_id == Project.id)
+        .outerjoin(tracked_file_stats, tracked_file_stats.c.project_id == Project.id)
         .where(Project.owner_id == current_user.id)
-        .group_by(Project.id)
-        .order_by(desc(func.max(Event.created_at)), desc(Project.updated_at))
+        .order_by(nullslast(desc(event_stats.c.latest_event_at)), desc(Project.updated_at))
     ).all()
     project_ids = [project.id for project, *_ in rows]
     if not project_ids:
         return []
 
-    prompt_counts = dict(
-        db.execute(
-            select(Event.project_id, func.count(Event.id))
-            .where(Event.project_id.in_(project_ids), Event.event_type == "PromptSubmitted")
-            .group_by(Event.project_id)
-        ).all()
-    )
-    tracked_file_counts = dict(
-        db.execute(
-            select(ProjectFile.project_id, func.count(ProjectFile.id))
-            .where(ProjectFile.project_id.in_(project_ids), ProjectFile.status != "deleted")
-            .group_by(ProjectFile.project_id)
-        ).all()
-    )
     connected_models: dict[UUID, set[str]] = {project_id: set() for project_id in project_ids}
     for project_id, model_value in db.execute(
-        select(PromptSession.project_id, PromptSession.model).where(
-            PromptSession.project_id.in_(project_ids)
+        select(PromptSession.project_id, PromptSession.model)
+        .where(
+            PromptSession.project_id.in_(project_ids),
+            PromptSession.model.is_not(None),
         )
+        .distinct()
     ).all():
         if (model := model_name(model_value)) is not None:
             connected_models.setdefault(project_id, set()).add(model)
@@ -158,11 +184,18 @@ def list_project_summaries(db: Session, *, current_user: User) -> list[dict[str,
             connected_models=tuple(connected_models.get(project.id, set())),
             event_count=event_count,
             latest_event_at=latest_event_at,
-            prompt_count=prompt_counts.get(project.id, 0),
+            prompt_count=prompt_count,
             session_count=session_count,
-            tracked_files=tracked_file_counts.get(project.id, 0),
+            tracked_files=tracked_files,
         )
-        for project, session_count, event_count, latest_event_at in rows
+        for (
+            project,
+            session_count,
+            event_count,
+            latest_event_at,
+            prompt_count,
+            tracked_files,
+        ) in rows
     ]
 
 

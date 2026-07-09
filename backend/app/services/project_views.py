@@ -6,7 +6,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import case, desc, func, select
+from sqlalchemy import and_, case, desc, func, select
 from sqlalchemy.orm import Session
 
 from app.models.artifacts import Artifact
@@ -325,52 +325,44 @@ def read_project_detail_response(
     project = project_for_user(db, project_id, current_user)
     repository_url = normalize_github_url(project.git_remote)
     since_yesterday_at = datetime.now(timezone.utc) - timedelta(days=1)
-    session_count = (
-        db.scalar(
-            select(func.count())
-            .select_from(PromptSession)
-            .where(PromptSession.project_id == project.id)
+    session_count, session_count_since_yesterday = db.execute(
+        select(
+            func.count(PromptSession.id),
+            func.count(
+                case((PromptSession.started_at >= since_yesterday_at, 1)),
+            ),
+        ).where(PromptSession.project_id == project.id)
+    ).one()
+    event_count, prompt_count, prompt_count_since_yesterday, latest_activity_at = db.execute(
+        select(
+            func.count(Event.id),
+            func.count(case((Event.event_type == "PromptSubmitted", 1))),
+            func.count(
+                case(
+                    (
+                        and_(
+                            Event.event_type == "PromptSubmitted",
+                            Event.created_at >= since_yesterday_at,
+                        ),
+                        1,
+                    )
+                )
+            ),
+            func.max(Event.created_at),
+        ).where(Event.project_id == project.id)
+    ).one()
+    (
+        memory_artifact_count,
+        memory_artifact_count_since_yesterday,
+    ) = db.execute(
+        select(
+            func.count(Artifact.id),
+            func.count(case((Artifact.created_at >= since_yesterday_at, 1))),
+        ).where(
+            Artifact.project_id == project.id,
+            Artifact.type == PROJECT_MEMORY_ARTIFACT_TYPE,
         )
-        or 0
-    )
-    session_count_since_yesterday = (
-        db.scalar(
-            select(func.count())
-            .select_from(PromptSession)
-            .where(
-                PromptSession.project_id == project.id,
-                PromptSession.started_at >= since_yesterday_at,
-            )
-        )
-        or 0
-    )
-    event_count = (
-        db.scalar(select(func.count()).select_from(Event).where(Event.project_id == project.id))
-        or 0
-    )
-    prompt_count = (
-        db.scalar(
-            select(func.count())
-            .select_from(Event)
-            .where(Event.project_id == project.id, Event.event_type == "PromptSubmitted")
-        )
-        or 0
-    )
-    prompt_count_since_yesterday = (
-        db.scalar(
-            select(func.count())
-            .select_from(Event)
-            .where(
-                Event.project_id == project.id,
-                Event.event_type == "PromptSubmitted",
-                Event.created_at >= since_yesterday_at,
-            )
-        )
-        or 0
-    )
-    latest_activity_at = db.scalar(
-        select(func.max(Event.created_at)).where(Event.project_id == project.id)
-    )
+    ).one()
 
     models, tools = _session_metadata_for_project(db, project.id)
     activities, activity_tools = _activity_summaries(db, project.id)
@@ -419,33 +411,23 @@ def read_project_detail_response(
         for event in prompt_events
     ]
 
-    active_file_paths = list(
+    active_file_rows = list(
         db.execute(
-            select(ProjectFile.path)
+            select(ProjectFile.path, ProjectFile.changed_at)
             .where(
                 ProjectFile.project_id == project.id,
                 ProjectFile.status != "deleted",
             )
             .order_by(ProjectFile.path)
-        ).scalars()
+        ).all()
     )
-    last_modified_at = db.scalar(
-        select(func.max(ProjectFile.changed_at)).where(
-            ProjectFile.project_id == project.id,
-            ProjectFile.status != "deleted",
-        )
+    active_file_paths = [path for path, _changed_at in active_file_rows]
+    last_modified_at = max(
+        (changed_at for _path, changed_at in active_file_rows),
+        default=None,
     )
-    files_changed_since_yesterday = (
-        db.scalar(
-            select(func.count())
-            .select_from(ProjectFile)
-            .where(
-                ProjectFile.project_id == project.id,
-                ProjectFile.status != "deleted",
-                ProjectFile.changed_at >= since_yesterday_at,
-            )
-        )
-        or 0
+    files_changed_since_yesterday = sum(
+        1 for _path, changed_at in active_file_rows if changed_at >= since_yesterday_at
     )
     memory_artifacts = list(
         db.execute(
@@ -457,29 +439,6 @@ def read_project_detail_response(
             .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
             .limit(5)
         ).scalars()
-    )
-    memory_artifact_count = (
-        db.scalar(
-            select(func.count())
-            .select_from(Artifact)
-            .where(
-                Artifact.project_id == project.id,
-                Artifact.type == PROJECT_MEMORY_ARTIFACT_TYPE,
-            )
-        )
-        or 0
-    )
-    memory_artifact_count_since_yesterday = (
-        db.scalar(
-            select(func.count())
-            .select_from(Artifact)
-            .where(
-                Artifact.project_id == project.id,
-                Artifact.type == PROJECT_MEMORY_ARTIFACT_TYPE,
-                Artifact.created_at >= since_yesterday_at,
-            )
-        )
-        or 0
     )
 
     return {
