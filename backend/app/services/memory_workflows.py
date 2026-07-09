@@ -24,12 +24,12 @@ from app.services.memory.serializers import (
 )
 from app.services.memory_artifacts import (
     compile_project_memory,
-    complete_session_if_ready,
     generate_context_memories_for_session,
     get_latest_project_memory,
     list_project_memory_pending_ranges,
     update_project_memory_snapshot,
 )
+from app.services.memory.session_completion import complete_session_if_ready
 
 
 def project_for_user(db: DBSession, project_id: UUID, user: User) -> Project:

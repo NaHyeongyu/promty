@@ -3,14 +3,13 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import settings
 from app.core.time import utc_now
 from app.models.artifact_generation_jobs import ArtifactGenerationJob
 from app.models.artifacts import Artifact
-from app.models.events import Event
 from app.models.projects import Project
 from app.models.sessions import Session
 from app.services.memory.context import (
@@ -20,17 +19,15 @@ from app.services.memory.context import (
     is_generic_local_memory_summary as _is_generic_local_memory_summary,
     iso as _iso,
     pending_draft_evidence_from_context as _pending_draft_evidence_from_context,
-    string_or_none as _string_or_none,
-    tags_for_session as _tags_for_session,
-    technologies_for_session as _technologies_for_session,
-    truncate as _truncate,
 )
-from app.services.memory.errors import MemoryGenerationError
+from app.services.memory.draft_payloads import (
+    build_memory_draft_payloads_from_context as _build_memory_draft_payloads_from_context,
+)
 from app.services.memory.providers import (
     generator_for_provider as _generator_for_provider,
-    model_metadata_for_provider as _model_metadata_for_provider,
     provider_name as _provider_name,
 )
+from app.services.memory.session_completion import complete_session_if_ready
 from app.services.memory.project_memory import (
     compile_project_memory as compile_project_memory,
     get_latest_project_memory as get_latest_project_memory,
@@ -60,10 +57,6 @@ from app.services.memory.constants import (
     REVIEW_STATE_IGNORED,
     REVIEW_STATE_SAVED,
     REVIEW_STATE_VERIFIED,
-    SESSION_IDLE_COMPLETE_AFTER,
-)
-from app.services.memory_pipeline import (
-    compile_memory_drafts,
 )
 from app.services.memory.serializers import (
     serialize_artifact_version as serialize_artifact_version,
@@ -71,217 +64,6 @@ from app.services.memory.serializers import (
     serialize_memory_artifact as serialize_memory_artifact,
     serialize_memory_artifact_summary as serialize_memory_artifact_summary,
 )
-
-
-def _source_event_ids_for_context(context: dict[str, Any]) -> list[str]:
-    ids = [
-        prompt["id"]
-        for prompt in context["prompt_events"]
-        if isinstance(prompt.get("id"), str) and prompt.get("id")
-    ]
-    if not ids and context.get("first_event_id"):
-        ids.append(context["first_event_id"])
-    if context.get("last_event_id") and context["last_event_id"] not in ids:
-        ids.append(context["last_event_id"])
-    return ids
-
-
-def _source_chunk_ids_for_context(context: dict[str, Any]) -> list[str]:
-    return _source_draft_ids_for_context(context)
-
-
-def _section_from_strings(title: str, values: list[str]) -> dict[str, str] | None:
-    summaries = [_truncate(value, 240) for value in values if value]
-    if not summaries:
-        return None
-    return {"summary": " / ".join(summaries[:4]), "title": title}
-
-
-def _sections_from_memory_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
-    details = draft.get("details") if isinstance(draft.get("details"), dict) else {}
-    tasks = details.get("tasks") if isinstance(details.get("tasks"), list) else []
-    if not tasks:
-        tasks = details.get("what_happened") if isinstance(details.get("what_happened"), list) else []
-    follow_ups = (
-        details.get("follow_ups") if isinstance(details.get("follow_ups"), list) else []
-    )
-    if not follow_ups:
-        follow_ups = details.get("next_steps") if isinstance(details.get("next_steps"), list) else []
-    open_questions = (
-        [
-            item.get("question")
-            for item in details.get("open_questions", [])
-            if isinstance(item, dict) and isinstance(item.get("question"), str)
-        ]
-        if isinstance(details.get("open_questions"), list)
-        else []
-    )
-    rejected_directions = (
-        [
-            item.get("content")
-            for item in details.get("rejected_directions", [])
-            if isinstance(item, dict) and isinstance(item.get("content"), str)
-        ]
-        if isinstance(details.get("rejected_directions"), list)
-        else []
-    )
-    sections: list[dict[str, str]] = []
-    for section in (
-        _section_from_strings(
-            "Summary",
-            [
-                value
-                for value in (
-                    draft.get("summary"),
-                    details.get("summary"),
-                    details.get("problem"),
-                    details.get("why_started"),
-                )
-                if isinstance(value, str)
-            ],
-        ),
-        _section_from_strings(
-            "Tasks",
-            tasks,
-        ),
-        _section_from_strings(
-            "Decisions",
-            [
-                item.get("decision")
-                for item in details.get("decisions", [])
-                if isinstance(item, dict) and isinstance(item.get("decision"), str)
-            ]
-            if isinstance(details.get("decisions"), list)
-            else [],
-        ),
-        _section_from_strings(
-            "Follow-ups",
-            [*rejected_directions, *follow_ups, *open_questions],
-        ),
-    ):
-        if section is not None:
-            sections.append(section)
-    return sections[:4]
-
-
-def _payload_from_memory_draft(
-    context: dict[str, Any],
-    draft: dict[str, Any],
-    *,
-    generator: str,
-) -> dict[str, Any]:
-    details = draft.get("details") if isinstance(draft.get("details"), dict) else {}
-    what_happened = (
-        details.get("what_happened") if isinstance(details.get("what_happened"), list) else []
-    )
-    outcome = " ".join(
-        _truncate(item, 220)
-        for item in what_happened
-        if isinstance(item, str) and item.strip()
-    )
-    changed_files = context["changed_files"]
-    draft_type = _string_or_none(draft.get("type")) or "thinking_note"
-    suggested_action = _string_or_none(draft.get("suggested_user_action")) or "edit"
-    return {
-        "changed_files": changed_files[:100],
-        "commit_sha": context["commits"][-1]["hash"] if context["commits"] else None,
-        "event_count": context["event_count"],
-        "first_event_id": context["first_event_id"],
-        "generator": generator,
-        "last_event_id": context["last_event_id"],
-        "model": context["model"],
-        "outcome": outcome or draft["summary"],
-        "prompt_event_ids": draft["evidence"]["source_event_ids"],
-        "reason": draft["why_it_matters"],
-        "sections": _sections_from_memory_draft(draft),
-        "summary": draft["summary"],
-        "tags": sorted(
-            set(
-                [
-                    *_tags_for_session(
-                        changed_files=changed_files,
-                        model=context["model"],
-                        tool=context["tool"],
-                    ),
-                    draft_type,
-                    suggested_action,
-                ]
-            )
-        )[:12],
-        "technologies": _technologies_for_session(changed_files),
-        "title": draft["title"],
-        "tool": context["tool"],
-    }
-
-
-def _build_memory_draft_payloads_from_context(
-    context: dict[str, Any],
-    *,
-    trigger_reason: str,
-) -> tuple[list[tuple[dict[str, Any], dict[str, Any]]], dict[str, Any]]:
-    context = {**context, "trigger_reason": trigger_reason}
-    source_chunk_ids = _source_chunk_ids_for_context(context)
-    source_draft_ids = _source_draft_ids_for_context(context)
-    source_event_ids = _source_event_ids_for_context(context)
-    provider = _provider_name(settings.memory_draft_generator)
-    if provider not in {"gemini", "openai"}:
-        return [], {
-            "fallback_reason": f"{provider}_disabled",
-            "source_draft_ids": source_draft_ids,
-            "source_chunk_ids": source_chunk_ids,
-            "source_event_ids": source_event_ids,
-        }
-
-    try:
-        response = compile_memory_drafts(context, provider=provider)
-        generator = _generator_for_provider(provider, stage="draft")
-        generation_metadata = {
-            "draft_generation": response,
-            "draft_generator": generator,
-            **_model_metadata_for_provider(provider),
-        }
-    except MemoryGenerationError as exc:
-        return [], {
-            "fallback_reason": str(exc),
-            "requested_generator": _generator_for_provider(provider, stage="draft"),
-            "source_draft_ids": source_draft_ids,
-            "source_chunk_ids": source_chunk_ids,
-            "source_event_ids": source_event_ids,
-        }
-
-    drafts = response.get("memory_drafts") if isinstance(response.get("memory_drafts"), list) else []
-    if not drafts:
-        return [], {
-            **generation_metadata,
-            "fallback_reason": "Second-pass generator returned no usable drafts.",
-            "source_draft_ids": source_draft_ids,
-            "source_chunk_ids": source_chunk_ids,
-            "source_event_ids": source_event_ids,
-        }
-
-    payloads: list[tuple[dict[str, Any], dict[str, Any]]] = []
-    for index, draft in enumerate(drafts, start=1):
-        if not isinstance(draft, dict):
-            continue
-        draft_metadata = {
-            **generation_metadata,
-            "draft_confidence": draft.get("confidence"),
-            "draft_details": draft.get("details"),
-            "draft_evidence": draft.get("evidence"),
-            "draft_index": index,
-            "draft_type": draft.get("type"),
-            "needs_user_verification": draft.get("needs_user_verification") is True,
-            "overall_uncertainties": response.get("overall_uncertainties", []),
-            "source_draft_ids": source_draft_ids,
-            "suggested_user_action": draft.get("suggested_user_action"),
-        }
-        payloads.append(
-            (
-                _payload_from_memory_draft(context, draft, generator=generator),
-                draft_metadata,
-            )
-        )
-    return payloads, generation_metadata
 
 
 def _artifact_is_current_for_context(artifact: Artifact, context: dict[str, Any]) -> bool:
@@ -294,70 +76,6 @@ def _artifact_is_current_for_context(artifact: Artifact, context: dict[str, Any]
         metadata.get("last_event_id") == context["last_event_id"]
         and metadata.get("event_count") == context["event_count"]
     )
-
-
-def session_completion_state(db: DBSession, session: Session) -> dict[str, Any]:
-    latest_event_at = db.scalar(
-        select(func.max(Event.created_at)).where(
-            Event.project_id == session.project_id,
-            Event.session_id == session.id,
-        )
-    )
-    latest_prompt_at = db.scalar(
-        select(func.max(Event.created_at)).where(
-            Event.project_id == session.project_id,
-            Event.session_id == session.id,
-            Event.event_type == "PromptSubmitted",
-        )
-    )
-    if session.ended_at is not None:
-        return {
-            "completed": True,
-            "completed_at": session.ended_at,
-            "reason": "explicit",
-        }
-    idle_reference_at = latest_prompt_at or latest_event_at
-    if idle_reference_at and idle_reference_at <= utc_now() - SESSION_IDLE_COMPLETE_AFTER:
-        return {
-            "completed": True,
-            "completed_at": latest_event_at or idle_reference_at,
-            "reason": "idle_timeout",
-        }
-    return {
-        "completed": False,
-        "completed_at": None,
-        "reason": "open",
-    }
-
-
-def complete_session_if_ready(
-    db: DBSession,
-    session: Session,
-    *,
-    force: bool = False,
-) -> dict[str, Any]:
-    state = session_completion_state(db, session)
-    if state["completed"]:
-        if session.ended_at is None:
-            session.ended_at = state["completed_at"]
-            db.flush()
-        return state
-    if not force:
-        return state
-
-    latest_event_at = db.scalar(
-        select(func.max(Event.created_at)).where(
-            Event.project_id == session.project_id,
-            Event.session_id == session.id,
-        )
-    )
-    session.ended_at = latest_event_at or utc_now()
-    db.flush()
-    return {
-        "completed": True,
-        "completed_at": session.ended_at,
-        "reason": "manual",
-    }
 
 
 def create_artifact_generation_job(
@@ -627,15 +345,6 @@ def _pending_draft_range(artifact: Artifact) -> dict[str, Any]:
 def _latest_event_sequence(db: DBSession, session: Session) -> int | None:
     latest_event = _latest_session_event(db, session)
     return latest_event.sequence if latest_event is not None else None
-
-
-def _source_draft_ids_for_context(context: dict[str, Any]) -> list[str]:
-    drafts = context.get("pending_drafts") if isinstance(context.get("pending_drafts"), list) else []
-    return [
-        draft.get("id")
-        for draft in drafts
-        if isinstance(draft, dict) and isinstance(draft.get("id"), str) and draft.get("id")
-    ]
 
 
 def _pending_draft_generation_context(
