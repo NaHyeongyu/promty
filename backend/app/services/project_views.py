@@ -352,7 +352,7 @@ def _prompt_activity_items(
             "prompt_truncated": payloads[event.id].get("prompt_truncated") is True,
             **prompt_responses.get(str(event.id), {}),
             "sequence": event.sequence,
-            "session_id": str(event.session_id),
+            "session_id": str(event.session_id) if event.session_id is not None else None,
             "submitted_at": iso(event.created_at),
         }
         for event in prompt_events
