@@ -222,6 +222,27 @@ GET  /health
 
 The backend persists events to PostgreSQL through SQLAlchemy and Alembic.
 
+## AWS And GitHub
+
+The repository includes a starting production path for AWS and GitHub Actions:
+
+```text
+.github/workflows/ci.yml
+.github/workflows/aws-deploy.yml
+backend/Dockerfile
+docs/aws-github-deployment.md
+```
+
+`CI` runs backend tests and the frontend production build. `AWS Deploy` is a
+manual workflow that builds the frontend for S3/CloudFront and publishes the
+backend image to ECR. Published flow assets can use S3 by setting:
+
+```bash
+export PROMPTHUB_PUBLISHED_FLOW_ASSET_STORAGE="s3"
+export PROMPTHUB_AWS_REGION="ap-southeast-2"
+export PROMPTHUB_AWS_S3_BUCKET="your-private-asset-bucket"
+```
+
 Optional ingest security:
 
 ```bash

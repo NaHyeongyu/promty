@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from events import BaseEvent, EventType, SupportedTool, normalize_tool
+from events import BaseEvent, EventType, normalize_tool
 
 
 def normalize_collector_event(

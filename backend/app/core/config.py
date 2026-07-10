@@ -246,8 +246,23 @@ class Settings:
         "PROMPTHUB_PUBLISHED_FLOW_ASSET_ROOT",
         "~/.prompthub/published-flow-assets",
     )
+    published_flow_asset_storage: str = os.environ.get(
+        "PROMPTHUB_PUBLISHED_FLOW_ASSET_STORAGE",
+        "local",
+    )
     published_flow_asset_max_bytes: int = field(
         default_factory=lambda: _int_env("PROMPTHUB_PUBLISHED_FLOW_ASSET_MAX_BYTES", 5_242_880)
+    )
+    aws_region: str | None = field(default_factory=lambda: _optional_env("PROMPTHUB_AWS_REGION"))
+    aws_s3_bucket: str | None = field(
+        default_factory=lambda: _optional_env("PROMPTHUB_AWS_S3_BUCKET")
+    )
+    aws_s3_prefix: str = os.environ.get(
+        "PROMPTHUB_AWS_S3_PREFIX",
+        "published-flow-assets",
+    )
+    aws_s3_endpoint_url: str | None = field(
+        default_factory=lambda: _optional_env("PROMPTHUB_AWS_S3_ENDPOINT_URL")
     )
     oauth_state_secret: str | None = field(
         default_factory=lambda: _optional_env("PROMPTHUB_OAUTH_STATE_SECRET")

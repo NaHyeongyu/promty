@@ -1,4 +1,5 @@
 alembic
+boto3
 cryptography
 fastapi
 psycopg[binary]

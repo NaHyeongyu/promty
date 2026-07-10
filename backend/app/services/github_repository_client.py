@@ -15,7 +15,7 @@ def github_request_json(path: str, *, token: str) -> Any:
         headers={
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {token}",
-            "User-Agent": "BuildHub",
+            "User-Agent": "Promty",
             "X-GitHub-Api-Version": "2022-11-28",
         },
     )

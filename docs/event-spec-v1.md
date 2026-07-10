@@ -228,7 +228,7 @@ Codex hooks provide lifecycle timing, not a ready-made code diff payload. The co
 
 `insertions_delta` and `deletions_delta` are the canonical git delta fields. `files_changed`, `additions`, and `deletions` are included as UI-friendly aliases for timeline summaries.
 
-BuildHub stores line-level code review data at the prompt/turn boundary, not on every filesystem write. For each changed file, the collector attempts to include a unified diff in `changes[].patch`. Patch capture is bounded and defensive:
+Promty stores line-level code review data at the prompt/turn boundary, not on every filesystem write. For each changed file, the collector attempts to include a unified diff in `changes[].patch`. Patch capture is bounded and defensive:
 
 ```text
 default max source file bytes: 524288
