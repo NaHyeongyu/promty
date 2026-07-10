@@ -19,10 +19,46 @@ export function FilesPanel({
       <section className="bh-files-section" aria-labelledby="tracked-files-title">
         <div className="bh-files-section-header">
           <h2 id="tracked-files-title">Tracked changes</h2>
-          <p>Files captured from Promty collector events.</p>
+          <p>
+            {data.filesTotal !== null && data.filesTotal !== undefined
+              ? `${data.filesTotal} files captured from Promty collector events.`
+              : "Files captured from Promty collector events."}
+          </p>
         </div>
-        {data.files.length > 0 ? (
+        {data.filesLoading && data.files.length === 0 ? (
+          <div
+            aria-busy="true"
+            aria-label="Loading tracked files"
+            aria-live="polite"
+            className="bh-detail-skeleton-tree"
+            role="status"
+          >
+            {Array.from({ length: 10 }).map((_, index) => (
+              <span
+                className={
+                  index % 3 === 0
+                    ? "skeleton-line skeleton-line-md"
+                    : "skeleton-line skeleton-line-sm"
+                }
+                key={index}
+              />
+            ))}
+          </div>
+        ) : data.filesError ? (
+          <EmptyState
+            description={data.filesError}
+            icon={BookOpen}
+            title="Tracked files could not be loaded"
+          />
+        ) : data.files.length > 0 ? (
+          <>
+            {data.filesTruncated ? (
+              <div className="bh-files-inline-status" role="status">
+                Showing the first {data.files.length} tracked files.
+              </div>
+            ) : null}
           <FileTree label="Tracked project files" nodes={data.files} />
+          </>
         ) : (
           <EmptyState
             description="The tracked file tree will appear after file change events are stored."

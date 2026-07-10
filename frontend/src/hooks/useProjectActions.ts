@@ -2,10 +2,8 @@ import { useState } from "react";
 import { UnauthorizedError } from "../api/client";
 import {
   checkpointProjectSession,
-  compileProjectMemory,
   updateProjectBookmark,
   updateProjectDescription,
-  updateProjectMemory,
   updateProjectMetadata,
   updateRepositoryConnection,
   type ProjectMetadataPatch,
@@ -99,7 +97,7 @@ export function useProjectActions({
 
       for (const sessionId of uniqueSessionIds) {
         const payload = await checkpointProjectSession(selectedProjectId, sessionId);
-        if (payload.project_memory?.snapshot) {
+        if (payload.status === "memory_generated") {
           projectMemoryGenerated = true;
         }
       }
@@ -116,32 +114,6 @@ export function useProjectActions({
         message: "Project Memory document was generated.",
         status: "memory_generated" as const,
       };
-    } catch (error) {
-      return rethrowAfterUnauthorized(error);
-    }
-  };
-
-  const compileSelectedProjectMemory = async () => {
-    if (!selectedProjectId) {
-      throw new Error("Select a project before compiling Project Memory.");
-    }
-
-    try {
-      await compileProjectMemory(selectedProjectId);
-      await loadProjectDetail(selectedProjectId, selectedProject);
-    } catch (error) {
-      return rethrowAfterUnauthorized(error);
-    }
-  };
-
-  const saveProjectMemory = async (bodyMarkdown: string) => {
-    if (!selectedProjectId) {
-      throw new Error("Select a project before saving Project Memory.");
-    }
-
-    try {
-      await updateProjectMemory(selectedProjectId, bodyMarkdown);
-      await loadProjectDetail(selectedProjectId, selectedProject);
     } catch (error) {
       return rethrowAfterUnauthorized(error);
     }
@@ -208,10 +180,8 @@ export function useProjectActions({
 
   return {
     bookmarkUpdatingProjectId,
-    compileProjectMemory: compileSelectedProjectMemory,
     organizePendingMemory,
     saveProjectDescription,
-    saveProjectMemory,
     saveProjectMetadata,
     saveRepositoryConnection,
     toggleProjectBookmark,

@@ -4,7 +4,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.api.transactions import commit_or_conflict as _commit_or_conflict
@@ -147,19 +147,26 @@ def read_flow_asset(
     asset_id: UUID,
     current_user: User = Depends(require_web_user),
     db: Session = Depends(get_db),
-) -> FileResponse:
-    asset, path = get_published_flow_asset(
+) -> FileResponse | Response:
+    asset, stored_asset = get_published_flow_asset(
         db,
         asset_id=asset_id,
         current_user=current_user,
         flow_key=flow_key,
     )
+    headers = {
+        "Cache-Control": "private, max-age=3600",
+        "X-Content-Type-Options": "nosniff",
+    }
+    if stored_asset.path is None:
+        return Response(
+            content=stored_asset.content or b"",
+            headers=headers,
+            media_type=asset.content_type,
+        )
     return FileResponse(
-        path,
+        stored_asset.path,
         filename=asset.file_name,
-        headers={
-            "Cache-Control": "private, max-age=3600",
-            "X-Content-Type-Options": "nosniff",
-        },
+        headers=headers,
         media_type=asset.content_type,
     )

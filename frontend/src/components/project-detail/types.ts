@@ -152,8 +152,10 @@ export type ProjectMemoryArtifact = {
   draftType: string | null;
   endSequence: number | null;
   fallbackReason: string | null;
+  firstEventAt: string | null;
   generator: string | null;
   id: string;
+  lastEventAt: string | null;
   memoryScope: ProjectMemoryScope | null;
   model: string | null;
   needsUserVerification: boolean | null;
@@ -182,37 +184,10 @@ export type ProjectMemoryArtifact = {
   windowReason: string | null;
 };
 
-export type ProjectMemorySnapshot = {
-  bodyMarkdown: string;
-  confidence: number | null;
-  sections: {
-    coreWorkflow: string[];
-    currentDirection: string;
-    importantDecisions: Array<{
-      decision: string;
-      reason: string;
-      sourceMemoryIds: string[];
-    }>;
-    instructionsForFutureAiAgents: string[];
-    openQuestions: string[];
-    productGoal: string;
-    rejectedDirections: Array<{
-      direction: string;
-      reason: string;
-      sourceMemoryIds: string[];
-    }>;
-    technicalAssumptions: string[];
-  };
-  sourceMemoryIds: string[];
-  warnings: string[];
-};
-
 export type ProjectMemoryStatus = {
   drafts: ProjectMemoryArtifact[];
   latestArtifactAt: string | null;
   pendingRanges: ProjectMemoryPendingRange[];
-  projectMemory: ProjectMemorySnapshot | null;
-  projectMemoryArtifact: ProjectMemoryArtifact | null;
   recentArtifacts: ProjectMemoryArtifact[];
   totalArtifacts: number;
 };
@@ -221,6 +196,7 @@ export type ProjectMemoryPendingRange = {
   canCheckpoint: boolean;
   endSequence: number;
   eventCount: number;
+  firstEventAt: string | null;
   lastEventAt: string | null;
   promptCount: number;
   sessionId: string;
@@ -313,6 +289,10 @@ export type ProjectDetailData = {
   activities: ActivityItem[];
   community: ProjectCommunityStatus;
   files: FileTreeNode[];
+  filesError?: string | null;
+  filesLoading?: boolean;
+  filesTotal?: number | null;
+  filesTruncated?: boolean;
   memory: ProjectMemoryStatus;
   overview: OverviewItem[];
   promptActivities: PromptActivityItem[];

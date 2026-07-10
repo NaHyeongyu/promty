@@ -30,7 +30,6 @@ type ProjectDetailPageProps = {
   isBookmarkUpdating?: boolean;
   isShareCopied?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
-  onCompileProjectMemory?: () => Promise<void>;
   onConnectRepository?: () => void;
   onOpenAllProjects?: () => void;
   onProjectSelect?: (projectId: string) => void;
@@ -43,7 +42,6 @@ type ProjectDetailPageProps = {
   }) => Promise<void>;
   onSaveDescription?: (description: string) => Promise<void>;
   onCheckpointMemory?: (sessionIds: string[]) => Promise<MemoryCheckpointResult>;
-  onSaveProjectMemory?: (bodyMarkdown: string) => Promise<void>;
   onToggleBookmark?: () => void;
   onRetry?: () => void;
   onTabChange: (tabId: ProjectDetailTabId) => void;
@@ -100,10 +98,8 @@ function ProjectPanel({
   isLoading,
   onActivityNavigationChange,
   onCheckpointMemory,
-  onCompileProjectMemory,
   onSaveProjectMetadata,
   onSaveDescription,
-  onSaveProjectMemory,
   onRepositoryFileSelect,
   onRetry,
   onTabChange,
@@ -115,8 +111,6 @@ function ProjectPanel({
   isLoading?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onCheckpointMemory?: (sessionIds: string[]) => Promise<MemoryCheckpointResult>;
-  onCompileProjectMemory?: () => Promise<void>;
-  onSaveProjectMemory?: (bodyMarkdown: string) => Promise<void>;
   onRepositoryFileSelect?: (path: string) => void;
   onRetry?: () => void;
   onSaveProjectMetadata?: (metadata: {
@@ -162,8 +156,6 @@ function ProjectPanel({
       <MemoryPanel
         data={data}
         onCheckpointMemory={onCheckpointMemory}
-        onCompileProjectMemory={onCompileProjectMemory}
-        onSaveProjectMemory={onSaveProjectMemory}
       />
     );
   }
@@ -203,7 +195,6 @@ export function ProjectDetailPage({
   isShareCopied,
   onActivityNavigationChange,
   onCheckpointMemory,
-  onCompileProjectMemory,
   onConnectRepository,
   onOpenAllProjects,
   onProjectSelect,
@@ -212,7 +203,6 @@ export function ProjectDetailPage({
   onShareProject,
   onSaveProjectMetadata,
   onSaveDescription,
-  onSaveProjectMemory,
   onToggleBookmark,
   onTabChange,
   projectOptions = [],
@@ -264,10 +254,8 @@ export function ProjectDetailPage({
           isLoading={isLoading}
           onActivityNavigationChange={onActivityNavigationChange}
           onCheckpointMemory={onCheckpointMemory}
-          onCompileProjectMemory={onCompileProjectMemory}
           onSaveProjectMetadata={onSaveProjectMetadata}
           onSaveDescription={onSaveDescription}
-          onSaveProjectMemory={onSaveProjectMemory}
           onRepositoryFileSelect={onRepositoryFileSelect}
           onRetry={onRetry}
           onTabChange={onTabChange}

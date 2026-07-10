@@ -15,6 +15,12 @@ from app.core.time import utc_now
 from app.models.published_flows import PublishedFlowAsset
 from app.models.users import User
 from app.services.published_flow_access import can_read_flow, flow_by_key, flow_for_owner
+from app.services.published_flow_asset_storage import (
+    StoredAsset,
+    delete_published_flow_asset,
+    read_published_flow_asset,
+    save_published_flow_asset,
+)
 from app.services.published_flow_redaction import optional_redacted_text
 from app.services.published_flow_serializers import serialize_flow_asset
 
@@ -24,21 +30,6 @@ ASSET_CONTENT_TYPES = {
     "image/png": ".png",
     "image/webp": ".webp",
 }
-
-
-def _asset_root() -> Path:
-    return Path(settings.published_flow_asset_root).expanduser().resolve()
-
-
-def _asset_path(storage_key: str) -> Path:
-    root = _asset_root()
-    path = (root / storage_key).resolve()
-    if root != path and root not in path.parents:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Published flow asset path is invalid",
-        )
-    return path
 
 
 def _sniff_image_content_type(content: bytes) -> str | None:
@@ -111,9 +102,11 @@ def create_published_flow_asset(
     asset_id = uuid4()
     extension = ASSET_CONTENT_TYPES[detected_content_type]
     storage_key = f"{flow.id}/{asset_id}{extension}"
-    path = _asset_path(storage_key)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(content)
+    save_published_flow_asset(
+        content=content,
+        content_type=detected_content_type,
+        storage_key=storage_key,
+    )
 
     cleaned_alt_text = optional_redacted_text(alt_text) if alt_text else None
     asset = PublishedFlowAsset(
@@ -133,20 +126,14 @@ def create_published_flow_asset(
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        try:
-            path.unlink()
-        except OSError:
-            pass
+        delete_published_flow_asset(storage_key)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Image asset could not be saved because it conflicts with existing data.",
         ) from exc
     except Exception:
         db.rollback()
-        try:
-            path.unlink()
-        except OSError:
-            pass
+        delete_published_flow_asset(storage_key)
         raise
 
     return serialize_flow_asset(flow, asset)
@@ -158,7 +145,7 @@ def get_published_flow_asset(
     asset_id: UUID,
     current_user: User,
     flow_key: str,
-) -> tuple[PublishedFlowAsset, Path]:
+) -> tuple[PublishedFlowAsset, StoredAsset]:
     flow = flow_by_key(db, flow_key)
     if flow is None or not can_read_flow(flow, current_user):
         raise HTTPException(
@@ -178,10 +165,4 @@ def get_published_flow_asset(
             detail="Image asset not found",
         )
 
-    path = _asset_path(asset.storage_key)
-    if not path.is_file():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Image asset file not found",
-        )
-    return asset, path
+    return asset, read_published_flow_asset(asset.storage_key)

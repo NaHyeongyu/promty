@@ -11,7 +11,6 @@ from sqlalchemy import and_, case, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.encoding import base64_urldecode, base64_urlencode
-from app.models.artifacts import Artifact
 from app.models.code_change_patches import CodeChangePatch
 from app.models.events import Event
 from app.models.project_files import ProjectFile
@@ -22,8 +21,9 @@ from app.models.users import User
 from app.services.event_payload_security import (
     decrypt_event_payload,
 )
-from app.services.memory.constants import (
-    PROJECT_MEMORY_ARTIFACT_TYPE,
+from app.services.memory_artifacts import (
+    count_project_memory_history_artifacts,
+    list_project_memory_history_artifacts,
 )
 from app.services.memory.serializers import (
     serialize_memory_artifact_summary,
@@ -43,6 +43,8 @@ from app.services.prompt_search import prompt_search_hashes_for_query
 
 RECENT_ACTIVITY_LIMIT = 50
 PROMPT_RELATED_EVENT_LIMIT = 1000
+PROJECT_FILE_TREE_LIMIT = 2000
+PROMPT_RELATED_EVENT_SEQUENCE_TRAILING = 40
 
 PromptActivityCursor = tuple[datetime, int, UUID]
 
@@ -122,6 +124,62 @@ def project_for_user(db: Session, project_id: UUID, current_user: User) -> Proje
             detail="Project not found",
         )
     return project
+
+
+def _active_file_stats(
+    db: Session,
+    *,
+    project_id: UUID,
+    since: datetime,
+) -> tuple[int, int, datetime | None]:
+    tracked_files, changed_since, last_modified_at = db.execute(
+        select(
+            func.count(ProjectFile.id),
+            func.count(case((ProjectFile.changed_at >= since, 1))),
+            func.max(ProjectFile.changed_at),
+        ).where(
+            ProjectFile.project_id == project_id,
+            ProjectFile.status != "deleted",
+        )
+    ).one()
+    return int(tracked_files or 0), int(changed_since or 0), last_modified_at
+
+
+def read_project_files_response(
+    project_id: UUID,
+    current_user: User,
+    db: Session,
+    *,
+    limit: int = PROJECT_FILE_TREE_LIMIT,
+) -> dict[str, Any]:
+    project = project_for_user(db, project_id, current_user)
+    total = int(
+        db.scalar(
+            select(func.count(ProjectFile.id)).where(
+                ProjectFile.project_id == project.id,
+                ProjectFile.status != "deleted",
+            )
+        )
+        or 0
+    )
+    file_paths = list(
+        db.execute(
+            select(ProjectFile.path)
+            .where(
+                ProjectFile.project_id == project.id,
+                ProjectFile.status != "deleted",
+            )
+            .order_by(ProjectFile.path)
+            .limit(limit + 1)
+        ).scalars()
+    )
+    page_paths = file_paths[:limit]
+    return {
+        "files": build_file_tree(page_paths),
+        "limit": limit,
+        "total": total,
+        "truncated": len(file_paths) > limit,
+    }
 
 
 def _session_metadata_for_project(db: Session, project_id: UUID) -> tuple[set[str], set[str]]:
@@ -238,9 +296,15 @@ def _prompt_file_changes(
 
     if not prompt_events:
         return prompt_changes
+    if prompt_changes:
+        return prompt_changes
 
     prompt_session_ids = {event.session_id for event in prompt_events}
     earliest_prompt_at = min(event.created_at for event in prompt_events)
+    sequence_filters = _prompt_related_sequence_filters(
+        prompt_events,
+        trailing=PROMPT_RELATED_EVENT_SEQUENCE_TRAILING,
+    )
     fallback_events = list(
         db.execute(
             select(Event)
@@ -249,6 +313,7 @@ def _prompt_file_changes(
                 Event.event_type == "FilesChanged",
                 Event.session_id.in_(prompt_session_ids),
                 Event.created_at >= earliest_prompt_at,
+                or_(*sequence_filters),
             )
             .order_by(desc(Event.created_at), desc(Event.sequence))
             .limit(PROMPT_RELATED_EVENT_LIMIT)
@@ -269,6 +334,28 @@ def _prompt_file_changes(
     return prompt_changes
 
 
+def _prompt_related_sequence_filters(
+    prompt_events: list[Event],
+    *,
+    trailing: int,
+) -> list[Any]:
+    windows: dict[UUID, tuple[int, int]] = {}
+    for event in prompt_events:
+        minimum, maximum = windows.get(event.session_id, (event.sequence, event.sequence))
+        windows[event.session_id] = (
+            min(minimum, event.sequence),
+            max(maximum, event.sequence),
+        )
+    return [
+        and_(
+            Event.session_id == session_id,
+            Event.sequence >= minimum,
+            Event.sequence <= maximum + trailing,
+        )
+        for session_id, (minimum, maximum) in windows.items()
+    ]
+
+
 def _prompt_responses(
     db: Session,
     *,
@@ -281,6 +368,10 @@ def _prompt_responses(
 
     prompt_session_ids = {event.session_id for event in prompt_events}
     earliest_prompt_at = min(event.created_at for event in prompt_events)
+    sequence_filters = _prompt_related_sequence_filters(
+        prompt_events,
+        trailing=PROMPT_RELATED_EVENT_SEQUENCE_TRAILING,
+    )
     response_events = list(
         db.execute(
             select(Event)
@@ -289,6 +380,7 @@ def _prompt_responses(
                 Event.event_type == "ResponseReceived",
                 Event.session_id.in_(prompt_session_ids),
                 Event.created_at >= earliest_prompt_at,
+                or_(*sequence_filters),
             )
             .order_by(desc(Event.created_at), desc(Event.sequence))
             .limit(PROMPT_RELATED_EVENT_LIMIT)
@@ -574,51 +666,29 @@ def read_project_detail_response(
             func.max(Event.created_at),
         ).where(Event.project_id == project.id)
     ).one()
-    (
-        memory_artifact_count,
-        memory_artifact_count_since_yesterday,
-    ) = db.execute(
-        select(
-            func.count(Artifact.id),
-            func.count(case((Artifact.created_at >= since_yesterday_at, 1))),
-        ).where(
-            Artifact.project_id == project.id,
-            Artifact.type == PROJECT_MEMORY_ARTIFACT_TYPE,
-        )
-    ).one()
+    memory_artifact_count = count_project_memory_history_artifacts(
+        db,
+        project_id=project.id,
+    )
+    memory_artifact_count_since_yesterday = count_project_memory_history_artifacts(
+        db,
+        project_id=project.id,
+        since=since_yesterday_at,
+    )
 
     models, tools = _session_metadata_for_project(db, project.id)
     activities, activity_tools = _activity_summaries(db, project.id)
     tools.update(activity_tools)
 
-    active_file_rows = list(
-        db.execute(
-            select(ProjectFile.path, ProjectFile.changed_at)
-            .where(
-                ProjectFile.project_id == project.id,
-                ProjectFile.status != "deleted",
-            )
-            .order_by(ProjectFile.path)
-        ).all()
+    tracked_file_count, files_changed_since_yesterday, last_modified_at = _active_file_stats(
+        db,
+        project_id=project.id,
+        since=since_yesterday_at,
     )
-    active_file_paths = [path for path, _changed_at in active_file_rows]
-    last_modified_at = max(
-        (changed_at for _path, changed_at in active_file_rows),
-        default=None,
-    )
-    files_changed_since_yesterday = sum(
-        1 for _path, changed_at in active_file_rows if changed_at >= since_yesterday_at
-    )
-    memory_artifacts = list(
-        db.execute(
-            select(Artifact)
-            .where(
-                Artifact.project_id == project.id,
-                Artifact.type == PROJECT_MEMORY_ARTIFACT_TYPE,
-            )
-            .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
-            .limit(5)
-        ).scalars()
+    memory_artifacts = list_project_memory_history_artifacts(
+        db,
+        limit=10,
+        project_id=project.id,
     )
 
     return {
@@ -648,7 +718,7 @@ def read_project_detail_response(
             "prompts_since_yesterday": prompt_count_since_yesterday,
             "repository_connected": repository_url is not None,
             "sessions_since_yesterday": session_count_since_yesterday,
-            "tracked_files": len(active_file_paths),
+            "tracked_files": tracked_file_count,
             "total_events": event_count,
             "total_prompts": prompt_count,
             "total_sessions": session_count,
@@ -662,5 +732,5 @@ def read_project_detail_response(
         },
         "activities": activities,
         "prompt_activities": [],
-        "files": build_file_tree(active_file_paths),
+        "files": [],
     }

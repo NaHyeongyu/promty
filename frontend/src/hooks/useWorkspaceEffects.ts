@@ -238,10 +238,12 @@ export function useWorkspaceProjectResourceEffects({
   activeDetailTab,
   activeItem,
   clearProjectDetail,
+  clearProjectFiles,
   clearRepositoryBrowserState,
   clearRepositoryFileContentState,
   clearRepositoryFiles,
   loadProjectDetail,
+  loadProjectFiles,
   loadProjectGithubFiles,
   loadRepositoryFileContent,
   repositoryFileContentPath,
@@ -253,6 +255,7 @@ export function useWorkspaceProjectResourceEffects({
   activeDetailTab: ProjectDetailTabId;
   activeItem: SidebarItemId;
   clearProjectDetail: () => void;
+  clearProjectFiles: () => void;
   clearRepositoryBrowserState: () => void;
   clearRepositoryFileContentState: () => void;
   clearRepositoryFiles: () => void;
@@ -261,6 +264,7 @@ export function useWorkspaceProjectResourceEffects({
     fallbackProject: Project | null,
     signal?: AbortSignal,
   ) => Promise<void>;
+  loadProjectFiles: (projectId: string, signal?: AbortSignal) => Promise<void>;
   loadProjectGithubFiles: (projectId: string, signal?: AbortSignal) => Promise<void>;
   loadRepositoryFileContent: (
     projectId: string,
@@ -274,12 +278,14 @@ export function useWorkspaceProjectResourceEffects({
   setProjectDetail: (data: ProjectDetailData | null) => void;
 }) {
   const clearProjectDetailRef = useLatestRef(clearProjectDetail);
+  const clearProjectFilesRef = useLatestRef(clearProjectFiles);
   const clearRepositoryBrowserStateRef = useLatestRef(clearRepositoryBrowserState);
   const clearRepositoryFileContentStateRef = useLatestRef(
     clearRepositoryFileContentState,
   );
   const clearRepositoryFilesRef = useLatestRef(clearRepositoryFiles);
   const loadProjectDetailRef = useLatestRef(loadProjectDetail);
+  const loadProjectFilesRef = useLatestRef(loadProjectFiles);
   const loadProjectGithubFilesRef = useLatestRef(loadProjectGithubFiles);
   const loadRepositoryFileContentRef = useLatestRef(loadRepositoryFileContent);
   const setProjectDetailRef = useLatestRef(setProjectDetail);
@@ -287,18 +293,21 @@ export function useWorkspaceProjectResourceEffects({
   useEffect(() => {
     if (activeItem !== "projects" || (!selectedProjectId && !selectedProjectRouteKey)) {
       clearProjectDetailRef.current();
+      clearProjectFilesRef.current();
       clearRepositoryFilesRef.current();
       return;
     }
 
     if (!selectedProjectId) {
       clearProjectDetailRef.current();
+      clearProjectFilesRef.current();
       clearRepositoryBrowserStateRef.current();
       return;
     }
 
     if (isMockGithubUnlinkedProject(selectedProjectId) && selectedProject) {
       setProjectDetailRef.current(mockGithubUnlinkedProjectDetail(selectedProject));
+      clearProjectFilesRef.current();
       clearRepositoryBrowserStateRef.current();
       return;
     }
@@ -306,6 +315,7 @@ export function useWorkspaceProjectResourceEffects({
     const detailController = new AbortController();
     const githubFilesController = new AbortController();
     clearProjectDetailRef.current();
+    clearProjectFilesRef.current();
     clearRepositoryBrowserStateRef.current();
     void loadProjectDetailRef.current(
       selectedProjectId,
@@ -323,6 +333,7 @@ export function useWorkspaceProjectResourceEffects({
   }, [
     activeItem,
     clearProjectDetailRef,
+    clearProjectFilesRef,
     clearRepositoryBrowserStateRef,
     clearRepositoryFilesRef,
     loadProjectDetailRef,
@@ -331,6 +342,21 @@ export function useWorkspaceProjectResourceEffects({
     selectedProjectId,
     selectedProjectRouteKey,
     setProjectDetailRef,
+  ]);
+
+  useEffect(() => {
+    if (!selectedProjectId || activeItem !== "projects" || activeDetailTab !== "files") {
+      return;
+    }
+
+    const controller = new AbortController();
+    void loadProjectFilesRef.current(selectedProjectId, controller.signal);
+    return () => controller.abort();
+  }, [
+    activeDetailTab,
+    activeItem,
+    loadProjectFilesRef,
+    selectedProjectId,
   ]);
 
   useEffect(() => {

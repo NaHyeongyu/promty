@@ -33,6 +33,7 @@ from app.services.project_management import (
 from app.services.project_views import (
     project_for_user as _project_for_user,
     read_project_detail_response,
+    read_project_files_response,
     read_project_prompt_activities_response,
 )
 
@@ -104,6 +105,21 @@ def read_project_prompt_activities(
         cursor=cursor,
         query=q,
         session_id=session_id,
+    )
+
+
+@router.get("/{project_id}/files")
+def read_project_files(
+    project_id: UUID,
+    limit: int = Query(default=2000, ge=1, le=5000),
+    current_user: User = Depends(require_web_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return read_project_files_response(
+        project_id,
+        current_user,
+        db,
+        limit=limit,
     )
 
 

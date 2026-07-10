@@ -1,0 +1,70 @@
+name: AWS Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Backend image tag. Defaults to the commit SHA.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+  FRONTEND_S3_BUCKET: ${{ secrets.FRONTEND_S3_BUCKET }}
+  CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+  VITE_PROMPTHUB_API_URL: ${{ secrets.VITE_PROMPTHUB_API_URL }}
+
+jobs:
+  publish:
+    name: Publish AWS artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+          node-version: "22"
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Sync frontend to S3
+        if: ${{ env.FRONTEND_S3_BUCKET != '' }}
+        run: aws s3 sync frontend/dist "s3://${FRONTEND_S3_BUCKET}" --delete
+
+      - name: Invalidate CloudFront
+        if: ${{ env.CLOUDFRONT_DISTRIBUTION_ID != '' }}
+        run: >
+          aws cloudfront create-invalidation
+          --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}"
+          --paths "/*"
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push backend image
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          docker build -f backend/Dockerfile -t "${REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}" .
+          docker push "${REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"

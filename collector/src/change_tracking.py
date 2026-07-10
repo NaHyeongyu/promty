@@ -400,7 +400,7 @@ def _build_patch(
     if len(encoded) <= PATCH_MAX_BYTES:
         return patch, False
     truncated = encoded[:PATCH_MAX_BYTES].decode("utf-8", errors="ignore")
-    return f"{truncated}\n\n[BuildHub patch truncated]", True
+    return f"{truncated}\n\n[Promty patch truncated]", True
 
 
 def _attach_patch(

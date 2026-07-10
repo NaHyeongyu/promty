@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import settings
@@ -94,7 +94,7 @@ def _local_project_memory_snapshot(
     workflow = [
         "Raw Events are stored for every captured event.",
         "Pending Memory Drafts are created after 20 prompts, session end, or 1 hour of idle time.",
-        "Pending drafts contain original user input, original AI output, and file-change evidence.",
+        "Captured work is converted into user-facing generated memories with AI answer and file-change evidence.",
         "The user generates all pending drafts into context memories with one action.",
         "Generated memories use Summary, Tasks, Decisions, and Follow-ups.",
         "Generated memories are saved to History and Project Memory is recompiled immediately.",
@@ -112,8 +112,8 @@ def _local_project_memory_snapshot(
         "Project Memory uses generated and user-edited memories by default.",
         "Pending drafts and ignored memories are not source of truth.",
         "Prompt chunk size is 20 PromptSubmitted events.",
-        "Prompts over 10,000 characters are sent to AI using the first 300 characters, last 300 characters, and original size.",
-        "For large prompts, cause analysis should primarily use the paired AI output.",
+        "Large captured inputs are summarized before generation and should not be displayed as raw prompts.",
+        "Cause analysis should primarily use generated summaries and paired AI answer evidence.",
         "Commit messages are metadata only and are not summary triggers.",
         "LLM failure fallback must not be exposed as user-facing memory.",
     ]
@@ -244,6 +244,40 @@ def list_project_memory_artifacts(
         and metadata.get("artifact_stage") in {"generated_memory", "verified_memory"}
     ]
     return source_memories[:limit]
+
+
+def list_project_memory_history_artifacts(
+    db: DBSession,
+    *,
+    limit: int = 20,
+    project_id: UUID,
+) -> list[Artifact]:
+    return list(
+        db.execute(
+            select(Artifact)
+            .where(
+                Artifact.project_id == project_id,
+                Artifact.type.in_([MEMORY_ARTIFACT_TYPE, PROJECT_MEMORY_ARTIFACT_TYPE]),
+            )
+            .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
+            .limit(limit)
+        ).scalars()
+    )
+
+
+def count_project_memory_history_artifacts(
+    db: DBSession,
+    *,
+    project_id: UUID,
+    since: Any | None = None,
+) -> int:
+    filters = [
+        Artifact.project_id == project_id,
+        Artifact.type.in_([MEMORY_ARTIFACT_TYPE, PROJECT_MEMORY_ARTIFACT_TYPE]),
+    ]
+    if since is not None:
+        filters.append(Artifact.created_at >= since)
+    return db.scalar(select(func.count(Artifact.id)).where(*filters)) or 0
 
 
 def compile_project_memory(

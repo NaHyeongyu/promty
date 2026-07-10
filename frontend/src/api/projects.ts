@@ -1,9 +1,9 @@
 import type {
   ProjectDetailApiResponse,
+  ProjectFilesApiResponse,
   ProjectGithubFileContentApiResponse,
   ProjectGithubFilesApiResponse,
   ProjectMemoryPendingRangeApiResponse,
-  ProjectMemorySnapshotApiResponse,
   ProjectPromptActivitiesApiResponse,
   ProjectSummary,
 } from "../workspace/types";
@@ -13,13 +13,11 @@ export type ProjectDetailResourcesResponse = ProjectDetailApiResponse & {
   memory: NonNullable<ProjectDetailApiResponse["memory"]> & {
     drafts: [];
     pending_ranges: ProjectMemoryPendingRangeApiResponse[];
-    project_memory: ProjectMemorySnapshotApiResponse;
   };
 };
 
 export type ProjectCheckpointResponse = {
   message?: string;
-  project_memory?: ProjectMemorySnapshotApiResponse | null;
   status?: string;
 };
 
@@ -57,13 +55,6 @@ export async function fetchProjectDetailResources(
       errorMessage: "Memory pending ranges request failed",
     },
   );
-  const projectMemory = await requestJson<ProjectMemorySnapshotApiResponse>(
-    `/api/projects/${encodedProjectId}/memory/project`,
-    { signal },
-    {
-      errorMessage: "Project memory request failed",
-    },
-  );
 
   return {
     ...detail,
@@ -73,7 +64,6 @@ export async function fetchProjectDetailResources(
       total_artifacts: detail.memory?.total_artifacts ?? 0,
       drafts: [],
       pending_ranges: pendingRanges,
-      project_memory: projectMemory,
     },
   };
 }
@@ -94,37 +84,6 @@ export function checkpointProjectSession(
   );
 }
 
-export function compileProjectMemory(projectId: string): Promise<void> {
-  return requestVoid(
-    `/api/projects/${encodeURIComponent(
-      projectId,
-    )}/memory/project/compile?regenerate=true`,
-    { method: "POST" },
-    {
-      errorMessage: "Project Memory compile failed",
-      unauthorizedMessage: "Sign in again before compiling Project Memory.",
-    },
-  );
-}
-
-export function updateProjectMemory(
-  projectId: string,
-  bodyMarkdown: string,
-): Promise<void> {
-  return requestVoid(
-    `/api/projects/${encodeURIComponent(projectId)}/memory/project`,
-    {
-      body: JSON.stringify({ body_markdown: bodyMarkdown }),
-      headers: { "Content-Type": "application/json" },
-      method: "PATCH",
-    },
-    {
-      errorMessage: "Project Memory save failed",
-      unauthorizedMessage: "Sign in again before saving Project Memory.",
-    },
-  );
-}
-
 export function fetchProjectGithubFiles(
   projectId: string,
   signal?: AbortSignal,
@@ -134,6 +93,19 @@ export function fetchProjectGithubFiles(
     { signal },
     {
       errorMessage: "GitHub files request failed",
+    },
+  );
+}
+
+export function fetchProjectFiles(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<ProjectFilesApiResponse> {
+  return requestJson<ProjectFilesApiResponse>(
+    `/api/projects/${encodeURIComponent(projectId)}/files`,
+    { signal },
+    {
+      errorMessage: "Tracked files request failed",
     },
   );
 }
