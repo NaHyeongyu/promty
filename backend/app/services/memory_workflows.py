@@ -289,4 +289,4 @@ def list_project_artifacts_response(
         limit=limit,
         project_id=project.id,
     )
-    return [serialize_memory_artifact_summary(artifact, db=db) for artifact in artifacts]
+    return [serialize_memory_artifact_summary(artifact) for artifact in artifacts]

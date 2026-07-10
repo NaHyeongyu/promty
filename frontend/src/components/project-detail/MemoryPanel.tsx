@@ -33,8 +33,10 @@ function memoryArtifactStatusLabel(artifact: ProjectMemoryArtifact) {
 }
 
 function memoryArtifactFileCount(artifact: ProjectMemoryArtifact) {
-  const listedFileCount = artifact.changedFiles.filter((file) => file.path.trim()).length;
-  return Math.max(artifact.changedFileCount, listedFileCount);
+  const listedFileCount = (artifact.changedFiles ?? []).filter((file) =>
+    file.path?.trim(),
+  ).length;
+  return Math.max(artifact.changedFileCount ?? 0, listedFileCount);
 }
 
 function memoryArtifactFileCountLabel(artifact: ProjectMemoryArtifact) {
@@ -185,14 +187,14 @@ function MemoryArtifactDetailDrawer({
   onClose: () => void;
 }) {
   const drawerRef = useRef<HTMLElement | null>(null);
-  const sections = artifact.sections.filter(
-    (section) => section.title.trim() && section.summary.trim(),
+  const sections = (artifact.sections ?? []).filter(
+    (section) => section.title?.trim() && section.summary?.trim(),
   );
   const outcome =
     artifact.outcome && artifact.outcome !== artifact.summary ? artifact.outcome : null;
   const dateRange = formatMemoryDateRange(artifact.firstEventAt, artifact.lastEventAt);
   const statusLabel = memoryArtifactStatusLabel(artifact);
-  const changedFiles = artifact.changedFiles.filter((file) => file.path.trim());
+  const changedFiles = (artifact.changedFiles ?? []).filter((file) => file.path?.trim());
   const changedFileCount = memoryArtifactFileCount(artifact);
   const metadataRows = [
     { label: "Covered dates", value: dateRange },

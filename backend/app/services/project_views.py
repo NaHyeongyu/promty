@@ -726,7 +726,7 @@ def read_project_detail_response(
         "memory": {
             "latest_artifact_at": iso(memory_artifacts[0].updated_at) if memory_artifacts else None,
             "recent_artifacts": [
-                serialize_memory_artifact_summary(artifact, db=db) for artifact in memory_artifacts
+                serialize_memory_artifact_summary(artifact) for artifact in memory_artifacts
             ],
             "total_artifacts": memory_artifact_count,
         },

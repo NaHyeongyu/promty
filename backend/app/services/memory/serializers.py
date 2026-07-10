@@ -2,15 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
-from uuid import UUID
-
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session as DBSession
 
 from app.models.artifact_generation_jobs import ArtifactGenerationJob
 from app.models.artifact_versions import ArtifactVersion
 from app.models.artifacts import Artifact
-from app.models.events import Event
 from app.services.memory.constants import PROJECT_MEMORY_ARTIFACT_TYPE
 
 
@@ -31,57 +26,8 @@ def _int_or_none(value: Any) -> int | None:
     return value if isinstance(value, int) else None
 
 
-def _uuid_or_none(value: Any) -> UUID | None:
-    if isinstance(value, UUID):
-        return value
-    if not isinstance(value, str):
-        return None
-    try:
-        return UUID(value)
-    except ValueError:
-        return None
-
-
-def _artifact_event_range(
-    db: DBSession,
-    artifact: Artifact,
-    metadata: dict[str, Any],
-) -> tuple[str | None, str | None]:
-    start_sequence = _int_or_none(metadata.get("start_sequence"))
-    end_sequence = _int_or_none(metadata.get("end_sequence"))
-    if artifact.session_id and (start_sequence is not None or end_sequence is not None):
-        filters = [
-            Event.project_id == artifact.project_id,
-            Event.session_id == artifact.session_id,
-        ]
-        if start_sequence is not None:
-            filters.append(Event.sequence >= start_sequence)
-        if end_sequence is not None:
-            filters.append(Event.sequence <= end_sequence)
-        first_event_at, last_event_at = db.execute(
-            select(func.min(Event.created_at), func.max(Event.created_at)).where(*filters)
-        ).one()
-        if first_event_at or last_event_at:
-            return _iso(first_event_at), _iso(last_event_at or first_event_at)
-
-    event_ids = [
-        event_id
-        for event_id in (
-            _uuid_or_none(metadata.get("first_event_id")),
-            _uuid_or_none(metadata.get("last_event_id")),
-        )
-        if event_id is not None
-    ]
-    if event_ids:
-        first_event_at, last_event_at = db.execute(
-            select(func.min(Event.created_at), func.max(Event.created_at)).where(
-                Event.id.in_(event_ids)
-            )
-        ).one()
-        if first_event_at or last_event_at:
-            return _iso(first_event_at), _iso(last_event_at or first_event_at)
-
-    return None, None
+def _str_or_none(value: Any) -> str | None:
+    return value if isinstance(value, str) and value else None
 
 
 def serialize_artifact_version(version: ArtifactVersion) -> dict[str, Any]:
@@ -159,11 +105,10 @@ def serialize_memory_artifact(artifact: Artifact) -> dict[str, Any]:
 
 def serialize_memory_artifact_summary(
     artifact: Artifact,
-    *,
-    db: DBSession,
 ) -> dict[str, Any]:
     metadata = artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}
-    first_event_at, last_event_at = _artifact_event_range(db, artifact, metadata)
+    first_event_at = _str_or_none(metadata.get("first_event_at")) or _iso(artifact.created_at)
+    last_event_at = _str_or_none(metadata.get("last_event_at")) or _iso(artifact.updated_at)
     return {
         "changed_file_count": len(artifact.changed_files or []),
         "changed_files": artifact.changed_files,

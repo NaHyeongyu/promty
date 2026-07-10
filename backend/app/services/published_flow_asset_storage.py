@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from fastapi import HTTPException, status
 
 from app.core.config import settings
+
+_cached_s3_client: Any | None = None
 
 
 @dataclass(frozen=True)
@@ -69,7 +72,11 @@ def _s3_object_key(storage_key: str) -> str:
     return f"{prefix}/{key}" if prefix else key
 
 
-def _s3_client():
+def _s3_client() -> Any:
+    global _cached_s3_client
+    if _cached_s3_client is not None:
+        return _cached_s3_client
+
     try:
         import boto3
     except ModuleNotFoundError as exc:
@@ -83,7 +90,8 @@ def _s3_client():
         kwargs["region_name"] = settings.aws_region
     if settings.aws_s3_endpoint_url:
         kwargs["endpoint_url"] = settings.aws_s3_endpoint_url
-    return boto3.client("s3", **kwargs)
+    _cached_s3_client = boto3.client("s3", **kwargs)
+    return _cached_s3_client
 
 
 def save_published_flow_asset(
@@ -130,7 +138,11 @@ def read_published_flow_asset(storage_key: str) -> StoredAsset:
                 Bucket=_s3_bucket(),
                 Key=_s3_object_key(storage_key),
             )
-            body = response["Body"].read()
+            stream = response["Body"]
+            try:
+                body = stream.read()
+            finally:
+                stream.close()
         except Exception as exc:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
