@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -67,6 +68,44 @@ function memoryArtifactSequenceRange(artifact: ProjectMemoryArtifact) {
   return artifact.startSequence !== null
     ? `From event ${artifact.startSequence}`
     : `Through event ${artifact.endSequence}`;
+}
+
+function memoryArtifactSortTimestamp(artifact: ProjectMemoryArtifact) {
+  const candidates = [
+    artifact.lastEventAt,
+    artifact.firstEventAt,
+    artifact.updatedAt,
+    artifact.createdAt,
+  ];
+  for (const value of candidates) {
+    if (!value) {
+      continue;
+    }
+    const timestamp = new Date(value).getTime();
+    if (!Number.isNaN(timestamp)) {
+      return timestamp;
+    }
+  }
+  return 0;
+}
+
+function compareMemoryArtifactsByLatest(
+  left: ProjectMemoryArtifact,
+  right: ProjectMemoryArtifact,
+) {
+  const timestampDifference =
+    memoryArtifactSortTimestamp(right) - memoryArtifactSortTimestamp(left);
+  if (timestampDifference !== 0) {
+    return timestampDifference;
+  }
+
+  const rightSequence = right.endSequence ?? right.startSequence ?? -1;
+  const leftSequence = left.endSequence ?? left.startSequence ?? -1;
+  if (rightSequence !== leftSequence) {
+    return rightSequence - leftSequence;
+  }
+
+  return right.id.localeCompare(left.id);
 }
 
 function formatMemoryDate(value: string | null | undefined) {
@@ -370,7 +409,13 @@ export function MemoryPanel({
   const checkpointableRanges = data.memory.pendingRanges.filter(
     (range) => range.canCheckpoint,
   );
-  const generatedArtifacts = data.memory.recentArtifacts.filter(isGeneratedMemoryArtifact);
+  const generatedArtifacts = useMemo(
+    () =>
+      [...data.memory.recentArtifacts]
+        .filter(isGeneratedMemoryArtifact)
+        .sort(compareMemoryArtifactsByLatest),
+    [data.memory.recentArtifacts],
+  );
   const pendingDateRange = combinedMemoryDateRange(data.memory.pendingRanges);
   const resultDateRange = combinedMemoryDateRange(generatedArtifacts);
   const hasPendingDocumentation = data.memory.pendingRanges.length > 0;
