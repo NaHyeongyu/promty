@@ -2,6 +2,7 @@ import { useState } from "react";
 import { UnauthorizedError } from "../api/client";
 import {
   checkpointProjectSession,
+  createProject,
   updateProjectBookmark,
   updateProjectDescription,
   updateProjectMetadata,
@@ -54,6 +55,16 @@ export function useProjectActions({
   const mergeProjectState = (updatedProject: ProjectSummary) => {
     mergeProjectSummary(updatedProject);
     applyProjectSummaryToDetail(updatedProject);
+  };
+
+  const createProjectFromRepository = async (githubUrl: string) => {
+    try {
+      const project = await createProject({ github_url: githubUrl });
+      mergeProjectState(project);
+      return project;
+    } catch (error) {
+      return rethrowAfterUnauthorized(error);
+    }
   };
 
   const toggleProjectBookmark = async (
@@ -180,6 +191,7 @@ export function useProjectActions({
 
   return {
     bookmarkUpdatingProjectId,
+    createProjectFromRepository,
     organizePendingMemory,
     saveProjectDescription,
     saveProjectMetadata,

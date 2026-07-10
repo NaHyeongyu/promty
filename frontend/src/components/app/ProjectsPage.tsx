@@ -66,7 +66,7 @@ export function ProjectsPage({
             type="button"
           >
             <Plus aria-hidden="true" size={16} strokeWidth={1.5} />
-            <span>Connect Repository</span>
+            <span>New Project</span>
           </button>
         </div>
       </header>

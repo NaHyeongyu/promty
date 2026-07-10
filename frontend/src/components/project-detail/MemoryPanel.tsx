@@ -198,6 +198,7 @@ function MemoryArtifactDetailDrawer({
   const changedFileCount = memoryArtifactFileCount(artifact);
   const metadataRows = [
     { label: "Covered dates", value: dateRange },
+    { label: "Prompts", value: artifact.promptCount ? artifact.promptCount.toString() : null },
     { label: "Files changed", value: changedFileCount > 0 ? changedFileCount.toString() : null },
     { label: "Status", value: statusLabel },
   ].filter((row) => row.value);
@@ -350,30 +351,66 @@ function MemoryArtifactDetailDrawer({
 export function MemoryPanel({
   data,
   onCheckpointMemory,
+  onLoadMemoryArtifacts,
 }: {
   data: ProjectDetailData;
   onCheckpointMemory?: (sessionIds: string[]) => Promise<MemoryCheckpointResult>;
+  onLoadMemoryArtifacts?: (limit: number) => Promise<ProjectMemoryArtifact[]>;
 }) {
+  const [loadedArtifacts, setLoadedArtifacts] = useState<ProjectMemoryArtifact[] | null>(null);
+  const displayedArtifacts = loadedArtifacts ?? data.memory.recentArtifacts;
   const checkpointableRanges = data.memory.pendingRanges.filter(
     (range) => range.canCheckpoint,
   );
   const generatedArtifacts = useMemo(
     () =>
-      [...data.memory.recentArtifacts]
+      [...displayedArtifacts]
         .filter(isGeneratedMemoryArtifact)
         .sort(compareMemoryArtifactsByLatest),
-    [data.memory.recentArtifacts],
+    [displayedArtifacts],
+  );
+  const totalGeneratedArtifactCount = Math.max(
+    data.memory.totalArtifacts,
+    generatedArtifacts.length,
   );
   const pendingDateRange = combinedMemoryDateRange(data.memory.pendingRanges);
   const resultDateRange = combinedMemoryDateRange(generatedArtifacts);
   const hasPendingDocumentation = data.memory.pendingRanges.length > 0;
-  const pendingBatchCount = data.memory.pendingRanges.length > 0 ? 1 : 0;
+  const pendingBatchCount = data.memory.pendingRanges.length;
+  const pendingBatchLabel = `${pendingBatchCount} ${
+    pendingBatchCount === 1 ? "batch" : "batches"
+  }`;
+  const checkpointableBatchLabel = `${checkpointableRanges.length} ${
+    checkpointableRanges.length === 1 ? "session" : "sessions"
+  }`;
+  const generatedSummaryCountLabel =
+    totalGeneratedArtifactCount > generatedArtifacts.length
+      ? `${generatedArtifacts.length} of ${totalGeneratedArtifactCount} summaries`
+      : `${generatedArtifacts.length} ${
+          generatedArtifacts.length === 1 ? "summary" : "summaries"
+        }`;
+  const nextArtifactLoadLimit = Math.min(
+    Math.max(generatedArtifacts.length + 10, 20),
+    Math.max(totalGeneratedArtifactCount, generatedArtifacts.length + 10),
+    100,
+  );
+  const canLoadMoreArtifacts =
+    Boolean(onLoadMemoryArtifacts) &&
+    generatedArtifacts.length < totalGeneratedArtifactCount &&
+    generatedArtifacts.length < 100;
   const [checkpointStatus, setCheckpointStatus] = useState<string | null>(null);
   const [checkpointError, setCheckpointError] = useState<string | null>(null);
   const [isCheckpointing, setIsCheckpointing] = useState(false);
+  const [isArtifactHistoryLoading, setIsArtifactHistoryLoading] = useState(false);
+  const [artifactHistoryError, setArtifactHistoryError] = useState<string | null>(null);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const selectedArtifact =
     generatedArtifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
+
+  useEffect(() => {
+    setLoadedArtifacts(null);
+    setArtifactHistoryError(null);
+  }, [data.project.id, data.memory.latestArtifactAt, data.memory.totalArtifacts]);
 
   useEffect(() => {
     if (!selectedArtifactId) {
@@ -421,6 +458,24 @@ export function MemoryPanel({
     }
   };
 
+  const loadMoreArtifacts = async () => {
+    if (!onLoadMemoryArtifacts || isArtifactHistoryLoading) {
+      return;
+    }
+
+    setIsArtifactHistoryLoading(true);
+    setArtifactHistoryError(null);
+    try {
+      setLoadedArtifacts(await onLoadMemoryArtifacts(nextArtifactLoadLimit));
+    } catch (error) {
+      setArtifactHistoryError(
+        error instanceof Error ? error.message : "Memory history could not be loaded.",
+      );
+    } finally {
+      setIsArtifactHistoryLoading(false);
+    }
+  };
+
   return (
     <section className="bh-memory-workspace" aria-label="Memory">
       <header className="bh-memory-toolbar">
@@ -431,8 +486,8 @@ export function MemoryPanel({
       </header>
 
       <div className="bh-memory-summary-strip" aria-label="Memory status summary">
-        <span>Pending: {hasPendingDocumentation ? `${pendingBatchCount} batch` : "None"}</span>
-        <span>Generated: {generatedArtifacts.length}</span>
+        <span>Pending: {hasPendingDocumentation ? pendingBatchLabel : "None"}</span>
+        <span>Generated: {generatedSummaryCountLabel}</span>
       </div>
 
       {checkpointStatus ? (
@@ -451,7 +506,7 @@ export function MemoryPanel({
               <h3 id="memory-request-title">Update</h3>
               <p>{pendingDateRange ?? "No captured range waiting."}</p>
             </div>
-            <span>{hasPendingDocumentation ? "Ready" : "Clear"}</span>
+            <span>{hasPendingDocumentation ? checkpointableBatchLabel : "Clear"}</span>
           </div>
 
           {hasPendingDocumentation ? (
@@ -461,8 +516,11 @@ export function MemoryPanel({
               data-generating={isCheckpointing ? "true" : "false"}
             >
               <div className="bh-memory-document-row-main">
-                <h3>Pending batch</h3>
-                <p>{pendingDateRange ?? "Captured work is ready to compile."}</p>
+                <h3>Pending work</h3>
+                <p>
+                  {pendingDateRange ?? "Captured work is ready to compile."}
+                  {checkpointableRanges.length > 0 ? ` · ${checkpointableBatchLabel}` : ""}
+                </p>
               </div>
               <button
                 className="bh-memory-primary-action"
@@ -474,7 +532,11 @@ export function MemoryPanel({
               >
                 <Sparkles aria-hidden="true" size={16} strokeWidth={1.7} />
                 <span>
-                  {isCheckpointing ? "Generating" : checkpointError ? "Retry" : "Generate"}
+                  {isCheckpointing
+                    ? "Generating"
+                    : checkpointError
+                      ? "Retry"
+                      : "Generate"}
                 </span>
               </button>
               {isCheckpointing ? (
@@ -516,11 +578,7 @@ export function MemoryPanel({
               <h3 id="memory-history-title">Generated Summaries</h3>
               <p>{resultDateRange ?? "No generated summaries yet."}</p>
             </div>
-            <span>
-              {generatedArtifacts.length > 0
-                ? `${generatedArtifacts.length} summaries`
-                : "Empty"}
-            </span>
+            <span>{generatedArtifacts.length > 0 ? generatedSummaryCountLabel : "Empty"}</span>
           </div>
 
           {generatedArtifacts.length > 0 ? (
@@ -533,6 +591,24 @@ export function MemoryPanel({
                   onSelect={(selectedArtifact) => setSelectedArtifactId(selectedArtifact.id)}
                 />
               ))}
+              {canLoadMoreArtifacts ? (
+                <button
+                  className="bh-memory-load-more"
+                  disabled={isArtifactHistoryLoading}
+                  onClick={() => void loadMoreArtifacts()}
+                  type="button"
+                >
+                  {isArtifactHistoryLoading ? "Loading" : "Load more summaries"}
+                </button>
+              ) : null}
+              {artifactHistoryError ? (
+                <div className="bh-memory-generation-status" data-error="true" role="alert">
+                  <div>
+                    <strong>History could not be loaded.</strong>
+                    <span>{artifactHistoryError}</span>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="bh-memory-empty">

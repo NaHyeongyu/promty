@@ -231,7 +231,7 @@ export function OverviewPanel({
                     ) : (
                       <LockKeyhole aria-hidden="true" size={16} strokeWidth={1.5} />
                     )}
-                    {visibilityItem?.value ?? "Private"}
+                    {projectVisibility === "public" ? "Workspace listed" : "Private"}
                   </span>
                 </div>
               </section>
@@ -381,7 +381,7 @@ export function OverviewPanel({
                 <span className="bh-project-profile-empty">No tags</span>
               )}
               <fieldset className="bh-overview-edit-field">
-                <legend>Visibility</legend>
+                <legend>Workspace visibility</legend>
                 <div
                   aria-label="Project visibility"
                   className="bh-project-visibility"
@@ -402,7 +402,7 @@ export function OverviewPanel({
                       ) : (
                         <Globe2 aria-hidden="true" size={16} strokeWidth={1.5} />
                       )}
-                      {option === "private" ? "Private" : "Public"}
+                      {option === "private" ? "Private" : "Workspace listed"}
                     </button>
                   ))}
                 </div>

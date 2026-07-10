@@ -13,6 +13,7 @@ import { ProjectTabs } from "./ProjectTabs";
 import type {
   ActivityNavigationState,
   ProjectDetailData,
+  ProjectMemoryArtifact,
   ProjectDetailTab,
   ProjectDetailTabId,
   ProjectHeaderProjectOption,
@@ -31,6 +32,7 @@ type ProjectDetailPageProps = {
   isShareCopied?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onConnectRepository?: () => void;
+  onLoadMemoryArtifacts?: (limit: number) => Promise<ProjectMemoryArtifact[]>;
   onOpenAllProjects?: () => void;
   onProjectSelect?: (projectId: string) => void;
   onRepositoryFileSelect?: (path: string) => void;
@@ -98,6 +100,7 @@ function ProjectPanel({
   isLoading,
   onActivityNavigationChange,
   onCheckpointMemory,
+  onLoadMemoryArtifacts,
   onSaveProjectMetadata,
   onSaveDescription,
   onRepositoryFileSelect,
@@ -111,6 +114,7 @@ function ProjectPanel({
   isLoading?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onCheckpointMemory?: (sessionIds: string[]) => Promise<MemoryCheckpointResult>;
+  onLoadMemoryArtifacts?: (limit: number) => Promise<ProjectMemoryArtifact[]>;
   onRepositoryFileSelect?: (path: string) => void;
   onRetry?: () => void;
   onSaveProjectMetadata?: (metadata: {
@@ -155,6 +159,7 @@ function ProjectPanel({
     return (
       <MemoryPanel
         data={data}
+        onLoadMemoryArtifacts={onLoadMemoryArtifacts}
         onCheckpointMemory={onCheckpointMemory}
       />
     );
@@ -197,6 +202,7 @@ export function ProjectDetailPage({
   onCheckpointMemory,
   onConnectRepository,
   onOpenAllProjects,
+  onLoadMemoryArtifacts,
   onProjectSelect,
   onRepositoryFileSelect,
   onRetry,
@@ -234,7 +240,6 @@ export function ProjectDetailPage({
       <ProjectTabs
         activeTab={activeTab}
         onTabChange={onTabChange}
-        repositoryUrl={data.project.repositoryUrl}
         tabs={projectTabs}
       />
 
@@ -254,6 +259,7 @@ export function ProjectDetailPage({
           isLoading={isLoading}
           onActivityNavigationChange={onActivityNavigationChange}
           onCheckpointMemory={onCheckpointMemory}
+          onLoadMemoryArtifacts={onLoadMemoryArtifacts}
           onSaveProjectMetadata={onSaveProjectMetadata}
           onSaveDescription={onSaveDescription}
           onRepositoryFileSelect={onRepositoryFileSelect}

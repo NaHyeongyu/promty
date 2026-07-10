@@ -83,6 +83,7 @@ export function AuthenticatedApp() {
     clearProjectDetail,
     isProjectDetailLoading,
     loadProjectDetail,
+    loadProjectMemoryArtifacts,
     projectDetail,
     projectDetailError,
     setProjectDetail,
@@ -201,6 +202,7 @@ export function AuthenticatedApp() {
     projectRouteKey(project) === routeKey || project.id === routeKey;
   const {
     bookmarkUpdatingProjectId,
+    createProjectFromRepository,
     organizePendingMemory,
     saveProjectDescription,
     saveProjectMetadata,
@@ -481,7 +483,19 @@ export function AuthenticatedApp() {
         !isMockGithubUnlinkedProject(repositoryConnectorProjectId)
           ? (githubUrl) =>
               saveRepositoryConnection(repositoryConnectorProjectId, githubUrl)
-          : undefined
+          : repositoryConnectorProjectId === null
+            ? async (githubUrl) => {
+                const project = await createProjectFromRepository(githubUrl);
+                navigateWorkspace({
+                  activeDetailTab: "overview",
+                  activeItem: "projects",
+                  repositoryFileContentPath: null,
+                  selectedProjectId: project.id,
+                  selectedProjectRouteKey:
+                    sanitizeProjectRouteKey(project.slug) ?? project.id,
+                });
+              }
+            : undefined
       }
       onClose={closeRepositoryConnector}
       targetProjectName={repositoryConnectorProject?.name}
@@ -519,7 +533,6 @@ export function AuthenticatedApp() {
         {isShowingProjectDetail ? (
           <>
             {repositoryConnector}
-            {/* Community publishing props are paused for now. */}
             <ProjectDetailPage
               activityNavigation={activityNavigation}
               activeTab={activeDetailTab}
@@ -544,6 +557,11 @@ export function AuthenticatedApp() {
               onConnectRepository={
                 selectedProject
                   ? () => openRepositoryConnector(selectedProject.id)
+                  : undefined
+              }
+              onLoadMemoryArtifacts={
+                selectedProject
+                  ? (limit) => loadProjectMemoryArtifacts(selectedProject.id, limit)
                   : undefined
               }
               onOpenAllProjects={closeProjectDetail}
@@ -665,6 +683,7 @@ export function AuthenticatedApp() {
             <AdminDashboard
               errorMessage={adminError}
               isLoading={isAdminLoading}
+              onOpenProject={openProjectDetail}
               onRefresh={() => {
                 void loadAdminOverview();
               }}

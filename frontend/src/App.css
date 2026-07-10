@@ -264,10 +264,15 @@
   gap: var(--bh-space-3);
   align-items: center;
   min-height: 54px;
+  width: 100%;
+  border: 0;
   border-bottom: 1px solid var(--bh-color-border);
   padding: 0 var(--bh-space-4);
   color: var(--bh-color-text-secondary);
+  background: transparent;
+  font-family: inherit;
   font-size: var(--bh-font-size-caption);
+  text-align: left;
 }
 
 .admin-table-row:last-child {
@@ -279,6 +284,26 @@
   color: var(--bh-color-text-muted);
   background: var(--bh-color-surface-secondary);
   font-weight: var(--bh-font-weight-label);
+}
+
+.admin-table-action-row {
+  cursor: pointer;
+  transition:
+    background-color var(--bh-duration-fast) var(--bh-ease-out),
+    color var(--bh-duration-fast) var(--bh-ease-out);
+}
+
+.admin-table-action-row:hover {
+  background: var(--bh-color-surface-secondary);
+}
+
+.admin-table-action-row:disabled {
+  cursor: default;
+}
+
+.admin-table-action-row:focus-visible {
+  outline: 2px solid var(--bh-color-primary);
+  outline-offset: -2px;
 }
 
 .admin-table-row strong,

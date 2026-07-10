@@ -30,11 +30,13 @@ function severityLabel(value: string) {
 export function AdminDashboard({
   errorMessage,
   isLoading,
+  onOpenProject,
   onRefresh,
   overview,
 }: {
   errorMessage: string | null;
   isLoading: boolean;
+  onOpenProject?: (projectId: string) => void;
   onRefresh: () => void;
   overview: AdminOverview | null;
 }) {
@@ -216,7 +218,14 @@ export function AdminDashboard({
               <span>State</span>
             </div>
             {(overview?.recent_projects ?? []).map((project) => (
-              <div className="admin-table-row" key={project.id}>
+              <button
+                aria-label={`Open ${project.name}`}
+                className="admin-table-row admin-table-action-row"
+                disabled={!onOpenProject}
+                key={project.id}
+                onClick={() => onOpenProject?.(project.id)}
+                type="button"
+              >
                 <span>
                   <strong>{project.name}</strong>
                   <small>
@@ -238,7 +247,7 @@ export function AdminDashboard({
                       ? "Repo linked"
                       : "No repo"}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
         </section>

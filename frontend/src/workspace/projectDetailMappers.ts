@@ -129,7 +129,7 @@ function projectMemoryScopeFromApi(
   return null;
 }
 
-function projectMemoryArtifactFromApi(
+export function projectMemoryArtifactFromApi(
   artifact: ProjectMemoryArtifactApiResponse,
 ) {
   return {
@@ -338,12 +338,6 @@ export function projectDetailDataFromApi(
         value: formatDate(payload.metrics.latest_activity_at, "No activity"),
         description:
           formatRelativeTimestamp(payload.metrics.latest_activity_at) ?? "No activity",
-      },
-      {
-        title: "Last Published Prompt",
-        value: formatDate(community?.latest_flow_at, "No published prompts"),
-        description:
-          formatRelativeTimestamp(community?.latest_flow_at) ?? "No published prompts",
       },
       {
         title: "Repository Connected",

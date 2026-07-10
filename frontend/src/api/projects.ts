@@ -3,6 +3,7 @@ import type {
   ProjectFilesApiResponse,
   ProjectGithubFileContentApiResponse,
   ProjectGithubFilesApiResponse,
+  ProjectMemoryArtifactApiResponse,
   ProjectMemoryPendingRangeApiResponse,
   ProjectPromptActivitiesApiResponse,
   ProjectSummary,
@@ -20,6 +21,32 @@ export type ProjectCheckpointResponse = {
   message?: string;
   status?: string;
 };
+
+export type ProjectCreatePayload = {
+  default_branch?: string | null;
+  description?: string | null;
+  github_url: string;
+  name?: string | null;
+};
+
+export function createProject(
+  payload: ProjectCreatePayload,
+): Promise<ProjectSummary> {
+  return requestJsonBody<ProjectSummary>(
+    "/api/projects",
+    "POST",
+    {
+      default_branch: payload.default_branch ?? undefined,
+      description: payload.description ?? undefined,
+      github_url: payload.github_url,
+      name: payload.name ?? undefined,
+    },
+    {
+      errorMessage: "Project creation failed",
+      unauthorizedMessage: "Sign in again before creating a project.",
+    },
+  );
+}
 
 export function updateProjectBookmark(
   projectId: string,
@@ -80,6 +107,21 @@ export function checkpointProjectSession(
     {
       errorMessage: "Pending Work organization failed",
       unauthorizedMessage: "Sign in again before organizing Pending Memory.",
+    },
+  );
+}
+
+export function fetchProjectMemoryArtifacts(
+  projectId: string,
+  limit: number,
+  signal?: AbortSignal,
+): Promise<ProjectMemoryArtifactApiResponse[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return requestJson<ProjectMemoryArtifactApiResponse[]>(
+    `/api/projects/${encodeURIComponent(projectId)}/artifacts?${params}`,
+    { signal },
+    {
+      errorMessage: "Memory history request failed",
     },
   );
 }

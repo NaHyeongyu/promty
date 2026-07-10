@@ -1,8 +1,14 @@
 import { useState } from "react";
 import { UnauthorizedError } from "../api/client";
-import { fetchProjectDetailResources } from "../api/projects";
-import type { ProjectDetailData } from "../components/project-detail";
-import { projectDetailDataFromApi } from "../workspace/projectDetailMappers";
+import {
+  fetchProjectDetailResources,
+  fetchProjectMemoryArtifacts,
+} from "../api/projects";
+import type { ProjectDetailData, ProjectMemoryArtifact } from "../components/project-detail";
+import {
+  projectDetailDataFromApi,
+  projectMemoryArtifactFromApi,
+} from "../workspace/projectDetailMappers";
 import type { Project, ProjectSummary } from "../workspace/types";
 
 type UseProjectDetailOptions = {
@@ -66,11 +72,31 @@ export function useProjectDetail({ onUnauthorized }: UseProjectDetailOptions) {
     }
   };
 
+  const loadProjectMemoryArtifacts = async (
+    projectId: string,
+    limit: number,
+    signal?: AbortSignal,
+  ): Promise<ProjectMemoryArtifact[]> => {
+    try {
+      const artifacts = await fetchProjectMemoryArtifacts(projectId, limit, signal);
+      return artifacts.map(projectMemoryArtifactFromApi);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return [];
+      }
+      if (error instanceof UnauthorizedError) {
+        onUnauthorized();
+      }
+      throw error;
+    }
+  };
+
   return {
     applyProjectSummaryToDetail,
     clearProjectDetail,
     isProjectDetailLoading,
     loadProjectDetail,
+    loadProjectMemoryArtifacts,
     projectDetail,
     projectDetailError,
     setProjectDetail,

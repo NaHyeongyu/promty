@@ -199,7 +199,7 @@ export function UserProfilePage({
             </div>
             <div className="profile-setting-row">
               <dt>Data export</dt>
-              <dd>Not configured</dd>
+              <dd>Not available yet</dd>
             </div>
           </dl>
         </section>
@@ -240,8 +240,8 @@ export function UserSettingsPage({
       <section className="settings-hero" aria-labelledby="settings-title">
         <div className="settings-hero-copy">
           <span>Workspace controls</span>
-          <h2 id="settings-title">Operational settings</h2>
-          <p>Defaults, sync behavior, collector state, and access posture.</p>
+          <h2 id="settings-title">Workspace status</h2>
+          <p>Current sync behavior, collector state, and access posture.</p>
         </div>
         <div className="settings-hero-actions">
           <button
@@ -366,11 +366,11 @@ export function UserSettingsPage({
             </div>
             <div className="settings-row">
               <dt>Memory generation</dt>
-              <dd>Automatic</dd>
+              <dd>On demand</dd>
             </div>
             <div className="settings-row">
               <dt>Prompt detail</dt>
-              <dd>Request, response, file changes</dd>
+              <dd>Owner-only request, response, file changes</dd>
             </div>
             <div className="settings-row">
               <dt>Activity layout</dt>
@@ -383,18 +383,18 @@ export function UserSettingsPage({
           <div className="settings-section-header">
             <Settings aria-hidden="true" size={18} strokeWidth={1.5} />
             <div>
-              <h3 id="settings-interface-title">Interface</h3>
-              <p>Display defaults for the app shell.</p>
+              <h3 id="settings-interface-title">Display</h3>
+              <p>Current app shell defaults.</p>
             </div>
           </div>
           <dl className="settings-list">
             <div className="settings-row">
               <dt>Theme</dt>
-              <dd>Dark</dd>
+              <dd>App default</dd>
             </div>
             <div className="settings-row">
               <dt>Density</dt>
-              <dd>Compact</dd>
+              <dd>App default</dd>
             </div>
             <div className="settings-row">
               <dt>Sidebar</dt>

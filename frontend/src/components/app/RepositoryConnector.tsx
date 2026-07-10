@@ -20,6 +20,19 @@ export function RepositoryConnector({
     null,
   );
   const [isManualRepositorySaving, setIsManualRepositorySaving] = useState(false);
+  const isExistingProjectConnection = Boolean(onManualConnect && targetProjectName);
+  const connectorTitle = onManualConnect
+    ? isExistingProjectConnection
+      ? "Connect Repository"
+      : "Create Project"
+    : "Set Up Project";
+  const connectorDescription = onManualConnect
+    ? isExistingProjectConnection
+      ? `Paste a GitHub URL or run setup inside ${targetProjectName}.`
+      : "Paste a GitHub repository URL to create a project, or run setup from a local project directory to capture AI activity."
+    : `Run this inside ${targetProjectName ?? "your project"} to link the project and install local AI tool hooks.`;
+  const manualSubmitLabel = isExistingProjectConnection ? "Connect" : "Create";
+  const manualSavingLabel = isExistingProjectConnection ? "Connecting" : "Creating";
   const canSubmitManualRepository =
     Boolean(onManualConnect) && manualRepositoryUrl.trim().length > 0;
 
@@ -53,12 +66,8 @@ export function RepositoryConnector({
       >
         <div className="repository-connector-header">
           <div>
-            <h2 id="repository-connector-title">Connect Repository</h2>
-            <p>
-              {onManualConnect
-                ? `Paste a GitHub URL or run setup inside ${targetProjectName ?? "this project"}.`
-                : `Run this inside ${targetProjectName ?? "your project"} to link the project and install local AI tool hooks.`}
-            </p>
+            <h2 id="repository-connector-title">{connectorTitle}</h2>
+            <p>{connectorDescription}</p>
           </div>
           <button
             aria-label="Close repository connector"
@@ -91,7 +100,7 @@ export function RepositoryConnector({
                 disabled={!canSubmitManualRepository || isManualRepositorySaving}
                 type="submit"
               >
-                {isManualRepositorySaving ? "Connecting" : "Connect"}
+                {isManualRepositorySaving ? manualSavingLabel : manualSubmitLabel}
               </button>
             </div>
             {manualRepositoryError ? (
