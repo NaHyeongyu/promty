@@ -216,21 +216,18 @@ def checkpoint_project_session_response(
         trigger_reason="batch_organize",
     )
     if not memories:
-        project_memory = get_latest_project_memory(db, project_id=project.id)
         return {
             "artifacts": [],
             "message": "No memory was generated for this pending range.",
             "pending_range": pending_range,
-            "project_memory": serialize_project_memory_snapshot(project_memory),
             "status": "no_memory",
         }
 
-    project_memory = compile_project_memory(db, project_id=project.id)
+    compile_project_memory(db, project_id=project.id)
     return {
         "artifacts": [],
         "message": "Project Memory document was generated.",
         "pending_range": pending_range,
-        "project_memory": serialize_project_memory_snapshot(project_memory),
         "status": "memory_generated",
     }
 

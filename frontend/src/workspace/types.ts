@@ -264,34 +264,6 @@ export type ProjectFilesApiResponse = {
 export type ProjectMemoryArtifactApiResponse =
   NonNullable<ProjectDetailApiResponse["memory"]>["recent_artifacts"][number];
 
-export type ProjectMemorySnapshotApiResponse = {
-  artifact: ProjectMemoryArtifactApiResponse | null;
-  snapshot: {
-    body_markdown?: string;
-    confidence?: number | null;
-    sections?: {
-      core_workflow?: string[];
-      current_direction?: string;
-      important_decisions?: Array<{
-        decision: string;
-        reason: string;
-        source_memory_ids?: string[];
-      }>;
-      instructions_for_future_ai_agents?: string[];
-      open_questions?: string[];
-      product_goal?: string;
-      rejected_directions?: Array<{
-        direction: string;
-        reason: string;
-        source_memory_ids?: string[];
-      }>;
-      technical_assumptions?: string[];
-    };
-    source_memory_ids?: string[];
-    warnings?: string[];
-  } | null;
-} | null;
-
 export type ProjectMemoryPendingRangeApiResponse = {
   can_checkpoint: boolean;
   end_sequence: number;

@@ -201,10 +201,8 @@ export function AuthenticatedApp() {
     projectRouteKey(project) === routeKey || project.id === routeKey;
   const {
     bookmarkUpdatingProjectId,
-    compileProjectMemory,
     organizePendingMemory,
     saveProjectDescription,
-    saveProjectMemory,
     saveProjectMetadata,
     saveRepositoryConnection,
     toggleProjectBookmark,
@@ -543,7 +541,6 @@ export function AuthenticatedApp() {
               }
               onActivityNavigationChange={selectActivityNavigation}
               onCheckpointMemory={selectedProject ? organizePendingMemory : undefined}
-              onCompileProjectMemory={selectedProject ? compileProjectMemory : undefined}
               onConnectRepository={
                 selectedProject
                   ? () => openRepositoryConnector(selectedProject.id)
@@ -561,7 +558,6 @@ export function AuthenticatedApp() {
               }
               onSaveProjectMetadata={selectedProject ? saveProjectMetadata : undefined}
               onSaveDescription={selectedProject ? saveProjectDescription : undefined}
-              onSaveProjectMemory={selectedProject ? saveProjectMemory : undefined}
               onTabChange={selectProjectDetailTab}
               onToggleBookmark={
                 selectedProject

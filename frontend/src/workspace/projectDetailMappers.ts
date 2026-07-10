@@ -25,7 +25,6 @@ import type {
   ProjectGithubFilesState,
   ProjectMemoryArtifactApiResponse,
   ProjectMemoryPendingRangeApiResponse,
-  ProjectMemorySnapshotApiResponse,
   ProjectPromptActivitiesApiResponse,
   ProjectPromptActivityApiItem,
 } from "./types";
@@ -45,8 +44,6 @@ export function emptyProjectDetailData(project: Project | null): ProjectDetailDa
       drafts: [],
       latestArtifactAt: null,
       pendingRanges: [],
-      projectMemory: null,
-      projectMemoryArtifact: null,
       recentArtifacts: [],
       totalArtifacts: 0,
     },
@@ -212,51 +209,6 @@ function projectMemoryArtifactFromApi(
   };
 }
 
-function projectMemorySnapshotFromApi(
-  response: ProjectMemorySnapshotApiResponse,
-) {
-  const snapshot = response?.snapshot;
-  if (!snapshot) {
-    return {
-      projectMemory: null,
-      projectMemoryArtifact: response?.artifact
-        ? projectMemoryArtifactFromApi(response.artifact)
-        : null,
-    };
-  }
-  const sections = snapshot.sections ?? {};
-  return {
-    projectMemory: {
-      bodyMarkdown: snapshot.body_markdown ?? "",
-      confidence: snapshot.confidence ?? null,
-      sections: {
-        coreWorkflow: sections.core_workflow ?? [],
-        currentDirection: sections.current_direction ?? "",
-        importantDecisions: (sections.important_decisions ?? []).map((item) => ({
-          decision: item.decision,
-          reason: item.reason,
-          sourceMemoryIds: item.source_memory_ids ?? [],
-        })),
-        instructionsForFutureAiAgents:
-          sections.instructions_for_future_ai_agents ?? [],
-        openQuestions: sections.open_questions ?? [],
-        productGoal: sections.product_goal ?? "",
-        rejectedDirections: (sections.rejected_directions ?? []).map((item) => ({
-          direction: item.direction,
-          reason: item.reason,
-          sourceMemoryIds: item.source_memory_ids ?? [],
-        })),
-        technicalAssumptions: sections.technical_assumptions ?? [],
-      },
-      sourceMemoryIds: snapshot.source_memory_ids ?? [],
-      warnings: snapshot.warnings ?? [],
-    },
-    projectMemoryArtifact: response?.artifact
-      ? projectMemoryArtifactFromApi(response.artifact)
-      : null,
-  };
-}
-
 export function projectDetailDataFromApi(
   payload: ProjectDetailApiResponse,
   fallbackProject: Project | null,
@@ -271,11 +223,6 @@ export function projectDetailDataFromApi(
     ((memory as
       | (typeof memory & { pending_ranges?: ProjectMemoryPendingRangeApiResponse[] })
       | undefined)?.pending_ranges ?? []);
-  const projectMemoryResponse =
-    (memory as
-      | (typeof memory & { project_memory?: ProjectMemorySnapshotApiResponse })
-      | undefined)?.project_memory ?? null;
-  const projectMemory = projectMemorySnapshotFromApi(projectMemoryResponse);
   const totalPrompts =
     payload.metrics.total_prompts ?? payload.prompt_activities?.length ?? 0;
   const projectDescription = payload.project.description?.trim() ?? "";
@@ -327,8 +274,6 @@ export function projectDetailDataFromApi(
         ? formatOptionalTimestamp(memory.latest_artifact_at, "Unknown")
         : null,
       pendingRanges: pendingRanges.map(projectMemoryPendingRangeFromApi),
-      projectMemory: projectMemory.projectMemory,
-      projectMemoryArtifact: projectMemory.projectMemoryArtifact,
       recentArtifacts: (memory?.recent_artifacts ?? []).map(projectMemoryArtifactFromApi),
       totalArtifacts: memory?.total_artifacts ?? 0,
     },
