@@ -360,6 +360,35 @@ export type PublishedFlowDetailResponse = PublishedFlowSummary & {
 };
 
 export type AdminOverview = {
+  action_items: Array<{
+    area: string;
+    count: number | null;
+    detail: string;
+    severity: string;
+    title: string;
+  }>;
+  ai_activity: {
+    prompts_24h: number;
+    response_gap: number;
+    response_gap_24h: number;
+    responses_24h: number;
+    session_gaps: Array<{
+      latest_event_at: string | null;
+      missing_responses: number;
+      project: {
+        id: string;
+        name: string;
+      };
+      prompts: number;
+      responses: number;
+      session_id: string;
+      tool: string | null;
+      user: {
+        id: string;
+        username: string;
+      };
+    }>;
+  };
   breakdowns: {
     events_by_tool: Array<{ count: number; key: string }>;
     events_by_type: Array<{ count: number; key: string }>;
@@ -372,14 +401,48 @@ export type AdminOverview = {
     events: number;
     events_24h: number;
     events_7d: number;
+    failed_jobs: number;
     github_connections: number;
     memory_artifacts: number;
+    memory_artifacts_24h: number;
+    pending_jobs: number;
+    pending_memory_drafts: number;
     projects: number;
+    projects_without_activity: number;
+    projects_without_repo: number;
     prompts: number;
+    prompts_24h: number;
     responses: number;
+    responses_24h: number;
+    running_jobs: number;
     sessions: number;
+    stale_jobs: number;
     tracked_files: number;
     users: number;
+  };
+  memory_monitor: {
+    failed_jobs: number;
+    pending_drafts: number;
+    pending_projects: number;
+    recent_artifacts: Array<{
+      changed_file_count: number;
+      created_at: string | null;
+      id: string;
+      project: {
+        id: string;
+        name: string;
+      };
+      summary: string | null;
+      title: string;
+      updated_at: string | null;
+    }>;
+    stale_jobs: number;
+    summaries_24h: number;
+    total_summaries: number;
+  };
+  project_monitor: {
+    without_activity: number;
+    without_repo: number;
   };
   recent_events: Array<{
     created_at: string | null;
@@ -394,13 +457,16 @@ export type AdminOverview = {
     counts: {
       events: number;
       files: number;
+      memory: number;
       prompts: number;
       sessions: number;
     };
     default_branch: string;
+    failed_jobs: number;
     github_connected: boolean;
     id: string;
     latest_event_at: string | null;
+    latest_memory_at: string | null;
     name: string;
     owner: {
       id: string;
@@ -413,9 +479,13 @@ export type AdminOverview = {
   recent_users: Array<{
     created_at: string | null;
     email: string | null;
+    event_count: number;
     github_connected: boolean;
     id: string;
+    latest_activity_at: string | null;
+    prompt_count: number;
     project_count: number;
+    session_count: number;
     username: string;
   }>;
   risks: Array<{
