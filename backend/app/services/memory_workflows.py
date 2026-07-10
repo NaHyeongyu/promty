@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import settings
+from app.core.security import is_admin_user
 from app.models.artifacts import Artifact
 from app.models.projects import Project
 from app.models.sessions import Session
@@ -31,9 +32,17 @@ from app.services.memory_artifacts import (
 from app.services.memory.session_completion import complete_session_if_ready
 
 
-def project_for_user(db: DBSession, project_id: UUID, user: User) -> Project:
+def project_for_user(
+    db: DBSession,
+    project_id: UUID,
+    user: User,
+    *,
+    allow_admin: bool = False,
+) -> Project:
     project = db.get(Project, project_id)
-    if project is None or project.owner_id != user.id:
+    if project is None or (
+        project.owner_id != user.id and not (allow_admin and is_admin_user(user))
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
@@ -100,7 +109,7 @@ def list_pending_memory_ranges_response(
     project_id: UUID,
     user: User,
 ) -> list[dict[str, Any]]:
-    project = project_for_user(db, project_id, user)
+    project = project_for_user(db, project_id, user, allow_admin=True)
     return list_project_memory_pending_ranges(db, project_id=project.id, limit=limit)
 
 
@@ -254,7 +263,7 @@ def read_project_memory_response(
     project_id: UUID,
     user: User,
 ) -> dict[str, Any] | None:
-    project = project_for_user(db, project_id, user)
+    project = project_for_user(db, project_id, user, allow_admin=True)
     return serialize_project_memory_snapshot(
         get_latest_project_memory(db, project_id=project.id)
     )
@@ -283,7 +292,7 @@ def list_project_artifacts_response(
     project_id: UUID,
     user: User,
 ) -> list[dict[str, Any]]:
-    project = project_for_user(db, project_id, user)
+    project = project_for_user(db, project_id, user, allow_admin=True)
     artifacts = list_project_memory_history_artifacts(
         db,
         limit=limit,

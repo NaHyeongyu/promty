@@ -127,6 +127,7 @@ export function useWorkspaceAdminEffect({
 }
 
 export function useWorkspaceProjectRouteEffect({
+  allowUnlistedProject,
   activeItem,
   hasLoadedWorkspaceData,
   navigateWorkspace,
@@ -136,6 +137,7 @@ export function useWorkspaceProjectRouteEffect({
   selectedProjectId,
   selectedProjectRouteKey,
 }: {
+  allowUnlistedProject?: boolean;
   activeItem: SidebarItemId;
   hasLoadedWorkspaceData: boolean;
   navigateWorkspace: NavigateWorkspace;
@@ -195,6 +197,9 @@ export function useWorkspaceProjectRouteEffect({
           )
         : null);
     if (!resolvedProject) {
+      if (allowUnlistedProject) {
+        return;
+      }
       navigateWorkspaceRef.current(
         {
           activeDetailTab: "overview",
@@ -223,6 +228,7 @@ export function useWorkspaceProjectRouteEffect({
       );
     }
   }, [
+    allowUnlistedProject,
     activeItem,
     hasLoadedWorkspaceData,
     navigateWorkspaceRef,

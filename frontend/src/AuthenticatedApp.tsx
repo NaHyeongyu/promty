@@ -328,6 +328,7 @@ export function AuthenticatedApp() {
     navigateWorkspace,
   });
   useWorkspaceProjectRouteEffect({
+    allowUnlistedProject: currentUser?.is_admin === true,
     activeItem,
     hasLoadedWorkspaceData,
     navigateWorkspace,
@@ -448,11 +449,15 @@ export function AuthenticatedApp() {
     return <WebLoginPage errorMessage={errorMessage} isError />;
   }
 
+  const activeProjectId =
+    selectedProject?.id ?? projectDetail?.project.id ?? selectedProjectId;
+  const projectDetailBase =
+    projectDetail ?? (selectedProject ? emptyProjectDetailData(selectedProject) : null);
   const selectedProjectDetailData =
-    selectedProject === null
+    projectDetailBase === null
       ? null
       : {
-          ...(projectDetail ?? emptyProjectDetailData(selectedProject)),
+          ...projectDetailBase,
           files: projectFiles,
           filesError: projectFilesError,
           filesLoading: isProjectFilesLoading,
@@ -469,7 +474,7 @@ export function AuthenticatedApp() {
             ? "Loading GitHub repository files."
             : projectGithubFilesError ??
               projectGithubFiles?.message ??
-              (selectedProject.githubUrl
+              (projectDetailBase.project.repositoryUrl
                 ? "Sign in again with GitHub repository access to browse repository files."
                 : "This project does not have a GitHub repository remote."),
           repositoryFilesRepository: projectGithubFiles?.repository,
@@ -509,9 +514,13 @@ export function AuthenticatedApp() {
     projectCatalog[0]?.latestActivityLabel ?? "No project activity";
   const pendingProjectRouteKey = selectedProjectRouteKey ?? selectedProjectId;
   const isResolvingProjectDetail =
-    activeItem === "projects" && selectedProject === null && Boolean(pendingProjectRouteKey);
+    activeItem === "projects" &&
+    projectDetail === null &&
+    !projectDetailError &&
+    Boolean(pendingProjectRouteKey);
   const isShowingProjectDetail =
-    activeItem === "projects" && (selectedProject !== null || isResolvingProjectDetail);
+    activeItem === "projects" &&
+    (selectedProject !== null || projectDetail !== null || Boolean(pendingProjectRouteKey));
   const projectDetailRenderData =
     selectedProjectDetailData ?? emptyProjectDetailData(selectedProject);
 
@@ -560,13 +569,13 @@ export function AuthenticatedApp() {
                   : undefined
               }
               onLoadMemoryArtifacts={
-                selectedProject
-                  ? (limit) => loadProjectMemoryArtifacts(selectedProject.id, limit)
+                activeProjectId
+                  ? (limit) => loadProjectMemoryArtifacts(activeProjectId, limit)
                   : undefined
               }
               onOpenAllProjects={closeProjectDetail}
               onProjectSelect={selectedProject ? switchProjectDetail : undefined}
-              onRepositoryFileSelect={selectedProject ? selectRepositoryFile : undefined}
+              onRepositoryFileSelect={activeProjectId ? selectRepositoryFile : undefined}
               onShareProject={
                 selectedProject
                   ? () => {
@@ -586,14 +595,14 @@ export function AuthenticatedApp() {
               }
               projectOptions={projectHeaderOptions}
               onRetry={
-                selectedProject
+                activeProjectId
                   ? () => {
-                      void loadProjectDetail(selectedProject.id, selectedProject);
-                      void loadProjectFiles(selectedProject.id);
-                      void loadProjectGithubFiles(selectedProject.id);
+                      void loadProjectDetail(activeProjectId, selectedProject);
+                      void loadProjectFiles(activeProjectId);
+                      void loadProjectGithubFiles(activeProjectId);
                       if (repositoryFileContentPath) {
                         void loadRepositoryFileContent(
-                          selectedProject.id,
+                          activeProjectId,
                           repositoryFileContentPath,
                         );
                       }

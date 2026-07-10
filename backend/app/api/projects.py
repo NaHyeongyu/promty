@@ -200,7 +200,7 @@ def read_project_github_files(
     current_user: User = Depends(require_web_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    project = _project_for_user(db, project_id, current_user)
+    project = _project_for_user(db, project_id, current_user, allow_admin=True)
     return read_github_repository_tree(db, project=project, user=current_user)
 
 
@@ -211,7 +211,7 @@ def read_project_github_file_content(
     current_user: User = Depends(require_web_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    project = _project_for_user(db, project_id, current_user)
+    project = _project_for_user(db, project_id, current_user, allow_admin=True)
     return read_github_repository_file_content(
         db,
         path=path,

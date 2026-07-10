@@ -11,6 +11,7 @@ from sqlalchemy import and_, case, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.encoding import base64_urldecode, base64_urlencode
+from app.core.security import is_admin_user
 from app.models.code_change_patches import CodeChangePatch
 from app.models.events import Event
 from app.models.project_files import ProjectFile
@@ -111,14 +112,18 @@ def build_file_tree(paths: list[str]) -> list[dict[str, Any]]:
     return serialize(root)
 
 
-def project_for_user(db: Session, project_id: UUID, current_user: User) -> Project:
-    project = db.scalar(
-        select(Project).where(
-            Project.id == project_id,
-            Project.owner_id == current_user.id,
-        )
-    )
-    if project is None:
+def project_for_user(
+    db: Session,
+    project_id: UUID,
+    current_user: User,
+    *,
+    allow_admin: bool = False,
+) -> Project:
+    project = db.get(Project, project_id)
+    if project is None or (
+        project.owner_id != current_user.id
+        and not (allow_admin and is_admin_user(current_user))
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
@@ -152,7 +157,7 @@ def read_project_files_response(
     *,
     limit: int = PROJECT_FILE_TREE_LIMIT,
 ) -> dict[str, Any]:
-    project = project_for_user(db, project_id, current_user)
+    project = project_for_user(db, project_id, current_user, allow_admin=True)
     total = int(
         db.scalar(
             select(func.count(ProjectFile.id)).where(
@@ -527,7 +532,7 @@ def read_project_prompt_activities_response(
     query: str | None = None,
     session_id: UUID | None = None,
 ) -> dict[str, Any]:
-    project = project_for_user(db, project_id, current_user)
+    project = project_for_user(db, project_id, current_user, allow_admin=True)
     normalized_query = re.sub(r"\s+", " ", query.strip().lower()) if query else ""
     decoded_cursor = _decode_prompt_activity_cursor(cursor)
     base_query = select(Event).where(
@@ -637,7 +642,7 @@ def read_project_detail_response(
     current_user: User,
     db: Session,
 ) -> dict[str, Any]:
-    project = project_for_user(db, project_id, current_user)
+    project = project_for_user(db, project_id, current_user, allow_admin=True)
     repository_url = normalize_github_url(project.git_remote)
     since_yesterday_at = datetime.now(timezone.utc) - timedelta(days=1)
     session_count, session_count_since_yesterday = db.execute(
