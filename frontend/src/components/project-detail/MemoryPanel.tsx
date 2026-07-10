@@ -25,49 +25,24 @@ function isGeneratedMemoryArtifact(artifact: ProjectMemoryArtifact) {
   );
 }
 
-function memoryArtifactKind(artifact: ProjectMemoryArtifact) {
+function memoryArtifactStatusLabel(artifact: ProjectMemoryArtifact) {
   if (artifact.memoryScope === "verified" || artifact.artifactStage === "verified_memory") {
-    return "Verified memory";
+    return "Verified";
   }
-  return "Generated memory";
+  return null;
 }
 
-function memoryArtifactMeta(artifact: ProjectMemoryArtifact) {
-  return [
-    artifact.updatedAt ?? artifact.createdAt,
-    artifact.promptCount && artifact.promptCount > 0
-      ? `${artifact.promptCount} prompts`
-      : null,
-    artifact.changedFileCount > 0 ? `${artifact.changedFileCount} files` : null,
-    artifact.model,
-  ]
-    .filter((item): item is string => Boolean(item))
-    .join(" · ");
+function memoryArtifactFileCount(artifact: ProjectMemoryArtifact) {
+  const listedFileCount = artifact.changedFiles.filter((file) => file.path.trim()).length;
+  return Math.max(artifact.changedFileCount, listedFileCount);
 }
 
-function memoryArtifactStats(artifact: ProjectMemoryArtifact) {
-  return [
-    artifact.promptCount && artifact.promptCount > 0
-      ? { label: "Prompts", value: artifact.promptCount.toString() }
-      : null,
-    artifact.changedFileCount > 0
-      ? { label: "Files", value: artifact.changedFileCount.toString() }
-      : null,
-    artifact.model ? { label: "Model", value: artifact.model } : null,
-    artifact.reviewState ? { label: "State", value: artifact.reviewState } : null,
-  ].filter((item): item is { label: string; value: string } => item !== null);
-}
-
-function memoryArtifactSequenceRange(artifact: ProjectMemoryArtifact) {
-  if (artifact.startSequence === null && artifact.endSequence === null) {
+function memoryArtifactFileCountLabel(artifact: ProjectMemoryArtifact) {
+  const count = memoryArtifactFileCount(artifact);
+  if (count === 0) {
     return null;
   }
-  if (artifact.startSequence !== null && artifact.endSequence !== null) {
-    return `Events ${artifact.startSequence}-${artifact.endSequence}`;
-  }
-  return artifact.startSequence !== null
-    ? `From event ${artifact.startSequence}`
-    : `Through event ${artifact.endSequence}`;
+  return `${count} ${count === 1 ? "file" : "files"} changed`;
 }
 
 function memoryArtifactSortTimestamp(artifact: ProjectMemoryArtifact) {
@@ -166,9 +141,10 @@ function MemoryArtifactCard({
   isSelected?: boolean;
   onSelect: (artifact: ProjectMemoryArtifact) => void;
 }) {
-  const meta = memoryArtifactMeta(artifact);
   const dateRange = formatMemoryDateRange(artifact.firstEventAt, artifact.lastEventAt);
-  const stats = memoryArtifactStats(artifact);
+  const statusLabel = memoryArtifactStatusLabel(artifact);
+  const fileCountLabel = memoryArtifactFileCountLabel(artifact);
+  const hasHeaderMeta = Boolean(dateRange || statusLabel);
 
   return (
     <button
@@ -179,10 +155,14 @@ function MemoryArtifactCard({
       onClick={() => onSelect(artifact)}
       type="button"
     >
-      <span className="bh-memory-context-card-header">
-        <span className="bh-memory-context-kind">{memoryArtifactKind(artifact)}</span>
-        {dateRange ? <span className="bh-memory-context-date">{dateRange}</span> : null}
-      </span>
+      {hasHeaderMeta ? (
+        <span className="bh-memory-context-card-header">
+          {dateRange ? <span className="bh-memory-context-date">{dateRange}</span> : null}
+          {statusLabel ? (
+            <span className="bh-memory-context-kind">{statusLabel}</span>
+          ) : null}
+        </span>
+      ) : null}
       <span className="bh-memory-context-title-row">
         <span className="bh-memory-context-title">{artifact.title}</span>
         <ChevronRight aria-hidden="true" size={16} strokeWidth={1.6} />
@@ -190,17 +170,8 @@ function MemoryArtifactCard({
       {artifact.summary ? (
         <span className="bh-memory-context-summary">{artifact.summary}</span>
       ) : null}
-      {stats.length > 0 ? (
-        <span className="bh-memory-context-stat-row">
-          {stats.map((stat) => (
-            <span key={`${artifact.id}-${stat.label}`}>
-              <strong>{stat.value}</strong>
-              <small>{stat.label}</small>
-            </span>
-          ))}
-        </span>
-      ) : meta ? (
-        <small className="bh-memory-context-fallback-meta">{meta}</small>
+      {fileCountLabel ? (
+        <small className="bh-memory-context-fallback-meta">{fileCountLabel}</small>
       ) : null}
     </button>
   );
@@ -219,20 +190,14 @@ function MemoryArtifactDetailDrawer({
   );
   const outcome =
     artifact.outcome && artifact.outcome !== artifact.summary ? artifact.outcome : null;
-  const sequenceRange = memoryArtifactSequenceRange(artifact);
   const dateRange = formatMemoryDateRange(artifact.firstEventAt, artifact.lastEventAt);
+  const statusLabel = memoryArtifactStatusLabel(artifact);
   const changedFiles = artifact.changedFiles.filter((file) => file.path.trim());
-  const tags = Array.from(new Set([...artifact.tags, ...artifact.technologies].filter(Boolean)));
+  const changedFileCount = memoryArtifactFileCount(artifact);
   const metadataRows = [
     { label: "Covered dates", value: dateRange },
-    { label: "Type", value: memoryArtifactKind(artifact) },
-    { label: "Updated", value: artifact.updatedAt ?? artifact.createdAt },
-    { label: "Model", value: artifact.model },
-    { label: "Prompt count", value: artifact.promptCount?.toString() ?? null },
-    { label: "Changed files", value: artifact.changedFileCount.toString() },
-    { label: "Sequence", value: sequenceRange },
-    { label: "Confidence", value: artifact.draftConfidence?.toFixed(2) ?? null },
-    { label: "Review", value: artifact.reviewState },
+    { label: "Files changed", value: changedFileCount > 0 ? changedFileCount.toString() : null },
+    { label: "Status", value: statusLabel },
   ].filter((row) => row.value);
 
   useEffect(() => {
@@ -305,7 +270,7 @@ function MemoryArtifactDetailDrawer({
       >
         <div className="bh-memory-detail-header">
           <div>
-            <span>{memoryArtifactKind(artifact)}</span>
+            <span>{dateRange ?? "Generated summary"}</span>
             <h2 id="memory-detail-title">{artifact.title}</h2>
           </div>
           <button
@@ -319,14 +284,16 @@ function MemoryArtifactDetailDrawer({
         </div>
 
         <div className="bh-memory-detail-body">
-          <dl className="bh-memory-detail-meta">
-            {metadataRows.map((row) => (
-              <div key={row.label}>
-                <dt>{row.label}</dt>
-                <dd>{row.value}</dd>
-              </div>
-            ))}
-          </dl>
+          {metadataRows.length > 0 ? (
+            <dl className="bh-memory-detail-meta">
+              {metadataRows.map((row) => (
+                <div key={row.label}>
+                  <dt>{row.label}</dt>
+                  <dd>{row.value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
 
           <article className="bh-memory-detail-section">
             <span className="bh-memory-step-kicker">Summary</span>
@@ -342,7 +309,7 @@ function MemoryArtifactDetailDrawer({
 
           {sections.length > 0 ? (
             <article className="bh-memory-detail-section">
-              <span className="bh-memory-step-kicker">Structured Notes</span>
+              <span className="bh-memory-step-kicker">Key Notes</span>
               <div className="bh-memory-detail-section-list">
                 {sections.map((section) => (
                   <section key={`${artifact.id}-${section.title}`}>
@@ -369,27 +336,6 @@ function MemoryArtifactDetailDrawer({
                 <small className="bh-memory-detail-muted">
                   {changedFiles.length - 12} more files not shown.
                 </small>
-              ) : null}
-            </article>
-          ) : null}
-
-          {tags.length > 0 || artifact.generator || artifact.triggerReason ? (
-            <article className="bh-memory-detail-section">
-              <span className="bh-memory-step-kicker">Metadata</span>
-              {tags.length > 0 ? (
-                <div className="bh-memory-detail-chip-list">
-                  {tags.slice(0, 16).map((tag) => (
-                    <span key={tag}>{tag}</span>
-                  ))}
-                </div>
-              ) : null}
-              {artifact.generator ? (
-                <p className="bh-memory-detail-muted">Generator: {artifact.generator}</p>
-              ) : null}
-              {artifact.triggerReason ? (
-                <p className="bh-memory-detail-muted">
-                  Trigger: {artifact.triggerReason}
-                </p>
               ) : null}
             </article>
           ) : null}
@@ -478,13 +424,13 @@ export function MemoryPanel({
       <header className="bh-memory-toolbar">
         <div>
           <h2>Project Memory</h2>
-          <p>Review generated memories and organize pending work.</p>
+          <p>Review generated summaries and organize pending work.</p>
         </div>
       </header>
 
       <div className="bh-memory-summary-strip" aria-label="Memory status summary">
         <span>Pending: {hasPendingDocumentation ? `${pendingBatchCount} batch` : "None"}</span>
-        <span>History: {generatedArtifacts.length}</span>
+        <span>Generated: {generatedArtifacts.length}</span>
       </div>
 
       {checkpointStatus ? (
@@ -537,8 +483,8 @@ export function MemoryPanel({
                 >
                   <div className="bh-memory-generation-progress" aria-hidden="true" />
                   <div className="bh-memory-generation-status-copy">
-                    <strong>Generating Project Memory</strong>
-                    <span>Generated memory history will refresh when generation finishes.</span>
+                    <strong>Generating summary</strong>
+                    <span>Generated summaries will refresh when generation finishes.</span>
                   </div>
                 </div>
               ) : checkpointError ? (
@@ -564,13 +510,13 @@ export function MemoryPanel({
         >
           <div className="bh-memory-section-header">
             <div>
-              <span className="bh-memory-step-kicker">History</span>
-              <h3 id="memory-history-title">Memory History</h3>
-              <p>{resultDateRange ?? "No generated memories yet."}</p>
+              <span className="bh-memory-step-kicker">Generated</span>
+              <h3 id="memory-history-title">Generated Summaries</h3>
+              <p>{resultDateRange ?? "No generated summaries yet."}</p>
             </div>
             <span>
               {generatedArtifacts.length > 0
-                ? `${generatedArtifacts.length} shown`
+                ? `${generatedArtifacts.length} summaries`
                 : "Empty"}
             </span>
           </div>
@@ -588,8 +534,8 @@ export function MemoryPanel({
             </div>
           ) : (
             <div className="bh-memory-empty">
-              <strong>No generated memories yet</strong>
-              <span>Generated memory history will appear here.</span>
+              <strong>No generated summaries yet</strong>
+              <span>Generated summaries will appear here.</span>
             </div>
           )}
         </section>
