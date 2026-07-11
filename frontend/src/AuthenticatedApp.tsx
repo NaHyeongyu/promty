@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
 import { fetchCurrentUser, logoutSession } from "./api/auth";
 import { UnauthorizedError } from "./api/client";
 import { AdminDashboard } from "./components/app/AdminDashboard";
+import { AccountWorkspaceRoute } from "./components/app/AccountWorkspaceRoute";
 import { WebLoginPage } from "./components/app/AuthScreens";
-import { CommunityPage } from "./components/app/CommunityPage";
 import { ProjectsPage } from "./components/app/ProjectsPage";
-import { UserProfilePage, UserSettingsPage } from "./components/app/ProfilePages";
 import { RepositoryConnector } from "./components/app/RepositoryConnector";
 import { WorkspaceSidebar } from "./components/app/WorkspaceSidebar";
 import { LoadingScreen } from "./components/app/WorkspaceStates";
@@ -15,14 +13,14 @@ import {
   type ActivityNavigationState,
   type ProjectDetailTabId,
 } from "./components/project-detail";
-import { API_URL, COMMUNITY_FEATURE_ENABLED } from "./config";
+import { API_URL } from "./config";
+import { useAccountSettings } from "./hooks/useAccountSettings";
 import { useAdminOverview } from "./hooks/useAdminOverview";
 import { useProjectActions } from "./hooks/useProjectActions";
 import { useProjectCatalog } from "./hooks/useProjectCatalog";
 import { useProjectDetail } from "./hooks/useProjectDetail";
 import { useProjectFiles } from "./hooks/useProjectFiles";
 import { useProjectSharing } from "./hooks/useProjectSharing";
-import { usePublishedFlows } from "./hooks/usePublishedFlows";
 import { useRepositoryConnector } from "./hooks/useRepositoryConnector";
 import { useRepositoryFiles } from "./hooks/useRepositoryFiles";
 import {
@@ -32,7 +30,6 @@ import {
 import { useWorkspaceData } from "./hooks/useWorkspaceData";
 import {
   useWorkspaceAdminEffect,
-  useWorkspaceCommunityEffects,
   useWorkspaceProjectResourceEffects,
   useWorkspaceProjectRouteEffect,
 } from "./hooks/useWorkspaceEffects";
@@ -47,7 +44,12 @@ import {
 } from "./workspace/navigation";
 import { emptyProjectDetailData } from "./workspace/projectDetailMappers";
 import { isMockGithubUnlinkedProject } from "./workspace/previewData";
-import type { AuthStatus, AuthUser, Project, SidebarItemId } from "./workspace/types";
+import type {
+  AuthStatus,
+  AuthUser,
+  Project,
+  SidebarItemId,
+} from "./workspace/types";
 
 function githubRepositoryConnectUrl() {
   return `${API_URL}/api/auth/github/web/start?${new URLSearchParams({
@@ -143,22 +145,7 @@ export function AuthenticatedApp() {
     isAdminLoading,
     loadAdminOverview,
   } = useAdminOverview({ onUnauthorized: handleUnauthorized });
-  const {
-    archivePublishedFlow,
-    clearPublishedFlows,
-    isPublishedFlowDetailLoading,
-    isPublishedFlowSaving,
-    isPublishedFlowsLoading,
-    loadPublishedFlowDetail,
-    loadPublishedFlows,
-    publishedFlowDetailError,
-    publishedFlows,
-    publishedFlowsError,
-    selectedPublishedFlow,
-    selectedPublishedFlowKey,
-    updatePublishedFlow,
-    uploadPublishedFlowAsset,
-  } = usePublishedFlows({ onUnauthorized: handleUnauthorized });
+  const accountSettings = useAccountSettings({ onUnauthorized: handleUnauthorized });
   const previewMode = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("preview");
@@ -189,9 +176,7 @@ export function AuthenticatedApp() {
   const activeTitle =
     activeItem === "projects"
       ? "Projects"
-      : activeItem === "community"
-        ? "Community"
-        : activeItem === "admin"
+      : activeItem === "admin"
           ? "Admin"
         : activeItem === "settings"
           ? "Settings"
@@ -277,11 +262,12 @@ export function AuthenticatedApp() {
   const loadSession = async () => {
     setAuthStatus("loading");
     clearWorkspaceData();
+    accountSettings.clearAccountSettings();
     setErrorMessage(null);
     try {
       setCurrentUser(await fetchCurrentUser());
       setAuthStatus("authenticated");
-      await loadEvents();
+      await Promise.all([loadEvents(), accountSettings.loadAccountOverview()]);
     } catch (error) {
       if (error instanceof UnauthorizedError) {
         handleUnauthorized();
@@ -301,8 +287,8 @@ export function AuthenticatedApp() {
     clearProjectDetail();
     clearProjectFiles();
     clearRepositoryFiles();
-    clearPublishedFlows();
     clearAdminOverview();
+    accountSettings.clearAccountSettings();
     closeRepositoryConnector();
     setAuthStatus("unauthenticated");
     writeUrlNavigationState(DEFAULT_URL_NAVIGATION_STATE, "replace");
@@ -312,14 +298,6 @@ export function AuthenticatedApp() {
     void loadSession();
   }, []);
 
-  useWorkspaceCommunityEffects({
-    activeItem,
-    authStatus,
-    loadPublishedFlowDetail,
-    loadPublishedFlows,
-    selectedPublishedFlow,
-    selectedPublishedFlowKey,
-  });
   useWorkspaceAdminEffect({
     activeItem,
     authStatus,
@@ -512,6 +490,9 @@ export function AuthenticatedApp() {
   ).length;
   const latestProfileActivityLabel =
     projectCatalog[0]?.latestActivityLabel ?? "No project activity";
+  const refreshWorkspaceAndAccount = () => {
+    void Promise.all([loadEvents(), accountSettings.loadAccountOverview()]);
+  };
   const pendingProjectRouteKey = selectedProjectRouteKey ?? selectedProjectId;
   const isResolvingProjectDetail =
     activeItem === "projects" &&
@@ -630,54 +611,6 @@ export function AuthenticatedApp() {
             repositoryConnector={repositoryConnector}
             visibleProjects={visibleProjects}
           />
-        ) : COMMUNITY_FEATURE_ENABLED && activeItem === "community" ? (
-          <>
-            <header className="page-header">
-              <div>
-                <h1>{activeTitle}</h1>
-              </div>
-              <div className="page-actions">
-                <button
-                  className="toolbar-button"
-                  disabled={isPublishedFlowsLoading}
-                  onClick={loadPublishedFlows}
-                  type="button"
-                >
-                  <RefreshCw
-                    aria-hidden="true"
-                    size={16}
-                    strokeWidth={1.5}
-                  />
-                  <span>{isPublishedFlowsLoading ? "Refreshing" : "Refresh"}</span>
-                </button>
-                <span className="status-pill">
-                  {publishedFlows.length} flows
-                </span>
-              </div>
-            </header>
-
-            {publishedFlowDetailError ? (
-              <div className="auth-message" data-error="true">
-                {publishedFlowDetailError}
-              </div>
-            ) : null}
-
-            <CommunityPage
-              errorMessage={publishedFlowsError}
-              flows={publishedFlows}
-              isDetailLoading={isPublishedFlowDetailLoading}
-              isLoading={isPublishedFlowsLoading}
-              isSaving={isPublishedFlowSaving}
-              onArchiveFlow={archivePublishedFlow}
-              onReload={loadPublishedFlows}
-              onSelectFlow={(flowKey) => {
-                void loadPublishedFlowDetail(flowKey);
-              }}
-              onUpdateFlow={updatePublishedFlow}
-              onUploadAsset={uploadPublishedFlowAsset}
-              selectedFlow={selectedPublishedFlow}
-            />
-          </>
         ) : activeItem === "admin" && canUseAdmin ? (
           <>
             <header className="page-header">
@@ -700,39 +633,24 @@ export function AuthenticatedApp() {
             />
           </>
         ) : (
-          <>
-            <header className="page-header">
-              <div>
-                <h1>{activeTitle}</h1>
-              </div>
-            </header>
-
-            {activeItem === "profile" ? (
-              <UserProfilePage
-                connectedRepositoryCount={connectedRepositoryCount}
-                currentUser={currentUser}
-                latestActivityLabel={latestProfileActivityLabel}
-                onLogout={() => {
-                  void logout();
-                }}
-                projectCount={projectCatalog.length}
-              />
-            ) : (
-              <UserSettingsPage
-                apiUrl={API_URL}
-                canUseAdmin={canUseAdmin}
-                connectedRepositoryCount={connectedRepositoryCount}
-                currentUser={currentUser}
-                isRefreshing={isEventsLoading}
-                latestActivityLabel={latestProfileActivityLabel}
-                onOpenProfile={() => selectSidebarItem("profile")}
-                onRefreshWorkspace={() => {
-                  void loadEvents();
-                }}
-                projectCount={projectCatalog.length}
-              />
-            )}
-          </>
+          <AccountWorkspaceRoute
+            account={accountSettings}
+            activeItem={activeItem}
+            activeTitle={activeTitle}
+            apiUrl={API_URL}
+            canUseAdmin={canUseAdmin}
+            connectedRepositoryCount={connectedRepositoryCount}
+            currentUser={currentUser}
+            githubConnectUrl={githubRepositoryConnectUrl()}
+            isEventsLoading={isEventsLoading}
+            latestActivityLabel={latestProfileActivityLabel}
+            onLogout={() => {
+              void logout();
+            }}
+            onOpenProfile={() => selectSidebarItem("profile")}
+            onRefreshWorkspace={refreshWorkspaceAndAccount}
+            projectCount={projectCatalog.length}
+          />
         )}
       </main>
     </div>

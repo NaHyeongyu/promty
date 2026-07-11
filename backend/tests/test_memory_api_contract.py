@@ -9,7 +9,7 @@ from app.services.memory.constants import (
     REVIEW_STATE_GENERATED,
 )
 from app.services.memory.serializers import serialize_memory_artifact
-from app.services.memory_workflows import serialize_project_memory_snapshot
+from app.services.memory.workflows import serialize_project_memory_snapshot
 
 
 def _artifact(*, artifact_type: str = MEMORY_ARTIFACT_TYPE) -> Artifact:

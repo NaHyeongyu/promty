@@ -1,0 +1,16 @@
+{
+  "name": "@prompthub/cli",
+  "version": "0.1.0",
+  "description": "Promty local event collector",
+  "license": "UNLICENSED",
+  "bin": {
+    "promty": "bin/promty.js"
+  },
+  "files": [
+    "bin",
+    "src/**/*.py"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
+}

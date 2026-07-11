@@ -22,14 +22,14 @@ from app.models.users import User
 from app.services.event_payload_security import (
     decrypt_event_payload,
 )
-from app.services.memory_artifacts import (
+from app.services.memory.artifacts import (
     count_project_memory_history_artifacts,
     list_project_memory_history_artifacts,
 )
 from app.services.memory.serializers import (
     serialize_memory_artifact_summary,
 )
-from app.services.prompt_activity import (
+from app.services.projects.activity import (
     files_changed_by_prompt_from_events,
     format_response_summary,
     iso,
@@ -40,7 +40,7 @@ from app.services.prompt_activity import (
     response_payloads_by_prompt,
     tool_label,
 )
-from app.services.prompt_search import prompt_search_hashes_for_query
+from app.services.projects.search import prompt_search_hashes_for_query
 
 RECENT_ACTIVITY_LIMIT = 50
 PROMPT_RELATED_EVENT_LIMIT = 1000

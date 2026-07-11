@@ -21,7 +21,7 @@ from app.services.memory.serializers import (
     serialize_memory_artifact,
     serialize_memory_artifact_summary,
 )
-from app.services.memory_artifacts import (
+from app.services.memory.artifacts import (
     compile_project_memory,
     generate_context_memories_for_session,
     get_latest_project_memory,

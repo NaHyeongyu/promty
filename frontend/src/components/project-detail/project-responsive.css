@@ -1,0 +1,231 @@
+@media (width <= 1100px) {
+  .bh-detail-skeleton-hero,
+  .bh-detail-skeleton-split {
+    grid-template-columns: 1fr;
+  }
+
+  .bh-memory-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .bh-memory-section-primary {
+    position: static;
+  }
+
+  .bh-overview-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bh-overview-card-description {
+    grid-column: auto;
+  }
+
+  .bh-overview-card-repository {
+    grid-column: 1 / -1;
+  }
+
+  .bh-project-context-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bh-overview-statistics dl,
+  .bh-overview-community-metrics,
+  .bh-project-detail-list,
+  .bh-detail-skeleton-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+}
+
+@media (width <= 760px) {
+  .bh-project-detail[data-active-tab="ai-activity"] {
+    height: auto;
+    grid-template-rows: none;
+  }
+
+  .bh-project-header {
+    grid-template-columns: 1fr;
+  }
+
+  .bh-project-header-actions {
+    justify-content: flex-start;
+  }
+
+  .bh-activity-feed-layout,
+  .bh-prompt-activity-layout,
+  .bh-activity-session-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .bh-activity-layout[data-view="prompts"],
+  .bh-activity-layout[data-view="sessions"],
+  .bh-activity-layout .bh-activity-feed-layout,
+  .bh-activity-layout .bh-activity-feed-sidebar,
+  .bh-activity-layout[data-view="prompts"] .bh-prompt-activity-layout,
+  .bh-activity-layout[data-view="prompts"] .bh-prompt-sidebar,
+  .bh-activity-layout[data-view="sessions"] .bh-activity-session-layout,
+  .bh-activity-layout[data-view="sessions"] .bh-activity-list,
+  .bh-activity-layout[data-view="sessions"] .bh-session-conversation-panel {
+    height: auto;
+    grid-template-rows: none;
+    overflow: visible;
+  }
+
+  .bh-latest-prompt-list,
+  .bh-session-list,
+  .bh-session-prompt-list {
+    overflow: visible;
+    scrollbar-gutter: auto;
+  }
+
+  .bh-prompt-change-detail,
+  .bh-session-detail {
+    position: static;
+    max-height: none;
+  }
+
+  .bh-prompt-row,
+  .bh-session-row,
+  .bh-session-conversation-row {
+    grid-template-columns: 1fr;
+  }
+
+  .bh-prompt-open-button {
+    justify-self: start;
+  }
+
+  .bh-overview-statistics dl,
+  .bh-overview-community-metrics,
+  .bh-overview-detail-grid,
+  .bh-project-detail-list,
+  .bh-detail-skeleton-hero,
+  .bh-detail-skeleton-split,
+  .bh-detail-skeleton-stats,
+  .bh-activity-meta,
+  .bh-activity-stats,
+  .bh-prompt-activity-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .bh-overview-community-header {
+    display: grid;
+  }
+
+  .bh-project-context-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bh-project-context-link {
+    width: 100%;
+  }
+
+  .bh-overview-meta-list > div {
+    grid-template-columns: 1fr;
+  }
+
+  .bh-overview-info-list div,
+  .bh-overview-timeline div {
+    grid-template-columns: 1fr;
+    gap: var(--bh-space-1);
+  }
+
+  .bh-overview-timeline span {
+    grid-column: auto;
+    margin-top: 0;
+  }
+
+  .bh-overview-flow-row {
+    grid-template-columns: 1fr;
+  }
+
+  .bh-overview-flow-row dl div {
+    text-align: left;
+  }
+
+  .bh-memory-toolbar,
+  .bh-memory-document-request,
+  .bh-memory-document-row summary,
+  .bh-memory-section-header,
+  .bh-memory-context-item,
+  .bh-memory-detail-meta,
+  .bh-memory-pending-row,
+  .bh-memory-card-footer {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .bh-memory-primary-action,
+  .bh-memory-pending-row button {
+    width: 100%;
+  }
+
+  .bh-repository-browser {
+    grid-template-columns: 1fr;
+  }
+
+  .bh-share-drawer {
+    width: 100vw;
+  }
+
+  .bh-memory-detail-drawer,
+  .bh-overview-edit-drawer,
+  .bh-overview-edit-drawer.is-wide {
+    width: 100vw;
+  }
+
+  .bh-share-form-row,
+  .bh-share-range-guide,
+  .bh-share-selection-content,
+  .bh-share-preview,
+  .bh-share-visibility {
+    grid-template-columns: 1fr;
+  }
+
+  .bh-prompt-change-header,
+  .bh-share-flow-strip div {
+    grid-template-columns: 1fr;
+  }
+
+  .bh-share-selection-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--bh-space-1);
+  }
+
+  .bh-share-editor-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--bh-space-2);
+  }
+
+  .bh-share-editor-tools {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .bh-share-editor-tabs {
+    width: 100%;
+  }
+
+  .bh-prompt-change-header-actions {
+    justify-content: flex-start;
+  }
+
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bh-detail-skeleton-stats div,
+  .bh-overview-stat-card-skeleton,
+  .bh-overview-card-skeleton,
+  .bh-overview-stat-sparkline-skeleton,
+  .bh-detail-skeleton-panel,
+  .bh-detail-skeleton-tree,
+  .bh-detail-skeleton-code,
+  .bh-detail-skeleton-community,
+  .bh-detail-skeleton-card,
+  .bh-detail-skeleton-row,
+  .bh-memory-generation-progress::before {
+    animation: none;
+  }
+}

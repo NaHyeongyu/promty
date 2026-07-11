@@ -10,7 +10,7 @@ from app.core.security import require_web_user
 from app.db.session import get_db
 from app.models.users import User
 from app.schemas.memory import ProjectMemoryUpdateRequest
-from app.services.memory_workflows import (
+from app.services.memory.workflows import (
     checkpoint_project_session_response,
     compile_project_memory_response,
     complete_project_session_response,

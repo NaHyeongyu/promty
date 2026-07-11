@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.core.time import utc_now
 from app.models.events import Event
 from app.models.prompt_search_documents import PromptSearchDocument
-from app.services.prompt_activity import iso, payload_model, payload_prompt
+from app.services.projects.activity import iso, payload_model, payload_prompt
 
 PROMPT_SEARCH_PURPOSE = "prompthub:prompt-search:v1"
 SEARCH_TERM_RE = re.compile(

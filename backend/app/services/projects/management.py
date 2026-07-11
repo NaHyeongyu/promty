@@ -13,7 +13,7 @@ from app.models.projects import Project
 from app.models.sessions import Session as PromptSession
 from app.models.users import User
 from app.services.github_repositories import repository_metadata_from_url
-from app.services.project_views import (
+from app.services.projects.views import (
     iso,
     model_name,
     normalize_github_url,

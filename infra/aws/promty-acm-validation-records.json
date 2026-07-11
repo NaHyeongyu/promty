@@ -1,0 +1,44 @@
+{
+  "Comment": "Validate ACM certificate for promty.org",
+  "Changes": [
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "_1fc29a4682b05054d26e5b1d93cf349e.promty.org.",
+        "Type": "CNAME",
+        "TTL": 300,
+        "ResourceRecords": [
+          {
+            "Value": "_12b87cd9a09811dde2b8f88ede219b2d.jkddzztszm.acm-validations.aws."
+          }
+        ]
+      }
+    },
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "_b40a00172221d470980dde2e7762a801.www.promty.org.",
+        "Type": "CNAME",
+        "TTL": 300,
+        "ResourceRecords": [
+          {
+            "Value": "_718054de76676951038041acaba04a14.jkddzztszm.acm-validations.aws."
+          }
+        ]
+      }
+    },
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "_6827a6c4824a5ccc592fee1b85bef0ab.api.promty.org.",
+        "Type": "CNAME",
+        "TTL": 300,
+        "ResourceRecords": [
+          {
+            "Value": "_314a25df326c6dfa61aea24f9d985f0d.jkddzztszm.acm-validations.aws."
+          }
+        ]
+      }
+    }
+  ]
+}

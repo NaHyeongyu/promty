@@ -19,7 +19,7 @@ from app.models.published_flows import (
 from app.models.sessions import Session as PromptSession
 from app.models.users import User
 from app.services.event_payload_security import decrypt_event_payload
-from app.services.prompt_activity import (
+from app.services.projects.activity import (
     files_changed_by_prompt_from_events,
     patch_file_changes_by_prompt,
     payload_model,

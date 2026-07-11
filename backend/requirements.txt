@@ -1,8 +1,8 @@
-alembic
-boto3
-cryptography
-fastapi
-psycopg[binary]
-python-multipart
-sqlalchemy
-uvicorn[standard]
+alembic==1.18.5
+boto3==1.43.42
+cryptography==49.0.0
+fastapi==0.138.1
+psycopg[binary]==3.3.4
+python-multipart==0.0.32
+sqlalchemy==2.0.51
+uvicorn[standard]==0.49.0

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from uuid import uuid4
 
-from app.services.prompt_search import (
+from app.services.projects.search import (
     prompt_search_hashes_for_query,
     prompt_search_hashes_for_text,
     prompt_search_text,

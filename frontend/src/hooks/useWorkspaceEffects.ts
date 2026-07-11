@@ -1,10 +1,8 @@
 import { useEffect, useRef } from "react";
-import { COMMUNITY_FEATURE_ENABLED } from "../config";
 import type { ProjectDetailData, ProjectDetailTabId } from "../components/project-detail";
 import type {
   AuthStatus,
   Project,
-  PublishedFlowDetailResponse,
   SidebarItemId,
 } from "../workspace/types";
 import {
@@ -27,58 +25,6 @@ function useLatestRef<T>(value: T) {
     ref.current = value;
   }, [value]);
   return ref;
-}
-
-export function useWorkspaceCommunityEffects({
-  activeItem,
-  authStatus,
-  loadPublishedFlowDetail,
-  loadPublishedFlows,
-  selectedPublishedFlow,
-  selectedPublishedFlowKey,
-}: {
-  activeItem: SidebarItemId;
-  authStatus: AuthStatus;
-  loadPublishedFlowDetail: (flowKey: string) => Promise<void>;
-  loadPublishedFlows: () => Promise<void>;
-  selectedPublishedFlow: PublishedFlowDetailResponse | null;
-  selectedPublishedFlowKey: string | null;
-}) {
-  const loadPublishedFlowsRef = useLatestRef(loadPublishedFlows);
-  const loadPublishedFlowDetailRef = useLatestRef(loadPublishedFlowDetail);
-  const selectedPublishedFlowRef = useLatestRef(selectedPublishedFlow);
-
-  useEffect(() => {
-    if (
-      !COMMUNITY_FEATURE_ENABLED ||
-      authStatus !== "authenticated" ||
-      activeItem !== "community"
-    ) {
-      return;
-    }
-    void loadPublishedFlowsRef.current();
-  }, [activeItem, authStatus, loadPublishedFlowsRef]);
-
-  useEffect(() => {
-    if (
-      !COMMUNITY_FEATURE_ENABLED ||
-      authStatus !== "authenticated" ||
-      activeItem !== "community" ||
-      !selectedPublishedFlowKey
-    ) {
-      return;
-    }
-    if (selectedPublishedFlowRef.current?.slug === selectedPublishedFlowKey) {
-      return;
-    }
-    void loadPublishedFlowDetailRef.current(selectedPublishedFlowKey);
-  }, [
-    activeItem,
-    authStatus,
-    loadPublishedFlowDetailRef,
-    selectedPublishedFlowKey,
-    selectedPublishedFlowRef,
-  ]);
 }
 
 export function useWorkspaceAdminEffect({

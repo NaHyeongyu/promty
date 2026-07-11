@@ -4,7 +4,7 @@ import type {
   PublishedFlowDetail,
 } from "../components/project-detail";
 
-export type SidebarItemId = "projects" | "community" | "admin" | "settings" | "profile";
+export type SidebarItemId = "projects" | "admin" | "settings" | "profile";
 
 export type Project = {
   id: string;
@@ -31,7 +31,38 @@ export type AuthUser = {
   username: string;
   email: string | null;
   avatar_url: string | null;
-  is_admin?: boolean;
+  github_repository_access: boolean;
+  is_admin: boolean;
+};
+
+export type AccountGithubConnection = {
+  connected: boolean;
+  created_at: string | null;
+  revoked_at: string | null;
+  scopes: string[];
+  status: string;
+  token_type: string | null;
+  updated_at: string | null;
+};
+
+export type AccountCollectorToken = {
+  created_at: string | null;
+  id: string;
+  last_used_at: string | null;
+  name: string;
+  revoked_at: string | null;
+  status: "active" | "revoked";
+};
+
+export type AccountOverview = {
+  collector_tokens: AccountCollectorToken[];
+  github_connection: AccountGithubConnection;
+  user: AuthUser;
+};
+
+export type AccountCollectorTokenCreateResponse = {
+  collector_token: AccountCollectorToken;
+  token: string;
 };
 
 export type EventRecord = {
@@ -47,11 +78,11 @@ export type EventRecord = {
 
 export type ProjectSummary = {
   id: string;
-  slug?: string;
+  slug: string;
   name: string;
   git_remote: string | null;
   github_url: string | null;
-  is_bookmarked?: boolean;
+  is_bookmarked: boolean;
   default_branch: string;
   created_at: string;
   connected_models: string[];

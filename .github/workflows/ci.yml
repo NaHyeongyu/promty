@@ -7,6 +7,24 @@ on:
       - main
 
 jobs:
+  quality:
+    name: Python quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install quality tools
+        run: pip install -r backend/requirements-dev.txt
+
+      - name: Run Ruff
+        run: ruff check backend collector
+
   backend:
     name: Backend tests
     runs-on: ubuntu-latest
@@ -26,6 +44,38 @@ jobs:
 
       - name: Run backend tests
         run: python -m pytest
+
+  collector:
+    name: Collector tests and package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install test dependencies
+        run: pip install pytest
+
+      - name: Run collector tests
+        run: python -m pytest collector/tests
+
+      - name: Verify Python package entry point
+        run: |
+          pip install ./collector
+          promty --help
+
+      - name: Verify npm package contents
+        working-directory: collector
+        run: npm pack --dry-run
 
   frontend:
     name: Frontend build
@@ -48,3 +98,7 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test

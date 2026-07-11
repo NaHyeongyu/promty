@@ -7,9 +7,10 @@ from fastapi import HTTPException
 
 from app.models.projects import Project
 from app.models.users import User
-from app.services import memory_workflows, project_views
-from app.services.memory_workflows import project_for_user as memory_project_for_user
-from app.services.project_views import project_for_user as detail_project_for_user
+from app.services.memory import workflows as memory_workflows
+from app.services.projects import views as project_views
+from app.services.memory.workflows import project_for_user as memory_project_for_user
+from app.services.projects.views import project_for_user as detail_project_for_user
 
 
 class FakeSession:

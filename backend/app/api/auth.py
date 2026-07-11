@@ -20,6 +20,7 @@ from app.core.security import (
 from app.db.session import get_db
 from app.models.tokens import CollectorToken
 from app.models.users import User
+from app.schemas.auth import CurrentUserResponse, LogoutResponse
 from app.services.github_oauth import (
     GITHUB_CLI_SCOPE,
     GITHUB_WEB_SCOPE,
@@ -160,7 +161,7 @@ def finish_github_login(
     return RedirectResponse(f"{cli_redirect_uri}?{query}", status_code=status.HTTP_302_FOUND)
 
 
-@router.get("/me")
+@router.get("/me", response_model=CurrentUserResponse)
 def read_current_user(user: User = Depends(require_web_user)) -> dict[str, Any]:
     return {
         "id": str(user.id),
@@ -173,7 +174,7 @@ def read_current_user(user: User = Depends(require_web_user)) -> dict[str, Any]:
     }
 
 
-@router.post("/logout")
+@router.post("/logout", response_model=LogoutResponse)
 def logout(response: Response) -> dict[str, str]:
     response.delete_cookie(
         key=settings.session_cookie_name,

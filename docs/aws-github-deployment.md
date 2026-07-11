@@ -24,6 +24,9 @@ The repository now includes:
 backend/Dockerfile
 ```
 
+The concrete resource inventory for this AWS account is tracked in
+[aws-resource-inventory.md](aws-resource-inventory.md).
+
 ## GitHub Secrets
 
 Set these secrets before running `AWS Deploy` manually:

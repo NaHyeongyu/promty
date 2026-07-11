@@ -4,4 +4,3 @@ export const API_URL = (
 
 export const BRAND_NAME = "Promty";
 export const BRAND_LOGO_SRC = "/promty.svg";
-export const COMMUNITY_FEATURE_ENABLED = false;

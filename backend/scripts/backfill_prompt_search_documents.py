@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.db.session import SessionLocal  # noqa: E402
 from app.models.events import Event  # noqa: E402
 from app.services.event_payload_security import decrypt_event_payload  # noqa: E402
-from app.services.prompt_search import upsert_prompt_search_document  # noqa: E402
+from app.services.projects.search import upsert_prompt_search_document  # noqa: E402
 
 BATCH_SIZE = 500
 

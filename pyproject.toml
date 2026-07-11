@@ -1,6 +1,6 @@
 [tool.pytest.ini_options]
 pythonpath = ["backend"]
-testpaths = ["backend/tests"]
+testpaths = ["backend/tests", "collector/tests"]
 
 [tool.ruff]
 line-length = 100
