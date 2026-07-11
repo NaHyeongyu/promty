@@ -74,11 +74,15 @@ function projectMemoryPendingRangeFromApi(
 ) {
   return {
     canCheckpoint: range.can_checkpoint,
+    changedFileCount: range.changed_file_count,
+    draftId: range.draft_id,
     endSequence: range.end_sequence,
     eventCount: range.event_count,
+    fileChangeEventCount: range.file_change_event_count,
     firstEventAt: range.first_event_at ?? null,
     lastEventAt: range.last_event_at ?? null,
     promptCount: range.prompt_count,
+    responseCount: range.response_count,
     sessionId: range.session_id,
     startSequence: range.start_sequence,
     tool: range.tool,

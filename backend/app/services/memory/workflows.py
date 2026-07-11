@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -24,12 +25,17 @@ from app.services.memory.serializers import (
 from app.services.memory.artifacts import (
     compile_project_memory,
     generate_context_memories_for_session,
+    generate_due_memory_artifacts_for_session,
     get_latest_project_memory,
     list_project_memory_history_artifacts,
     list_project_memory_pending_ranges,
     update_project_memory_snapshot,
 )
 from app.services.memory.session_completion import complete_session_if_ready
+from app.services.projects.management import list_project_summaries
+
+
+logger = logging.getLogger(__name__)
 
 
 def project_for_user(
@@ -113,6 +119,58 @@ def list_pending_memory_ranges_response(
     return list_project_memory_pending_ranges(db, project_id=project.id, limit=limit)
 
 
+def refresh_memory_review_queue_response(
+    db: DBSession,
+    *,
+    limit: int,
+    user: User,
+) -> dict[str, Any]:
+    initial_summaries = list_project_summaries(db, current_user=user)
+    errors: list[dict[str, str]] = []
+    ranges_by_project: dict[str, list[dict[str, Any]]] = {}
+
+    for summary in initial_summaries:
+        project_id = UUID(summary["id"])
+        try:
+            with db.begin_nested():
+                ranges_by_project[summary["id"]] = list_project_memory_pending_ranges(
+                    db,
+                    limit=limit,
+                    project_id=project_id,
+                )
+        except Exception:
+            logger.exception(
+                "Review queue materialization failed for project %s",
+                summary["id"],
+            )
+            errors.append(
+                {
+                    "message": "Captured work could not be checked for this project.",
+                    "project_id": summary["id"],
+                }
+            )
+            ranges_by_project[summary["id"]] = []
+
+    project_summaries = list_project_summaries(db, current_user=user)
+    queue_projects = [
+        {
+            "pending_count": summary["pending_memory_count"],
+            "project_id": summary["id"],
+            "ranges": ranges_by_project.get(summary["id"], []),
+        }
+        for summary in project_summaries
+        if summary["pending_memory_count"] > 0
+    ]
+    return {
+        "errors": errors,
+        "project_summaries": project_summaries,
+        "projects": queue_projects,
+        "total_pending_count": sum(
+            item["pending_memory_count"] for item in project_summaries
+        ),
+    }
+
+
 def complete_project_session_response(
     db: DBSession,
     *,
@@ -135,6 +193,12 @@ def complete_project_session_response(
             "pending_range": None,
             "status": "session_open",
         }
+
+    generate_due_memory_artifacts_for_session(
+        db,
+        session,
+        finalize=True,
+    )
 
     pending_range = next(
         (

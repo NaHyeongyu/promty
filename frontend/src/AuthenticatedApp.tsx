@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { fetchCurrentUser, logoutSession } from "./api/auth";
 import { UnauthorizedError } from "./api/client";
@@ -6,7 +6,7 @@ import { AdminDashboard } from "./components/app/AdminDashboard";
 import { AccountWorkspaceRoute } from "./components/app/AccountWorkspaceRoute";
 import { WebLoginPage } from "./components/app/AuthScreens";
 import { ProjectsPage } from "./components/app/ProjectsPage";
-import { ReviewsPage } from "./components/app/ReviewsPage";
+import { ReviewQueueDrawer } from "./components/app/ReviewQueueDrawer";
 import { RepositoryConnector } from "./components/app/RepositoryConnector";
 import { WorkspaceSidebar } from "./components/app/WorkspaceSidebar";
 import { LoadingScreen } from "./components/app/WorkspaceStates";
@@ -71,7 +71,14 @@ export function AuthenticatedApp() {
       ? "GitHub authorization was cancelled. No permissions were changed."
       : null,
   );
+  const [isReviewQueueOpen, setIsReviewQueueOpen] = useState(
+    () => new URLSearchParams(window.location.search).get("view") === "reviews",
+  );
+  const [reviewQueueProjectId, setReviewQueueProjectId] = useState<string | null>(null);
+  const reviewQueueReturnFocusRef = useRef<HTMLElement | null>(null);
   const handleUnauthorized = () => {
+    setIsReviewQueueOpen(false);
+    setReviewQueueProjectId(null);
     setAuthStatus("unauthenticated");
     setCurrentUser(null);
   };
@@ -83,6 +90,7 @@ export function AuthenticatedApp() {
     loadEvents,
     mergeProjectSummary: mergeWorkspaceProjectSummary,
     projects,
+    replaceProjectSummaries,
     setErrorMessage,
   } = useWorkspaceData({
     onAuthenticated: () => setAuthStatus("authenticated"),
@@ -144,7 +152,10 @@ export function AuthenticatedApp() {
     selectedProjectRouteKey,
   } = useWorkspaceNavigationState({
     initialNavigationState,
-    onPopState: closeRepositoryConnector,
+    onPopState: () => {
+      closeRepositoryConnector();
+      setIsReviewQueueOpen(false);
+    },
     repositoryFileContentPath,
     setRepositoryFileContentPath,
   });
@@ -186,10 +197,8 @@ export function AuthenticatedApp() {
   const activeTitle =
     activeItem === "projects"
       ? "Projects"
-      : activeItem === "reviews"
-        ? "Reviews"
       : activeItem === "admin"
-          ? "Admin"
+        ? "Admin"
         : activeItem === "settings" || activeItem === "profile"
           ? "Settings"
           : "Profile";
@@ -201,6 +210,7 @@ export function AuthenticatedApp() {
     bookmarkUpdatingProjectId,
     createProjectFromRepository,
     organizePendingMemory,
+    organizeProjectPendingMemory,
     saveProjectDescription,
     saveProjectMetadata,
     saveRepositoryConnection,
@@ -302,6 +312,7 @@ export function AuthenticatedApp() {
     clearAdminOverview();
     accountSettings.clearAccountSettings();
     closeRepositoryConnector();
+    setIsReviewQueueOpen(false);
     setAuthStatus("unauthenticated");
     writeUrlNavigationState(DEFAULT_URL_NAVIGATION_STATE, "replace");
   };
@@ -349,6 +360,7 @@ export function AuthenticatedApp() {
 
   const openProjectDetail = (projectId: string) => {
     closeRepositoryConnector();
+    setIsReviewQueueOpen(false);
     navigateWorkspace({
       activeDetailTab: "overview",
       activeItem: "projects",
@@ -358,16 +370,40 @@ export function AuthenticatedApp() {
   };
   const openProjectMemory = (projectId: string) => {
     closeRepositoryConnector();
+    setIsReviewQueueOpen(false);
     navigateWorkspace({
       activeDetailTab: "memory",
       activeItem: "projects",
       repositoryFileContentPath: null,
       selectedProjectId: projectId,
     });
+    window.setTimeout(() => {
+      document.getElementById("project-tab-memory")?.focus();
+    }, 0);
+  };
+  const openProjectSourceSession = (projectId: string, sessionId: string) => {
+    closeRepositoryConnector();
+    setIsReviewQueueOpen(false);
+    navigateWorkspace({
+      activeDetailTab: "ai-activity",
+      activeItem: "projects",
+      activityNavigation: {
+        selectedPromptId: null,
+        selectedSessionId: sessionId,
+        selectedSessionPromptId: null,
+        view: "sessions",
+      },
+      repositoryFileContentPath: null,
+      selectedProjectId: projectId,
+    });
+    window.setTimeout(() => {
+      document.getElementById("project-tab-ai-activity")?.focus();
+    }, 0);
   };
   const openFirstCapturedEvent = async (event: EventRecord) => {
     await Promise.all([loadEvents(), accountSettings.loadAccountOverview()]);
     closeRepositoryConnector();
+    setIsReviewQueueOpen(false);
     navigateWorkspace({
       activeDetailTab: "ai-activity",
       activeItem: "projects",
@@ -387,6 +423,7 @@ export function AuthenticatedApp() {
     }
 
     closeRepositoryConnector();
+    setIsReviewQueueOpen(false);
     clearProjectDetail();
     clearProjectFiles();
     clearRepositoryBrowserState();
@@ -400,6 +437,7 @@ export function AuthenticatedApp() {
   };
   const closeProjectDetail = () => {
     closeRepositoryConnector();
+    setIsReviewQueueOpen(false);
     navigateWorkspace({
       activeDetailTab: "overview",
       activeItem: "projects",
@@ -415,6 +453,8 @@ export function AuthenticatedApp() {
       return;
     }
 
+    setIsReviewQueueOpen(false);
+
     if (item === "projects" && selectedProjectId) {
       closeProjectDetail();
       return;
@@ -427,6 +467,19 @@ export function AuthenticatedApp() {
       repositoryFileContentPath: null,
       selectedProjectId: null,
     });
+  };
+  const openReviewQueue = (
+    returnFocusElement: HTMLElement | null,
+    projectId: string | null = null,
+  ) => {
+    reviewQueueReturnFocusRef.current = returnFocusElement;
+    setReviewQueueProjectId(projectId);
+    closeRepositoryConnector();
+    setIsReviewQueueOpen(true);
+  };
+  const openRepositoryConnectorOverlay = (projectId: string | null) => {
+    setIsReviewQueueOpen(false);
+    openRepositoryConnector(projectId);
   };
   const selectProjectDetailTab = (tab: ProjectDetailTabId) => {
     navigateWorkspace({
@@ -590,8 +643,10 @@ export function AuthenticatedApp() {
         canUseAdmin={canUseAdmin}
         collectorStatus={collectorStatus}
         currentUser={currentUser}
+        isReviewQueueOpen={isReviewQueueOpen}
         onLogout={logout}
         onOpenProject={openProjectDetail}
+        onOpenReviewQueue={openReviewQueue}
         onSelectItem={selectSidebarItem}
         pendingReviewCount={pendingReviewCount}
         savedProjectCount={bookmarkedProjects.length}
@@ -643,7 +698,7 @@ export function AuthenticatedApp() {
               onCheckpointMemory={selectedProject ? organizePendingMemory : undefined}
               onConnectRepository={
                 selectedProject
-                  ? () => openRepositoryConnector(selectedProject.id)
+                  ? () => openRepositoryConnectorOverlay(selectedProject.id)
                   : undefined
               }
               onLoadMemoryArtifacts={
@@ -697,7 +752,10 @@ export function AuthenticatedApp() {
             isEventsLoading={isEventsLoading}
             onClearSearch={() => setProjectSearchQuery("")}
             onOpenProject={openProjectDetail}
-            onOpenRepositoryConnector={() => openRepositoryConnector(null)}
+            onOpenReviewQueue={(projectId, returnFocusElement) =>
+              openReviewQueue(returnFocusElement, projectId)
+            }
+            onOpenRepositoryConnector={() => openRepositoryConnectorOverlay(null)}
             onFirstEvent={(event) => {
               void openFirstCapturedEvent(event);
             }}
@@ -711,11 +769,6 @@ export function AuthenticatedApp() {
             projectSortMode={projectSortMode}
             repositoryConnector={repositoryConnector}
             visibleProjects={visibleProjects}
-          />
-        ) : activeItem === "reviews" ? (
-          <ReviewsPage
-            onOpenProjectMemory={openProjectMemory}
-            projects={projectCatalog}
           />
         ) : activeItem === "admin" && canUseAdmin ? (
           <>
@@ -754,6 +807,23 @@ export function AuthenticatedApp() {
           />
         )}
       </main>
+      {isReviewQueueOpen ? (
+        <ReviewQueueDrawer
+          onClose={() => {
+            setIsReviewQueueOpen(false);
+            setReviewQueueProjectId(null);
+          }}
+          onCreateMemory={organizeProjectPendingMemory}
+          onOpenProjectMemory={openProjectMemory}
+          onOpenSourceSession={openProjectSourceSession}
+          onProjectSummariesRefresh={replaceProjectSummaries}
+          onUnauthorized={handleUnauthorized}
+          projectFilterId={reviewQueueProjectId}
+          projects={projectCatalog}
+          returnFocusElement={reviewQueueReturnFocusRef.current}
+          workspaceReady={hasLoadedWorkspaceData && !isEventsLoading}
+        />
+      ) : null}
     </div>
   );
 }

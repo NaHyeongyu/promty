@@ -18,10 +18,26 @@ from app.services.memory.workflows import (
     list_project_artifacts_response,
     memory_generator_status,
     read_project_memory_response,
+    refresh_memory_review_queue_response,
     update_project_memory_response,
 )
 
 router = APIRouter(prefix="/api/projects", tags=["memory"])
+
+
+@router.post("/memory/review-queue/refresh")
+def refresh_memory_review_queue(
+    limit: int = Query(default=100, ge=1, le=100),
+    current_user: User = Depends(require_web_user),
+    db: DBSession = Depends(get_db),
+) -> dict[str, Any]:
+    response = refresh_memory_review_queue_response(
+        db,
+        limit=limit,
+        user=current_user,
+    )
+    db.commit()
+    return response
 
 
 @router.get("/{project_id}/memory/pending")

@@ -24,8 +24,10 @@ export function WorkspaceSidebar({
   canUseAdmin,
   collectorStatus,
   currentUser,
+  isReviewQueueOpen,
   onLogout,
   onOpenProject,
+  onOpenReviewQueue,
   onSelectItem,
   pendingReviewCount,
   savedProjectCount,
@@ -36,8 +38,10 @@ export function WorkspaceSidebar({
   canUseAdmin: boolean;
   collectorStatus: CollectorSidebarStatus;
   currentUser: AuthUser | null;
+  isReviewQueueOpen: boolean;
   onLogout: () => void;
   onOpenProject: (projectId: string) => void;
+  onOpenReviewQueue: (returnFocusElement: HTMLElement | null) => void;
   onSelectItem: (item: SidebarItemId) => void;
   pendingReviewCount: number;
   savedProjectCount: number;
@@ -49,6 +53,7 @@ export function WorkspaceSidebar({
   const accountButtonRef = useRef<HTMLButtonElement>(null);
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const mobileToggleRef = useRef<HTMLButtonElement>(null);
+  const reviewQueueButtonRef = useRef<HTMLButtonElement>(null);
   const sidebarUserName = currentUser?.username ?? "Account";
   const sidebarUserInitial = sidebarUserName.trim().charAt(0).toUpperCase() || "P";
 
@@ -87,6 +92,14 @@ export function WorkspaceSidebar({
     setIsMobileMenuOpen(false);
     onOpenProject(projectId);
   };
+  const openReviewQueue = () => {
+    const returnFocusElement = isMobileMenuOpen
+      ? mobileToggleRef.current
+      : reviewQueueButtonRef.current;
+    setIsAccountMenuOpen(false);
+    setIsMobileMenuOpen(false);
+    onOpenReviewQueue(returnFocusElement);
+  };
 
   return (
     <aside
@@ -103,6 +116,7 @@ export function WorkspaceSidebar({
           aria-controls="workspace-sidebar-content"
           aria-label={isMobileMenuOpen ? "Close navigation" : "Open navigation"}
           className="sidebar-mobile-toggle"
+          data-review-queue-fallback-focus="true"
           onClick={() => setIsMobileMenuOpen((current) => !current)}
           ref={mobileToggleRef}
           type="button"
@@ -126,11 +140,16 @@ export function WorkspaceSidebar({
             onClick={() => selectItem("projects")}
           />
           <SidebarNavItem
-            active={activeItem === "reviews"}
+            active={isReviewQueueOpen}
+            ariaControls="review-queue"
+            ariaExpanded={isReviewQueueOpen}
+            ariaHasPopup="dialog"
             badge={pendingReviewCount > 0 ? pendingReviewCount : undefined}
             icon={Inbox}
-            label="Reviews"
-            onClick={() => selectItem("reviews")}
+            label="Review queue"
+            onClick={openReviewQueue}
+            ref={reviewQueueButtonRef}
+            reviewQueueFallbackFocus
           />
 
           <section className="sidebar-saved-section" aria-label="Pinned projects">
@@ -249,25 +268,40 @@ export function WorkspaceSidebar({
   );
 }
 
-function SidebarNavItem({
+const SidebarNavItem = function SidebarNavItem({
   active,
+  ariaControls,
+  ariaExpanded,
+  ariaHasPopup,
   badge,
   icon: Icon,
   label,
   onClick,
+  ref,
+  reviewQueueFallbackFocus,
 }: {
   active: boolean;
+  ariaControls?: string;
+  ariaExpanded?: boolean;
+  ariaHasPopup?: "dialog";
   badge?: number;
   icon: typeof Folder;
   label: string;
   onClick: () => void;
+  ref?: React.Ref<HTMLButtonElement>;
+  reviewQueueFallbackFocus?: boolean;
 }) {
   return (
     <button
-      aria-pressed={active}
+      aria-controls={ariaControls}
+      aria-expanded={ariaExpanded}
+      aria-haspopup={ariaHasPopup}
+      aria-pressed={ariaHasPopup ? undefined : active}
       className="sidebar-item"
       data-active={active}
+      data-review-queue-fallback-focus={reviewQueueFallbackFocus || undefined}
       onClick={onClick}
+      ref={ref}
       type="button"
     >
       <Icon aria-hidden="true" className="sidebar-icon" size={18} strokeWidth={1.5} />
@@ -275,4 +309,4 @@ function SidebarNavItem({
       {badge ? <span className="sidebar-item-badge">{badge}</span> : null}
     </button>
   );
-}
+};

@@ -40,7 +40,19 @@
   border-bottom: 1px solid var(--bh-color-border);
 }
 
+.project-row-open-target {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
 .project-row-main {
+  position: relative;
+  z-index: 1;
   width: 100%;
   min-width: 0;
   min-height: 76px;
@@ -49,7 +61,7 @@
   color: var(--bh-color-text-primary);
   background: transparent;
   text-align: left;
-  cursor: pointer;
+  pointer-events: none;
   transition: background-color var(--bh-duration-fast) var(--bh-ease-out);
 }
 
@@ -58,7 +70,7 @@
   background: var(--bh-color-surface-hover);
 }
 
-.project-row-main:focus-visible {
+.project-row:has(.project-row-open-target:focus-visible) {
   outline: 2px solid var(--bh-color-primary);
   outline-offset: -2px;
 }
@@ -105,6 +117,31 @@
   color: var(--bh-color-warning);
 }
 
+.project-row-review-action {
+  width: calc(100% + var(--bh-space-3));
+  min-width: 0;
+  min-height: var(--bh-interactive-min-size);
+  margin: calc(var(--bh-space-2) * -1);
+  border: 1px solid transparent;
+  border-radius: var(--bh-radius-sm);
+  padding: var(--bh-space-2);
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.project-row-review-action:hover {
+  border-color: var(--bh-color-border-hover);
+  background: var(--bh-color-background);
+}
+
+.project-row-review-action:focus-visible {
+  outline: 2px solid var(--bh-color-primary);
+  outline-offset: 1px;
+}
+
 .project-row-main > svg {
   color: var(--bh-color-text-muted);
 }
@@ -113,6 +150,7 @@
   position: absolute;
   top: 50%;
   right: var(--bh-space-3);
+  z-index: 2;
   display: inline-flex;
   width: 32px;
   height: 32px;

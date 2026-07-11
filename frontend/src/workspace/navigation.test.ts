@@ -26,6 +26,14 @@ describe("workspace navigation", () => {
     expect(buildUrlNavigationSearch(state)).toBe("");
   });
 
+  it("maps the removed Reviews route to Projects", () => {
+    window.location.search = "?view=reviews";
+    const state = readUrlNavigationState();
+
+    expect(state.activeItem).toBe("projects");
+    expect(buildUrlNavigationSearch(state)).toBe("");
+  });
+
   it("drops project resources outside the projects view", () => {
     const state = normalizeUrlNavigationState({
       activeDetailTab: "files",

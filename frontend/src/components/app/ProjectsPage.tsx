@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useRef } from "react";
 import {
   ArrowRight,
   CircleAlert,
@@ -26,6 +26,7 @@ export function ProjectsPage({
   onFirstEvent,
   onboardingPollingEnabled,
   onOpenProject,
+  onOpenReviewQueue,
   onOpenRepositoryConnector,
   onRetry,
   onSearchChange,
@@ -45,6 +46,10 @@ export function ProjectsPage({
   onFirstEvent: (event: EventRecord) => void;
   onboardingPollingEnabled: boolean;
   onOpenProject: (projectId: string) => void;
+  onOpenReviewQueue: (
+    projectId: string,
+    returnFocusElement: HTMLElement,
+  ) => void;
   onOpenRepositoryConnector: () => void;
   onRetry: () => void;
   onSearchChange: (value: string) => void;
@@ -175,6 +180,7 @@ export function ProjectsPage({
                     <ProjectRow
                       key={project.id}
                       onOpen={onOpenProject}
+                      onOpenReviewQueue={onOpenReviewQueue}
                       project={project}
                     />
                   ))}
@@ -190,19 +196,28 @@ export function ProjectsPage({
 
 function ProjectRow({
   onOpen,
+  onOpenReviewQueue,
   project,
 }: {
   onOpen: (projectId: string) => void;
+  onOpenReviewQueue: (
+    projectId: string,
+    returnFocusElement: HTMLElement,
+  ) => void;
   project: Project;
 }) {
+  const openProjectButtonRef = useRef<HTMLButtonElement>(null);
+
   return (
     <article className="project-row">
       <button
         aria-label={`Open ${project.name}`}
-        className="project-row-main"
+        className="project-row-open-target"
         onClick={() => onOpen(project.id)}
+        ref={openProjectButtonRef}
         type="button"
-      >
+      />
+      <div className="project-row-main">
         <span className="project-row-name">
           <strong>{project.name}</strong>
           <small>{project.models.join(", ") || "Model not captured"}</small>
@@ -211,25 +226,39 @@ function ProjectRow({
           <strong>{project.latestActivityLabel}</strong>
           <small>{project.sessions} sessions</small>
         </span>
-        <span className="project-row-cell" data-attention={project.pendingMemoryCount > 0}>
-          <strong>
-            {project.pendingMemoryCount > 0 ? (
+        {project.pendingMemoryCount > 0 ? (
+          <button
+            aria-label={`Open ${project.name} review queue`}
+            className="project-row-cell project-row-review-action"
+            data-attention="true"
+            onClick={(event) =>
+              onOpenReviewQueue(
+                project.id,
+                openProjectButtonRef.current ?? event.currentTarget,
+              )
+            }
+            type="button"
+          >
+            <strong>
               <CircleAlert aria-hidden="true" size={14} strokeWidth={1.5} />
-            ) : null}
-            {project.pendingMemoryCount > 0
-              ? `${project.pendingMemoryCount} to review`
-              : `${project.memoryCount} saved`}
-          </strong>
-          <small>
-            {project.latestMemoryAt ? "Memory up to date" : "No memory yet"}
-          </small>
-        </span>
+              {`${project.pendingMemoryCount} to review`}
+            </strong>
+            <small>Open review queue</small>
+          </button>
+        ) : (
+          <span className="project-row-cell">
+            <strong>{project.memoryCount} saved</strong>
+            <small>
+              {project.latestMemoryAt ? "Memory up to date" : "No memory yet"}
+            </small>
+          </span>
+        )}
         <span className="project-row-cell">
           <strong>{formatCompactNumber(project.prompts)} prompts</strong>
           <small>{formatCompactNumber(project.trackedFiles)} files</small>
         </span>
         <ArrowRight aria-hidden="true" size={16} strokeWidth={1.5} />
-      </button>
+      </div>
 
       {project.githubUrl ? (
         <a

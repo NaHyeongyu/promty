@@ -47,12 +47,18 @@ export function useProjectDetail({ onUnauthorized }: UseProjectDetailOptions) {
     projectId: string,
     fallbackProject: Project | null,
     signal?: AbortSignal,
+    shouldApply: () => boolean = () => true,
   ) => {
+    if (!shouldApply()) {
+      return;
+    }
     setIsProjectDetailLoading(true);
     setProjectDetailError(null);
     try {
       const payload = await fetchProjectDetailResources(projectId, signal);
-      setProjectDetail(projectDetailDataFromApi(payload, fallbackProject));
+      if (shouldApply()) {
+        setProjectDetail(projectDetailDataFromApi(payload, fallbackProject));
+      }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         return;
@@ -62,11 +68,13 @@ export function useProjectDetail({ onUnauthorized }: UseProjectDetailOptions) {
         setProjectDetail(null);
         return;
       }
-      setProjectDetailError(
-        error instanceof Error ? error.message : "Project detail request failed",
-      );
+      if (shouldApply()) {
+        setProjectDetailError(
+          error instanceof Error ? error.message : "Project detail request failed",
+        );
+      }
     } finally {
-      if (!signal?.aborted) {
+      if (!signal?.aborted && shouldApply()) {
         setIsProjectDetailLoading(false);
       }
     }

@@ -5,6 +5,7 @@ import type {
   ProjectGithubFilesApiResponse,
   ProjectMemoryArtifactApiResponse,
   ProjectMemoryPendingRangeApiResponse,
+  MemoryReviewQueueSnapshotApiResponse,
   ProjectPromptActivitiesApiResponse,
   ProjectSummary,
 } from "../workspace/types";
@@ -82,13 +83,7 @@ export async function fetchProjectDetailResources(
       errorMessage: "Project detail request failed",
     },
   );
-  const pendingRanges = await requestJson<ProjectMemoryPendingRangeApiResponse[]>(
-    `/api/projects/${encodedProjectId}/memory/pending`,
-    { signal },
-    {
-      errorMessage: "Memory pending ranges request failed",
-    },
-  );
+  const pendingRanges = await fetchProjectMemoryPendingRanges(projectId, signal);
 
   return {
     ...detail,
@@ -100,6 +95,34 @@ export async function fetchProjectDetailResources(
       pending_ranges: pendingRanges,
     },
   };
+}
+
+export function fetchProjectMemoryPendingRanges(
+  projectId: string,
+  signal?: AbortSignal,
+  limit = 100,
+): Promise<ProjectMemoryPendingRangeApiResponse[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return requestJson<ProjectMemoryPendingRangeApiResponse[]>(
+    `/api/projects/${encodeURIComponent(projectId)}/memory/pending?${params}`,
+    { signal },
+    {
+      errorMessage: "Memory review queue request failed",
+    },
+  );
+}
+
+export function refreshMemoryReviewQueue(
+  signal?: AbortSignal,
+): Promise<MemoryReviewQueueSnapshotApiResponse> {
+  return requestJson<MemoryReviewQueueSnapshotApiResponse>(
+    "/api/projects/memory/review-queue/refresh?limit=100",
+    { method: "POST", signal },
+    {
+      errorMessage: "Review queue refresh failed",
+      unauthorizedMessage: "Sign in again before refreshing the review queue.",
+    },
+  );
 }
 
 export function checkpointProjectSession(

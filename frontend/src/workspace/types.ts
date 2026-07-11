@@ -4,7 +4,7 @@ import type {
   PublishedFlowDetail,
 } from "../components/project-detail";
 
-export type SidebarItemId = "projects" | "reviews" | "admin" | "settings" | "profile";
+export type SidebarItemId = "projects" | "admin" | "settings" | "profile";
 
 export type Project = {
   id: string;
@@ -303,14 +303,32 @@ export type ProjectMemoryArtifactApiResponse =
 
 export type ProjectMemoryPendingRangeApiResponse = {
   can_checkpoint: boolean;
+  changed_file_count: number;
+  draft_id: string;
   end_sequence: number;
   event_count: number;
+  file_change_event_count: number;
   first_event_at: string | null;
   last_event_at: string | null;
   prompt_count: number;
+  response_count: number;
   session_id: string;
   start_sequence: number;
   tool: string;
+};
+
+export type MemoryReviewQueueSnapshotApiResponse = {
+  errors?: Array<{
+    message: string;
+    project_id: string;
+  }>;
+  project_summaries: ProjectSummary[];
+  projects: Array<{
+    pending_count: number;
+    project_id: string;
+    ranges: ProjectMemoryPendingRangeApiResponse[];
+  }>;
+  total_pending_count: number;
 };
 
 export type ProjectGithubFilesApiResponse = {

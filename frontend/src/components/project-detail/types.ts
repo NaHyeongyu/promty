@@ -194,11 +194,15 @@ export type ProjectMemoryStatus = {
 
 export type ProjectMemoryPendingRange = {
   canCheckpoint: boolean;
+  changedFileCount: number;
+  draftId: string;
   endSequence: number;
   eventCount: number;
+  fileChangeEventCount: number;
   firstEventAt: string | null;
   lastEventAt: string | null;
   promptCount: number;
+  responseCount: number;
   sessionId: string;
   startSequence: number;
   tool: string;

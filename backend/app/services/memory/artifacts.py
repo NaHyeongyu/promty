@@ -3,13 +3,14 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import desc, select
+from sqlalchemy import case, desc, func, select
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import settings
 from app.core.time import utc_now
 from app.models.artifact_generation_jobs import ArtifactGenerationJob
 from app.models.artifacts import Artifact
+from app.models.events import Event
 from app.models.projects import Project
 from app.models.sessions import Session
 from app.services.memory.context import (
@@ -59,6 +60,7 @@ from app.services.memory.constants import (
     REVIEW_STATE_IGNORED,
     REVIEW_STATE_SAVED,
     REVIEW_STATE_VERIFIED,
+    SESSION_IDLE_COMPLETE_AFTER,
 )
 from app.services.memory.serializers import (
     serialize_artifact_version as serialize_artifact_version,
@@ -486,15 +488,42 @@ def list_project_memory_pending_ranges(
     limit: int = 20,
     project_id: UUID,
 ) -> list[dict[str, Any]]:
+    latest_session_activity = (
+        select(
+            Event.session_id.label("session_id"),
+            func.max(Event.created_at).label("latest_event_at"),
+            func.max(
+                case(
+                    (Event.event_type == "PromptSubmitted", Event.created_at),
+                    else_=None,
+                )
+            ).label("latest_prompt_at"),
+        )
+        .where(Event.project_id == project_id)
+        .group_by(Event.session_id)
+        .subquery()
+    )
+    idle_before = utc_now() - SESSION_IDLE_COMPLETE_AFTER
     sessions = list(
         db.execute(
             select(Session)
-            .where(Session.project_id == project_id)
+            .join(
+                latest_session_activity,
+                latest_session_activity.c.session_id == Session.id,
+            )
+            .where(
+                Session.project_id == project_id,
+                Session.ended_at.is_(None),
+                func.coalesce(
+                    latest_session_activity.c.latest_prompt_at,
+                    latest_session_activity.c.latest_event_at,
+                )
+                <= idle_before,
+            )
             .order_by(desc(Session.started_at))
-            .limit(limit * 4)
+            .limit(limit)
         ).scalars()
     )
-    ranges: list[dict[str, Any]] = []
     for session in sessions:
         completion = complete_session_if_ready(db, session, force=False)
         generate_due_memory_artifacts_for_session(
@@ -502,13 +531,21 @@ def list_project_memory_pending_ranges(
             session,
             finalize=completion["completed"],
         )
-        ranges.extend(
-            _pending_draft_range(draft)
-            for draft in _pending_memory_drafts_for_session(db, session)
-        )
-        if len(ranges) >= limit:
-            break
-    return ranges[:limit]
+
+    pending_drafts = list(
+        db.execute(
+            select(Artifact)
+            .where(
+                Artifact.project_id == project_id,
+                Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE,
+                Artifact.metadata_["artifact_stage"].astext == PENDING_DRAFT_STAGE,
+                Artifact.metadata_["review_state"].astext == REVIEW_STATE_DRAFT,
+            )
+            .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
+            .limit(limit)
+        ).scalars()
+    )
+    return [_pending_draft_range(draft) for draft in pending_drafts]
 
 
 def generate_context_memories_for_session(

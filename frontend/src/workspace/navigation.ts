@@ -40,7 +40,6 @@ const PROJECT_DETAIL_TAB_IDS = new Set<ProjectDetailTabId>([
 const SIDEBAR_ITEM_IDS = new Set<SidebarItemId>([
   "admin",
   "projects",
-  "reviews",
   "settings",
   "profile",
 ]);
@@ -160,7 +159,7 @@ function sanitizeRepositoryFilePath(value: string | null | undefined) {
 }
 
 function parseSidebarItemId(value: string | null): SidebarItemId {
-  if (value === "home") {
+  if (value === "home" || value === "reviews") {
     return "projects";
   }
   return value && SIDEBAR_ITEM_IDS.has(value as SidebarItemId)
