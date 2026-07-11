@@ -24,7 +24,7 @@ export const DEFAULT_URL_NAVIGATION_STATE: UrlNavigationState = {
     view: "sessions",
   },
   activeDetailTab: "overview",
-  activeItem: "home",
+  activeItem: "projects",
   repositoryFileContentPath: null,
   selectedProjectId: null,
   selectedProjectRouteKey: null,
@@ -39,7 +39,6 @@ const PROJECT_DETAIL_TAB_IDS = new Set<ProjectDetailTabId>([
 ]);
 const SIDEBAR_ITEM_IDS = new Set<SidebarItemId>([
   "admin",
-  "home",
   "projects",
   "reviews",
   "settings",
@@ -161,9 +160,12 @@ function sanitizeRepositoryFilePath(value: string | null | undefined) {
 }
 
 function parseSidebarItemId(value: string | null): SidebarItemId {
+  if (value === "home") {
+    return "projects";
+  }
   return value && SIDEBAR_ITEM_IDS.has(value as SidebarItemId)
     ? (value as SidebarItemId)
-    : "home";
+    : "projects";
 }
 
 function parseProjectDetailTabId(value: string | null): ProjectDetailTabId {
@@ -268,7 +270,7 @@ export function buildUrlNavigationSearch(state: UrlNavigationState) {
     params.set("preview", previewMode);
   }
 
-  if (state.activeItem !== "projects" && state.activeItem !== "home") {
+  if (state.activeItem !== "projects") {
     params.set("view", state.activeItem);
   } else if (state.selectedProjectRouteKey ?? state.selectedProjectId) {
     params.set("project", state.selectedProjectRouteKey ?? state.selectedProjectId ?? "");
@@ -312,8 +314,6 @@ export function buildUrlNavigationSearch(state: UrlNavigationState) {
         );
       }
     }
-  } else if (state.activeItem === "projects") {
-    params.set("view", "projects");
   }
 
   const search = params.toString();

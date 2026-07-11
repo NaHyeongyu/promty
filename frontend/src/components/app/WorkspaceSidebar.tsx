@@ -4,7 +4,6 @@ import {
   ChevronDown,
   Folder,
   Gauge,
-  House,
   Inbox,
   LogOut,
   Menu,
@@ -120,12 +119,6 @@ export function WorkspaceSidebar({
         <div className="sidebar-divider" />
 
         <nav className="sidebar-nav" aria-label="Workspace">
-          <SidebarNavItem
-            active={activeItem === "home"}
-            icon={House}
-            label="Home"
-            onClick={() => selectItem("home")}
-          />
           <SidebarNavItem
             active={activeItem === "projects"}
             icon={Folder}
@@ -265,7 +258,7 @@ function SidebarNavItem({
 }: {
   active: boolean;
   badge?: number;
-  icon: typeof House;
+  icon: typeof Folder;
   label: string;
   onClick: () => void;
 }) {

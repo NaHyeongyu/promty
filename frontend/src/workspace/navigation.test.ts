@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildUrlNavigationSearch,
   normalizeUrlNavigationState,
+  readUrlNavigationState,
 } from "./navigation";
 
 describe("workspace navigation", () => {
@@ -9,18 +10,20 @@ describe("workspace navigation", () => {
     vi.stubGlobal("window", { location: { search: "" } });
   });
 
-  it("uses Home and session navigation as the calm default", () => {
+  it("uses Projects and session navigation as the default", () => {
     const state = normalizeUrlNavigationState({});
 
-    expect(state.activeItem).toBe("home");
+    expect(state.activeItem).toBe("projects");
     expect(state.activityNavigation.view).toBe("sessions");
     expect(buildUrlNavigationSearch(state)).toBe("");
   });
 
-  it("keeps the Projects index distinct from Home", () => {
-    const state = normalizeUrlNavigationState({ activeItem: "projects" });
+  it("maps the removed Home route to Projects", () => {
+    window.location.search = "?view=home";
+    const state = readUrlNavigationState();
 
-    expect(buildUrlNavigationSearch(state)).toBe("?view=projects");
+    expect(state.activeItem).toBe("projects");
+    expect(buildUrlNavigationSearch(state)).toBe("");
   });
 
   it("drops project resources outside the projects view", () => {

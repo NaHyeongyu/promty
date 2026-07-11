@@ -5,7 +5,6 @@ import { UnauthorizedError } from "./api/client";
 import { AdminDashboard } from "./components/app/AdminDashboard";
 import { AccountWorkspaceRoute } from "./components/app/AccountWorkspaceRoute";
 import { WebLoginPage } from "./components/app/AuthScreens";
-import { HomePage } from "./components/app/HomePage";
 import { ProjectsPage } from "./components/app/ProjectsPage";
 import { ReviewsPage } from "./components/app/ReviewsPage";
 import { RepositoryConnector } from "./components/app/RepositoryConnector";
@@ -185,9 +184,7 @@ export function AuthenticatedApp() {
     selectedProjectId,
   });
   const activeTitle =
-    activeItem === "home"
-      ? "Home"
-      : activeItem === "projects"
+    activeItem === "projects"
       ? "Projects"
       : activeItem === "reviews"
         ? "Reviews"
@@ -690,26 +687,6 @@ export function AuthenticatedApp() {
                     }
                   : undefined
               }
-            />
-          </>
-        ) : activeItem === "home" ? (
-          <>
-            {repositoryConnector}
-            <HomePage
-              errorMessage={errorMessage}
-              isLoading={isEventsLoading}
-              onAddProject={() => openRepositoryConnector(null)}
-              onFirstEvent={(event) => {
-                void openFirstCapturedEvent(event);
-              }}
-              onboardingPollingEnabled={!isRepositoryConnectorOpen}
-              onOpenProject={openProjectDetail}
-              onOpenProjectMemory={openProjectMemory}
-              onOpenReviews={() => selectSidebarItem("reviews")}
-              onRetry={() => {
-                void loadEvents();
-              }}
-              projects={projectCatalog}
             />
           </>
         ) : activeItem === "projects" ? (

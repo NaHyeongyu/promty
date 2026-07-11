@@ -27,7 +27,7 @@ export function ReviewsPage({
       </header>
 
       <section className="reviews-workspace" aria-labelledby="reviews-title">
-        <div className="home-section-heading">
+        <div className="reviews-heading">
           <span>Memory review</span>
           <h2 id="reviews-title">Verify captured work before it becomes project memory</h2>
           <p>Review generated context with its source session and changed files.</p>

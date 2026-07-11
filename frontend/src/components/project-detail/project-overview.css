@@ -85,6 +85,19 @@
   line-height: var(--bh-line-height-heading);
 }
 
+.bh-project-home-memory .text-action {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: var(--bh-space-2);
+  border: 0;
+  padding: 0;
+  color: var(--bh-color-primary-hover);
+  background: transparent;
+  font-weight: var(--bh-font-weight-label);
+  cursor: pointer;
+}
+
 .bh-overview-panel {
   display: grid;
   min-width: 0;

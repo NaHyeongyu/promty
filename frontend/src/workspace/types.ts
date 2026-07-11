@@ -4,7 +4,7 @@ import type {
   PublishedFlowDetail,
 } from "../components/project-detail";
 
-export type SidebarItemId = "home" | "projects" | "reviews" | "admin" | "settings" | "profile";
+export type SidebarItemId = "projects" | "reviews" | "admin" | "settings" | "profile";
 
 export type Project = {
   id: string;
