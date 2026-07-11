@@ -11,7 +11,7 @@ from app.api.projects import router as projects_router
 from app.core.config import settings
 from app.core.encryption import EncryptionError
 
-app = FastAPI(title="PromptHub API")
+app = FastAPI(title="Promty API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(settings.cors_origins),

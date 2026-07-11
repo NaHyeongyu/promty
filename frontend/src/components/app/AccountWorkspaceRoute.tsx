@@ -1,10 +1,9 @@
 import type { AccountSettingsController } from "../../hooks/useAccountSettings";
-import type { AuthUser, SidebarItemId } from "../../workspace/types";
-import { UserProfilePage, UserSettingsPage } from "./ProfilePages";
+import type { AuthUser } from "../../workspace/types";
+import { UserSettingsPage } from "./ProfilePages";
 
 export function AccountWorkspaceRoute({
   account,
-  activeItem,
   activeTitle,
   apiUrl,
   canUseAdmin,
@@ -13,13 +12,10 @@ export function AccountWorkspaceRoute({
   githubConnectUrl,
   isEventsLoading,
   latestActivityLabel,
-  onLogout,
-  onOpenProfile,
   onRefreshWorkspace,
   projectCount,
 }: {
   account: AccountSettingsController;
-  activeItem: SidebarItemId;
   activeTitle: string;
   apiUrl: string;
   canUseAdmin: boolean;
@@ -28,8 +24,6 @@ export function AccountWorkspaceRoute({
   githubConnectUrl: string;
   isEventsLoading: boolean;
   latestActivityLabel: string;
-  onLogout: () => void;
-  onOpenProfile: () => void;
   onRefreshWorkspace: () => void;
   projectCount: number;
 }) {
@@ -41,19 +35,7 @@ export function AccountWorkspaceRoute({
         </div>
       </header>
 
-      {activeItem === "profile" ? (
-        <UserProfilePage
-          accountError={account.accountError}
-          accountOverview={account.accountOverview}
-          connectedRepositoryCount={connectedRepositoryCount}
-          currentUser={currentUser}
-          isAccountLoading={account.isAccountLoading}
-          latestActivityLabel={latestActivityLabel}
-          onLogout={onLogout}
-          projectCount={projectCount}
-        />
-      ) : (
-        <UserSettingsPage
+      <UserSettingsPage
           accountError={account.accountError}
           accountOverview={account.accountOverview}
           apiUrl={apiUrl}
@@ -69,13 +51,11 @@ export function AccountWorkspaceRoute({
           onClearCreatedCollectorToken={() => account.setCreatedCollectorToken(null)}
           onCreateCollectorToken={account.createCollectorToken}
           onDisconnectGithub={account.disconnectGithubConnection}
-          onOpenProfile={onOpenProfile}
           onRefreshWorkspace={onRefreshWorkspace}
           onRenameCollectorToken={account.renameCollectorToken}
           onRevokeCollectorToken={account.revokeCollectorToken}
           projectCount={projectCount}
         />
-      )}
     </>
   );
 }

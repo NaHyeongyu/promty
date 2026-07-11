@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
+import { X } from "lucide-react";
 import { fetchCurrentUser, logoutSession } from "./api/auth";
 import { UnauthorizedError } from "./api/client";
 import { AdminDashboard } from "./components/app/AdminDashboard";
 import { AccountWorkspaceRoute } from "./components/app/AccountWorkspaceRoute";
 import { WebLoginPage } from "./components/app/AuthScreens";
+import { HomePage } from "./components/app/HomePage";
 import { ProjectsPage } from "./components/app/ProjectsPage";
+import { ReviewsPage } from "./components/app/ReviewsPage";
 import { RepositoryConnector } from "./components/app/RepositoryConnector";
 import { WorkspaceSidebar } from "./components/app/WorkspaceSidebar";
 import { LoadingScreen } from "./components/app/WorkspaceStates";
@@ -14,6 +17,7 @@ import {
   type ProjectDetailTabId,
 } from "./components/project-detail";
 import { API_URL } from "./config";
+import { formatRelativeTimestamp } from "./lib/formatters";
 import { useAccountSettings } from "./hooks/useAccountSettings";
 import { useAdminOverview } from "./hooks/useAdminOverview";
 import { useProjectActions } from "./hooks/useProjectActions";
@@ -47,12 +51,13 @@ import { isMockGithubUnlinkedProject } from "./workspace/previewData";
 import type {
   AuthStatus,
   AuthUser,
+  EventRecord,
   Project,
   SidebarItemId,
 } from "./workspace/types";
 
 function githubRepositoryConnectUrl() {
-  return `${API_URL}/api/auth/github/web/start?${new URLSearchParams({
+  return `${API_URL}/api/auth/github/web/repository/start?${new URLSearchParams({
     return_to: currentWorkspaceReturnUrl(),
   })}`;
 }
@@ -61,6 +66,12 @@ export function AuthenticatedApp() {
   const initialNavigationState = useInitialWorkspaceNavigationState();
   const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [authorizationNotice, setAuthorizationNotice] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).get("auth_error") ===
+    "github_authorization_cancelled"
+      ? "GitHub authorization was cancelled. No permissions were changed."
+      : null,
+  );
   const handleUnauthorized = () => {
     setAuthStatus("unauthenticated");
     setCurrentUser(null);
@@ -174,11 +185,15 @@ export function AuthenticatedApp() {
     selectedProjectId,
   });
   const activeTitle =
-    activeItem === "projects"
+    activeItem === "home"
+      ? "Home"
+      : activeItem === "projects"
       ? "Projects"
+      : activeItem === "reviews"
+        ? "Reviews"
       : activeItem === "admin"
           ? "Admin"
-        : activeItem === "settings"
+        : activeItem === "settings" || activeItem === "profile"
           ? "Settings"
           : "Profile";
   const projectRouteKey = (project: Project | null | undefined) =>
@@ -344,6 +359,31 @@ export function AuthenticatedApp() {
       selectedProjectId: projectId,
     });
   };
+  const openProjectMemory = (projectId: string) => {
+    closeRepositoryConnector();
+    navigateWorkspace({
+      activeDetailTab: "memory",
+      activeItem: "projects",
+      repositoryFileContentPath: null,
+      selectedProjectId: projectId,
+    });
+  };
+  const openFirstCapturedEvent = async (event: EventRecord) => {
+    await Promise.all([loadEvents(), accountSettings.loadAccountOverview()]);
+    closeRepositoryConnector();
+    navigateWorkspace({
+      activeDetailTab: "ai-activity",
+      activeItem: "projects",
+      activityNavigation: {
+        selectedPromptId: null,
+        selectedSessionId: event.session_id,
+        selectedSessionPromptId: null,
+        view: "sessions",
+      },
+      repositoryFileContentPath: null,
+      selectedProjectId: event.project_id,
+    });
+  };
   const switchProjectDetail = (projectId: string) => {
     if (projectId === selectedProjectId) {
       return;
@@ -461,6 +501,7 @@ export function AuthenticatedApp() {
         };
   const repositoryConnector = isRepositoryConnectorOpen ? (
     <RepositoryConnector
+      existingProjectIds={projectCatalog.map((project) => project.id)}
       onManualConnect={
         repositoryConnectorProjectId &&
         !isMockGithubUnlinkedProject(repositoryConnectorProjectId)
@@ -481,6 +522,13 @@ export function AuthenticatedApp() {
             : undefined
       }
       onClose={closeRepositoryConnector}
+      onFirstEvent={(event) => {
+        void openFirstCapturedEvent(event);
+      }}
+      pollingEnabled
+      repositoryAccessAvailable={currentUser?.github_repository_access === true}
+      repositoryConnectUrl={githubRepositoryConnectUrl()}
+      targetProjectId={repositoryConnectorProjectId ?? undefined}
       targetProjectName={repositoryConnectorProject?.name}
     />
   ) : null;
@@ -504,22 +552,74 @@ export function AuthenticatedApp() {
     (selectedProject !== null || projectDetail !== null || Boolean(pendingProjectRouteKey));
   const projectDetailRenderData =
     selectedProjectDetailData ?? emptyProjectDetailData(selectedProject);
+  const pendingReviewCount = projectCatalog.reduce(
+    (total, project) => total + project.pendingMemoryCount,
+    0,
+  );
+  const activeCollectorTokens =
+    accountSettings.accountOverview?.collector_tokens.filter(
+      (token) => token.status === "active",
+    ) ?? [];
+  const latestCollectorToken = activeCollectorTokens
+    .filter((token) => token.last_used_at)
+    .sort(
+      (first, second) =>
+        Date.parse(second.last_used_at ?? "") - Date.parse(first.last_used_at ?? ""),
+    )[0];
+  const latestCollectorUsedAt = latestCollectorToken?.last_used_at ?? null;
+  const latestCollectorAge = latestCollectorUsedAt
+    ? Date.now() - Date.parse(latestCollectorUsedAt)
+    : null;
+  const collectorStatus = !accountSettings.accountOverview
+    ? { detail: "Checking status", tone: "muted" as const }
+    : activeCollectorTokens.length === 0
+      ? { detail: "Not set up", tone: "attention" as const }
+      : latestCollectorUsedAt === null
+        ? { detail: "Waiting for first sync", tone: "attention" as const }
+        : {
+            detail: `Synced ${
+              formatRelativeTimestamp(latestCollectorUsedAt) ?? "recently"
+            }`,
+            tone:
+              latestCollectorAge !== null && latestCollectorAge <= 24 * 60 * 60 * 1000
+                ? ("connected" as const)
+                : ("attention" as const),
+          };
 
   return (
     <div className="app-shell">
       <WorkspaceSidebar
         activeItem={activeItem}
         canUseAdmin={canUseAdmin}
+        collectorStatus={collectorStatus}
         currentUser={currentUser}
         onLogout={logout}
         onOpenProject={openProjectDetail}
         onSelectItem={selectSidebarItem}
+        pendingReviewCount={pendingReviewCount}
         savedProjectCount={bookmarkedProjects.length}
         savedProjects={sidebarBookmarkedProjects}
         selectedProjectId={selectedProjectId}
       />
 
       <main className="page">
+        {authorizationNotice ? (
+          <div className="workspace-notice" role="status">
+            <span>{authorizationNotice}</span>
+            <button
+              aria-label="Dismiss authorization notice"
+              onClick={() => {
+                setAuthorizationNotice(null);
+                const url = new URL(window.location.href);
+                url.searchParams.delete("auth_error");
+                window.history.replaceState(null, "", url);
+              }}
+              type="button"
+            >
+              <X aria-hidden="true" size={16} strokeWidth={1.5} />
+            </button>
+          </div>
+        ) : null}
         {isShowingProjectDetail ? (
           <>
             {repositoryConnector}
@@ -592,6 +692,26 @@ export function AuthenticatedApp() {
               }
             />
           </>
+        ) : activeItem === "home" ? (
+          <>
+            {repositoryConnector}
+            <HomePage
+              errorMessage={errorMessage}
+              isLoading={isEventsLoading}
+              onAddProject={() => openRepositoryConnector(null)}
+              onFirstEvent={(event) => {
+                void openFirstCapturedEvent(event);
+              }}
+              onboardingPollingEnabled={!isRepositoryConnectorOpen}
+              onOpenProject={openProjectDetail}
+              onOpenProjectMemory={openProjectMemory}
+              onOpenReviews={() => selectSidebarItem("reviews")}
+              onRetry={() => {
+                void loadEvents();
+              }}
+              projects={projectCatalog}
+            />
+          </>
         ) : activeItem === "projects" ? (
           <ProjectsPage
             activeTitle={activeTitle}
@@ -601,6 +721,10 @@ export function AuthenticatedApp() {
             onClearSearch={() => setProjectSearchQuery("")}
             onOpenProject={openProjectDetail}
             onOpenRepositoryConnector={() => openRepositoryConnector(null)}
+            onFirstEvent={(event) => {
+              void openFirstCapturedEvent(event);
+            }}
+            onboardingPollingEnabled={!isRepositoryConnectorOpen}
             onRetry={loadEvents}
             onSearchChange={setProjectSearchQuery}
             onSortModeChange={setProjectSortMode}
@@ -610,6 +734,11 @@ export function AuthenticatedApp() {
             projectSortMode={projectSortMode}
             repositoryConnector={repositoryConnector}
             visibleProjects={visibleProjects}
+          />
+        ) : activeItem === "reviews" ? (
+          <ReviewsPage
+            onOpenProjectMemory={openProjectMemory}
+            projects={projectCatalog}
           />
         ) : activeItem === "admin" && canUseAdmin ? (
           <>
@@ -635,7 +764,6 @@ export function AuthenticatedApp() {
         ) : (
           <AccountWorkspaceRoute
             account={accountSettings}
-            activeItem={activeItem}
             activeTitle={activeTitle}
             apiUrl={API_URL}
             canUseAdmin={canUseAdmin}
@@ -644,10 +772,6 @@ export function AuthenticatedApp() {
             githubConnectUrl={githubRepositoryConnectUrl()}
             isEventsLoading={isEventsLoading}
             latestActivityLabel={latestProfileActivityLabel}
-            onLogout={() => {
-              void logout();
-            }}
-            onOpenProfile={() => selectSidebarItem("profile")}
             onRefreshWorkspace={refreshWorkspaceAndAccount}
             projectCount={projectCatalog.length}
           />

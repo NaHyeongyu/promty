@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import {
-  Bot,
-  Clock,
+  ArrowRight,
+  CircleAlert,
   ExternalLink,
   Plus,
   RefreshCw,
@@ -9,8 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { formatCompactNumber } from "../../lib/formatters";
-import type { Project, ProjectSortMode } from "../../workspace/types";
-import { AiModelBadge } from "../project-detail";
+import type { EventRecord, Project, ProjectSortMode } from "../../workspace/types";
 import { GitHubIcon } from "./Branding";
 import {
   EmptyProjectsState,
@@ -24,6 +23,8 @@ export function ProjectsPage({
   errorMessage,
   isEventsLoading,
   onClearSearch,
+  onFirstEvent,
+  onboardingPollingEnabled,
   onOpenProject,
   onOpenRepositoryConnector,
   onRetry,
@@ -41,6 +42,8 @@ export function ProjectsPage({
   errorMessage: string | null;
   isEventsLoading: boolean;
   onClearSearch: () => void;
+  onFirstEvent: (event: EventRecord) => void;
+  onboardingPollingEnabled: boolean;
   onOpenProject: (projectId: string) => void;
   onOpenRepositoryConnector: () => void;
   onRetry: () => void;
@@ -66,7 +69,7 @@ export function ProjectsPage({
             type="button"
           >
             <Plus aria-hidden="true" size={16} strokeWidth={1.5} />
-            <span>New Project</span>
+            <span>Add project</span>
           </button>
         </div>
       </header>
@@ -96,7 +99,10 @@ export function ProjectsPage({
             </button>
           </EmptyState>
         ) : displayProjects.length === 0 ? (
-          <EmptyProjectsState />
+          <EmptyProjectsState
+            onFirstEvent={onFirstEvent}
+            pollingEnabled={onboardingPollingEnabled}
+          />
         ) : (
           <>
             <div className="project-controls">
@@ -154,16 +160,25 @@ export function ProjectsPage({
             ) : (
               <div
                 aria-busy={isEventsLoading || undefined}
-                className="projects-grid loading-cascade"
+                className="project-table loading-cascade"
                 data-loading={isEventsLoading ? "true" : undefined}
               >
-                {visibleProjects.map((project) => (
-                  <ProjectCard
-                    key={project.id}
-                    onOpen={onOpenProject}
-                    project={project}
-                  />
-                ))}
+                <div className="project-table-header" aria-hidden="true">
+                  <span>Project</span>
+                  <span>Last work</span>
+                  <span>Memory</span>
+                  <span>Activity</span>
+                  <span />
+                </div>
+                <div className="project-table-body">
+                  {visibleProjects.map((project) => (
+                    <ProjectRow
+                      key={project.id}
+                      onOpen={onOpenProject}
+                      project={project}
+                    />
+                  ))}
+                </div>
               </div>
             )}
           </>
@@ -173,98 +188,62 @@ export function ProjectsPage({
   );
 }
 
-function ProjectCard({
+function ProjectRow({
   onOpen,
   project,
 }: {
   onOpen: (projectId: string) => void;
   project: Project;
 }) {
-  const openProject = () => onOpen(project.id);
-
   return (
-    <article
-      aria-label={`Open ${project.name} details`}
-      className="project-card"
-      onClick={openProject}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          openProject();
-        }
-      }}
-      role="button"
-      tabIndex={0}
-    >
-      <div className="project-card-header">
-        <h3>{project.name}</h3>
-        {project.githubUrl ? (
-          <a
-            aria-label={`Open ${project.name} on GitHub`}
-            className="github-button"
-            href={project.githubUrl}
-            onClick={(event) => event.stopPropagation()}
-            onKeyDown={(event) => event.stopPropagation()}
-            rel="noreferrer"
-            target="_blank"
-          >
-            <GitHubIcon />
-            <span>GitHub</span>
-            <ExternalLink aria-hidden="true" size={14} strokeWidth={1.5} />
-          </a>
-        ) : (
-          <span className="github-button is-unlinked">
-            <GitHubIcon />
-            <span>Not linked</span>
-          </span>
-        )}
-      </div>
-
-      <dl className="project-meta">
-        <div>
-          <dt>
-            <Clock aria-hidden="true" size={15} strokeWidth={1.5} />
-            Last activity
-          </dt>
-          <dd>
-            <strong>{project.latestActivityLabel}</strong>
-            <span>{project.latestUpdatedAt}</span>
-          </dd>
-        </div>
-      </dl>
-
-      <dl className="project-stats" aria-label="Project activity">
-        <div>
-          <dt>Sessions</dt>
-          <dd>{project.sessions}</dd>
-        </div>
-        <div>
-          <dt>Prompts</dt>
-          <dd>{formatCompactNumber(project.prompts)}</dd>
-        </div>
-        <div>
-          <dt>Tracked files</dt>
-          <dd>{formatCompactNumber(project.trackedFiles)}</dd>
-        </div>
-      </dl>
-
-      <div className="model-group" aria-label="AI models used">
-        <span className="model-group-label">
-          <Bot aria-hidden="true" size={15} strokeWidth={1.5} />
-          AI model
+    <article className="project-row">
+      <button
+        aria-label={`Open ${project.name}`}
+        className="project-row-main"
+        onClick={() => onOpen(project.id)}
+        type="button"
+      >
+        <span className="project-row-name">
+          <strong>{project.name}</strong>
+          <small>{project.models.join(", ") || "Model not captured"}</small>
         </span>
-        <div className="model-list">
-          {project.models.length > 0 ? (
-            project.models.map((model) => (
-              <AiModelBadge className="is-compact" key={model} model={model} />
-            ))
-          ) : (
-            <span className="ai-model-badge is-compact is-muted">
-              Model unknown
-            </span>
-          )}
-        </div>
-      </div>
+        <span className="project-row-cell">
+          <strong>{project.latestActivityLabel}</strong>
+          <small>{project.sessions} sessions</small>
+        </span>
+        <span className="project-row-cell" data-attention={project.pendingMemoryCount > 0}>
+          <strong>
+            {project.pendingMemoryCount > 0 ? (
+              <CircleAlert aria-hidden="true" size={14} strokeWidth={1.5} />
+            ) : null}
+            {project.pendingMemoryCount > 0
+              ? `${project.pendingMemoryCount} to review`
+              : `${project.memoryCount} saved`}
+          </strong>
+          <small>
+            {project.latestMemoryAt ? "Memory up to date" : "No memory yet"}
+          </small>
+        </span>
+        <span className="project-row-cell">
+          <strong>{formatCompactNumber(project.prompts)} prompts</strong>
+          <small>{formatCompactNumber(project.trackedFiles)} files</small>
+        </span>
+        <ArrowRight aria-hidden="true" size={16} strokeWidth={1.5} />
+      </button>
+
+      {project.githubUrl ? (
+        <a
+          aria-label={`Open ${project.name} on GitHub`}
+          className="project-row-repository"
+          href={project.githubUrl}
+          rel="noreferrer"
+          target="_blank"
+          title="Open GitHub repository"
+        >
+          <GitHubIcon />
+          <ExternalLink aria-hidden="true" size={12} strokeWidth={1.5} />
+        </a>
+      ) : null}
     </article>
   );
 }

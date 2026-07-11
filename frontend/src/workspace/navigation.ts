@@ -21,10 +21,10 @@ export const DEFAULT_URL_NAVIGATION_STATE: UrlNavigationState = {
     selectedPromptId: null,
     selectedSessionId: null,
     selectedSessionPromptId: null,
-    view: "prompts",
+    view: "sessions",
   },
   activeDetailTab: "overview",
-  activeItem: "projects",
+  activeItem: "home",
   repositoryFileContentPath: null,
   selectedProjectId: null,
   selectedProjectRouteKey: null,
@@ -39,7 +39,9 @@ const PROJECT_DETAIL_TAB_IDS = new Set<ProjectDetailTabId>([
 ]);
 const SIDEBAR_ITEM_IDS = new Set<SidebarItemId>([
   "admin",
+  "home",
   "projects",
+  "reviews",
   "settings",
   "profile",
 ]);
@@ -161,7 +163,7 @@ function sanitizeRepositoryFilePath(value: string | null | undefined) {
 function parseSidebarItemId(value: string | null): SidebarItemId {
   return value && SIDEBAR_ITEM_IDS.has(value as SidebarItemId)
     ? (value as SidebarItemId)
-    : "projects";
+    : "home";
 }
 
 function parseProjectDetailTabId(value: string | null): ProjectDetailTabId {
@@ -173,7 +175,7 @@ function parseProjectDetailTabId(value: string | null): ProjectDetailTabId {
 function parseActivityViewId(value: string | null): ActivityViewId {
   return value && ACTIVITY_VIEW_IDS.has(value as ActivityViewId)
     ? (value as ActivityViewId)
-    : "prompts";
+    : "sessions";
 }
 
 export function normalizeUrlNavigationState(
@@ -247,7 +249,7 @@ export function readUrlNavigationState(): UrlNavigationState {
       view: parseActivityViewId(params.get("activity")),
     },
     activeDetailTab: parseProjectDetailTabId(params.get("tab")),
-    activeItem: parseSidebarItemId(params.get("view")),
+    activeItem: projectRouteKey ? "projects" : parseSidebarItemId(params.get("view")),
     repositoryFileContentPath: params.get("file"),
     selectedProjectId: projectRouteKey,
     selectedProjectRouteKey: projectRouteKey,
@@ -266,7 +268,7 @@ export function buildUrlNavigationSearch(state: UrlNavigationState) {
     params.set("preview", previewMode);
   }
 
-  if (state.activeItem !== "projects") {
+  if (state.activeItem !== "projects" && state.activeItem !== "home") {
     params.set("view", state.activeItem);
   } else if (state.selectedProjectRouteKey ?? state.selectedProjectId) {
     params.set("project", state.selectedProjectRouteKey ?? state.selectedProjectId ?? "");
@@ -310,6 +312,8 @@ export function buildUrlNavigationSearch(state: UrlNavigationState) {
         );
       }
     }
+  } else if (state.activeItem === "projects") {
+    params.set("view", "projects");
   }
 
   const search = params.toString();

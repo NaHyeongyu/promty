@@ -141,7 +141,7 @@ def require_ingest_token(
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid PromptHub ingest token",
+        detail="Invalid Promty ingest token",
     )
 
 
@@ -181,7 +181,7 @@ def require_web_user(
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="PromptHub login required",
+            detail="Promty login required",
         )
     return user
 
@@ -192,6 +192,6 @@ def require_admin_user(
     if not is_admin_user(user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="PromptHub admin access required",
+            detail="Promty admin access required",
         )
     return user

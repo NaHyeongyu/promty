@@ -53,9 +53,9 @@ type ProjectDetailPageProps = {
 
 
 const projectTabs: ProjectDetailTab[] = [
-  { id: "overview", label: "Overview" },
+  { id: "overview", label: "Home" },
   { id: "memory", label: "Memory" },
-  { id: "ai-activity", label: "Activity" },
+  { id: "ai-activity", label: "Sessions" },
   { id: "files", label: "Files" },
 ];
 
@@ -149,6 +149,8 @@ function ProjectPanel({
     return (
       <OverviewPanel
         data={data}
+        onOpenActivity={() => onTabChange("ai-activity")}
+        onOpenMemory={() => onTabChange("memory")}
         onSaveProjectMetadata={onSaveProjectMetadata}
         onSaveDescription={onSaveDescription}
       />
@@ -161,6 +163,18 @@ function ProjectPanel({
         data={data}
         onLoadMemoryArtifacts={onLoadMemoryArtifacts}
         onCheckpointMemory={onCheckpointMemory}
+        onOpenSession={(sessionId) => {
+          if (onActivityNavigationChange) {
+            onActivityNavigationChange({
+              selectedPromptId: null,
+              selectedSessionId: sessionId,
+              selectedSessionPromptId: null,
+              view: "sessions",
+            });
+            return;
+          }
+          onTabChange("ai-activity");
+        }}
       />
     );
   }

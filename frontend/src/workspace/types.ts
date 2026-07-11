@@ -4,7 +4,7 @@ import type {
   PublishedFlowDetail,
 } from "../components/project-detail";
 
-export type SidebarItemId = "projects" | "admin" | "settings" | "profile";
+export type SidebarItemId = "home" | "projects" | "reviews" | "admin" | "settings" | "profile";
 
 export type Project = {
   id: string;
@@ -24,6 +24,9 @@ export type Project = {
   models: string[];
   githubUrl?: string;
   isBookmarked: boolean;
+  latestMemoryAt?: string;
+  memoryCount: number;
+  pendingMemoryCount: number;
 };
 
 export type AuthUser = {
@@ -92,6 +95,9 @@ export type ProjectSummary = {
   prompts: number;
   tracked_files: number;
   latest_event_at: string | null;
+  latest_memory_at: string | null;
+  memory_count: number;
+  pending_memory_count: number;
   updated_at: string;
   visibility: "private" | "public";
 };

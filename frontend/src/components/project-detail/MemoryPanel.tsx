@@ -5,7 +5,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { ChevronRight, Sparkles, X } from "lucide-react";
+import { ArrowRight, ChevronRight, Sparkles, X } from "lucide-react";
 import type {
   ProjectDetailData,
   ProjectMemoryArtifact,
@@ -182,9 +182,11 @@ function MemoryArtifactCard({
 function MemoryArtifactDetailDrawer({
   artifact,
   onClose,
+  onOpenSession,
 }: {
   artifact: ProjectMemoryArtifact;
   onClose: () => void;
+  onOpenSession?: (sessionId: string) => void;
 }) {
   const drawerRef = useRef<HTMLElement | null>(null);
   const sections = (artifact.sections ?? []).filter(
@@ -273,7 +275,7 @@ function MemoryArtifactDetailDrawer({
       >
         <div className="bh-memory-detail-header">
           <div>
-            <span>{dateRange ?? "Generated summary"}</span>
+            <span>{dateRange ?? "Project memory"}</span>
             <h2 id="memory-detail-title">{artifact.title}</h2>
           </div>
           <button
@@ -287,6 +289,17 @@ function MemoryArtifactDetailDrawer({
         </div>
 
         <div className="bh-memory-detail-body">
+          {artifact.sessionId && onOpenSession ? (
+            <button
+              className="bh-memory-source-action"
+              onClick={() => onOpenSession(artifact.sessionId as string)}
+              type="button"
+            >
+              <span>Open source session</span>
+              <ArrowRight aria-hidden="true" size={15} strokeWidth={1.5} />
+            </button>
+          ) : null}
+
           {metadataRows.length > 0 ? (
             <dl className="bh-memory-detail-meta">
               {metadataRows.map((row) => (
@@ -352,10 +365,12 @@ export function MemoryPanel({
   data,
   onCheckpointMemory,
   onLoadMemoryArtifacts,
+  onOpenSession,
 }: {
   data: ProjectDetailData;
   onCheckpointMemory?: (sessionIds: string[]) => Promise<MemoryCheckpointResult>;
   onLoadMemoryArtifacts?: (limit: number) => Promise<ProjectMemoryArtifact[]>;
+  onOpenSession?: (sessionId: string) => void;
 }) {
   const [loadedArtifacts, setLoadedArtifacts] = useState<ProjectMemoryArtifact[] | null>(null);
   const displayedArtifacts = loadedArtifacts ?? data.memory.recentArtifacts;
@@ -377,17 +392,17 @@ export function MemoryPanel({
   const resultDateRange = combinedMemoryDateRange(generatedArtifacts);
   const hasPendingDocumentation = data.memory.pendingRanges.length > 0;
   const pendingBatchCount = data.memory.pendingRanges.length;
-  const pendingBatchLabel = `${pendingBatchCount} ${
-    pendingBatchCount === 1 ? "batch" : "batches"
+  const pendingBatchLabel = `${pendingBatchCount} captured ${
+    pendingBatchCount === 1 ? "range" : "ranges"
   }`;
   const checkpointableBatchLabel = `${checkpointableRanges.length} ${
     checkpointableRanges.length === 1 ? "session" : "sessions"
   }`;
   const generatedSummaryCountLabel =
     totalGeneratedArtifactCount > generatedArtifacts.length
-      ? `${generatedArtifacts.length} of ${totalGeneratedArtifactCount} summaries`
+      ? `${generatedArtifacts.length} of ${totalGeneratedArtifactCount} memory items`
       : `${generatedArtifacts.length} ${
-          generatedArtifacts.length === 1 ? "summary" : "summaries"
+          generatedArtifacts.length === 1 ? "memory item" : "memory items"
         }`;
   const nextArtifactLoadLimit = Math.min(
     Math.max(generatedArtifacts.length + 10, 20),
@@ -451,7 +466,7 @@ export function MemoryPanel({
       setCheckpointStatus(result.message);
     } catch (error) {
       setCheckpointError(
-        error instanceof Error ? error.message : "Pending Work organization failed.",
+        error instanceof Error ? error.message : "Memory creation failed.",
       );
     } finally {
       setIsCheckpointing(false);
@@ -481,13 +496,13 @@ export function MemoryPanel({
       <header className="bh-memory-toolbar">
         <div>
           <h2>Project Memory</h2>
-          <p>Review generated summaries and organize pending work.</p>
+          <p>Verify captured work and keep long-term project context current.</p>
         </div>
       </header>
 
       <div className="bh-memory-summary-strip" aria-label="Memory status summary">
-        <span>Pending: {hasPendingDocumentation ? pendingBatchLabel : "None"}</span>
-        <span>Generated: {generatedSummaryCountLabel}</span>
+        <span>Needs review: {hasPendingDocumentation ? pendingBatchLabel : "None"}</span>
+        <span>Memory: {generatedSummaryCountLabel}</span>
       </div>
 
       {checkpointStatus ? (
@@ -502,8 +517,8 @@ export function MemoryPanel({
         >
           <div className="bh-memory-section-header">
             <div>
-              <span className="bh-memory-step-kicker">Pending</span>
-              <h3 id="memory-request-title">Update</h3>
+              <span className="bh-memory-step-kicker">Captured work</span>
+              <h3 id="memory-request-title">Needs review</h3>
               <p>{pendingDateRange ?? "No captured range waiting."}</p>
             </div>
             <span>{hasPendingDocumentation ? checkpointableBatchLabel : "Clear"}</span>
@@ -516,7 +531,7 @@ export function MemoryPanel({
               data-generating={isCheckpointing ? "true" : "false"}
             >
               <div className="bh-memory-document-row-main">
-                <h3>Pending work</h3>
+                <h3>Work ready for memory</h3>
                 <p>
                   {pendingDateRange ?? "Captured work is ready to compile."}
                   {checkpointableRanges.length > 0 ? ` · ${checkpointableBatchLabel}` : ""}
@@ -536,7 +551,7 @@ export function MemoryPanel({
                     ? "Generating"
                     : checkpointError
                       ? "Retry"
-                      : "Generate"}
+                      : "Create memory"}
                 </span>
               </button>
               {isCheckpointing ? (
@@ -547,8 +562,8 @@ export function MemoryPanel({
                 >
                   <div className="bh-memory-generation-progress" aria-hidden="true" />
                   <div className="bh-memory-generation-status-copy">
-                    <strong>Generating summary</strong>
-                    <span>Generated summaries will refresh when generation finishes.</span>
+                    <strong>Creating project memory</strong>
+                    <span>Memory will refresh when the source work has been processed.</span>
                   </div>
                 </div>
               ) : checkpointError ? (
@@ -562,8 +577,8 @@ export function MemoryPanel({
             </article>
           ) : (
             <div className="bh-memory-document-idle">
-              <strong>No pending update</strong>
-              <span>No captured work is waiting to be generated.</span>
+              <strong>No work waiting for review</strong>
+              <span>New captured sessions will appear here when memory can be created.</span>
             </div>
           )}
         </section>
@@ -574,9 +589,9 @@ export function MemoryPanel({
         >
           <div className="bh-memory-section-header">
             <div>
-              <span className="bh-memory-step-kicker">Generated</span>
-              <h3 id="memory-history-title">Generated Summaries</h3>
-              <p>{resultDateRange ?? "No generated summaries yet."}</p>
+              <span className="bh-memory-step-kicker">Long-term context</span>
+              <h3 id="memory-history-title">Memory history</h3>
+              <p>{resultDateRange ?? "No memory yet."}</p>
             </div>
             <span>{generatedArtifacts.length > 0 ? generatedSummaryCountLabel : "Empty"}</span>
           </div>
@@ -598,7 +613,7 @@ export function MemoryPanel({
                   onClick={() => void loadMoreArtifacts()}
                   type="button"
                 >
-                  {isArtifactHistoryLoading ? "Loading" : "Load more summaries"}
+                  {isArtifactHistoryLoading ? "Loading" : "Load more memory"}
                 </button>
               ) : null}
               {artifactHistoryError ? (
@@ -612,8 +627,8 @@ export function MemoryPanel({
             </div>
           ) : (
             <div className="bh-memory-empty">
-              <strong>No generated summaries yet</strong>
-              <span>Generated summaries will appear here.</span>
+              <strong>No memory yet</strong>
+              <span>Created memory will appear here with its source context.</span>
             </div>
           )}
         </section>
@@ -622,6 +637,10 @@ export function MemoryPanel({
         <MemoryArtifactDetailDrawer
           artifact={selectedArtifact}
           onClose={() => setSelectedArtifactId(null)}
+          onOpenSession={(sessionId) => {
+            setSelectedArtifactId(null);
+            onOpenSession?.(sessionId);
+          }}
         />
       ) : null}
     </section>

@@ -6,7 +6,8 @@ import {
 } from "react";
 import type { LucideProps } from "lucide-react";
 import { BRAND_NAME } from "../../config";
-import { setupCommandText, SetupCommandBlock } from "./SetupCommandBlock";
+import type { EventRecord } from "../../workspace/types";
+import { FirstRunOnboarding } from "./CollectorOnboarding";
 
 export function LoadingScreen() {
   return (
@@ -44,26 +45,28 @@ function LoadingSidebar() {
         </div>
       </div>
 
-      <div className="sidebar-divider" />
+      <div className="sidebar-content">
+        <div className="sidebar-divider" />
 
-      <nav className="sidebar-nav" aria-label="Loading navigation">
-        <div className="sidebar-loading-item">
-          <span />
-          <span />
-        </div>
-      </nav>
+        <nav className="sidebar-nav" aria-label="Loading navigation">
+          <div className="sidebar-loading-item">
+            <span />
+            <span />
+          </div>
+        </nav>
 
-      <div className="sidebar-spacer" />
-      <div className="sidebar-divider" />
+        <div className="sidebar-spacer" />
+        <div className="sidebar-divider" />
 
-      <div className="sidebar-footer">
-        <div className="sidebar-loading-item is-profile">
-          <span />
-          <span />
-        </div>
-        <div className="sidebar-loading-item">
-          <span />
-          <span />
+        <div className="sidebar-footer">
+          <div className="sidebar-loading-item is-profile">
+            <span />
+            <span />
+          </div>
+          <div className="sidebar-loading-item">
+            <span />
+            <span />
+          </div>
         </div>
       </div>
     </aside>
@@ -98,14 +101,34 @@ export function EmptyState({
   );
 }
 
-export function EmptyProjectsState() {
+export function EmptyProjectsState({
+  onFirstEvent,
+  pollingEnabled,
+}: {
+  onFirstEvent?: (event: EventRecord) => void;
+  pollingEnabled?: boolean;
+} = {}) {
+  const isPreview =
+    new URLSearchParams(window.location.search).get("preview") === "empty-projects";
+  const openFirstActivity = onFirstEvent ?? ((event: EventRecord) => {
+    const search = new URLSearchParams({
+      project: event.project_id,
+      tab: "ai-activity",
+    });
+    window.setTimeout(() => {
+      window.location.assign(`${window.location.pathname}?${search.toString()}`);
+    }, 650);
+  });
+
   return (
-    <section className="empty-projects-state" aria-labelledby="empty-projects-title">
-      <div className="empty-projects-copy">
-        <h2 id="empty-projects-title">No projects yet</h2>
-        <p>Run this from a project directory to link the repository and install local AI tool hooks.</p>
-      </div>
-      <SetupCommandBlock command={setupCommandText()} />
+    <section
+      className="empty-projects-state onboarding-shell"
+      aria-labelledby="empty-projects-title"
+    >
+      <FirstRunOnboarding
+        onFirstEvent={openFirstActivity}
+        pollingEnabled={pollingEnabled ?? !isPreview}
+      />
     </section>
   );
 }
@@ -147,38 +170,31 @@ function ProjectGridSkeleton() {
     <div
       aria-label="Loading projects"
       aria-live="polite"
-      className="projects-grid project-grid-skeleton"
+      className="project-table project-table-skeleton"
       role="status"
     >
-      {Array.from({ length: 12 }, (_, index) => (
-        <article
-          aria-hidden="true"
-          className="project-card project-card-skeleton"
-          key={index}
-        >
-          <div className="project-card-header">
-            <span className="skeleton-line skeleton-line-title" />
-            <span className="skeleton-pill" />
-          </div>
-
-          <div className="skeleton-stack">
-            <span className="skeleton-line skeleton-line-sm" />
-            <span className="skeleton-line skeleton-line-md" />
-          </div>
-
-          <div className="project-stats skeleton-stats">
-            <span />
-            <span />
-            <span />
-          </div>
-
-          <div className="skeleton-badge-row">
-            <span />
-            <span />
-            <span />
-          </div>
-        </article>
-      ))}
+      <div className="project-table-header" aria-hidden="true">
+        <span>Project</span>
+        <span>Last work</span>
+        <span>Memory</span>
+        <span>Activity</span>
+        <span />
+      </div>
+      <div className="project-table-body">
+        {Array.from({ length: 8 }, (_, index) => (
+          <article aria-hidden="true" className="project-row" key={index}>
+            <div className="project-row-main">
+              {Array.from({ length: 4 }, (_, cellIndex) => (
+                <span className="project-row-cell" key={cellIndex}>
+                  <span className="skeleton-line skeleton-line-md" />
+                  <span className="skeleton-line skeleton-line-sm" />
+                </span>
+              ))}
+              <span className="skeleton-icon" />
+            </div>
+          </article>
+        ))}
+      </div>
     </div>
   );
 }

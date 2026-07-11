@@ -117,8 +117,11 @@ class ProjectSummaryResponse(BaseModel):
     id: str
     is_bookmarked: bool
     latest_event_at: str | None
+    latest_memory_at: str | None
+    memory_count: int
     name: str
     prompts: int
+    pending_memory_count: int
     sessions: int
     slug: str
     tags: list[str]

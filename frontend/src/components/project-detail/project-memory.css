@@ -731,6 +731,29 @@
   scrollbar-gutter: stable;
 }
 
+.bh-memory-source-action {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 36px;
+  align-items: center;
+  gap: var(--bh-space-2);
+  border: 0;
+  padding: 0;
+  color: var(--bh-color-primary-hover);
+  background: transparent;
+  font-weight: var(--bh-font-weight-label);
+  cursor: pointer;
+}
+
+.bh-memory-source-action:hover {
+  color: var(--bh-color-text-primary);
+}
+
+.bh-memory-source-action:focus-visible {
+  outline: 2px solid var(--bh-color-primary);
+  outline-offset: 2px;
+}
+
 .bh-memory-detail-meta {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

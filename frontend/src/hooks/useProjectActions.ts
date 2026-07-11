@@ -3,6 +3,7 @@ import { UnauthorizedError } from "../api/client";
 import {
   checkpointProjectSession,
   createProject,
+  fetchProjectSummaries,
   updateProjectBookmark,
   updateProjectDescription,
   updateProjectMetadata,
@@ -112,7 +113,16 @@ export function useProjectActions({
           projectMemoryGenerated = true;
         }
       }
-      await loadProjectDetail(selectedProjectId, selectedProject);
+      const [, projectSummaries] = await Promise.all([
+        loadProjectDetail(selectedProjectId, selectedProject),
+        fetchProjectSummaries(),
+      ]);
+      const updatedProject = projectSummaries.find(
+        (project) => project.id === selectedProjectId,
+      );
+      if (updatedProject) {
+        mergeProjectState(updatedProject);
+      }
 
       if (!projectMemoryGenerated) {
         return {

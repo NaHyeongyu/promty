@@ -449,6 +449,12 @@
   background: var(--bh-color-danger-subtle);
 }
 
+.settings-value-chip[data-tone="warning"] {
+  border-color: var(--bh-color-warning);
+  color: var(--bh-color-warning);
+  background: var(--bh-color-warning-subtle);
+}
+
 .settings-control {
   width: min(260px, 100%);
   min-height: 34px;

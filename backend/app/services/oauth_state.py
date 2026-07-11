@@ -24,7 +24,7 @@ def _state_secret() -> bytes:
     if not secret:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="PromptHub OAuth state secret is not configured",
+            detail="Promty OAuth state secret is not configured",
         )
     return secret.encode("utf-8")
 

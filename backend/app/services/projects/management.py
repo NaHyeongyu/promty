@@ -4,21 +4,24 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import case, desc, func, nullslast, select
+from sqlalchemy import and_, case, desc, func, nullslast, select
 from sqlalchemy.orm import Session
 
+from app.models.artifacts import Artifact
 from app.models.events import Event
 from app.models.project_files import ProjectFile
 from app.models.projects import Project
 from app.models.sessions import Session as PromptSession
 from app.models.users import User
 from app.services.github_repositories import repository_metadata_from_url
-from app.services.projects.views import (
-    iso,
-    model_name,
-    normalize_github_url,
-    project_for_user,
+from app.services.memory.constants import (
+    MEMORY_ARTIFACT_TYPE,
+    MEMORY_DRAFT_ARTIFACT_TYPE,
+    PROJECT_MEMORY_ARTIFACT_TYPE,
+    PENDING_DRAFT_STAGE,
+    REVIEW_STATE_DRAFT,
 )
+from app.services.projects.views import model_name, normalize_github_url, project_for_user
 
 
 def slugify_project_name(name: str) -> str:
@@ -34,6 +37,9 @@ def project_summary(
     connected_models: list[str] | tuple[str, ...] = (),
     event_count: int = 0,
     latest_event_at: Any = None,
+    latest_memory_at: Any = None,
+    memory_count: int = 0,
+    pending_memory_count: int = 0,
     prompt_count: int = 0,
     session_count: int = 0,
     tracked_files: int = 0,
@@ -55,6 +61,9 @@ def project_summary(
         "prompts": int(prompt_count or 0),
         "tracked_files": int(tracked_files or 0),
         "latest_event_at": latest_event_at.isoformat() if latest_event_at else None,
+        "latest_memory_at": latest_memory_at.isoformat() if latest_memory_at else None,
+        "memory_count": int(memory_count or 0),
+        "pending_memory_count": int(pending_memory_count or 0),
         "updated_at": project.updated_at.isoformat(),
     }
 
@@ -74,6 +83,38 @@ def project_summary_with_counts(db: Session, project: Project) -> dict[str, Any]
     )
     latest_event_at = db.scalar(
         select(func.max(Event.created_at)).where(Event.project_id == project.id)
+    )
+    memory_count = (
+        db.scalar(
+            select(func.count())
+            .select_from(Artifact)
+            .where(
+                Artifact.project_id == project.id,
+                Artifact.type.in_(
+                    (MEMORY_ARTIFACT_TYPE, PROJECT_MEMORY_ARTIFACT_TYPE)
+                ),
+            )
+        )
+        or 0
+    )
+    pending_memory_count = (
+        db.scalar(
+            select(func.count())
+            .select_from(Artifact)
+            .where(
+                Artifact.project_id == project.id,
+                Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE,
+                Artifact.metadata_["artifact_stage"].astext == PENDING_DRAFT_STAGE,
+                Artifact.metadata_["review_state"].astext == REVIEW_STATE_DRAFT,
+            )
+        )
+        or 0
+    )
+    latest_memory_at = db.scalar(
+        select(func.max(Artifact.updated_at)).where(
+            Artifact.project_id == project.id,
+            Artifact.type.in_((MEMORY_ARTIFACT_TYPE, PROJECT_MEMORY_ARTIFACT_TYPE)),
+        )
     )
     prompt_count = (
         db.scalar(
@@ -105,6 +146,9 @@ def project_summary_with_counts(db: Session, project: Project) -> dict[str, Any]
         ],
         event_count=event_count,
         latest_event_at=latest_event_at,
+        latest_memory_at=latest_memory_at,
+        memory_count=memory_count,
+        pending_memory_count=pending_memory_count,
         prompt_count=prompt_count,
         session_count=session_count,
         tracked_files=tracked_files,
@@ -147,6 +191,48 @@ def list_project_summaries(db: Session, *, current_user: User) -> list[dict[str,
         .group_by(ProjectFile.project_id)
         .subquery()
     )
+    artifact_stats = (
+        select(
+            Artifact.project_id.label("project_id"),
+            func.count(
+                case(
+                    (
+                        Artifact.type.in_(
+                            (MEMORY_ARTIFACT_TYPE, PROJECT_MEMORY_ARTIFACT_TYPE)
+                        ),
+                        1,
+                    )
+                )
+            ).label("memory_count"),
+            func.count(
+                case(
+                    (
+                        and_(
+                            Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE,
+                            Artifact.metadata_["artifact_stage"].astext
+                            == PENDING_DRAFT_STAGE,
+                            Artifact.metadata_["review_state"].astext
+                            == REVIEW_STATE_DRAFT,
+                        ),
+                        1,
+                    )
+                )
+            ).label("pending_memory_count"),
+            func.max(
+                case(
+                    (
+                        Artifact.type.in_(
+                            (MEMORY_ARTIFACT_TYPE, PROJECT_MEMORY_ARTIFACT_TYPE)
+                        ),
+                        Artifact.updated_at,
+                    )
+                )
+            ).label("latest_memory_at"),
+        )
+        .where(Artifact.project_id.in_(owned_project_ids))
+        .group_by(Artifact.project_id)
+        .subquery()
+    )
     rows = db.execute(
         select(
             Project,
@@ -155,10 +241,14 @@ def list_project_summaries(db: Session, *, current_user: User) -> list[dict[str,
             event_stats.c.latest_event_at,
             event_stats.c.prompt_count,
             tracked_file_stats.c.tracked_files,
+            artifact_stats.c.memory_count,
+            artifact_stats.c.pending_memory_count,
+            artifact_stats.c.latest_memory_at,
         )
         .outerjoin(session_stats, session_stats.c.project_id == Project.id)
         .outerjoin(event_stats, event_stats.c.project_id == Project.id)
         .outerjoin(tracked_file_stats, tracked_file_stats.c.project_id == Project.id)
+        .outerjoin(artifact_stats, artifact_stats.c.project_id == Project.id)
         .where(Project.owner_id == current_user.id)
         .order_by(nullslast(desc(event_stats.c.latest_event_at)), desc(Project.updated_at))
     ).all()
@@ -187,6 +277,9 @@ def list_project_summaries(db: Session, *, current_user: User) -> list[dict[str,
             prompt_count=prompt_count,
             session_count=session_count,
             tracked_files=tracked_files,
+            memory_count=memory_count,
+            pending_memory_count=pending_memory_count,
+            latest_memory_at=latest_memory_at,
         )
         for (
             project,
@@ -195,6 +288,9 @@ def list_project_summaries(db: Session, *, current_user: User) -> list[dict[str,
             latest_event_at,
             prompt_count,
             tracked_files,
+            memory_count,
+            pending_memory_count,
+            latest_memory_at,
         ) in rows
     ]
 
@@ -277,11 +373,7 @@ def update_project_description_summary(
     project = project_for_user(db, project_id, user)
     project.description = description
     db.flush()
-    return {
-        "description": project.description,
-        "id": str(project.id),
-        "updated_at": iso(project.updated_at),
-    }
+    return project_summary_with_counts(db, project)
 
 
 def update_project_metadata_summary(

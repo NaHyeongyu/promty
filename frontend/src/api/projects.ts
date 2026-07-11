@@ -29,6 +29,13 @@ export type ProjectCreatePayload = {
   name?: string | null;
 };
 
+export function fetchProjectSummaries(): Promise<ProjectSummary[]> {
+  return requestJson<ProjectSummary[]>("/api/projects", {}, {
+    errorMessage: "Projects request failed",
+    unauthorizedMessage: "Sign in again before loading projects.",
+  });
+}
+
 export function createProject(
   payload: ProjectCreatePayload,
 ): Promise<ProjectSummary> {

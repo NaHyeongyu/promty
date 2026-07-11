@@ -90,6 +90,8 @@ export function projectsFromEvents(
       githubUrl: string | null;
       isBookmarked: boolean;
       latestTimestamp: string;
+      latestMemoryAt?: string;
+      memoryCount: number;
       models: Set<string>;
       name: string;
       summaryEventCount?: number;
@@ -97,6 +99,7 @@ export function projectsFromEvents(
       summarySessionCount?: number;
       summaryTrackedFiles?: number;
       prompts: number;
+      pendingMemoryCount: number;
       sessions: Set<string>;
       slug?: string;
       tags: string[];
@@ -112,6 +115,8 @@ export function projectsFromEvents(
       githubUrl: normalizeGithubUrl(summary.github_url ?? summary.git_remote),
       isBookmarked: summary.is_bookmarked === true,
       latestTimestamp: summary.latest_event_at ?? summary.updated_at,
+      latestMemoryAt: summary.latest_memory_at ?? undefined,
+      memoryCount: summary.memory_count ?? 0,
       models: new Set<string>(summary.connected_models ?? []),
       name: summary.name,
       summaryEventCount: summary.events,
@@ -119,6 +124,7 @@ export function projectsFromEvents(
       summarySessionCount: summary.sessions,
       summaryTrackedFiles: summary.tracked_files,
       prompts: 0,
+      pendingMemoryCount: summary.pending_memory_count ?? 0,
       sessions: new Set<string>(),
       slug: summary.slug,
       tags: summary.tags ?? [],
@@ -137,9 +143,11 @@ export function projectsFromEvents(
         githubUrl: githubUrlFromEvent(event),
         isBookmarked: false,
         latestTimestamp: event.timestamp,
+        memoryCount: 0,
         models: new Set<string>(),
         name: projectNameFromEvent(event),
         prompts: 0,
+        pendingMemoryCount: 0,
         sessions: new Set<string>(),
         tags: [],
         visibility: "private",
@@ -184,6 +192,9 @@ export function projectsFromEvents(
     models: Array.from(value.models).sort(),
     githubUrl: value.githubUrl ?? undefined,
     isBookmarked: value.isBookmarked,
+    latestMemoryAt: value.latestMemoryAt,
+    memoryCount: value.memoryCount,
+    pendingMemoryCount: value.pendingMemoryCount,
     tags: value.tags,
     visibility: value.visibility,
   })).sort(

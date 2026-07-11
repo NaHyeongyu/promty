@@ -1,4 +1,20 @@
 @media (width <= 1100px) {
+  .bh-overview-stat-card:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .bh-project-home-focus {
+    grid-template-columns: 1fr;
+    gap: var(--bh-space-6);
+  }
+
+  .bh-project-home-memory {
+    border-top: 1px solid var(--bh-color-border);
+    border-left: 0;
+    padding-top: var(--bh-space-5);
+    padding-left: 0;
+  }
+
   .bh-detail-skeleton-hero,
   .bh-detail-skeleton-split {
     grid-template-columns: 1fr;
@@ -38,6 +54,20 @@
 }
 
 @media (width <= 760px) {
+  .bh-project-home-focus {
+    padding-top: 0;
+    padding-bottom: var(--bh-space-6);
+  }
+
+  .bh-overview-stat-card {
+    border-right: 0;
+    border-bottom: 1px solid var(--bh-color-border);
+  }
+
+  .bh-overview-stat-card:last-child {
+    border-bottom: 0;
+  }
+
   .bh-project-detail[data-active-tab="ai-activity"] {
     height: auto;
     grid-template-rows: none;

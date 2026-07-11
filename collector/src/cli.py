@@ -5,7 +5,6 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import os
 import secrets
-import shlex
 import subprocess
 import sys
 import time
@@ -41,23 +40,30 @@ from payloads import (
     WORKSPACE_KEYS,
     get_first_string,
 )
+from runtime_install import install_runtime, quote_command_path
 from sequence import SequenceStore
 from session_index import SessionIndex
 from uploader.client import PromptHubUploader
 from uploader.queue import JSONLQueue
 
+INSTALL_TOOL_ALIASES: dict[str, SupportedTool] = {
+    "claude": "claude-code",
+    "claude-code": "claude-code",
+    "codex": "codex-cli",
+    "codex-cli": "codex-cli",
+}
 CODEX_HOOKS: tuple[dict[str, Any], ...] = (
     {
         "event": "UserPromptSubmit",
         "subcommand": "capture",
         "timeout": 5,
-        "statusMessage": "Capturing PromptHub event",
+        "statusMessage": "Capturing Promty event",
     },
     {
         "event": "Stop",
         "subcommand": "capture-changes",
         "timeout": 10,
-        "statusMessage": "Capturing PromptHub AI activity",
+        "statusMessage": "Capturing Promty AI activity",
     },
 )
 CLAUDE_HOOKS: tuple[dict[str, Any], ...] = (
@@ -86,7 +92,7 @@ LOGIN_CALLBACK_HTML = """<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>PromptHub connected</title>
+    <title>Promty connected</title>
     <style>
       body {
         margin: 0;
@@ -117,7 +123,7 @@ LOGIN_CALLBACK_HTML = """<!doctype html>
   </head>
   <body>
     <main>
-      <h1>PromptHub connected</h1>
+      <h1>Promty connected</h1>
       <p>You can close this window and return to your terminal.</p>
     </main>
   </body>
@@ -153,7 +159,7 @@ def _has_project_context(payload: dict[str, Any]) -> bool:
 
 
 def _normalize_required_tool(args: argparse.Namespace) -> SupportedTool:
-    tool = args.tool or args.source
+    tool = args.source or args.tool
     if not tool:
         raise ValueError("Expected --tool")
     return normalize_tool(tool)
@@ -438,7 +444,7 @@ def _wait_for_login_callback(
             state=state,
         )
 
-        print(f"Open PromptHub login: {login_url}", flush=True)
+        print(f"Open Promty login: {login_url}", flush=True)
         if open_browser:
             webbrowser.open(login_url)
 
@@ -449,7 +455,7 @@ def _wait_for_login_callback(
                 raise RuntimeError(server.error_message)
 
         if server.result is None:
-            raise TimeoutError("Timed out waiting for PromptHub login callback")
+            raise TimeoutError("Timed out waiting for Promty login callback")
         return server.result
 
 
@@ -471,7 +477,7 @@ def login(args: argparse.Namespace) -> int:
             },
             args.config_path,
         )
-        print(f"PromptHub login saved for {api_url}")
+        print(f"Promty login saved for {api_url}")
         return 0
 
     callback = _wait_for_login_callback(
@@ -497,7 +503,7 @@ def login(args: argparse.Namespace) -> int:
         args.config_path,
     )
     suffix = f" as {username}" if username else ""
-    print(f"PromptHub login saved{suffix}")
+    print(f"Promty login saved{suffix}")
     return 0
 
 
@@ -516,23 +522,6 @@ def _git_root(path: str | Path | None = None) -> Path:
     return Path(result.stdout.strip()).resolve()
 
 
-def _default_hook_python_command() -> str:
-    configured = os.environ.get("PROMPTHUB_HOOK_PYTHON")
-    if configured:
-        return configured
-    return "py -3" if os.name == "nt" else "python3"
-
-
-def _default_hook_command_prefix(repo_root: Path, *, absolute: bool = False) -> str:
-    cli_path = Path(__file__).resolve()
-    if not absolute:
-        try:
-            cli_path = cli_path.relative_to(repo_root)
-        except ValueError:
-            cli_path = Path("collector/src/cli.py")
-    return f"{_default_hook_python_command()} {shlex.quote(cli_path.as_posix())}"
-
-
 def _read_hooks_config(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {"hooks": {}}
@@ -547,16 +536,18 @@ def _read_hooks_config(path: Path) -> dict[str, Any]:
     return payload
 
 
-def _is_prompthub_hook(hook: dict[str, Any], subcommand: str) -> bool:
+def _is_promty_hook(hook: dict[str, Any], subcommand: str) -> bool:
     command = str(hook.get("command", ""))
     status_message = str(hook.get("statusMessage", ""))
     return (
         hook.get("type") == "command"
         and subcommand in command
         and (
-            "prompthub" in command.lower()
+            "promty" in command.lower()
+            or "prompthub" in command.lower()
             or "collector/src/cli.py" in command
-            or "PromptHub" in status_message
+            or "promty" in status_message.lower()
+            or "prompthub" in status_message.lower()
         )
     )
 
@@ -582,7 +573,7 @@ def _upsert_command_hook(
         for existing in group_hooks:
             if not isinstance(existing, dict):
                 continue
-            if existing.get("command") == hook["command"] or _is_prompthub_hook(
+            if existing.get("command") == hook["command"] or _is_promty_hook(
                 existing,
                 subcommand,
             ):
@@ -630,7 +621,7 @@ def _install_codex_hooks(
     print(f"Codex hooks ready: {hooks_path}")
     for result in results:
         print(f"- {result}")
-    print("Open Codex /hooks and trust this repository's PromptHub hooks.")
+    print("Open Codex /hooks and trust this repository's Promty hooks.")
     return 0
 
 
@@ -663,17 +654,21 @@ def _install_claude_hooks(
     print(f"Claude hooks ready: {settings_path}")
     for result in results:
         print(f"- {result}")
-    print("Claude Code will run these PromptHub hooks from this repository.")
+    print("Claude Code will run these Promty hooks from this repository.")
     return 0
 
 
 def install_hooks(args: argparse.Namespace) -> int:
     normalized_tool = _normalize_required_tool(args)
+    if normalized_tool not in INSTALL_TOOL_ALIASES.values():
+        raise ValueError("Promty hook installation supports codex-cli and claude-code")
     repo_root = _git_root(args.repo_root)
-    command_prefix = args.hook_command or _default_hook_command_prefix(
-        repo_root,
-        absolute=normalized_tool == "claude-code",
-    )
+    if args.hook_command:
+        command_prefix = args.hook_command
+    else:
+        launcher_path = install_runtime()
+        command_prefix = quote_command_path(launcher_path)
+        print(f"Promty runtime ready: {launcher_path}")
     if normalized_tool == "codex-cli":
         return _install_codex_hooks(
             command_prefix=command_prefix,
@@ -686,7 +681,7 @@ def install_hooks(args: argparse.Namespace) -> int:
             normalized_tool=normalized_tool,
             repo_root=repo_root,
         )
-    raise ValueError("install-hooks currently supports codex-cli and claude-code")
+    raise AssertionError(f"Unexpected hook tool: {normalized_tool}")
 
 
 def _pid_is_running(pid: int) -> bool:
@@ -711,7 +706,7 @@ def start_uploader(args: argparse.Namespace) -> int:
     log_path = Path(args.log_path).expanduser() if args.log_path else DEFAULT_UPLOADER_LOG_PATH
     existing_pid = _read_pid(pid_path)
     if existing_pid is not None and _pid_is_running(existing_pid):
-        print(f"PromptHub uploader already running: pid {existing_pid}")
+        print(f"Promty uploader already running: pid {existing_pid}")
         return 0
 
     env = os.environ.copy()
@@ -742,7 +737,7 @@ def start_uploader(args: argparse.Namespace) -> int:
     )
     log_file.close()
     pid_path.write_text(f"{process.pid}\n", encoding="utf-8")
-    print(f"PromptHub uploader started: pid {process.pid}")
+    print(f"Promty uploader started: pid {process.pid}")
     print(f"Uploader log: {log_path}")
     return 0
 
@@ -787,7 +782,7 @@ def _hook_status(repo_root: Path, tool: SupportedTool) -> tuple[bool, str]:
                 if not isinstance(group, dict):
                     continue
                 for hook in group.get("hooks", []):
-                    if isinstance(hook, dict) and _is_prompthub_hook(
+                    if isinstance(hook, dict) and _is_promty_hook(
                         hook,
                         spec["subcommand"],
                     ):
@@ -890,12 +885,15 @@ def init(args: argparse.Namespace) -> int:
         )
         start_uploader(uploader_args)
 
-    print("PromptHub init complete")
+    print("Promty init complete")
     return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="prompthub-collector")
+    parser = argparse.ArgumentParser(
+        prog="promty",
+        description="Promty local AI activity collector",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     capture_parser = subparsers.add_parser("capture")
@@ -912,7 +910,7 @@ def build_parser() -> argparse.ArgumentParser:
     capture_parser.add_argument(
         "--event-type",
         choices=SUPPORTED_EVENT_TYPES,
-        help="PromptHub event type. Defaults to payload event_type or PromptSubmitted.",
+        help="Promty event type. Defaults to payload event_type or PromptSubmitted.",
     )
     capture_parser.add_argument("--queue-path")
     capture_parser.add_argument("--sequence-path")
@@ -982,8 +980,9 @@ def build_parser() -> argparse.ArgumentParser:
     install_hooks_parser = subparsers.add_parser("install-hooks")
     install_hooks_parser.add_argument(
         "--tool",
-        choices=sorted(TOOL_ALIASES),
+        choices=sorted(INSTALL_TOOL_ALIASES),
         default="codex-cli",
+        help="Hook integration to install (Codex CLI or Claude Code).",
     )
     install_hooks_parser.add_argument(
         "--source",
@@ -1016,7 +1015,7 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument("--token")
     doctor_parser.add_argument(
         "--tool",
-        choices=sorted(TOOL_ALIASES),
+        choices=sorted(INSTALL_TOOL_ALIASES),
         default="codex-cli",
     )
     doctor_parser.set_defaults(func=doctor)
@@ -1037,8 +1036,9 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--token")
     init_parser.add_argument(
         "--tool",
-        choices=sorted(TOOL_ALIASES),
+        choices=sorted(INSTALL_TOOL_ALIASES),
         default="codex-cli",
+        help="Hook integration to install (Codex CLI or Claude Code).",
     )
     init_parser.add_argument("--username")
     init_parser.add_argument("--upload-interval", type=float, default=2)
@@ -1056,7 +1056,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("Interrupted", file=sys.stderr)
         return 130
     except Exception as exc:
-        print(f"prompthub collector error: {exc}", file=sys.stderr)
+        print(f"Promty collector error: {exc}", file=sys.stderr)
         return 1
 
 

@@ -9,6 +9,20 @@ describe("workspace navigation", () => {
     vi.stubGlobal("window", { location: { search: "" } });
   });
 
+  it("uses Home and session navigation as the calm default", () => {
+    const state = normalizeUrlNavigationState({});
+
+    expect(state.activeItem).toBe("home");
+    expect(state.activityNavigation.view).toBe("sessions");
+    expect(buildUrlNavigationSearch(state)).toBe("");
+  });
+
+  it("keeps the Projects index distinct from Home", () => {
+    const state = normalizeUrlNavigationState({ activeItem: "projects" });
+
+    expect(buildUrlNavigationSearch(state)).toBe("?view=projects");
+  });
+
   it("drops project resources outside the projects view", () => {
     const state = normalizeUrlNavigationState({
       activeDetailTab: "files",

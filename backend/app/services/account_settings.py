@@ -112,7 +112,7 @@ def create_collector_token_response(
 ) -> dict[str, Any]:
     raw_token = issue_collector_token()
     token = CollectorToken(
-        name=name or "PromptHub CLI",
+        name=name or "Promty CLI",
         token_hash=hash_collector_token(raw_token),
         user_id=user.id,
     )

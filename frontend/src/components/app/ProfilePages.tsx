@@ -303,7 +303,6 @@ export function UserSettingsPage({
   onClearCreatedCollectorToken,
   onCreateCollectorToken,
   onDisconnectGithub,
-  onOpenProfile,
   onRefreshWorkspace,
   onRenameCollectorToken,
   onRevokeCollectorToken,
@@ -324,17 +323,35 @@ export function UserSettingsPage({
   onClearCreatedCollectorToken: () => void;
   onCreateCollectorToken: (name?: string) => Promise<unknown>;
   onDisconnectGithub: () => Promise<void>;
-  onOpenProfile: () => void;
   onRefreshWorkspace: () => void;
   onRenameCollectorToken: (tokenId: string, name: string) => Promise<void>;
   onRevokeCollectorToken: (tokenId: string) => Promise<void>;
   projectCount: number;
 }) {
-  const [collectorTokenName, setCollectorTokenName] = useState("PromptHub CLI");
+  const [collectorTokenName, setCollectorTokenName] = useState("Promty CLI");
   const [isTokenCopied, setIsTokenCopied] = useState(false);
   const roleLabel = currentUser?.is_admin ? "Admin" : "Member";
   const githubConnection = accountOverview?.github_connection;
   const collectorTokens = accountOverview?.collector_tokens ?? [];
+  const activeCollectorTokens = collectorTokens.filter(
+    (token) => token.status === "active",
+  );
+  const latestCollectorUse = activeCollectorTokens
+    .map((token) => token.last_used_at)
+    .filter((value): value is string => Boolean(value))
+    .sort((first, second) => Date.parse(second) - Date.parse(first))[0];
+  const latestCollectorUseAge = latestCollectorUse
+    ? Date.now() - Date.parse(latestCollectorUse)
+    : null;
+  const collectorIngestion =
+    activeCollectorTokens.length === 0
+      ? { label: "Not configured", tone: "danger" }
+      : !latestCollectorUse
+        ? { label: "Waiting for first sync", tone: "warning" }
+        : latestCollectorUseAge !== null &&
+            latestCollectorUseAge <= 24 * 60 * 60 * 1000
+          ? { label: "Connected", tone: "success" }
+          : { label: "Sync stale", tone: "warning" };
   const repositoryCoverage =
     projectCount > 0
       ? `${connectedRepositoryCount.toLocaleString()} / ${projectCount.toLocaleString()}`
@@ -365,10 +382,6 @@ export function UserSettingsPage({
           >
             <RefreshCw aria-hidden="true" size={15} strokeWidth={1.5} />
             <span>{isRefreshing || isAccountLoading ? "Refreshing" : "Refresh"}</span>
-          </button>
-          <button className="toolbar-button" onClick={onOpenProfile} type="button">
-            <User aria-hidden="true" size={15} strokeWidth={1.5} />
-            <span>Profile</span>
           </button>
         </div>
       </section>
@@ -482,8 +495,11 @@ export function UserSettingsPage({
             <div className="settings-row">
               <dt>Ingestion</dt>
               <dd>
-                <span className="settings-value-chip" data-tone="success">
-                  Active
+                <span
+                  className="settings-value-chip"
+                  data-tone={collectorIngestion.tone}
+                >
+                  {collectorIngestion.label}
                 </span>
               </dd>
             </div>

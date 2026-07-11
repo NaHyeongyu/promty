@@ -80,23 +80,26 @@ The npm package includes the Python collector and uses `python3` by default. Set
 For a Python-native installation, run `pipx install ./collector` and use the
 same `promty` command.
 
-Supported tools:
+Installable integrations:
 
 ```text
 claude-code
 codex-cli
-cursor
-gemini-cli
 ```
 
 Current validation status:
 
 ```text
-codex-cli   adapter + repo hook + real payload path validated
-claude-code adapter + repo hook installer implemented, real payload validation pending
-cursor      adapter scaffolded, end-to-end hook validation pending
-gemini-cli  adapter scaffolded, end-to-end hook validation pending
+codex-cli   adapter + repository hook + real payload path validated
+claude-code adapter + repository hook installer implemented
 ```
+
+Cursor and Gemini CLI adapters remain experimental and are not exposed by
+`init`, `install-hooks`, or `doctor` until their hook paths are validated.
+
+`init` installs a content-addressed runtime under `~/.promty/runtime` and writes
+the durable `~/.promty/bin/promty` launcher into repository hooks. Hooks do not
+depend on the npm cache, the source checkout, or the directory where setup ran.
 
 Supported event types:
 
@@ -284,6 +287,7 @@ GitHub OAuth endpoints:
 ```text
 GET /api/auth/github/start
 GET /api/auth/github/web/start
+GET /api/auth/github/web/repository/start
 GET /api/auth/github/callback
 GET /api/auth/me
 POST /api/auth/logout
