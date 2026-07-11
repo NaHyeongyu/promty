@@ -71,6 +71,7 @@ def _app_encryption_secret() -> str:
 def _app_encryption_secrets() -> list[str]:
     values = (
         settings.app_encryption_key,
+        *settings.app_encryption_previous_keys,
         settings.jwt_secret,
         settings.oauth_state_secret,
         settings.api_token,

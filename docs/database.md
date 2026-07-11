@@ -50,6 +50,7 @@ PROMPTHUB_GITHUB_CLIENT_ID
 PROMPTHUB_GITHUB_CLIENT_SECRET
 PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_KEY
 PROMPTHUB_APP_ENCRYPTION_KEY
+PROMPTHUB_APP_ENCRYPTION_PREVIOUS_KEYS
 PROMPTHUB_APP_ENCRYPTION_KEY_ID
 PROMPTHUB_PROMPT_MAX_CHARS
 PROMPTHUB_RESPONSE_MAX_CHARS
@@ -76,7 +77,7 @@ If `PROMPTHUB_API_TOKEN` is set, `POST /api/events/batch` accepts that global `A
 
 The web OAuth flow stores a short-lived HttpOnly nonce cookie and verifies it against the signed OAuth state in the callback. `PROMPTHUB_CORS_ORIGINS` is a comma-separated allowlist and defaults to the local Vite origins.
 
-Application-level encryption protects sensitive development context at rest. `PROMPTHUB_APP_ENCRYPTION_KEY` is the preferred dedicated key for prompt text, AI response text, and unified diff patch text. If it is not configured, the backend falls back to the JWT/OAuth/API secret chain for local compatibility. Decryption keeps that fallback key chain available so local data written before a dedicated app key is added can still be read. Production deployments should always set a dedicated app encryption key and key id.
+Application-level encryption protects sensitive development context at rest. `PROMPTHUB_APP_ENCRYPTION_KEY` is the preferred dedicated key for prompt text, AI response text, and unified diff patch text. During rotation, keep old decrypt-only keys in the comma-separated `PROMPTHUB_APP_ENCRYPTION_PREVIOUS_KEYS` value until stored data has been migrated. If a dedicated key is not configured, the backend falls back to the JWT/OAuth/API secret chain for local compatibility. Production deployments should always set a dedicated application key and key id.
 
 ## ERD
 
