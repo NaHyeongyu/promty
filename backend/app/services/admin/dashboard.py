@@ -64,8 +64,8 @@ def _pending_memory_draft_artifacts(db: Session) -> list[Artifact]:
             select(Artifact)
             .where(
                 Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE,
-                Artifact.metadata_["artifact_stage"].as_string() == PENDING_DRAFT_STAGE,
-                Artifact.metadata_["review_state"].as_string() == REVIEW_STATE_DRAFT,
+                Artifact.metadata_["artifact_stage"].astext == PENDING_DRAFT_STAGE,
+                Artifact.metadata_["review_state"].astext == REVIEW_STATE_DRAFT,
             )
             .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
         ).scalars()
