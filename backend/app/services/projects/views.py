@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 
 from app.core.encoding import base64_urldecode, base64_urlencode
 from app.core.security import is_admin_user
-from app.models.code_change_patches import CodeChangePatch
 from app.models.events import Event
 from app.models.project_files import ProjectFile
 from app.models.projects import Project
@@ -229,24 +228,6 @@ def _activity_summaries(db: Session, project_id: UUID) -> tuple[list[dict[str, A
         if session_ids
         else {}
     )
-    file_counts = (
-        dict(
-            db.execute(
-                select(
-                    CodeChangePatch.session_id,
-                    func.count(func.distinct(CodeChangePatch.path)),
-                )
-                .where(
-                    CodeChangePatch.project_id == project_id,
-                    CodeChangePatch.session_id.in_(session_ids),
-                )
-                .group_by(CodeChangePatch.session_id)
-            ).all()
-        )
-        if session_ids
-        else {}
-    )
-
     tools: set[str] = set()
     activities: list[dict[str, Any]] = []
     for (
@@ -269,7 +250,6 @@ def _activity_summaries(db: Session, project_id: UUID) -> tuple[list[dict[str, A
         activities.append(
             {
                 "events": int(event_count or 0),
-                "id": str(session_id) if session_id is not None else None,
                 "id": str(session_id),
                 "last_activity_at": iso(last_activity_at),
                 "model": session_model or tool_label(session_tool or "unknown"),
