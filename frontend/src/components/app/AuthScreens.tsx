@@ -3,6 +3,7 @@ import {
   FolderGit2,
   KeyRound,
   Laptop,
+  LoaderCircle,
   ShieldCheck,
   UserRoundCheck,
 } from "lucide-react";
@@ -157,6 +158,47 @@ export function WebLoginPage({
         <div className="cli-login-footer">
           <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.5} />
           <span>This sign-in requests identity and email access only.</span>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+export function AuthLoadingPage() {
+  return (
+    <main
+      aria-busy="true"
+      aria-live="polite"
+      className="cli-login-shell auth-loading-shell"
+    >
+      <section
+        className="cli-login-panel auth-login-panel auth-loading-panel"
+        aria-labelledby="auth-loading-title"
+        role="status"
+      >
+        <div className="cli-login-kicker">
+          <BrandLogo className="is-kicker" />
+          {BRAND_NAME}
+        </div>
+
+        <div className="cli-login-copy">
+          <h1 id="auth-loading-title">Checking your session</h1>
+          <p>This takes a moment.</p>
+        </div>
+
+        <div className="auth-loading-indicator">
+          <LoaderCircle
+            aria-hidden="true"
+            className="auth-loading-spinner"
+            size={18}
+            strokeWidth={1.5}
+          />
+          <span>Loading</span>
+        </div>
+
+        <div className="cli-login-footer">
+          <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.5} />
+          <span>Secure sign-in is handled by GitHub.</span>
         </div>
       </section>
     </main>
