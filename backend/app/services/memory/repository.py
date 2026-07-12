@@ -4,12 +4,18 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.time import utc_now
 from app.models.artifact_versions import ArtifactVersion
 from app.models.artifacts import Artifact
+from app.models.events import Event
 from app.services.memory.constants import LOCAL_MEMORY_GENERATOR
+
+
+def _iso(value: Any) -> str | None:
+    return value.isoformat() if value else None
 
 
 def payload_from_artifact(
@@ -88,6 +94,69 @@ def _create_artifact_version(
     return artifact_version
 
 
+def _event_range_metadata(
+    db: DBSession,
+    *,
+    metadata: dict[str, Any],
+    project_id: UUID,
+    session_id: UUID | None,
+) -> dict[str, str | None]:
+    existing_first = metadata.get("first_event_at")
+    existing_last = metadata.get("last_event_at")
+    if isinstance(existing_first, str) and isinstance(existing_last, str):
+        return {
+            "first_event_at": existing_first,
+            "last_event_at": existing_last,
+        }
+
+    start_sequence = metadata.get("start_sequence")
+    end_sequence = metadata.get("end_sequence")
+    if session_id and (isinstance(start_sequence, int) or isinstance(end_sequence, int)):
+        filters = [
+            Event.project_id == project_id,
+            Event.session_id == session_id,
+        ]
+        if isinstance(start_sequence, int):
+            filters.append(Event.sequence >= start_sequence)
+        if isinstance(end_sequence, int):
+            filters.append(Event.sequence <= end_sequence)
+        first_event_at, last_event_at = db.execute(
+            select(func.min(Event.created_at), func.max(Event.created_at)).where(*filters)
+        ).one()
+        if first_event_at or last_event_at:
+            return {
+                "first_event_at": _iso(first_event_at),
+                "last_event_at": _iso(last_event_at or first_event_at),
+            }
+
+    event_ids: list[UUID] = []
+    for raw_event_id in (metadata.get("first_event_id"), metadata.get("last_event_id")):
+        if isinstance(raw_event_id, UUID):
+            event_ids.append(raw_event_id)
+            continue
+        if isinstance(raw_event_id, str) and raw_event_id:
+            try:
+                event_ids.append(UUID(raw_event_id))
+            except ValueError:
+                continue
+    if event_ids:
+        first_event_at, last_event_at = db.execute(
+            select(func.min(Event.created_at), func.max(Event.created_at)).where(
+                Event.id.in_(event_ids)
+            )
+        ).one()
+        if first_event_at or last_event_at:
+            return {
+                "first_event_at": _iso(first_event_at),
+                "last_event_at": _iso(last_event_at or first_event_at),
+            }
+
+    return {
+        "first_event_at": None,
+        "last_event_at": None,
+    }
+
+
 def write_memory_artifact_payload(
     db: DBSession,
     *,
@@ -100,11 +169,13 @@ def write_memory_artifact_payload(
     storage_key: str,
 ) -> Artifact:
     artifact = db.execute(
-        select(Artifact).where(
+        select(Artifact)
+        .where(
             Artifact.project_id == project_id,
             Artifact.type == artifact_type,
             Artifact.storage_key == storage_key,
         )
+        .with_for_update()
     ).scalar_one_or_none()
     if artifact is None:
         artifact = Artifact(
@@ -115,8 +186,20 @@ def write_memory_artifact_payload(
             title=payload["title"],
             storage_key=storage_key,
         )
-        db.add(artifact)
-        db.flush()
+        try:
+            with db.begin_nested():
+                db.add(artifact)
+                db.flush()
+        except IntegrityError:
+            artifact = db.execute(
+                select(Artifact)
+                .where(
+                    Artifact.project_id == project_id,
+                    Artifact.type == artifact_type,
+                    Artifact.storage_key == storage_key,
+                )
+                .with_for_update()
+            ).scalar_one()
 
     generation_metadata = {
         "event_count": payload["event_count"],
@@ -124,6 +207,15 @@ def write_memory_artifact_payload(
         "last_event_id": payload["last_event_id"],
         "tool": payload["tool"],
         **extra_metadata,
+    }
+    generation_metadata = {
+        **generation_metadata,
+        **_event_range_metadata(
+            db,
+            metadata=generation_metadata,
+            project_id=project_id,
+            session_id=session_id,
+        ),
     }
     artifact_version = _create_artifact_version(
         db,

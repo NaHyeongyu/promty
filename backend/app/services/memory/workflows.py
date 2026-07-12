@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -7,6 +8,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import settings
+from app.core.security import is_admin_user
 from app.models.artifacts import Artifact
 from app.models.projects import Project
 from app.models.sessions import Session
@@ -20,20 +22,38 @@ from app.services.memory.serializers import (
     serialize_memory_artifact,
     serialize_memory_artifact_summary,
 )
-from app.services.memory_artifacts import (
+from app.services.memory.artifacts import (
     compile_project_memory,
-    generate_context_memories_for_session,
+    list_project_memory_artifacts,
+    generate_due_memory_artifacts_for_session,
     get_latest_project_memory,
-    list_project_memory_history_artifacts,
     list_project_memory_pending_ranges,
     update_project_memory_snapshot,
 )
+from app.services.memory.batches import (
+    generate_project_memory_batch,
+    lock_project_memory,
+    read_project_memory_batch,
+    serialize_project_memory_batch,
+)
 from app.services.memory.session_completion import complete_session_if_ready
+from app.services.projects.management import list_project_summaries
 
 
-def project_for_user(db: DBSession, project_id: UUID, user: User) -> Project:
+logger = logging.getLogger(__name__)
+
+
+def project_for_user(
+    db: DBSession,
+    project_id: UUID,
+    user: User,
+    *,
+    allow_admin: bool = False,
+) -> Project:
     project = db.get(Project, project_id)
-    if project is None or project.owner_id != user.id:
+    if project is None or (
+        project.owner_id != user.id and not (allow_admin and is_admin_user(user))
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
@@ -100,8 +120,58 @@ def list_pending_memory_ranges_response(
     project_id: UUID,
     user: User,
 ) -> list[dict[str, Any]]:
-    project = project_for_user(db, project_id, user)
+    project = project_for_user(db, project_id, user, allow_admin=True)
     return list_project_memory_pending_ranges(db, project_id=project.id, limit=limit)
+
+
+def refresh_memory_review_queue_response(
+    db: DBSession,
+    *,
+    limit: int,
+    user: User,
+) -> dict[str, Any]:
+    initial_summaries = list_project_summaries(db, current_user=user)
+    errors: list[dict[str, str]] = []
+    ranges_by_project: dict[str, list[dict[str, Any]]] = {}
+
+    for summary in initial_summaries:
+        project_id = UUID(summary["id"])
+        try:
+            with db.begin_nested():
+                ranges_by_project[summary["id"]] = list_project_memory_pending_ranges(
+                    db,
+                    limit=limit,
+                    project_id=project_id,
+                )
+        except Exception:
+            logger.exception(
+                "Review queue materialization failed for project %s",
+                summary["id"],
+            )
+            errors.append(
+                {
+                    "message": "Captured work could not be checked for this project.",
+                    "project_id": summary["id"],
+                }
+            )
+            ranges_by_project[summary["id"]] = []
+
+    project_summaries = list_project_summaries(db, current_user=user)
+    queue_projects = [
+        {
+            "pending_count": summary["pending_memory_count"],
+            "project_id": summary["id"],
+            "ranges": ranges_by_project.get(summary["id"], []),
+        }
+        for summary in project_summaries
+        if summary["pending_memory_count"] > 0
+    ]
+    return {
+        "errors": errors,
+        "project_summaries": project_summaries,
+        "projects": queue_projects,
+        "total_pending_count": sum(item["pending_memory_count"] for item in project_summaries),
+    }
 
 
 def complete_project_session_response(
@@ -127,6 +197,12 @@ def complete_project_session_response(
             "status": "session_open",
         }
 
+    generate_due_memory_artifacts_for_session(
+        db,
+        session,
+        finalize=True,
+    )
+
     pending_range = next(
         (
             item
@@ -144,92 +220,47 @@ def complete_project_session_response(
             else None,
             "reason": completion["reason"],
         },
-        "message": "Session completed. Pending Memory is waiting for batch organization.",
+        "message": "Session completed. Captured work is ready for Project Memory.",
         "pending_range": pending_range,
         "status": "pending_memory",
     }
 
 
-def _combined_pending_range(checkpointable_ranges: list[dict[str, Any]]) -> dict[str, Any]:
-    start_sequences = [
-        item["start_sequence"]
-        for item in checkpointable_ranges
-        if isinstance(item.get("start_sequence"), int)
-    ]
-    end_sequences = [
-        item["end_sequence"]
-        for item in checkpointable_ranges
-        if isinstance(item.get("end_sequence"), int)
-    ]
-    return {
-        **checkpointable_ranges[0],
-        "end_sequence": max(end_sequences)
-        if end_sequences
-        else checkpointable_ranges[0]["end_sequence"],
-        "event_count": sum(item.get("event_count") or 0 for item in checkpointable_ranges),
-        "prompt_count": sum(item.get("prompt_count") or 0 for item in checkpointable_ranges),
-        "response_count": sum(item.get("response_count") or 0 for item in checkpointable_ranges),
-        "start_sequence": min(start_sequences)
-        if start_sequences
-        else checkpointable_ranges[0]["start_sequence"],
-    }
-
-
-def checkpoint_project_session_response(
+def generate_project_memory_response(
     db: DBSession,
     *,
+    idempotency_key: str,
     project_id: UUID,
-    regenerate: bool,
-    session_id: UUID,
     user: User,
 ) -> dict[str, Any]:
     project = project_for_user(db, project_id, user)
-    session = session_for_project(db, project, session_id)
-    pending_ranges = [
-        item
-        for item in list_project_memory_pending_ranges(db, project_id=project.id, limit=100)
-        if item["session_id"] == str(session.id)
-    ]
-    if not pending_ranges:
-        return {
-            "artifacts": [],
-            "message": "No pending memory range for this session.",
-            "status": "no_pending_range",
-        }
-
-    checkpointable_ranges = [item for item in pending_ranges if item["can_checkpoint"]]
-    if not checkpointable_ranges:
-        return {
-            "artifacts": [],
-            "message": "Pending range has no prompts to summarize.",
-            "pending_range": pending_ranges[0],
-            "status": "no_memory",
-        }
-
-    pending_range = _combined_pending_range(checkpointable_ranges)
-    memories = generate_context_memories_for_session(
+    return generate_project_memory_batch(
         db,
-        session,
-        end_sequence=pending_range["end_sequence"],
-        force_regenerate=regenerate,
-        start_sequence=pending_range["start_sequence"],
-        trigger_reason="batch_organize",
+        idempotency_key=idempotency_key,
+        project_id=project.id,
+        user_id=user.id,
     )
-    if not memories:
-        return {
-            "artifacts": [],
-            "message": "No memory was generated for this pending range.",
-            "pending_range": pending_range,
-            "status": "no_memory",
-        }
 
-    compile_project_memory(db, project_id=project.id)
-    return {
-        "artifacts": [],
-        "message": "Project Memory document was generated.",
-        "pending_range": pending_range,
-        "status": "memory_generated",
-    }
+
+def read_project_memory_batch_response(
+    db: DBSession,
+    *,
+    batch_id: UUID,
+    project_id: UUID,
+    user: User,
+) -> dict[str, Any]:
+    project = project_for_user(db, project_id, user)
+    batch = read_project_memory_batch(
+        db,
+        batch_id=batch_id,
+        project_id=project.id,
+    )
+    if batch is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project Memory batch not found",
+        )
+    return serialize_project_memory_batch(db, batch, replayed=True)
 
 
 def compile_project_memory_response(
@@ -240,6 +271,7 @@ def compile_project_memory_response(
     user: User,
 ) -> dict[str, Any]:
     project = project_for_user(db, project_id, user)
+    lock_project_memory(db, project.id)
     artifact = compile_project_memory(
         db,
         force_regenerate=regenerate,
@@ -254,10 +286,8 @@ def read_project_memory_response(
     project_id: UUID,
     user: User,
 ) -> dict[str, Any] | None:
-    project = project_for_user(db, project_id, user)
-    return serialize_project_memory_snapshot(
-        get_latest_project_memory(db, project_id=project.id)
-    )
+    project = project_for_user(db, project_id, user, allow_admin=True)
+    return serialize_project_memory_snapshot(get_latest_project_memory(db, project_id=project.id))
 
 
 def update_project_memory_response(
@@ -268,6 +298,7 @@ def update_project_memory_response(
     user: User,
 ) -> dict[str, Any]:
     project = project_for_user(db, project_id, user)
+    lock_project_memory(db, project.id)
     artifact = update_project_memory_snapshot(
         db,
         body_markdown=body_markdown,
@@ -283,10 +314,10 @@ def list_project_artifacts_response(
     project_id: UUID,
     user: User,
 ) -> list[dict[str, Any]]:
-    project = project_for_user(db, project_id, user)
-    artifacts = list_project_memory_history_artifacts(
+    project = project_for_user(db, project_id, user, allow_admin=True)
+    artifacts = list_project_memory_artifacts(
         db,
         limit=limit,
         project_id=project.id,
     )
-    return [serialize_memory_artifact_summary(artifact, db=db) for artifact in artifacts]
+    return [serialize_memory_artifact_summary(artifact) for artifact in artifacts]

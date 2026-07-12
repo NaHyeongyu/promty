@@ -14,6 +14,7 @@ permissions:
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
+  APP_RUNNER_SERVICE_ARN: ${{ secrets.APP_RUNNER_SERVICE_ARN }}
   ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
   FRONTEND_S3_BUCKET: ${{ secrets.FRONTEND_S3_BUCKET }}
   CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
@@ -66,5 +67,14 @@ jobs:
           IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
           REGISTRY: ${{ steps.ecr.outputs.registry }}
         run: |
-          docker build -f backend/Dockerfile -t "${REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}" .
+          docker build \
+            -f backend/Dockerfile \
+            -t "${REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}" \
+            -t "${REGISTRY}/${ECR_REPOSITORY}:latest" \
+            .
           docker push "${REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          docker push "${REGISTRY}/${ECR_REPOSITORY}:latest"
+
+      - name: Deploy backend to App Runner
+        if: ${{ env.APP_RUNNER_SERVICE_ARN != '' }}
+        run: aws apprunner start-deployment --service-arn "${APP_RUNNER_SERVICE_ARN}"

@@ -125,6 +125,12 @@ class Settings:
     app_encryption_key: str | None = field(
         default_factory=lambda: _optional_env("PROMPTHUB_APP_ENCRYPTION_KEY")
     )
+    app_encryption_previous_keys: tuple[str, ...] = field(
+        default_factory=lambda: _csv_env(
+            "PROMPTHUB_APP_ENCRYPTION_PREVIOUS_KEYS",
+            (),
+        )
+    )
     app_encryption_key_id: str = os.environ.get("PROMPTHUB_APP_ENCRYPTION_KEY_ID", "local")
     prompt_max_chars: int = field(
         default_factory=lambda: _int_env("PROMPTHUB_PROMPT_MAX_CHARS", 50000)

@@ -18,7 +18,8 @@ GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
 GITHUB_USER_URL = "https://api.github.com/user"
 GITHUB_EMAILS_URL = "https://api.github.com/user/emails"
 GITHUB_CLI_SCOPE = "read:user user:email"
-GITHUB_WEB_SCOPE = "read:user user:email repo"
+GITHUB_WEB_SCOPE = "read:user user:email"
+GITHUB_REPOSITORY_SCOPE = "read:user user:email repo"
 
 
 def require_github_oauth_configured() -> None:
@@ -35,23 +36,20 @@ def _callback_url() -> str:
 
 def build_github_authorization_url(*, scope: str, state: str) -> str:
     require_github_oauth_configured()
-    return (
-        f"{GITHUB_AUTHORIZE_URL}?"
-        + parse.urlencode(
-            {
-                "client_id": settings.github_client_id,
-                "redirect_uri": _callback_url(),
-                "scope": scope,
-                "state": state,
-            }
-        )
+    return f"{GITHUB_AUTHORIZE_URL}?" + parse.urlencode(
+        {
+            "client_id": settings.github_client_id,
+            "redirect_uri": _callback_url(),
+            "scope": scope,
+            "state": state,
+        }
     )
 
 
 def _json_request(url: str, *, token: str | None = None) -> dict[str, Any] | list[Any]:
     headers = {
         "Accept": "application/json",
-        "User-Agent": "PromptHub",
+        "User-Agent": "Promty",
     }
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -84,7 +82,7 @@ def exchange_code_for_token(code: str) -> dict[str, Any]:
     req = request.Request(
         GITHUB_TOKEN_URL,
         data=body,
-        headers={"Accept": "application/json", "User-Agent": "PromptHub"},
+        headers={"Accept": "application/json", "User-Agent": "Promty"},
         method="POST",
     )
     try:
@@ -134,6 +132,17 @@ def _available_email(db: Session, email: str | None, github_id: str) -> str | No
     return None
 
 
+def get_github_user_id(access_token: str) -> str:
+    payload = _json_request(GITHUB_USER_URL, token=access_token)
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=502, detail="Invalid GitHub user response")
+
+    github_id_value = payload.get("id")
+    if github_id_value is None:
+        raise HTTPException(status_code=502, detail="Invalid GitHub user response")
+    return str(github_id_value)
+
+
 def upsert_github_user(db: Session, access_token: str) -> User:
     payload = _json_request(GITHUB_USER_URL, token=access_token)
     if not isinstance(payload, dict):
@@ -179,9 +188,7 @@ def upsert_github_connection(
     token_type: str | None,
     user: User,
 ) -> None:
-    connection = db.scalar(
-        select(GitHubConnection).where(GitHubConnection.user_id == user.id)
-    )
+    connection = db.scalar(select(GitHubConnection).where(GitHubConnection.user_id == user.id))
     if connection is None:
         connection = GitHubConnection(
             user_id=user.id,

@@ -16,13 +16,14 @@ from app.schemas.projects import (
     ProjectDescriptionUpdateRequest,
     ProjectMetadataUpdateRequest,
     ProjectRepositoryUpdateRequest,
+    ProjectSummaryResponse,
 )
 from app.services.github_repositories import (
     list_github_repositories,
     read_github_repository_file_content,
     read_github_repository_tree,
 )
-from app.services.project_management import (
+from app.services.projects.management import (
     create_project_summary,
     list_project_summaries,
     update_project_bookmark_summary,
@@ -30,7 +31,7 @@ from app.services.project_management import (
     update_project_metadata_summary,
     update_project_repository_summary,
 )
-from app.services.project_views import (
+from app.services.projects.views import (
     project_for_user as _project_for_user,
     read_project_detail_response,
     read_project_files_response,
@@ -40,7 +41,7 @@ from app.services.project_views import (
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
-@router.get("")
+@router.get("", response_model=list[ProjectSummaryResponse])
 def list_projects(
     current_user: User = Depends(require_web_user),
     db: Session = Depends(get_db),
@@ -48,7 +49,7 @@ def list_projects(
     return list_project_summaries(db, current_user=current_user)
 
 
-@router.post("")
+@router.post("", response_model=ProjectSummaryResponse)
 def create_project(
     payload: ProjectCreateRequest,
     current_user: User = Depends(require_web_user),
@@ -123,7 +124,7 @@ def read_project_files(
     )
 
 
-@router.patch("/{project_id}/repository")
+@router.patch("/{project_id}/repository", response_model=ProjectSummaryResponse)
 def update_project_repository(
     project_id: UUID,
     payload: ProjectRepositoryUpdateRequest,
@@ -141,7 +142,7 @@ def update_project_repository(
     return response
 
 
-@router.patch("/{project_id}/description")
+@router.patch("/{project_id}/description", response_model=ProjectSummaryResponse)
 def update_project_description(
     project_id: UUID,
     payload: ProjectDescriptionUpdateRequest,
@@ -158,7 +159,7 @@ def update_project_description(
     return response
 
 
-@router.patch("/{project_id}/metadata")
+@router.patch("/{project_id}/metadata", response_model=ProjectSummaryResponse)
 def update_project_metadata(
     project_id: UUID,
     payload: ProjectMetadataUpdateRequest,
@@ -177,7 +178,7 @@ def update_project_metadata(
     return response
 
 
-@router.patch("/{project_id}/bookmark")
+@router.patch("/{project_id}/bookmark", response_model=ProjectSummaryResponse)
 def update_project_bookmark(
     project_id: UUID,
     payload: ProjectBookmarkUpdateRequest,
@@ -200,7 +201,7 @@ def read_project_github_files(
     current_user: User = Depends(require_web_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    project = _project_for_user(db, project_id, current_user)
+    project = _project_for_user(db, project_id, current_user, allow_admin=True)
     return read_github_repository_tree(db, project=project, user=current_user)
 
 
@@ -211,7 +212,7 @@ def read_project_github_file_content(
     current_user: User = Depends(require_web_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    project = _project_for_user(db, project_id, current_user)
+    project = _project_for_user(db, project_id, current_user, allow_admin=True)
     return read_github_repository_file_content(
         db,
         path=path,

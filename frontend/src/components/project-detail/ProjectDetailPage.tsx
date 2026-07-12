@@ -4,7 +4,7 @@ import { EmptyState } from "./EmptyState";
 import { FilesPanel } from "./FilesPanel";
 import {
   MemoryPanel,
-  type MemoryCheckpointResult,
+  type MemoryGenerationResult,
 } from "./MemoryPanel";
 import { OverviewPanel } from "./OverviewPanel";
 import { ProjectDetailLoadingSkeleton } from "./ProjectDetailLoadingSkeleton";
@@ -13,6 +13,7 @@ import { ProjectTabs } from "./ProjectTabs";
 import type {
   ActivityNavigationState,
   ProjectDetailData,
+  ProjectMemoryArtifact,
   ProjectDetailTab,
   ProjectDetailTabId,
   ProjectHeaderProjectOption,
@@ -31,6 +32,7 @@ type ProjectDetailPageProps = {
   isShareCopied?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onConnectRepository?: () => void;
+  onLoadMemoryArtifacts?: (limit: number) => Promise<ProjectMemoryArtifact[]>;
   onOpenAllProjects?: () => void;
   onProjectSelect?: (projectId: string) => void;
   onRepositoryFileSelect?: (path: string) => void;
@@ -41,19 +43,16 @@ type ProjectDetailPageProps = {
     visibility?: "private" | "public";
   }) => Promise<void>;
   onSaveDescription?: (description: string) => Promise<void>;
-  onCheckpointMemory?: (sessionIds: string[]) => Promise<MemoryCheckpointResult>;
+  onGenerateProjectMemory?: () => Promise<MemoryGenerationResult>;
   onToggleBookmark?: () => void;
   onRetry?: () => void;
   onTabChange: (tabId: ProjectDetailTabId) => void;
   projectOptions?: ProjectHeaderProjectOption[];
 };
-
-
-
 const projectTabs: ProjectDetailTab[] = [
   { id: "overview", label: "Overview" },
   { id: "memory", label: "Memory" },
-  { id: "ai-activity", label: "Activity" },
+  { id: "ai-activity", label: "Sessions" },
   { id: "files", label: "Files" },
 ];
 
@@ -97,7 +96,8 @@ function ProjectPanel({
   errorMessage,
   isLoading,
   onActivityNavigationChange,
-  onCheckpointMemory,
+  onGenerateProjectMemory,
+  onLoadMemoryArtifacts,
   onSaveProjectMetadata,
   onSaveDescription,
   onRepositoryFileSelect,
@@ -110,7 +110,8 @@ function ProjectPanel({
   errorMessage?: string | null;
   isLoading?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
-  onCheckpointMemory?: (sessionIds: string[]) => Promise<MemoryCheckpointResult>;
+  onGenerateProjectMemory?: () => Promise<MemoryGenerationResult>;
+  onLoadMemoryArtifacts?: (limit: number) => Promise<ProjectMemoryArtifact[]>;
   onRepositoryFileSelect?: (path: string) => void;
   onRetry?: () => void;
   onSaveProjectMetadata?: (metadata: {
@@ -145,6 +146,8 @@ function ProjectPanel({
     return (
       <OverviewPanel
         data={data}
+        onOpenActivity={() => onTabChange("ai-activity")}
+        onOpenMemory={() => onTabChange("memory")}
         onSaveProjectMetadata={onSaveProjectMetadata}
         onSaveDescription={onSaveDescription}
       />
@@ -155,7 +158,20 @@ function ProjectPanel({
     return (
       <MemoryPanel
         data={data}
-        onCheckpointMemory={onCheckpointMemory}
+        onGenerateProjectMemory={onGenerateProjectMemory}
+        onLoadMemoryArtifacts={onLoadMemoryArtifacts}
+        onOpenSession={(sessionId) => {
+          if (onActivityNavigationChange) {
+            onActivityNavigationChange({
+              selectedPromptId: null,
+              selectedSessionId: sessionId,
+              selectedSessionPromptId: null,
+              view: "sessions",
+            });
+            return;
+          }
+          onTabChange("ai-activity");
+        }}
       />
     );
   }
@@ -194,9 +210,10 @@ export function ProjectDetailPage({
   isBookmarkUpdating,
   isShareCopied,
   onActivityNavigationChange,
-  onCheckpointMemory,
+  onGenerateProjectMemory,
   onConnectRepository,
   onOpenAllProjects,
+  onLoadMemoryArtifacts,
   onProjectSelect,
   onRepositoryFileSelect,
   onRetry,
@@ -234,7 +251,6 @@ export function ProjectDetailPage({
       <ProjectTabs
         activeTab={activeTab}
         onTabChange={onTabChange}
-        repositoryUrl={data.project.repositoryUrl}
         tabs={projectTabs}
       />
 
@@ -253,7 +269,8 @@ export function ProjectDetailPage({
           errorMessage={errorMessage}
           isLoading={isLoading}
           onActivityNavigationChange={onActivityNavigationChange}
-          onCheckpointMemory={onCheckpointMemory}
+          onGenerateProjectMemory={onGenerateProjectMemory}
+          onLoadMemoryArtifacts={onLoadMemoryArtifacts}
           onSaveProjectMetadata={onSaveProjectMetadata}
           onSaveDescription={onSaveDescription}
           onRepositoryFileSelect={onRepositoryFileSelect}

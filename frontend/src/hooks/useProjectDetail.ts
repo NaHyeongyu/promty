@@ -1,8 +1,14 @@
 import { useState } from "react";
 import { UnauthorizedError } from "../api/client";
-import { fetchProjectDetailResources } from "../api/projects";
-import type { ProjectDetailData } from "../components/project-detail";
-import { projectDetailDataFromApi } from "../workspace/projectDetailMappers";
+import {
+  fetchProjectDetailResources,
+  fetchProjectMemoryArtifacts,
+} from "../api/projects";
+import type { ProjectDetailData, ProjectMemoryArtifact } from "../components/project-detail";
+import {
+  projectDetailDataFromApi,
+  projectMemoryArtifactFromApi,
+} from "../workspace/projectDetailMappers";
 import type { Project, ProjectSummary } from "../workspace/types";
 
 type UseProjectDetailOptions = {
@@ -41,12 +47,18 @@ export function useProjectDetail({ onUnauthorized }: UseProjectDetailOptions) {
     projectId: string,
     fallbackProject: Project | null,
     signal?: AbortSignal,
+    shouldApply: () => boolean = () => true,
   ) => {
+    if (!shouldApply()) {
+      return;
+    }
     setIsProjectDetailLoading(true);
     setProjectDetailError(null);
     try {
       const payload = await fetchProjectDetailResources(projectId, signal);
-      setProjectDetail(projectDetailDataFromApi(payload, fallbackProject));
+      if (shouldApply()) {
+        setProjectDetail(projectDetailDataFromApi(payload, fallbackProject));
+      }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         return;
@@ -56,13 +68,34 @@ export function useProjectDetail({ onUnauthorized }: UseProjectDetailOptions) {
         setProjectDetail(null);
         return;
       }
-      setProjectDetailError(
-        error instanceof Error ? error.message : "Project detail request failed",
-      );
+      if (shouldApply()) {
+        setProjectDetailError(
+          error instanceof Error ? error.message : "Project detail request failed",
+        );
+      }
     } finally {
-      if (!signal?.aborted) {
+      if (!signal?.aborted && shouldApply()) {
         setIsProjectDetailLoading(false);
       }
+    }
+  };
+
+  const loadProjectMemoryArtifacts = async (
+    projectId: string,
+    limit: number,
+    signal?: AbortSignal,
+  ): Promise<ProjectMemoryArtifact[]> => {
+    try {
+      const artifacts = await fetchProjectMemoryArtifacts(projectId, limit, signal);
+      return artifacts.map(projectMemoryArtifactFromApi);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return [];
+      }
+      if (error instanceof UnauthorizedError) {
+        onUnauthorized();
+      }
+      throw error;
     }
   };
 
@@ -71,6 +104,7 @@ export function useProjectDetail({ onUnauthorized }: UseProjectDetailOptions) {
     clearProjectDetail,
     isProjectDetailLoading,
     loadProjectDetail,
+    loadProjectMemoryArtifacts,
     projectDetail,
     projectDetailError,
     setProjectDetail,

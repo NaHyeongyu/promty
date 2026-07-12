@@ -102,38 +102,41 @@ def create_published_flow_asset(
     asset_id = uuid4()
     extension = ASSET_CONTENT_TYPES[detected_content_type]
     storage_key = f"{flow.id}/{asset_id}{extension}"
-    save_published_flow_asset(
-        content=content,
-        content_type=detected_content_type,
-        storage_key=storage_key,
-    )
-
-    cleaned_alt_text = optional_redacted_text(alt_text) if alt_text else None
-    asset = PublishedFlowAsset(
-        alt_text=cleaned_alt_text[:255] if cleaned_alt_text else None,
-        author_id=current_user.id,
-        byte_size=len(content),
-        content_type=detected_content_type,
-        file_name=_safe_file_name(file_name, detected_content_type),
-        id=asset_id,
-        published_flow_id=flow.id,
-        sha256=hashlib.sha256(content).hexdigest(),
-        storage_key=storage_key,
-    )
-    db.add(asset)
-    flow.updated_at = utc_now()
+    stored_asset = False
     try:
+        save_published_flow_asset(
+            content=content,
+            content_type=detected_content_type,
+            storage_key=storage_key,
+        )
+        stored_asset = True
+        cleaned_alt_text = optional_redacted_text(alt_text) if alt_text else None
+        asset = PublishedFlowAsset(
+            alt_text=cleaned_alt_text[:255] if cleaned_alt_text else None,
+            author_id=current_user.id,
+            byte_size=len(content),
+            content_type=detected_content_type,
+            file_name=_safe_file_name(file_name, detected_content_type),
+            id=asset_id,
+            published_flow_id=flow.id,
+            sha256=hashlib.sha256(content).hexdigest(),
+            storage_key=storage_key,
+        )
+        db.add(asset)
+        flow.updated_at = utc_now()
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        delete_published_flow_asset(storage_key)
+        if stored_asset:
+            delete_published_flow_asset(storage_key)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Image asset could not be saved because it conflicts with existing data.",
         ) from exc
     except Exception:
         db.rollback()
-        delete_published_flow_asset(storage_key)
+        if stored_asset:
+            delete_published_flow_asset(storage_key)
         raise
 
     return serialize_flow_asset(flow, asset)

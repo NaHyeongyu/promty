@@ -74,11 +74,15 @@ function projectMemoryPendingRangeFromApi(
 ) {
   return {
     canCheckpoint: range.can_checkpoint,
+    changedFileCount: range.changed_file_count,
+    draftId: range.draft_id,
     endSequence: range.end_sequence,
     eventCount: range.event_count,
+    fileChangeEventCount: range.file_change_event_count,
     firstEventAt: range.first_event_at ?? null,
     lastEventAt: range.last_event_at ?? null,
     promptCount: range.prompt_count,
+    responseCount: range.response_count,
     sessionId: range.session_id,
     startSequence: range.start_sequence,
     tool: range.tool,
@@ -129,7 +133,7 @@ function projectMemoryScopeFromApi(
   return null;
 }
 
-function projectMemoryArtifactFromApi(
+export function projectMemoryArtifactFromApi(
   artifact: ProjectMemoryArtifactApiResponse,
 ) {
   return {
@@ -149,6 +153,8 @@ function projectMemoryArtifactFromApi(
     generator: artifact.generator,
     id: artifact.id,
     lastEventAt: artifact.last_event_at ?? null,
+    memoryBatchId: artifact.memory_batch_id ?? null,
+    memoryBatchIds: artifact.memory_batch_ids ?? [],
     memoryScope: projectMemoryScopeFromApi(artifact.memory_scope),
     model: artifact.model,
     needsUserVerification: artifact.needs_user_verification ?? null,
@@ -159,6 +165,8 @@ function projectMemoryArtifactFromApi(
     requestedGenerator: artifact.requested_generator ?? null,
     sections: artifact.sections ?? [],
     sessionId: artifact.session_id,
+    sourceDraftIds: artifact.source_draft_ids ?? [],
+    sourceSessionIds: artifact.source_session_ids ?? [],
     sliceIndex: artifact.slice_index ?? null,
     startSequence: artifact.start_sequence ?? null,
     summary: artifact.summary,
@@ -338,12 +346,6 @@ export function projectDetailDataFromApi(
         value: formatDate(payload.metrics.latest_activity_at, "No activity"),
         description:
           formatRelativeTimestamp(payload.metrics.latest_activity_at) ?? "No activity",
-      },
-      {
-        title: "Last Published Prompt",
-        value: formatDate(community?.latest_flow_at, "No published prompts"),
-        description:
-          formatRelativeTimestamp(community?.latest_flow_at) ?? "No published prompts",
       },
       {
         title: "Repository Connected",

@@ -58,23 +58,18 @@ def _breakdown(
     ]
 
 
-def _artifact_metadata(artifact: Artifact) -> dict[str, Any]:
-    return artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}
-
-
 def _pending_memory_draft_artifacts(db: Session) -> list[Artifact]:
-    drafts = db.execute(
-        select(Artifact)
-        .where(Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE)
-        .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
-    ).scalars()
-    return [
-        draft
-        for draft in drafts
-        if (metadata := _artifact_metadata(draft)).get("artifact_stage")
-        == PENDING_DRAFT_STAGE
-        and metadata.get("review_state") == REVIEW_STATE_DRAFT
-    ]
+    return list(
+        db.execute(
+            select(Artifact)
+            .where(
+                Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE,
+                Artifact.metadata_["artifact_stage"].astext == PENDING_DRAFT_STAGE,
+                Artifact.metadata_["review_state"].astext == REVIEW_STATE_DRAFT,
+            )
+            .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
+        ).scalars()
+    )
 
 
 def _action_item(
@@ -224,35 +219,43 @@ def _build_action_items(
 
 
 def _recent_users(db: Session) -> list[dict[str, Any]]:
-    project_counts = (
-        select(
-            Project.owner_id.label("owner_id"),
-            func.count(Project.id).label("project_count"),
-        )
-        .group_by(Project.owner_id)
-        .subquery()
+    project_count_sq = (
+        select(func.count(Project.id))
+        .where(Project.owner_id == User.id)
+        .correlate(User)
+        .scalar_subquery()
     )
-    event_stats = (
-        select(
-            Project.owner_id.label("owner_id"),
-            func.count(Event.id).label("event_count"),
-            func.count(case((Event.event_type == "PromptSubmitted", 1))).label(
-                "prompt_count",
-            ),
-            func.max(Event.created_at).label("latest_activity_at"),
-        )
+    event_count_sq = (
+        select(func.count(Event.id))
+        .select_from(Event)
         .join(Project, Project.id == Event.project_id)
-        .group_by(Project.owner_id)
-        .subquery()
+        .where(Project.owner_id == User.id)
+        .correlate(User)
+        .scalar_subquery()
     )
-    session_stats = (
-        select(
-            Project.owner_id.label("owner_id"),
-            func.count(PromptSession.id).label("session_count"),
-        )
+    prompt_count_sq = (
+        select(func.count(Event.id))
+        .select_from(Event)
+        .join(Project, Project.id == Event.project_id)
+        .where(Project.owner_id == User.id, Event.event_type == "PromptSubmitted")
+        .correlate(User)
+        .scalar_subquery()
+    )
+    session_count_sq = (
+        select(func.count(PromptSession.id))
+        .select_from(PromptSession)
         .join(Project, Project.id == PromptSession.project_id)
-        .group_by(Project.owner_id)
-        .subquery()
+        .where(Project.owner_id == User.id)
+        .correlate(User)
+        .scalar_subquery()
+    )
+    latest_activity_at_sq = (
+        select(func.max(Event.created_at))
+        .select_from(Event)
+        .join(Project, Project.id == Event.project_id)
+        .where(Project.owner_id == User.id)
+        .correlate(User)
+        .scalar_subquery()
     )
     return [
         {
@@ -278,70 +281,70 @@ def _recent_users(db: Session) -> list[dict[str, Any]]:
         ) in db.execute(
             select(
                 User,
-                project_counts.c.project_count,
-                event_stats.c.event_count,
-                event_stats.c.prompt_count,
-                session_stats.c.session_count,
-                event_stats.c.latest_activity_at,
+                project_count_sq,
+                event_count_sq,
+                prompt_count_sq,
+                session_count_sq,
+                latest_activity_at_sq,
             )
             .options(selectinload(User.github_connection))
-            .outerjoin(project_counts, project_counts.c.owner_id == User.id)
-            .outerjoin(event_stats, event_stats.c.owner_id == User.id)
-            .outerjoin(session_stats, session_stats.c.owner_id == User.id)
-            .order_by(nullslast(desc(event_stats.c.latest_activity_at)), desc(User.created_at))
+            .order_by(nullslast(desc(latest_activity_at_sq)), desc(User.created_at))
             .limit(10)
         ).all()
     ]
 
 
 def _recent_projects(db: Session) -> list[dict[str, Any]]:
-    event_stats = (
-        select(
-            Event.project_id.label("project_id"),
-            func.count(Event.id).label("event_count"),
-            func.count(case((Event.event_type == "PromptSubmitted", 1))).label(
-                "prompt_count",
-            ),
-            func.max(Event.created_at).label("latest_event_at"),
-        )
-        .group_by(Event.project_id)
-        .subquery()
+    latest_event_at_sq = (
+        select(func.max(Event.created_at))
+        .where(Event.project_id == Project.id)
+        .correlate(Project)
+        .scalar_subquery()
     )
-    session_stats = (
-        select(
-            PromptSession.project_id.label("project_id"),
-            func.count(PromptSession.id).label("session_count"),
-        )
-        .group_by(PromptSession.project_id)
-        .subquery()
+    event_count_sq = (
+        select(func.count(Event.id))
+        .where(Event.project_id == Project.id)
+        .correlate(Project)
+        .scalar_subquery()
     )
-    file_stats = (
-        select(
-            ProjectFile.project_id.label("project_id"),
-            func.count(ProjectFile.id).label("file_count"),
-        )
-        .where(ProjectFile.status != "deleted")
-        .group_by(ProjectFile.project_id)
-        .subquery()
+    prompt_count_sq = (
+        select(func.count(Event.id))
+        .where(Event.project_id == Project.id, Event.event_type == "PromptSubmitted")
+        .correlate(Project)
+        .scalar_subquery()
     )
-    memory_stats = (
-        select(
-            Artifact.project_id.label("project_id"),
-            func.count(Artifact.id).label("memory_count"),
-            func.max(Artifact.updated_at).label("latest_memory_at"),
-        )
-        .where(Artifact.type == MEMORY_ARTIFACT_TYPE)
-        .group_by(Artifact.project_id)
-        .subquery()
+    session_count_sq = (
+        select(func.count(PromptSession.id))
+        .where(PromptSession.project_id == Project.id)
+        .correlate(Project)
+        .scalar_subquery()
     )
-    failed_job_stats = (
-        select(
-            ArtifactGenerationJob.project_id.label("project_id"),
-            func.count(ArtifactGenerationJob.id).label("failed_job_count"),
+    file_count_sq = (
+        select(func.count(ProjectFile.id))
+        .where(ProjectFile.project_id == Project.id, ProjectFile.status != "deleted")
+        .correlate(Project)
+        .scalar_subquery()
+    )
+    memory_count_sq = (
+        select(func.count(Artifact.id))
+        .where(Artifact.project_id == Project.id, Artifact.type == MEMORY_ARTIFACT_TYPE)
+        .correlate(Project)
+        .scalar_subquery()
+    )
+    latest_memory_at_sq = (
+        select(func.max(Artifact.updated_at))
+        .where(Artifact.project_id == Project.id, Artifact.type == MEMORY_ARTIFACT_TYPE)
+        .correlate(Project)
+        .scalar_subquery()
+    )
+    failed_job_count_sq = (
+        select(func.count(ArtifactGenerationJob.id))
+        .where(
+            ArtifactGenerationJob.project_id == Project.id,
+            ArtifactGenerationJob.status == "failed",
         )
-        .where(ArtifactGenerationJob.status == "failed")
-        .group_by(ArtifactGenerationJob.project_id)
-        .subquery()
+        .correlate(Project)
+        .scalar_subquery()
     )
     projects: list[dict[str, Any]] = []
     for (
@@ -359,22 +362,17 @@ def _recent_projects(db: Session) -> list[dict[str, Any]]:
         select(
             Project,
             User,
-            event_stats.c.latest_event_at,
-            event_stats.c.event_count,
-            event_stats.c.prompt_count,
-            session_stats.c.session_count,
-            file_stats.c.file_count,
-            memory_stats.c.memory_count,
-            memory_stats.c.latest_memory_at,
-            failed_job_stats.c.failed_job_count,
+            latest_event_at_sq,
+            event_count_sq,
+            prompt_count_sq,
+            session_count_sq,
+            file_count_sq,
+            memory_count_sq,
+            latest_memory_at_sq,
+            failed_job_count_sq,
         )
         .join(User, Project.owner_id == User.id)
-        .outerjoin(event_stats, event_stats.c.project_id == Project.id)
-        .outerjoin(session_stats, session_stats.c.project_id == Project.id)
-        .outerjoin(file_stats, file_stats.c.project_id == Project.id)
-        .outerjoin(memory_stats, memory_stats.c.project_id == Project.id)
-        .outerjoin(failed_job_stats, failed_job_stats.c.project_id == Project.id)
-        .order_by(nullslast(desc(event_stats.c.latest_event_at)), desc(Project.updated_at))
+        .order_by(nullslast(desc(latest_event_at_sq)), desc(Project.updated_at))
         .limit(12)
     ).all():
         projects.append(

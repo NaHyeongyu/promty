@@ -38,7 +38,7 @@ function PromptText({
           }}
           type="button"
         >
-          {isExpanded ? "접기" : "더보기"}
+          {isExpanded ? "Show less" : "Show more"}
         </button>
       ) : null}
     </div>

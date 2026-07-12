@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -105,3 +105,26 @@ class ProjectMetadataUpdateRequest(BaseModel):
 
 class ProjectBookmarkUpdateRequest(BaseModel):
     is_bookmarked: bool
+
+
+class ProjectSummaryResponse(BaseModel):
+    connected_models: list[str]
+    created_at: str
+    default_branch: str
+    events: int
+    git_remote: str | None
+    github_url: str | None
+    id: str
+    is_bookmarked: bool
+    latest_event_at: str | None
+    latest_memory_at: str | None
+    memory_count: int
+    name: str
+    prompts: int
+    pending_memory_count: int
+    sessions: int
+    slug: str
+    tags: list[str]
+    tracked_files: int
+    updated_at: str
+    visibility: Literal["private", "public"]

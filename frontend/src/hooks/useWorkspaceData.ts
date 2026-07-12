@@ -42,6 +42,10 @@ export function useWorkspaceData({
     });
   };
 
+  const replaceProjectSummaries = (updatedProjects: ProjectSummary[]) => {
+    setProjectSummaries(updatedProjects);
+  };
+
   const loadEvents = async () => {
     setIsEventsLoading(true);
     setHasLoadedWorkspaceData(false);
@@ -74,6 +78,7 @@ export function useWorkspaceData({
     loadEvents,
     mergeProjectSummary,
     projects,
+    replaceProjectSummaries,
     setErrorMessage,
   };
 }

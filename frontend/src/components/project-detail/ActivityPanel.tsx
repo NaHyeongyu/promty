@@ -27,7 +27,7 @@ const defaultActivityNavigation: ActivityNavigationState = {
   selectedPromptId: null,
   selectedSessionId: null,
   selectedSessionPromptId: null,
-  view: "prompts",
+  view: "sessions",
 };
 
 type ActivityFeedItem =
@@ -506,7 +506,7 @@ export function ActivityPanel({
             onClick={() => updateActivityView(activityView)}
             type="button"
           >
-            {activityView === "prompts" ? "Prompts" : "Sessions"}
+            {activityView === "prompts" ? "By prompt" : "By session"}
           </button>
         ))}
       </div>

@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from app.services.project_views import (
+from app.services.projects.views import (
     _decode_prompt_activity_cursor,
     _encode_prompt_activity_cursor,
 )

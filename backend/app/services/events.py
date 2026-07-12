@@ -17,9 +17,9 @@ from app.services.event_payload_security import (
     decrypt_event_payload,
     encrypt_event_payload,
 )
-from app.services.memory_artifacts import generate_due_memory_artifacts_for_session
-from app.services.prompt_search import upsert_prompt_search_document
-from app.services.project_resources import sync_project_resources_from_event
+from app.services.memory.artifacts import generate_due_memory_artifacts_for_session
+from app.services.projects.search import upsert_prompt_search_document
+from app.services.projects.resources import sync_project_resources_from_event
 
 SYSTEM_USER_ID = uuid5(NAMESPACE_DNS, "prompthub.system_user")
 

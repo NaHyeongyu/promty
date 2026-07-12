@@ -1,27 +1,108 @@
-import { type FormEvent, useState } from "react";
-import { X } from "lucide-react";
 import {
-  setupCommandText,
-  SetupCommandBlock,
-} from "./SetupCommandBlock";
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { FolderGit2, Laptop, X } from "lucide-react";
+import type { EventRecord } from "../../workspace/types";
+import {
+  CollectorEventWaiter,
+  CollectorSetupFlow,
+} from "./CollectorOnboarding";
 
 export function RepositoryConnector({
+  existingProjectIds = [],
   onManualConnect,
   onClose,
+  onFirstEvent,
+  pollingEnabled = false,
+  repositoryAccessAvailable = false,
+  repositoryConnectUrl,
+  targetProjectId,
   targetProjectName,
 }: {
+  existingProjectIds?: string[];
   onManualConnect?: (githubUrl: string) => Promise<void>;
   onClose: () => void;
+  onFirstEvent?: (event: EventRecord) => void;
+  pollingEnabled?: boolean;
+  repositoryAccessAvailable?: boolean;
+  repositoryConnectUrl?: string;
+  targetProjectId?: string;
   targetProjectName?: string;
 }) {
-  const setupCommand = setupCommandText();
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
   const [manualRepositoryUrl, setManualRepositoryUrl] = useState("");
   const [manualRepositoryError, setManualRepositoryError] = useState<string | null>(
     null,
   );
   const [isManualRepositorySaving, setIsManualRepositorySaving] = useState(false);
+  const isExistingProjectConnection = Boolean(onManualConnect && targetProjectName);
+  const [connectionMode, setConnectionMode] = useState<"collector" | "repository">(
+    isExistingProjectConnection ? "repository" : "collector",
+  );
+  const connectorTitle = onManualConnect
+    ? isExistingProjectConnection
+      ? `Add context to ${targetProjectName}`
+      : "Add a project"
+    : `Set up ${targetProjectName ?? "this project"}`;
+  const connectorDescription = onManualConnect
+    ? "Local AI collection and GitHub repository access are separate connections. Choose what you want to add."
+    : "Install the local collector to capture prompts, responses, and code changes.";
+  const manualSubmitLabel = isExistingProjectConnection ? "Connect" : "Create";
+  const manualSavingLabel = isExistingProjectConnection ? "Connecting" : "Creating";
   const canSubmitManualRepository =
     Boolean(onManualConnect) && manualRepositoryUrl.trim().length > 0;
+
+  useEffect(() => {
+    const previousActiveElement = document.activeElement;
+    closeButtonRef.current?.focus();
+    return () => {
+      if (previousActiveElement instanceof HTMLElement) {
+        previousActiveElement.focus();
+      }
+    };
+  }, []);
+
+  const handleDialogKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== "Tab") {
+      return;
+    }
+
+    const focusableElements = Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        [
+          "a[href]",
+          "button:not([disabled])",
+          "input:not([disabled])",
+          "select:not([disabled])",
+          "textarea:not([disabled])",
+          "[tabindex]:not([tabindex='-1'])",
+        ].join(","),
+      ) ?? [],
+    );
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+    if (!firstElement || !lastElement) {
+      event.preventDefault();
+      return;
+    }
+    if (event.shiftKey && document.activeElement === firstElement) {
+      event.preventDefault();
+      lastElement.focus();
+    } else if (!event.shiftKey && document.activeElement === lastElement) {
+      event.preventDefault();
+      firstElement.focus();
+    }
+  };
 
   const submitManualRepository = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -44,36 +125,121 @@ export function RepositoryConnector({
   };
 
   return (
-    <div className="repository-connector-overlay" role="presentation">
+    <div
+      className="repository-connector-overlay"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+      role="presentation"
+    >
       <section
         aria-labelledby="repository-connector-title"
         aria-modal="true"
         className="repository-connector"
+        data-onboarding="true"
+        onKeyDown={handleDialogKeyDown}
+        ref={dialogRef}
         role="dialog"
       >
         <div className="repository-connector-header">
           <div>
-            <h2 id="repository-connector-title">Connect Repository</h2>
-            <p>
-              {onManualConnect
-                ? `Paste a GitHub URL or run setup inside ${targetProjectName ?? "this project"}.`
-                : `Run this inside ${targetProjectName ?? "your project"} to link the project and install local AI tool hooks.`}
-            </p>
+            <h2 id="repository-connector-title">{connectorTitle}</h2>
+            <p>{connectorDescription}</p>
           </div>
           <button
             aria-label="Close repository connector"
             className="repository-connector-close"
             onClick={onClose}
+            ref={closeButtonRef}
             type="button"
           >
             <X aria-hidden="true" size={16} strokeWidth={1.5} />
           </button>
         </div>
 
-        <SetupCommandBlock command={setupCommand} label="Project terminal" />
-
         {onManualConnect ? (
-          <form className="repository-url-form" onSubmit={submitManualRepository}>
+          <div className="repository-connector-modes" aria-label="Connection type" role="group">
+            <button
+              aria-pressed={connectionMode === "collector"}
+              data-active={connectionMode === "collector"}
+              onClick={() => setConnectionMode("collector")}
+              type="button"
+            >
+              <Laptop aria-hidden="true" size={16} strokeWidth={1.5} />
+              <span>Capture AI work</span>
+            </button>
+            <button
+              aria-pressed={connectionMode === "repository"}
+              data-active={connectionMode === "repository"}
+              onClick={() => setConnectionMode("repository")}
+              type="button"
+            >
+              <FolderGit2 aria-hidden="true" size={16} strokeWidth={1.5} />
+              <span>Repository only</span>
+            </button>
+          </div>
+        ) : null}
+
+        {connectionMode === "collector" || !onManualConnect ? (
+          <>
+            <CollectorSetupFlow compact projectName={targetProjectName} />
+            {pollingEnabled ? (
+              <CollectorEventWaiter
+                eventFilter={(event) =>
+                  targetProjectId
+                    ? event.project_id === targetProjectId
+                    : !existingProjectIds.includes(event.project_id)
+                }
+                onFirstEvent={onFirstEvent}
+                waitForNewEvent
+              />
+            ) : null}
+          </>
+        ) : null}
+
+        {onManualConnect &&
+        connectionMode === "repository" &&
+        !repositoryAccessAvailable ? (
+          <div className="repository-access-gate">
+            <FolderGit2 aria-hidden="true" size={20} strokeWidth={1.5} />
+            <div>
+              <strong>Connect GitHub repository access</strong>
+              <p>
+                Authorize repository access before adding source context. This permission is
+                separate from account sign-in and local AI collection.
+              </p>
+            </div>
+            {repositoryConnectUrl ? (
+              <a className="toolbar-button" href={repositoryConnectUrl}>
+                Connect GitHub
+              </a>
+            ) : null}
+          </div>
+        ) : null}
+
+        {onManualConnect &&
+        connectionMode === "repository" &&
+        repositoryAccessAvailable ? (
+          <form
+            className="repository-url-form is-repository-only"
+            onSubmit={submitManualRepository}
+          >
+            <div className="repository-only-heading">
+              <FolderGit2 aria-hidden="true" size={18} strokeWidth={1.5} />
+              <div>
+                <strong>
+                  {isExistingProjectConnection
+                    ? "Attach repository context"
+                    : "Create from a repository"}
+                </strong>
+                <p>
+                  This adds source-file context to {targetProjectName ?? "the project"}. It does
+                  not install a collector or capture AI sessions.
+                </p>
+              </div>
+            </div>
             <label htmlFor="repository-url">GitHub repository URL</label>
             <div className="repository-url-row">
               <input
@@ -91,7 +257,7 @@ export function RepositoryConnector({
                 disabled={!canSubmitManualRepository || isManualRepositorySaving}
                 type="submit"
               >
-                {isManualRepositorySaving ? "Connecting" : "Connect"}
+                {isManualRepositorySaving ? manualSavingLabel : manualSubmitLabel}
               </button>
             </div>
             {manualRepositoryError ? (

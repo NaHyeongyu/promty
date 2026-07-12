@@ -1,0 +1,18 @@
+{
+  "Comment": "Route api.promty.org to AWS App Runner service",
+  "Changes": [
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "api.promty.org.",
+        "Type": "CNAME",
+        "TTL": 300,
+        "ResourceRecords": [
+          {
+            "Value": "xcyfny8pb3.ap-southeast-2.awsapprunner.com"
+          }
+        ]
+      }
+    }
+  ]
+}

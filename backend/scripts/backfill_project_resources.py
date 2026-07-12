@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.db.session import SessionLocal  # noqa: E402
 from app.models.events import Event  # noqa: E402
-from app.services.project_resources import sync_project_resources_from_event  # noqa: E402
+from app.services.projects.resources import sync_project_resources_from_event  # noqa: E402
 
 
 def main() -> None:

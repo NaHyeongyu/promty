@@ -1,4 +1,12 @@
-import { ArrowRight, ShieldCheck } from "lucide-react";
+import {
+  ArrowRight,
+  FolderGit2,
+  KeyRound,
+  Laptop,
+  ShieldCheck,
+  UserRoundCheck,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { API_URL, BRAND_NAME } from "../../config";
 import { currentWorkspaceReturnUrl } from "../../workspace/navigation";
 import { BrandLogo, GitHubIcon } from "./Branding";
@@ -22,17 +30,39 @@ export function CliLoginPage() {
 
   return (
     <main className="cli-login-shell">
-      <section className="cli-login-panel" aria-labelledby="cli-login-title">
+      <section
+        className="cli-login-panel auth-login-panel"
+        aria-labelledby="cli-login-title"
+      >
         <div className="cli-login-kicker">
           <BrandLogo className="is-kicker" />
           {BRAND_NAME} CLI
         </div>
 
         <div className="cli-login-copy">
-          <h1 id="cli-login-title">Connect GitHub</h1>
+          <h1 id="cli-login-title">Authorize this collector</h1>
           <p>
-            Issue a local collector token for AI session history on this machine.
+            Use your GitHub identity to send this machine's AI activity to the correct {" "}
+            {BRAND_NAME} workspace.
           </p>
+        </div>
+
+        <div className="auth-role-list" aria-label="Collector authorization details">
+          <AuthRole
+            description="GitHub verifies your account using profile and email access."
+            icon={UserRoundCheck}
+            title="Account identity"
+          />
+          <AuthRole
+            description={`A revocable ${BRAND_NAME} collector token is returned only to this machine.`}
+            icon={KeyRound}
+            title="Device token"
+          />
+          <AuthRole
+            description="This step does not request GitHub repository access."
+            icon={FolderGit2}
+            title="Repository access"
+          />
         </div>
 
         <a
@@ -47,13 +77,13 @@ export function CliLoginPage() {
           }}
         >
           <GitHubIcon />
-          <span>Continue with GitHub</span>
+          <span>Authorize collector</span>
           <ArrowRight aria-hidden="true" size={17} strokeWidth={1.5} />
         </a>
 
         <div className="cli-login-footer">
           <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.5} />
-          <span>Only a {BRAND_NAME} collector token is returned to your terminal.</span>
+          <span>Return to your terminal after GitHub approval.</span>
         </div>
       </section>
     </main>
@@ -67,6 +97,12 @@ export function WebLoginPage({
   errorMessage: string | null;
   isError?: boolean;
 }) {
+  const authorizationError =
+    new URLSearchParams(window.location.search).get("auth_error") ===
+    "github_authorization_cancelled"
+      ? "GitHub authorization was cancelled. No permissions were changed."
+      : null;
+  const displayedError = errorMessage ?? authorizationError;
   const returnTo = currentWorkspaceReturnUrl();
   const loginUrl = `${API_URL}/api/auth/github/web/start?${new URLSearchParams({
     return_to: returnTo,
@@ -74,7 +110,10 @@ export function WebLoginPage({
 
   return (
     <main className="cli-login-shell">
-      <section className="cli-login-panel" aria-labelledby="web-login-title">
+      <section
+        className="cli-login-panel auth-login-panel"
+        aria-labelledby="web-login-title"
+      >
         <div className="cli-login-kicker">
           <BrandLogo className="is-kicker" />
           {BRAND_NAME}
@@ -82,26 +121,64 @@ export function WebLoginPage({
 
         <div className="cli-login-copy">
           <h1 id="web-login-title">Sign in to {BRAND_NAME}</h1>
-          <p>Searchable memory for prompts, responses, and code changes.</p>
+          <p>Recover the decisions, responses, and code changes behind your AI work.</p>
         </div>
 
-        {errorMessage ? (
+        {displayedError ? (
           <div className="auth-message" data-error={isError}>
-            {errorMessage}
+            {displayedError}
           </div>
         ) : null}
 
+        <div className="auth-role-list" aria-label="GitHub authorization details">
+          <AuthRole
+            description="GitHub verifies your account and keeps the workspace tied to you."
+            icon={UserRoundCheck}
+            title="Account sign-in"
+          />
+          <AuthRole
+            description="Repository access is requested later, only when you connect source context."
+            icon={FolderGit2}
+            title="Repository permission"
+          />
+          <AuthRole
+            description="Local prompts are collected only after you install a collector in a project."
+            icon={Laptop}
+            title="AI activity"
+          />
+        </div>
+
         <a className="github-login-button" href={loginUrl}>
           <GitHubIcon />
-          <span>Continue with GitHub</span>
+          <span>Sign in with GitHub</span>
           <ArrowRight aria-hidden="true" size={17} strokeWidth={1.5} />
         </a>
 
         <div className="cli-login-footer">
           <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.5} />
-          <span>GitHub sign-in keeps project access tied to your workspace.</span>
+          <span>This sign-in requests identity and email access only.</span>
         </div>
       </section>
     </main>
+  );
+}
+
+function AuthRole({
+  description,
+  icon: RoleIcon,
+  title,
+}: {
+  description: string;
+  icon: LucideIcon;
+  title: string;
+}) {
+  return (
+    <div className="auth-role-item">
+      <RoleIcon aria-hidden="true" size={17} strokeWidth={1.5} />
+      <div>
+        <strong>{title}</strong>
+        <span>{description}</span>
+      </div>
+    </div>
   );
 }

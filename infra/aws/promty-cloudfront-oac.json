@@ -1,0 +1,7 @@
+{
+  "Name": "promty-prod-frontend-oac",
+  "Description": "CloudFront access to Promty production frontend bucket",
+  "SigningProtocol": "sigv4",
+  "SigningBehavior": "always",
+  "OriginAccessControlOriginType": "s3"
+}

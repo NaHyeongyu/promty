@@ -9,6 +9,61 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prompthub -d prompthub"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command:
+      - sh
+      - -c
+      - alembic -c alembic.ini upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8011
+    env_file:
+      - path: docker/compose.env
+        required: true
+      - path: .env.local
+        required: false
+    environment:
+      DATABASE_URL: postgresql+psycopg://prompthub:prompthub@postgres:5432/prompthub
+      PROMPTHUB_API_PUBLIC_URL: http://127.0.0.1:8011
+      PROMPTHUB_APP_URL: http://127.0.0.1:5173
+      PROMPTHUB_CORS_ORIGINS: http://127.0.0.1:5173,http://localhost:5173
+      PROMPTHUB_SESSION_COOKIE_SECURE: "false"
+    ports:
+      - "8011:8011"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8011/health')
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  frontend:
+    image: node:22-alpine
+    working_dir: /app/frontend
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    environment:
+      VITE_PROMPTHUB_API_URL: http://127.0.0.1:8011
+    volumes:
+      - .:/app
+      - frontend-node-modules:/app/frontend/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      backend:
+        condition: service_healthy
 
 volumes:
   postgres-data:
+  frontend-node-modules:

@@ -68,31 +68,38 @@ git remote add origin git@github.com:OWNER/REPO.git
 
 Supported remote formats include `git@github.com:OWNER/REPO.git`, `ssh://git@github.com/OWNER/REPO.git`, and `https://github.com/OWNER/REPO.git`.
 
-The production packaging target is:
+Run the published npm package with:
 
 ```bash
-npx @prompthub/cli init
+npx promty-collector init
 ```
 
-The local CLI commands are already split so that packaging can wrap the same flow.
+The npm package includes the Python collector and uses `python3` by default. Set
+`PROMTY_PYTHON` when a different Python executable is required.
 
-Supported tools:
+For a Python-native installation, run `pipx install ./collector` and use the
+same `promty` command.
+
+Installable integrations:
 
 ```text
 claude-code
 codex-cli
-cursor
-gemini-cli
 ```
 
 Current validation status:
 
 ```text
-codex-cli   adapter + repo hook + real payload path validated
-claude-code adapter + repo hook installer implemented, real payload validation pending
-cursor      adapter scaffolded, end-to-end hook validation pending
-gemini-cli  adapter scaffolded, end-to-end hook validation pending
+codex-cli   adapter + repository hook + real payload path validated
+claude-code adapter + repository hook installer implemented
 ```
+
+Cursor and Gemini CLI adapters remain experimental and are not exposed by
+`init`, `install-hooks`, or `doctor` until their hook paths are validated.
+
+`init` installs a content-addressed runtime under `~/.promty/runtime` and writes
+the durable `~/.promty/bin/promty` launcher into repository hooks. Hooks do not
+depend on the npm cache, the source checkout, or the directory where setup ran.
 
 Supported event types:
 
@@ -162,13 +169,13 @@ python3 collector/src/cli.py doctor --tool claude-code
 Upload queued events:
 
 ```bash
-python3 collector/src/cli.py upload --api-url http://localhost:8000
+python3 collector/src/cli.py upload --api-url http://localhost:8011
 ```
 
 Run the uploader in the background for near-real-time sync:
 
 ```bash
-python3 collector/src/cli.py upload --api-url http://localhost:8000 --watch --interval 2
+python3 collector/src/cli.py upload --api-url http://localhost:8011 --watch --interval 2
 ```
 
 By default, queued events are stored by project and session at:
@@ -221,6 +228,9 @@ GET  /health
 ```
 
 The backend persists events to PostgreSQL through SQLAlchemy and Alembic.
+Runtime dependencies are declared in `backend/requirements.txt` and the fully
+resolved Python 3.12 build is pinned in `backend/requirements.lock` for CI and
+Docker.
 
 ## AWS And GitHub
 
@@ -233,7 +243,8 @@ backend/Dockerfile
 docs/aws-github-deployment.md
 ```
 
-`CI` runs backend tests and the frontend production build. `AWS Deploy` is a
+`CI` runs Python static checks, backend and collector tests, collector package
+validation, and the frontend production build. `AWS Deploy` is a
 manual workflow that builds the frontend for S3/CloudFront and publishes the
 backend image to ECR. Published flow assets can use S3 by setting:
 
@@ -276,6 +287,7 @@ GitHub OAuth endpoints:
 ```text
 GET /api/auth/github/start
 GET /api/auth/github/web/start
+GET /api/auth/github/web/repository/start
 GET /api/auth/github/callback
 GET /api/auth/me
 POST /api/auth/logout
@@ -297,14 +309,20 @@ See [Database](docs/database.md) for the PostgreSQL schema and migration command
 
 See [Project Status](docs/project-status.md) for the current implementation snapshot and local runbook.
 
-Start the local PostgreSQL service:
+Start the complete local stack, including migrations:
+
+```bash
+docker compose up --build
+```
+
+The frontend is available at `http://127.0.0.1:5173` and the API health check at
+`http://127.0.0.1:8011/health`. To run only PostgreSQL and manage processes on
+the host instead:
 
 ```bash
 docker compose up -d postgres
-```
-
-Run database migrations:
-
-```bash
 ./.venv/bin/alembic -c backend/alembic.ini upgrade head
 ```
+
+Compose loads development-only fallback secrets from `docker/compose.env` and
+then applies overrides from the ignored root `.env.local` when it exists.

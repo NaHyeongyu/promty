@@ -5,16 +5,15 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { ChevronRight, Sparkles, X } from "lucide-react";
+import { ArrowRight, ChevronRight, Sparkles, X } from "lucide-react";
+import type { ProjectMemoryGenerationResponse } from "../../api/projects";
+import { MarkdownContent } from "../MarkdownContent";
 import type {
   ProjectDetailData,
   ProjectMemoryArtifact,
 } from "./types";
 
-export type MemoryCheckpointResult = {
-  message: string;
-  status: "generation_failed" | "memory_generated" | "no_memory" | string;
-};
+export type MemoryGenerationResult = ProjectMemoryGenerationResponse;
 
 function isGeneratedMemoryArtifact(artifact: ProjectMemoryArtifact) {
   return (
@@ -33,8 +32,10 @@ function memoryArtifactStatusLabel(artifact: ProjectMemoryArtifact) {
 }
 
 function memoryArtifactFileCount(artifact: ProjectMemoryArtifact) {
-  const listedFileCount = artifact.changedFiles.filter((file) => file.path.trim()).length;
-  return Math.max(artifact.changedFileCount, listedFileCount);
+  const listedFileCount = (artifact.changedFiles ?? []).filter((file) =>
+    file.path?.trim(),
+  ).length;
+  return Math.max(artifact.changedFileCount ?? 0, listedFileCount);
 }
 
 function memoryArtifactFileCountLabel(artifact: ProjectMemoryArtifact) {
@@ -180,22 +181,41 @@ function MemoryArtifactCard({
 function MemoryArtifactDetailDrawer({
   artifact,
   onClose,
+  onOpenSession,
 }: {
   artifact: ProjectMemoryArtifact;
   onClose: () => void;
+  onOpenSession?: (sessionId: string) => void;
 }) {
   const drawerRef = useRef<HTMLElement | null>(null);
-  const sections = artifact.sections.filter(
-    (section) => section.title.trim() && section.summary.trim(),
+  const sections = (artifact.sections ?? []).filter(
+    (section) => section.title?.trim() && section.summary?.trim(),
   );
   const outcome =
     artifact.outcome && artifact.outcome !== artifact.summary ? artifact.outcome : null;
   const dateRange = formatMemoryDateRange(artifact.firstEventAt, artifact.lastEventAt);
   const statusLabel = memoryArtifactStatusLabel(artifact);
-  const changedFiles = artifact.changedFiles.filter((file) => file.path.trim());
+  const changedFiles = (artifact.changedFiles ?? []).filter((file) => file.path?.trim());
   const changedFileCount = memoryArtifactFileCount(artifact);
+  const sourceSessionIds = Array.from(
+    new Set(
+      [artifact.sessionId, ...(artifact.sourceSessionIds ?? [])].filter(
+        (sessionId): sessionId is string => Boolean(sessionId),
+      ),
+    ),
+  );
   const metadataRows = [
     { label: "Covered dates", value: dateRange },
+    {
+      label: "Sources",
+      value:
+        sourceSessionIds.length > 0
+          ? `${sourceSessionIds.length} ${
+              sourceSessionIds.length === 1 ? "session" : "sessions"
+            }`
+          : null,
+    },
+    { label: "Prompts", value: artifact.promptCount ? artifact.promptCount.toString() : null },
     { label: "Files changed", value: changedFileCount > 0 ? changedFileCount.toString() : null },
     { label: "Status", value: statusLabel },
   ].filter((row) => row.value);
@@ -270,7 +290,7 @@ function MemoryArtifactDetailDrawer({
       >
         <div className="bh-memory-detail-header">
           <div>
-            <span>{dateRange ?? "Generated summary"}</span>
+            <span>{dateRange ?? "Project memory"}</span>
             <h2 id="memory-detail-title">{artifact.title}</h2>
           </div>
           <button
@@ -284,6 +304,26 @@ function MemoryArtifactDetailDrawer({
         </div>
 
         <div className="bh-memory-detail-body">
+          {sourceSessionIds.length > 0 && onOpenSession ? (
+            <div className="bh-memory-source-actions">
+              {sourceSessionIds.map((sessionId, index) => (
+                <button
+                  className="bh-memory-source-action"
+                  key={sessionId}
+                  onClick={() => onOpenSession(sessionId)}
+                  type="button"
+                >
+                  <span>
+                    {sourceSessionIds.length === 1
+                      ? "Open source session"
+                      : `Open source session ${index + 1}`}
+                  </span>
+                  <ArrowRight aria-hidden="true" size={15} strokeWidth={1.5} />
+                </button>
+              ))}
+            </div>
+          ) : null}
+
           {metadataRows.length > 0 ? (
             <dl className="bh-memory-detail-meta">
               {metadataRows.map((row) => (
@@ -347,31 +387,83 @@ function MemoryArtifactDetailDrawer({
 
 export function MemoryPanel({
   data,
-  onCheckpointMemory,
+  onGenerateProjectMemory,
+  onLoadMemoryArtifacts,
+  onOpenSession,
 }: {
   data: ProjectDetailData;
-  onCheckpointMemory?: (sessionIds: string[]) => Promise<MemoryCheckpointResult>;
+  onGenerateProjectMemory?: () => Promise<MemoryGenerationResult>;
+  onLoadMemoryArtifacts?: (limit: number) => Promise<ProjectMemoryArtifact[]>;
+  onOpenSession?: (sessionId: string) => void;
 }) {
+  const [loadedArtifacts, setLoadedArtifacts] = useState<ProjectMemoryArtifact[] | null>(null);
+  const displayedArtifacts = loadedArtifacts ?? data.memory.recentArtifacts;
+  const projectMemoryArtifact = data.memory.recentArtifacts.find(
+    (artifact) =>
+      artifact.artifactStage === "project_memory" || artifact.memoryScope === "project",
+  );
   const checkpointableRanges = data.memory.pendingRanges.filter(
     (range) => range.canCheckpoint,
   );
+  const checkpointableSessionCount = new Set(
+    checkpointableRanges.map((range) => range.sessionId),
+  ).size;
   const generatedArtifacts = useMemo(
     () =>
-      [...data.memory.recentArtifacts]
+      [...displayedArtifacts]
         .filter(isGeneratedMemoryArtifact)
         .sort(compareMemoryArtifactsByLatest),
-    [data.memory.recentArtifacts],
+    [displayedArtifacts],
+  );
+  const totalGeneratedArtifactCount = Math.max(
+    data.memory.totalArtifacts,
+    generatedArtifacts.length,
   );
   const pendingDateRange = combinedMemoryDateRange(data.memory.pendingRanges);
   const resultDateRange = combinedMemoryDateRange(generatedArtifacts);
   const hasPendingDocumentation = data.memory.pendingRanges.length > 0;
-  const pendingBatchCount = data.memory.pendingRanges.length > 0 ? 1 : 0;
-  const [checkpointStatus, setCheckpointStatus] = useState<string | null>(null);
-  const [checkpointError, setCheckpointError] = useState<string | null>(null);
-  const [isCheckpointing, setIsCheckpointing] = useState(false);
+  const generatedSummaryCountLabel =
+    totalGeneratedArtifactCount > generatedArtifacts.length
+      ? `${generatedArtifacts.length} of ${totalGeneratedArtifactCount} memory items`
+      : `${generatedArtifacts.length} ${
+          generatedArtifacts.length === 1 ? "memory item" : "memory items"
+        }`;
+  const nextArtifactLoadLimit = Math.min(
+    Math.max(generatedArtifacts.length + 10, 20),
+    Math.max(totalGeneratedArtifactCount, generatedArtifacts.length + 10),
+    100,
+  );
+  const canLoadMoreArtifacts =
+    Boolean(onLoadMemoryArtifacts) &&
+    generatedArtifacts.length < totalGeneratedArtifactCount &&
+    generatedArtifacts.length < 100;
+  const [generationStatus, setGenerationStatus] = useState<string | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [generationRetryable, setGenerationRetryable] = useState(true);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isRemoteGenerationActive, setIsRemoteGenerationActive] = useState(false);
+  const [isArtifactHistoryLoading, setIsArtifactHistoryLoading] = useState(false);
+  const [artifactHistoryError, setArtifactHistoryError] = useState<string | null>(null);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
+  const generationRequestRef = useRef(0);
+  const projectIdRef = useRef(data.project.id);
   const selectedArtifact =
     generatedArtifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
+
+  useEffect(() => {
+    setLoadedArtifacts(null);
+    setArtifactHistoryError(null);
+  }, [data.project.id, data.memory.latestArtifactAt, data.memory.totalArtifacts]);
+
+  useEffect(() => {
+    projectIdRef.current = data.project.id;
+    generationRequestRef.current += 1;
+    setGenerationError(null);
+    setGenerationRetryable(true);
+    setGenerationStatus(null);
+    setIsGenerating(false);
+    setIsRemoteGenerationActive(false);
+  }, [data.project.id]);
 
   useEffect(() => {
     if (!selectedArtifactId) {
@@ -395,27 +487,76 @@ export function MemoryPanel({
     }
   }, [generatedArtifacts, selectedArtifactId]);
 
-  const organizePendingBatch = async () => {
-    if (!onCheckpointMemory || isCheckpointing) {
-      return;
-    }
-    const sessionIds = checkpointableRanges.map((range) => range.sessionId);
-    if (sessionIds.length === 0) {
+  const createProjectMemory = async () => {
+    if (
+      !onGenerateProjectMemory ||
+      checkpointableSessionCount === 0 ||
+      isGenerating ||
+      isRemoteGenerationActive
+    ) {
       return;
     }
 
-    setIsCheckpointing(true);
-    setCheckpointError(null);
-    setCheckpointStatus(null);
+    setIsGenerating(true);
+    setGenerationError(null);
+    setGenerationRetryable(true);
+    setGenerationStatus(null);
+    setIsRemoteGenerationActive(false);
+    const projectId = data.project.id;
+    const requestId = generationRequestRef.current + 1;
+    generationRequestRef.current = requestId;
     try {
-      const result = await onCheckpointMemory(sessionIds);
-      setCheckpointStatus(result.message);
+      const result = await onGenerateProjectMemory();
+      if (
+        projectIdRef.current !== projectId ||
+        generationRequestRef.current !== requestId
+      ) {
+        return;
+      }
+      if (result.status === "generation_failed") {
+        setGenerationError(result.message);
+        setGenerationRetryable(result.retryable !== false);
+      } else if (result.status === "generation_in_progress") {
+        setGenerationStatus(result.message);
+        setIsRemoteGenerationActive(true);
+      } else {
+        setGenerationStatus(result.message);
+      }
     } catch (error) {
-      setCheckpointError(
-        error instanceof Error ? error.message : "Pending Work organization failed.",
+      if (
+        projectIdRef.current !== projectId ||
+        generationRequestRef.current !== requestId
+      ) {
+        return;
+      }
+      setGenerationError(
+        error instanceof Error ? error.message : "Memory creation failed.",
       );
     } finally {
-      setIsCheckpointing(false);
+      if (
+        projectIdRef.current === projectId &&
+        generationRequestRef.current === requestId
+      ) {
+        setIsGenerating(false);
+      }
+    }
+  };
+
+  const loadMoreArtifacts = async () => {
+    if (!onLoadMemoryArtifacts || isArtifactHistoryLoading) {
+      return;
+    }
+
+    setIsArtifactHistoryLoading(true);
+    setArtifactHistoryError(null);
+    try {
+      setLoadedArtifacts(await onLoadMemoryArtifacts(nextArtifactLoadLimit));
+    } catch (error) {
+      setArtifactHistoryError(
+        error instanceof Error ? error.message : "Memory history could not be loaded.",
+      );
+    } finally {
+      setIsArtifactHistoryLoading(false);
     }
   };
 
@@ -424,58 +565,108 @@ export function MemoryPanel({
       <header className="bh-memory-toolbar">
         <div>
           <h2>Project Memory</h2>
-          <p>Review generated summaries and organize pending work.</p>
+          <p>Verify captured work and keep long-term project context current.</p>
         </div>
       </header>
 
       <div className="bh-memory-summary-strip" aria-label="Memory status summary">
-        <span>Pending: {hasPendingDocumentation ? `${pendingBatchCount} batch` : "None"}</span>
-        <span>Generated: {generatedArtifacts.length}</span>
+        <span>Needs review: {hasPendingDocumentation ? "All captured work" : "None"}</span>
+        <span>Memory: {generatedSummaryCountLabel}</span>
       </div>
 
-      {checkpointStatus ? (
+      {generationStatus ? (
         <div className="bh-memory-status" role="status">
-          {checkpointStatus}
+          {generationStatus}
         </div>
       ) : null}
       <div className="bh-memory-documentation">
+        <section
+          className="bh-memory-document-section"
+          aria-labelledby="project-memory-document-title"
+        >
+          <div className="bh-memory-section-header">
+            <div>
+              <span className="bh-memory-step-kicker">Current document</span>
+              <h3 id="project-memory-document-title">Project Memory</h3>
+              <p>
+                {projectMemoryArtifact?.updatedAt
+                  ? `Updated ${projectMemoryArtifact.updatedAt}`
+                  : "No compiled project memory yet."}
+              </p>
+            </div>
+            <span>
+              {projectMemoryArtifact
+                ? `${projectMemoryArtifact.sourceSessionIds.length} source ${
+                    projectMemoryArtifact.sourceSessionIds.length === 1
+                      ? "session"
+                      : "sessions"
+                  }`
+                : "Empty"}
+            </span>
+          </div>
+          {projectMemoryArtifact?.outcome ? (
+            <MarkdownContent
+              className="bh-markdown-preview bh-memory-project-document"
+              emptyLabel="No compiled project memory yet."
+              value={projectMemoryArtifact.outcome}
+            />
+          ) : (
+            <div className="bh-memory-document-idle">
+              <strong>No Project Memory yet</strong>
+              <span>Create project memory when captured work is ready.</span>
+            </div>
+          )}
+        </section>
+
         <section
           className="bh-memory-document-section"
           aria-labelledby="memory-request-title"
         >
           <div className="bh-memory-section-header">
             <div>
-              <span className="bh-memory-step-kicker">Pending</span>
-              <h3 id="memory-request-title">Update</h3>
-              <p>{pendingDateRange ?? "No captured range waiting."}</p>
+              <span className="bh-memory-step-kicker">Captured work</span>
+              <h3 id="memory-request-title">Needs review</h3>
+              <p>{pendingDateRange ?? "No captured work waiting."}</p>
             </div>
             <span>{hasPendingDocumentation ? "Ready" : "Clear"}</span>
           </div>
 
           {hasPendingDocumentation ? (
             <article
-              aria-busy={isCheckpointing}
+              aria-busy={isGenerating || isRemoteGenerationActive || undefined}
               className="bh-memory-document-request"
-              data-generating={isCheckpointing ? "true" : "false"}
+              data-generating={isGenerating || isRemoteGenerationActive ? "true" : "false"}
             >
               <div className="bh-memory-document-row-main">
-                <h3>Pending batch</h3>
-                <p>{pendingDateRange ?? "Captured work is ready to compile."}</p>
+                <h3>Work ready for memory</h3>
+                <p>
+                  {pendingDateRange ?? "Captured work is ready to compile."}
+                </p>
               </div>
               <button
-                className="bh-memory-primary-action"
-                disabled={
-                  checkpointableRanges.length === 0 || !onCheckpointMemory || isCheckpointing
+                aria-busy={isGenerating || isRemoteGenerationActive || undefined}
+                aria-disabled={
+                  checkpointableSessionCount === 0 ||
+                  !onGenerateProjectMemory ||
+                  isGenerating ||
+                  isRemoteGenerationActive
                 }
-                onClick={() => void organizePendingBatch()}
+                className="bh-memory-primary-action"
+                onClick={() => void createProjectMemory()}
                 type="button"
               >
                 <Sparkles aria-hidden="true" size={16} strokeWidth={1.7} />
                 <span>
-                  {isCheckpointing ? "Generating" : checkpointError ? "Retry" : "Generate"}
+                  {isGenerating || isRemoteGenerationActive
+                    ? "Updating project memory"
+                    : generationError
+                      ? generationRetryable
+                        ? "Retry update"
+                        : "Retry with latest work"
+                      : "Create project memory"}
                 </span>
               </button>
-              {isCheckpointing ? (
+              {isGenerating || isRemoteGenerationActive ? (
                 <div
                   aria-live="polite"
                   className="bh-memory-generation-status"
@@ -483,23 +674,23 @@ export function MemoryPanel({
                 >
                   <div className="bh-memory-generation-progress" aria-hidden="true" />
                   <div className="bh-memory-generation-status-copy">
-                    <strong>Generating summary</strong>
-                    <span>Generated summaries will refresh when generation finishes.</span>
+                    <strong>Creating project memory</strong>
+                    <span>Memory will refresh when the source work has been processed.</span>
                   </div>
                 </div>
-              ) : checkpointError ? (
+              ) : generationError ? (
                 <div className="bh-memory-generation-status" data-error="true" role="alert">
                   <div>
                     <strong>Generation failed.</strong>
-                    <span>{checkpointError}</span>
+                    <span>{generationError}</span>
                   </div>
                 </div>
               ) : null}
             </article>
           ) : (
             <div className="bh-memory-document-idle">
-              <strong>No pending update</strong>
-              <span>No captured work is waiting to be generated.</span>
+              <strong>No work waiting for review</strong>
+              <span>New captured sessions will appear here when memory can be created.</span>
             </div>
           )}
         </section>
@@ -510,15 +701,11 @@ export function MemoryPanel({
         >
           <div className="bh-memory-section-header">
             <div>
-              <span className="bh-memory-step-kicker">Generated</span>
-              <h3 id="memory-history-title">Generated Summaries</h3>
-              <p>{resultDateRange ?? "No generated summaries yet."}</p>
+              <span className="bh-memory-step-kicker">Long-term context</span>
+              <h3 id="memory-history-title">Memory history</h3>
+              <p>{resultDateRange ?? "No memory yet."}</p>
             </div>
-            <span>
-              {generatedArtifacts.length > 0
-                ? `${generatedArtifacts.length} summaries`
-                : "Empty"}
-            </span>
+            <span>{generatedArtifacts.length > 0 ? generatedSummaryCountLabel : "Empty"}</span>
           </div>
 
           {generatedArtifacts.length > 0 ? (
@@ -531,11 +718,29 @@ export function MemoryPanel({
                   onSelect={(selectedArtifact) => setSelectedArtifactId(selectedArtifact.id)}
                 />
               ))}
+              {canLoadMoreArtifacts ? (
+                <button
+                  className="bh-memory-load-more"
+                  disabled={isArtifactHistoryLoading}
+                  onClick={() => void loadMoreArtifacts()}
+                  type="button"
+                >
+                  {isArtifactHistoryLoading ? "Loading" : "Load more memory"}
+                </button>
+              ) : null}
+              {artifactHistoryError ? (
+                <div className="bh-memory-generation-status" data-error="true" role="alert">
+                  <div>
+                    <strong>History could not be loaded.</strong>
+                    <span>{artifactHistoryError}</span>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="bh-memory-empty">
-              <strong>No generated summaries yet</strong>
-              <span>Generated summaries will appear here.</span>
+              <strong>No memory yet</strong>
+              <span>Created memory will appear here with its source context.</span>
             </div>
           )}
         </section>
@@ -544,6 +749,10 @@ export function MemoryPanel({
         <MemoryArtifactDetailDrawer
           artifact={selectedArtifact}
           onClose={() => setSelectedArtifactId(null)}
+          onOpenSession={(sessionId) => {
+            setSelectedArtifactId(null);
+            onOpenSession?.(sessionId);
+          }}
         />
       ) : null}
     </section>

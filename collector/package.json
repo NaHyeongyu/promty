@@ -1,0 +1,18 @@
+{
+  "name": "promty-collector",
+  "version": "0.1.0",
+  "description": "Promty local event collector",
+  "license": "UNLICENSED",
+  "type": "module",
+  "bin": {
+    "promty": "bin/promty.js",
+    "promty-collector": "bin/promty.js"
+  },
+  "files": [
+    "bin",
+    "src/**/*.py"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -35,7 +35,7 @@ export function useProjectSharing({
       );
       setCopiedProjectId(project.id);
     } catch {
-      setErrorMessage("Project link could not be copied.");
+      setErrorMessage("Workspace link could not be copied.");
     }
   };
 

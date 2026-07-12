@@ -11,7 +11,7 @@ from sqlalchemy import and_, case, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.encoding import base64_urldecode, base64_urlencode
-from app.models.code_change_patches import CodeChangePatch
+from app.core.security import is_admin_user
 from app.models.events import Event
 from app.models.project_files import ProjectFile
 from app.models.projects import Project
@@ -21,14 +21,15 @@ from app.models.users import User
 from app.services.event_payload_security import (
     decrypt_event_payload,
 )
-from app.services.memory_artifacts import (
-    count_project_memory_history_artifacts,
-    list_project_memory_history_artifacts,
+from app.services.memory.artifacts import (
+    count_project_memory_artifacts,
+    get_latest_project_memory,
+    list_project_memory_artifacts,
 )
 from app.services.memory.serializers import (
     serialize_memory_artifact_summary,
 )
-from app.services.prompt_activity import (
+from app.services.projects.activity import (
     files_changed_by_prompt_from_events,
     format_response_summary,
     iso,
@@ -39,7 +40,7 @@ from app.services.prompt_activity import (
     response_payloads_by_prompt,
     tool_label,
 )
-from app.services.prompt_search import prompt_search_hashes_for_query
+from app.services.projects.search import prompt_search_hashes_for_query
 
 RECENT_ACTIVITY_LIMIT = 50
 PROMPT_RELATED_EVENT_LIMIT = 1000
@@ -111,14 +112,17 @@ def build_file_tree(paths: list[str]) -> list[dict[str, Any]]:
     return serialize(root)
 
 
-def project_for_user(db: Session, project_id: UUID, current_user: User) -> Project:
-    project = db.scalar(
-        select(Project).where(
-            Project.id == project_id,
-            Project.owner_id == current_user.id,
-        )
-    )
-    if project is None:
+def project_for_user(
+    db: Session,
+    project_id: UUID,
+    current_user: User,
+    *,
+    allow_admin: bool = False,
+) -> Project:
+    project = db.get(Project, project_id)
+    if project is None or (
+        project.owner_id != current_user.id and not (allow_admin and is_admin_user(current_user))
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
@@ -152,7 +156,7 @@ def read_project_files_response(
     *,
     limit: int = PROJECT_FILE_TREE_LIMIT,
 ) -> dict[str, Any]:
-    project = project_for_user(db, project_id, current_user)
+    project = project_for_user(db, project_id, current_user, allow_admin=True)
     total = int(
         db.scalar(
             select(func.count(ProjectFile.id)).where(
@@ -224,24 +228,6 @@ def _activity_summaries(db: Session, project_id: UUID) -> tuple[list[dict[str, A
         if session_ids
         else {}
     )
-    file_counts = (
-        dict(
-            db.execute(
-                select(
-                    CodeChangePatch.session_id,
-                    func.count(func.distinct(CodeChangePatch.path)),
-                )
-                .where(
-                    CodeChangePatch.project_id == project_id,
-                    CodeChangePatch.session_id.in_(session_ids),
-                )
-                .group_by(CodeChangePatch.session_id)
-            ).all()
-        )
-        if session_ids
-        else {}
-    )
-
     tools: set[str] = set()
     activities: list[dict[str, Any]] = []
     for (
@@ -264,7 +250,6 @@ def _activity_summaries(db: Session, project_id: UUID) -> tuple[list[dict[str, A
         activities.append(
             {
                 "events": int(event_count or 0),
-                "id": str(session_id) if session_id is not None else None,
                 "id": str(session_id),
                 "last_activity_at": iso(last_activity_at),
                 "model": session_model or tool_label(session_tool or "unknown"),
@@ -411,8 +396,7 @@ def _prompt_activity_items(
         return []
 
     payloads = prompt_payloads or {
-        event.id: decrypt_event_payload(event.event_type, event.payload)
-        for event in prompt_events
+        event.id: decrypt_event_payload(event.event_type, event.payload) for event in prompt_events
     }
     prompt_changes = _prompt_file_changes(
         db,
@@ -527,7 +511,7 @@ def read_project_prompt_activities_response(
     query: str | None = None,
     session_id: UUID | None = None,
 ) -> dict[str, Any]:
-    project = project_for_user(db, project_id, current_user)
+    project = project_for_user(db, project_id, current_user, allow_admin=True)
     normalized_query = re.sub(r"\s+", " ", query.strip().lower()) if query else ""
     decoded_cursor = _decode_prompt_activity_cursor(cursor)
     base_query = select(Event).where(
@@ -637,7 +621,7 @@ def read_project_detail_response(
     current_user: User,
     db: Session,
 ) -> dict[str, Any]:
-    project = project_for_user(db, project_id, current_user)
+    project = project_for_user(db, project_id, current_user, allow_admin=True)
     repository_url = normalize_github_url(project.git_remote)
     since_yesterday_at = datetime.now(timezone.utc) - timedelta(days=1)
     session_count, session_count_since_yesterday = db.execute(
@@ -666,11 +650,11 @@ def read_project_detail_response(
             func.max(Event.created_at),
         ).where(Event.project_id == project.id)
     ).one()
-    memory_artifact_count = count_project_memory_history_artifacts(
+    memory_artifact_count = count_project_memory_artifacts(
         db,
         project_id=project.id,
     )
-    memory_artifact_count_since_yesterday = count_project_memory_history_artifacts(
+    memory_artifact_count_since_yesterday = count_project_memory_artifacts(
         db,
         project_id=project.id,
         since=since_yesterday_at,
@@ -685,10 +669,19 @@ def read_project_detail_response(
         project_id=project.id,
         since=since_yesterday_at,
     )
-    memory_artifacts = list_project_memory_history_artifacts(
+    memory_artifacts = list_project_memory_artifacts(
         db,
         limit=10,
         project_id=project.id,
+    )
+    project_memory_artifact = get_latest_project_memory(db, project_id=project.id)
+    visible_memory_artifacts = [
+        *([project_memory_artifact] if project_memory_artifact is not None else []),
+        *memory_artifacts,
+    ]
+    latest_memory_artifact_at = max(
+        (artifact.updated_at for artifact in visible_memory_artifacts),
+        default=None,
     )
 
     return {
@@ -724,9 +717,9 @@ def read_project_detail_response(
             "total_sessions": session_count,
         },
         "memory": {
-            "latest_artifact_at": iso(memory_artifacts[0].updated_at) if memory_artifacts else None,
+            "latest_artifact_at": iso(latest_memory_artifact_at),
             "recent_artifacts": [
-                serialize_memory_artifact_summary(artifact, db=db) for artifact in memory_artifacts
+                serialize_memory_artifact_summary(artifact) for artifact in visible_memory_artifacts
             ],
             "total_artifacts": memory_artifact_count,
         },

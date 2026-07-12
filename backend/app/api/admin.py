@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.security import require_admin_user
 from app.db.session import get_db
 from app.models.users import User
-from app.services.admin_dashboard import admin_overview_response
+from app.services.admin.dashboard import admin_overview_response
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 

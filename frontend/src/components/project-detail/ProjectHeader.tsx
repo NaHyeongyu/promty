@@ -221,11 +221,11 @@ export function ProjectHeader({
         ) : null}
         {onShareProject && !isLoading ? (
           <button
-            aria-label={isShareCopied ? "Project link copied" : "Copy project link"}
+            aria-label={isShareCopied ? "Workspace link copied" : "Copy workspace link"}
             className="bh-icon-button"
             data-active={isShareCopied ? "true" : undefined}
             onClick={onShareProject}
-            title={isShareCopied ? "Project link copied" : "Copy project link"}
+            title={isShareCopied ? "Workspace link copied" : "Copy workspace link"}
             type="button"
           >
             {isShareCopied ? (

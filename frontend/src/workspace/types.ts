@@ -4,7 +4,7 @@ import type {
   PublishedFlowDetail,
 } from "../components/project-detail";
 
-export type SidebarItemId = "projects" | "community" | "admin" | "settings" | "profile";
+export type SidebarItemId = "projects" | "admin" | "settings" | "profile";
 
 export type Project = {
   id: string;
@@ -24,6 +24,9 @@ export type Project = {
   models: string[];
   githubUrl?: string;
   isBookmarked: boolean;
+  latestMemoryAt?: string;
+  memoryCount: number;
+  pendingMemoryCount: number;
 };
 
 export type AuthUser = {
@@ -31,7 +34,38 @@ export type AuthUser = {
   username: string;
   email: string | null;
   avatar_url: string | null;
-  is_admin?: boolean;
+  github_repository_access: boolean;
+  is_admin: boolean;
+};
+
+export type AccountGithubConnection = {
+  connected: boolean;
+  created_at: string | null;
+  revoked_at: string | null;
+  scopes: string[];
+  status: string;
+  token_type: string | null;
+  updated_at: string | null;
+};
+
+export type AccountCollectorToken = {
+  created_at: string | null;
+  id: string;
+  last_used_at: string | null;
+  name: string;
+  revoked_at: string | null;
+  status: "active" | "revoked";
+};
+
+export type AccountOverview = {
+  collector_tokens: AccountCollectorToken[];
+  github_connection: AccountGithubConnection;
+  user: AuthUser;
+};
+
+export type AccountCollectorTokenCreateResponse = {
+  collector_token: AccountCollectorToken;
+  token: string;
 };
 
 export type EventRecord = {
@@ -47,11 +81,11 @@ export type EventRecord = {
 
 export type ProjectSummary = {
   id: string;
-  slug?: string;
+  slug: string;
   name: string;
   git_remote: string | null;
   github_url: string | null;
-  is_bookmarked?: boolean;
+  is_bookmarked: boolean;
   default_branch: string;
   created_at: string;
   connected_models: string[];
@@ -61,6 +95,9 @@ export type ProjectSummary = {
   prompts: number;
   tracked_files: number;
   latest_event_at: string | null;
+  latest_memory_at: string | null;
+  memory_count: number;
+  pending_memory_count: number;
   updated_at: string;
   visibility: "private" | "public";
 };
@@ -118,6 +155,8 @@ export type ProjectDetailApiResponse = {
       generator: string | null;
       id: string;
       last_event_at?: string | null;
+      memory_batch_id?: string | null;
+      memory_batch_ids?: string[];
       memory_scope?: string | null;
       model: string | null;
       needs_user_verification?: boolean | null;
@@ -131,6 +170,8 @@ export type ProjectDetailApiResponse = {
         title: string;
       }>;
       session_id: string | null;
+      source_draft_ids?: string[];
+      source_session_ids?: string[];
       slice_index?: number | null;
       start_sequence?: number | null;
       summary: string | null;
@@ -266,14 +307,32 @@ export type ProjectMemoryArtifactApiResponse =
 
 export type ProjectMemoryPendingRangeApiResponse = {
   can_checkpoint: boolean;
+  changed_file_count: number;
+  draft_id: string;
   end_sequence: number;
   event_count: number;
+  file_change_event_count: number;
   first_event_at: string | null;
   last_event_at: string | null;
   prompt_count: number;
+  response_count: number;
   session_id: string;
   start_sequence: number;
   tool: string;
+};
+
+export type MemoryReviewQueueSnapshotApiResponse = {
+  errors?: Array<{
+    message: string;
+    project_id: string;
+  }>;
+  project_summaries: ProjectSummary[];
+  projects: Array<{
+    pending_count: number;
+    project_id: string;
+    ranges: ProjectMemoryPendingRangeApiResponse[];
+  }>;
+  total_pending_count: number;
 };
 
 export type ProjectGithubFilesApiResponse = {

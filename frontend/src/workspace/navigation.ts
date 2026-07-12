@@ -21,7 +21,7 @@ export const DEFAULT_URL_NAVIGATION_STATE: UrlNavigationState = {
     selectedPromptId: null,
     selectedSessionId: null,
     selectedSessionPromptId: null,
-    view: "prompts",
+    view: "sessions",
   },
   activeDetailTab: "overview",
   activeItem: "projects",
@@ -159,6 +159,9 @@ function sanitizeRepositoryFilePath(value: string | null | undefined) {
 }
 
 function parseSidebarItemId(value: string | null): SidebarItemId {
+  if (value === "home" || value === "reviews") {
+    return "projects";
+  }
   return value && SIDEBAR_ITEM_IDS.has(value as SidebarItemId)
     ? (value as SidebarItemId)
     : "projects";
@@ -173,7 +176,7 @@ function parseProjectDetailTabId(value: string | null): ProjectDetailTabId {
 function parseActivityViewId(value: string | null): ActivityViewId {
   return value && ACTIVITY_VIEW_IDS.has(value as ActivityViewId)
     ? (value as ActivityViewId)
-    : "prompts";
+    : "sessions";
 }
 
 export function normalizeUrlNavigationState(
@@ -247,7 +250,7 @@ export function readUrlNavigationState(): UrlNavigationState {
       view: parseActivityViewId(params.get("activity")),
     },
     activeDetailTab: parseProjectDetailTabId(params.get("tab")),
-    activeItem: parseSidebarItemId(params.get("view")),
+    activeItem: projectRouteKey ? "projects" : parseSidebarItemId(params.get("view")),
     repositoryFileContentPath: params.get("file"),
     selectedProjectId: projectRouteKey,
     selectedProjectRouteKey: projectRouteKey,

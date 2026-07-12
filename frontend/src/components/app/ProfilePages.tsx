@@ -1,38 +1,87 @@
+import { useState } from "react";
 import {
-  Bot,
+  Check,
+  Copy,
   Database,
   Folder,
+  KeyRound,
   LogOut,
   RefreshCw,
-  Settings,
   ShieldCheck,
   Terminal,
   User,
 } from "lucide-react";
-import type { AuthUser } from "../../workspace/types";
+import { formatOptionalTimestamp } from "../../lib/formatters";
+import type {
+  AccountCollectorToken,
+  AccountCollectorTokenCreateResponse,
+  AccountOverview,
+  AuthUser,
+} from "../../workspace/types";
 import { GitHubIcon } from "./Branding";
 
+function accountDisplayName(currentUser: AuthUser | null) {
+  return currentUser?.username ?? "Signed in";
+}
+
+function tokenDateLabel(value: string | null | undefined) {
+  return formatOptionalTimestamp(value, "Never");
+}
+
+function AccountStatus({
+  error,
+  isLoading,
+}: {
+  error?: string | null;
+  isLoading?: boolean;
+}) {
+  if (!error && !isLoading) {
+    return null;
+  }
+
+  return (
+    <div
+      className="settings-status"
+      data-error={error ? "true" : undefined}
+      role={error ? "alert" : "status"}
+    >
+      {error ?? "Loading account settings"}
+    </div>
+  );
+}
+
 export function UserProfilePage({
+  accountError,
+  accountOverview,
   connectedRepositoryCount,
   currentUser,
+  isAccountLoading,
   latestActivityLabel,
   onLogout,
   projectCount,
 }: {
+  accountError?: string | null;
+  accountOverview: AccountOverview | null;
   connectedRepositoryCount: number;
   currentUser: AuthUser | null;
+  isAccountLoading?: boolean;
   latestActivityLabel: string;
   onLogout: () => void;
   projectCount: number;
 }) {
-  const displayName = currentUser?.username ?? "Signed in";
+  const displayName = accountDisplayName(currentUser);
   const email = currentUser?.email ?? "GitHub authenticated";
   const roleLabel = currentUser?.is_admin ? "Admin" : "Member";
   const userInitial = displayName.trim().charAt(0).toUpperCase() || "P";
   const userId = currentUser?.id ?? "Not available";
+  const githubConnection = accountOverview?.github_connection;
+  const activeTokenCount =
+    accountOverview?.collector_tokens.filter((token) => token.status === "active")
+      .length ?? 0;
 
   return (
     <section className="profile-page" aria-label="Profile settings">
+      <AccountStatus error={accountError} isLoading={isAccountLoading} />
       <section className="profile-hero" aria-labelledby="profile-title">
         <div className="profile-avatar profile-avatar-large" aria-hidden="true">
           {currentUser?.avatar_url ? (
@@ -85,34 +134,6 @@ export function UserProfilePage({
           </dl>
         </section>
 
-        <section className="profile-section" aria-labelledby="profile-preferences-title">
-          <div className="profile-section-header">
-            <Settings aria-hidden="true" size={18} strokeWidth={1.5} />
-            <div>
-              <h3 id="profile-preferences-title">Preferences</h3>
-              <p>Defaults for how the workspace opens.</p>
-            </div>
-          </div>
-          <dl className="profile-setting-list">
-            <div className="profile-setting-row">
-              <dt>Default model</dt>
-              <dd>Auto-detect</dd>
-            </div>
-            <div className="profile-setting-row">
-              <dt>Theme</dt>
-              <dd>System dark</dd>
-            </div>
-            <div className="profile-setting-row">
-              <dt>Language</dt>
-              <dd>English</dd>
-            </div>
-            <div className="profile-setting-row">
-              <dt>Timezone</dt>
-              <dd>Browser default</dd>
-            </div>
-          </dl>
-        </section>
-
         <section
           className="profile-section"
           aria-labelledby="profile-connections-title"
@@ -121,17 +142,17 @@ export function UserProfilePage({
             <GitHubIcon />
             <div>
               <h3 id="profile-connections-title">Connected Accounts</h3>
-              <p>External accounts available to Promty.</p>
+              <p>Repository access for this account.</p>
             </div>
           </div>
           <dl className="profile-setting-list">
             <div className="profile-setting-row">
               <dt>GitHub</dt>
-              <dd>Connected</dd>
+              <dd>{githubConnection?.connected ? "Connected" : "Not connected"}</dd>
             </div>
             <div className="profile-setting-row">
-              <dt>Repository access</dt>
-              <dd>Project-level</dd>
+              <dt>Scopes</dt>
+              <dd>{githubConnection?.scopes.join(", ") || "Not available"}</dd>
             </div>
             <div className="profile-setting-row">
               <dt>Connected repositories</dt>
@@ -141,7 +162,7 @@ export function UserProfilePage({
               </dd>
             </div>
             <div className="profile-setting-row">
-              <dt>Latest workspace activity</dt>
+              <dt>Latest activity</dt>
               <dd>{latestActivityLabel}</dd>
             </div>
           </dl>
@@ -165,8 +186,8 @@ export function UserProfilePage({
               <dd>GitHub OAuth</dd>
             </div>
             <div className="profile-setting-row">
-              <dt>Workspace role</dt>
-              <dd>{roleLabel}</dd>
+              <dt>CLI tokens</dt>
+              <dd>{activeTokenCount.toLocaleString()} active</dd>
             </div>
           </dl>
           <div className="profile-section-actions">
@@ -178,7 +199,7 @@ export function UserProfilePage({
         </section>
 
         <section
-          className="profile-section profile-section-wide"
+          className="profile-section"
           aria-labelledby="profile-privacy-title"
         >
           <div className="profile-section-header">
@@ -188,18 +209,18 @@ export function UserProfilePage({
               <p>What Promty stores for this account.</p>
             </div>
           </div>
-          <dl className="profile-setting-list profile-setting-list-compact">
+          <dl className="profile-setting-list">
             <div className="profile-setting-row">
               <dt>Project activity</dt>
               <dd>Prompts, sessions, file changes</dd>
             </div>
             <div className="profile-setting-row">
               <dt>Memory artifacts</dt>
-              <dd>Generated from synced project activity</dd>
+              <dd>Generated project memory</dd>
             </div>
             <div className="profile-setting-row">
-              <dt>Data export</dt>
-              <dd>Not configured</dd>
+              <dt>GitHub token</dt>
+              <dd>{githubConnection?.connected ? "Encrypted at rest" : "Not stored"}</dd>
             </div>
           </dl>
         </section>
@@ -208,54 +229,159 @@ export function UserProfilePage({
   );
 }
 
+function TokenRow({
+  disabled,
+  onRename,
+  onRevoke,
+  token,
+}: {
+  disabled?: boolean;
+  onRename: (tokenId: string, name: string) => void;
+  onRevoke: (tokenId: string) => void;
+  token: AccountCollectorToken;
+}) {
+  const [nameDraft, setNameDraft] = useState(token.name);
+  const isRevoked = token.status === "revoked";
+
+  return (
+    <li className="settings-token-row" data-revoked={isRevoked ? "true" : undefined}>
+      <div className="settings-token-main">
+        <input
+          className="settings-control settings-token-name"
+          disabled={disabled || isRevoked}
+          onBlur={() => {
+            const nextName = nameDraft.trim();
+            if (nextName && nextName !== token.name) {
+              onRename(token.id, nextName);
+            } else {
+              setNameDraft(token.name);
+            }
+          }}
+          onChange={(event) => setNameDraft(event.target.value)}
+          value={nameDraft}
+        />
+        <span className="settings-token-meta">
+          Created {tokenDateLabel(token.created_at)} · Last used{" "}
+          {tokenDateLabel(token.last_used_at)}
+        </span>
+      </div>
+      <div className="settings-token-actions">
+        <span
+          className="settings-value-chip"
+          data-tone={isRevoked ? "danger" : "success"}
+        >
+          {isRevoked ? "Revoked" : "Active"}
+        </span>
+        {!isRevoked ? (
+          <button
+            className="toolbar-button"
+            disabled={disabled}
+            onClick={() => onRevoke(token.id)}
+            type="button"
+          >
+            Revoke
+          </button>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
 export function UserSettingsPage({
+  accountError,
+  accountOverview,
   apiUrl,
   canUseAdmin,
   connectedRepositoryCount,
+  createdCollectorToken,
   currentUser,
+  githubConnectUrl,
+  isAccountLoading,
+  isSaving,
   isRefreshing,
   latestActivityLabel,
-  onOpenProfile,
+  onClearCreatedCollectorToken,
+  onCreateCollectorToken,
+  onDisconnectGithub,
   onRefreshWorkspace,
+  onRenameCollectorToken,
+  onRevokeCollectorToken,
   projectCount,
 }: {
+  accountError?: string | null;
+  accountOverview: AccountOverview | null;
   apiUrl: string;
   canUseAdmin: boolean;
   connectedRepositoryCount: number;
+  createdCollectorToken: AccountCollectorTokenCreateResponse | null;
   currentUser: AuthUser | null;
+  githubConnectUrl: string;
+  isAccountLoading?: boolean;
+  isSaving?: boolean;
   isRefreshing: boolean;
   latestActivityLabel: string;
-  onOpenProfile: () => void;
+  onClearCreatedCollectorToken: () => void;
+  onCreateCollectorToken: (name?: string) => Promise<unknown>;
+  onDisconnectGithub: () => Promise<void>;
   onRefreshWorkspace: () => void;
+  onRenameCollectorToken: (tokenId: string, name: string) => Promise<void>;
+  onRevokeCollectorToken: (tokenId: string) => Promise<void>;
   projectCount: number;
 }) {
+  const [collectorTokenName, setCollectorTokenName] = useState("Promty CLI");
+  const [isTokenCopied, setIsTokenCopied] = useState(false);
   const roleLabel = currentUser?.is_admin ? "Admin" : "Member";
+  const githubConnection = accountOverview?.github_connection;
+  const collectorTokens = accountOverview?.collector_tokens ?? [];
+  const activeCollectorTokens = collectorTokens.filter(
+    (token) => token.status === "active",
+  );
+  const latestCollectorUse = activeCollectorTokens
+    .map((token) => token.last_used_at)
+    .filter((value): value is string => Boolean(value))
+    .sort((first, second) => Date.parse(second) - Date.parse(first))[0];
+  const latestCollectorUseAge = latestCollectorUse
+    ? Date.now() - Date.parse(latestCollectorUse)
+    : null;
+  const collectorIngestion =
+    activeCollectorTokens.length === 0
+      ? { label: "Not configured", tone: "danger" }
+      : !latestCollectorUse
+        ? { label: "Waiting for first sync", tone: "warning" }
+        : latestCollectorUseAge !== null &&
+            latestCollectorUseAge <= 24 * 60 * 60 * 1000
+          ? { label: "Connected", tone: "success" }
+          : { label: "Sync stale", tone: "warning" };
   const repositoryCoverage =
     projectCount > 0
       ? `${connectedRepositoryCount.toLocaleString()} / ${projectCount.toLocaleString()}`
       : "No projects";
+  const copyCreatedToken = async () => {
+    if (!createdCollectorToken) {
+      return;
+    }
+    await navigator.clipboard?.writeText(createdCollectorToken.token);
+    setIsTokenCopied(true);
+  };
 
   return (
     <section className="settings-page" aria-label="Workspace settings">
+      <AccountStatus error={accountError} isLoading={isAccountLoading} />
       <section className="settings-hero" aria-labelledby="settings-title">
         <div className="settings-hero-copy">
           <span>Workspace controls</span>
-          <h2 id="settings-title">Operational settings</h2>
-          <p>Defaults, sync behavior, collector state, and access posture.</p>
+          <h2 id="settings-title">Workspace status</h2>
+          <p>Account access, repository connection, and collector tokens.</p>
         </div>
         <div className="settings-hero-actions">
           <button
             className="toolbar-button"
-            disabled={isRefreshing}
+            disabled={isRefreshing || isAccountLoading}
             onClick={onRefreshWorkspace}
             type="button"
           >
             <RefreshCw aria-hidden="true" size={15} strokeWidth={1.5} />
-            <span>{isRefreshing ? "Refreshing" : "Refresh workspace"}</span>
-          </button>
-          <button className="toolbar-button" onClick={onOpenProfile} type="button">
-            <User aria-hidden="true" size={15} strokeWidth={1.5} />
-            <span>Profile</span>
+            <span>{isRefreshing || isAccountLoading ? "Refreshing" : "Refresh"}</span>
           </button>
         </div>
       </section>
@@ -266,35 +392,97 @@ export function UserSettingsPage({
             <Folder aria-hidden="true" size={18} strokeWidth={1.5} />
             <div>
               <h3 id="settings-workspace-title">Workspace</h3>
-              <p>Project list and workspace defaults.</p>
+              <p>Current account workspace state.</p>
             </div>
           </div>
           <dl className="settings-list">
-            <div className="settings-row">
-              <dt>Default view</dt>
-              <dd>Projects</dd>
-            </div>
-            <div className="settings-row">
-              <dt>Project sort</dt>
-              <dd>Recent activity</dd>
-            </div>
             <div className="settings-row">
               <dt>Projects</dt>
               <dd>{projectCount.toLocaleString()}</dd>
             </div>
             <div className="settings-row">
+              <dt>Connected repositories</dt>
+              <dd>{repositoryCoverage}</dd>
+            </div>
+            <div className="settings-row">
               <dt>Latest activity</dt>
               <dd>{latestActivityLabel}</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Role</dt>
+              <dd>{roleLabel}</dd>
             </div>
           </dl>
         </section>
 
-        <section className="settings-section" aria-labelledby="settings-collector-title">
+        <section className="settings-section" aria-labelledby="settings-sync-title">
+          <div className="settings-section-header">
+            <GitHubIcon />
+            <div>
+              <h3 id="settings-sync-title">GitHub</h3>
+              <p>Repository access for file browsing and project creation.</p>
+            </div>
+          </div>
+          <dl className="settings-list">
+            <div className="settings-row">
+              <dt>Status</dt>
+              <dd>
+                <span
+                  className="settings-value-chip"
+                  data-tone={githubConnection?.connected ? "success" : "danger"}
+                >
+                  {githubConnection?.connected ? "Connected" : "Not connected"}
+                </span>
+              </dd>
+            </div>
+            <div className="settings-row">
+              <dt>Scopes</dt>
+              <dd>{githubConnection?.scopes.join(", ") || "Not available"}</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Updated</dt>
+              <dd>{formatOptionalTimestamp(githubConnection?.updated_at, "Never")}</dd>
+            </div>
+            <div className="settings-row">
+              <dt>Connection</dt>
+              <dd className="settings-row-control">
+                <div className="settings-inline-actions">
+                  <button
+                    className="toolbar-button"
+                    onClick={() => {
+                      window.location.href = githubConnectUrl;
+                    }}
+                    type="button"
+                  >
+                    {githubConnection?.connected ? "Reconnect" : "Connect"}
+                  </button>
+                  <button
+                    className="toolbar-button"
+                    disabled={!githubConnection?.connected || isSaving}
+                    onClick={() => {
+                      if (window.confirm("Disconnect GitHub from this account?")) {
+                        void onDisconnectGithub();
+                      }
+                    }}
+                    type="button"
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <section
+          className="settings-section settings-section-wide"
+          aria-labelledby="settings-collector-title"
+        >
           <div className="settings-section-header">
             <Terminal aria-hidden="true" size={18} strokeWidth={1.5} />
             <div>
               <h3 id="settings-collector-title">Collector</h3>
-              <p>Local CLI and event ingestion.</p>
+              <p>Local CLI tokens for event ingestion.</p>
             </div>
           </div>
           <dl className="settings-list">
@@ -305,106 +493,96 @@ export function UserSettingsPage({
               </dd>
             </div>
             <div className="settings-row">
-              <dt>Event limit</dt>
-              <dd>500 latest</dd>
-            </div>
-            <div className="settings-row">
               <dt>Ingestion</dt>
               <dd>
-                <span className="settings-value-chip" data-tone="success">
-                  Active
+                <span
+                  className="settings-value-chip"
+                  data-tone={collectorIngestion.tone}
+                >
+                  {collectorIngestion.label}
                 </span>
               </dd>
             </div>
             <div className="settings-row">
-              <dt>Session grouping</dt>
-              <dd>Enabled</dd>
+              <dt>New token</dt>
+              <dd className="settings-row-control">
+                <form
+                  className="settings-inline-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    setIsTokenCopied(false);
+                    void onCreateCollectorToken(collectorTokenName);
+                  }}
+                >
+                  <input
+                    className="settings-control"
+                    onChange={(event) => setCollectorTokenName(event.target.value)}
+                    value={collectorTokenName}
+                  />
+                  <button
+                    className="toolbar-button"
+                    disabled={isSaving || !collectorTokenName.trim()}
+                    type="submit"
+                  >
+                    <KeyRound aria-hidden="true" size={15} strokeWidth={1.5} />
+                    <span>Create</span>
+                  </button>
+                </form>
+              </dd>
             </div>
           </dl>
-        </section>
-
-        <section className="settings-section" aria-labelledby="settings-sync-title">
-          <div className="settings-section-header">
-            <GitHubIcon />
-            <div>
-              <h3 id="settings-sync-title">Repository Sync</h3>
-              <p>GitHub repository context and file browsing.</p>
+          {createdCollectorToken ? (
+            <div className="settings-secret-box">
+              <div>
+                <strong>New collector token</strong>
+                <code>{createdCollectorToken.token}</code>
+              </div>
+              <div className="settings-inline-actions">
+                <button
+                  className="toolbar-button"
+                  onClick={() => {
+                    void copyCreatedToken();
+                  }}
+                  type="button"
+                >
+                  {isTokenCopied ? (
+                    <Check aria-hidden="true" size={15} strokeWidth={1.5} />
+                  ) : (
+                    <Copy aria-hidden="true" size={15} strokeWidth={1.5} />
+                  )}
+                  <span>{isTokenCopied ? "Copied" : "Copy"}</span>
+                </button>
+                <button
+                  className="toolbar-button"
+                  onClick={onClearCreatedCollectorToken}
+                  type="button"
+                >
+                  Dismiss
+                </button>
+              </div>
             </div>
-          </div>
-          <dl className="settings-list">
-            <div className="settings-row">
-              <dt>Provider</dt>
-              <dd>GitHub</dd>
-            </div>
-            <div className="settings-row">
-              <dt>Repository coverage</dt>
-              <dd>{repositoryCoverage}</dd>
-            </div>
-            <div className="settings-row">
-              <dt>File browser</dt>
-              <dd>GitHub-backed</dd>
-            </div>
-            <div className="settings-row">
-              <dt>Refresh mode</dt>
-              <dd>On demand</dd>
-            </div>
-          </dl>
-        </section>
-
-        <section className="settings-section" aria-labelledby="settings-ai-title">
-          <div className="settings-section-header">
-            <Bot aria-hidden="true" size={18} strokeWidth={1.5} />
-            <div>
-              <h3 id="settings-ai-title">AI & Memory</h3>
-              <p>Model detection and generated memory behavior.</p>
-            </div>
-          </div>
-          <dl className="settings-list">
-            <div className="settings-row">
-              <dt>Model detection</dt>
-              <dd>Auto-detect</dd>
-            </div>
-            <div className="settings-row">
-              <dt>Memory generation</dt>
-              <dd>Automatic</dd>
-            </div>
-            <div className="settings-row">
-              <dt>Prompt detail</dt>
-              <dd>Request, response, file changes</dd>
-            </div>
-            <div className="settings-row">
-              <dt>Activity layout</dt>
-              <dd>Prompts and sessions</dd>
-            </div>
-          </dl>
-        </section>
-
-        <section className="settings-section" aria-labelledby="settings-interface-title">
-          <div className="settings-section-header">
-            <Settings aria-hidden="true" size={18} strokeWidth={1.5} />
-            <div>
-              <h3 id="settings-interface-title">Interface</h3>
-              <p>Display defaults for the app shell.</p>
-            </div>
-          </div>
-          <dl className="settings-list">
-            <div className="settings-row">
-              <dt>Theme</dt>
-              <dd>Dark</dd>
-            </div>
-            <div className="settings-row">
-              <dt>Density</dt>
-              <dd>Compact</dd>
-            </div>
-            <div className="settings-row">
-              <dt>Sidebar</dt>
-              <dd>Workspace navigation</dd>
-            </div>
-            <div className="settings-row">
-              <dt>Language</dt>
-              <dd>English</dd>
-            </div>
-          </dl>
+          ) : null}
+          <ul className="settings-token-list">
+            {collectorTokens.length > 0 ? (
+              collectorTokens.map((token) => (
+                <TokenRow
+                  disabled={isSaving}
+                  key={token.id}
+                  onRename={(tokenId, name) => {
+                    void onRenameCollectorToken(tokenId, name);
+                  }}
+                  onRevoke={(tokenId) => {
+                    if (window.confirm("Revoke this collector token?")) {
+                      void onRevokeCollectorToken(tokenId);
+                    }
+                  }}
+                  token={token}
+                />
+              ))
+            ) : (
+              <li className="settings-token-empty">No collector tokens yet.</li>
+            )}
+          </ul>
         </section>
 
         <section className="settings-section" aria-labelledby="settings-access-title">
@@ -412,17 +590,13 @@ export function UserSettingsPage({
             <ShieldCheck aria-hidden="true" size={18} strokeWidth={1.5} />
             <div>
               <h3 id="settings-access-title">Access</h3>
-              <p>Authentication, role, and privileged controls.</p>
+              <p>Authentication and privileged controls.</p>
             </div>
           </div>
           <dl className="settings-list">
             <div className="settings-row">
               <dt>Authentication</dt>
               <dd>GitHub OAuth</dd>
-            </div>
-            <div className="settings-row">
-              <dt>Role</dt>
-              <dd>{roleLabel}</dd>
             </div>
             <div className="settings-row">
               <dt>Admin console</dt>

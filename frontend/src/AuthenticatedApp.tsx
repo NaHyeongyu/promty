@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { X } from "lucide-react";
 import { fetchCurrentUser, logoutSession } from "./api/auth";
 import { UnauthorizedError } from "./api/client";
 import { AdminDashboard } from "./components/app/AdminDashboard";
+import { AccountWorkspaceRoute } from "./components/app/AccountWorkspaceRoute";
 import { WebLoginPage } from "./components/app/AuthScreens";
-import { CommunityPage } from "./components/app/CommunityPage";
 import { ProjectsPage } from "./components/app/ProjectsPage";
-import { UserProfilePage, UserSettingsPage } from "./components/app/ProfilePages";
+import { ReviewQueueDrawer } from "./components/app/ReviewQueueDrawer";
 import { RepositoryConnector } from "./components/app/RepositoryConnector";
 import { WorkspaceSidebar } from "./components/app/WorkspaceSidebar";
 import { LoadingScreen } from "./components/app/WorkspaceStates";
@@ -15,14 +15,15 @@ import {
   type ActivityNavigationState,
   type ProjectDetailTabId,
 } from "./components/project-detail";
-import { API_URL, COMMUNITY_FEATURE_ENABLED } from "./config";
+import { API_URL } from "./config";
+import { formatRelativeTimestamp } from "./lib/formatters";
+import { useAccountSettings } from "./hooks/useAccountSettings";
 import { useAdminOverview } from "./hooks/useAdminOverview";
 import { useProjectActions } from "./hooks/useProjectActions";
 import { useProjectCatalog } from "./hooks/useProjectCatalog";
 import { useProjectDetail } from "./hooks/useProjectDetail";
 import { useProjectFiles } from "./hooks/useProjectFiles";
 import { useProjectSharing } from "./hooks/useProjectSharing";
-import { usePublishedFlows } from "./hooks/usePublishedFlows";
 import { useRepositoryConnector } from "./hooks/useRepositoryConnector";
 import { useRepositoryFiles } from "./hooks/useRepositoryFiles";
 import {
@@ -32,7 +33,6 @@ import {
 import { useWorkspaceData } from "./hooks/useWorkspaceData";
 import {
   useWorkspaceAdminEffect,
-  useWorkspaceCommunityEffects,
   useWorkspaceProjectResourceEffects,
   useWorkspaceProjectRouteEffect,
 } from "./hooks/useWorkspaceEffects";
@@ -47,10 +47,17 @@ import {
 } from "./workspace/navigation";
 import { emptyProjectDetailData } from "./workspace/projectDetailMappers";
 import { isMockGithubUnlinkedProject } from "./workspace/previewData";
-import type { AuthStatus, AuthUser, Project, SidebarItemId } from "./workspace/types";
+import { pendingReviewProjectCount } from "./workspace/reviewQueue";
+import type {
+  AuthStatus,
+  AuthUser,
+  EventRecord,
+  Project,
+  SidebarItemId,
+} from "./workspace/types";
 
 function githubRepositoryConnectUrl() {
-  return `${API_URL}/api/auth/github/web/start?${new URLSearchParams({
+  return `${API_URL}/api/auth/github/web/repository/start?${new URLSearchParams({
     return_to: currentWorkspaceReturnUrl(),
   })}`;
 }
@@ -59,7 +66,20 @@ export function AuthenticatedApp() {
   const initialNavigationState = useInitialWorkspaceNavigationState();
   const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [authorizationNotice, setAuthorizationNotice] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).get("auth_error") ===
+    "github_authorization_cancelled"
+      ? "GitHub authorization was cancelled. No permissions were changed."
+      : null,
+  );
+  const [isReviewQueueOpen, setIsReviewQueueOpen] = useState(
+    () => new URLSearchParams(window.location.search).get("view") === "reviews",
+  );
+  const [reviewQueueProjectId, setReviewQueueProjectId] = useState<string | null>(null);
+  const reviewQueueReturnFocusRef = useRef<HTMLElement | null>(null);
   const handleUnauthorized = () => {
+    setIsReviewQueueOpen(false);
+    setReviewQueueProjectId(null);
     setAuthStatus("unauthenticated");
     setCurrentUser(null);
   };
@@ -71,6 +91,7 @@ export function AuthenticatedApp() {
     loadEvents,
     mergeProjectSummary: mergeWorkspaceProjectSummary,
     projects,
+    replaceProjectSummaries,
     setErrorMessage,
   } = useWorkspaceData({
     onAuthenticated: () => setAuthStatus("authenticated"),
@@ -83,6 +104,7 @@ export function AuthenticatedApp() {
     clearProjectDetail,
     isProjectDetailLoading,
     loadProjectDetail,
+    loadProjectMemoryArtifacts,
     projectDetail,
     projectDetailError,
     setProjectDetail,
@@ -131,7 +153,10 @@ export function AuthenticatedApp() {
     selectedProjectRouteKey,
   } = useWorkspaceNavigationState({
     initialNavigationState,
-    onPopState: closeRepositoryConnector,
+    onPopState: () => {
+      closeRepositoryConnector();
+      setIsReviewQueueOpen(false);
+    },
     repositoryFileContentPath,
     setRepositoryFileContentPath,
   });
@@ -142,22 +167,7 @@ export function AuthenticatedApp() {
     isAdminLoading,
     loadAdminOverview,
   } = useAdminOverview({ onUnauthorized: handleUnauthorized });
-  const {
-    archivePublishedFlow,
-    clearPublishedFlows,
-    isPublishedFlowDetailLoading,
-    isPublishedFlowSaving,
-    isPublishedFlowsLoading,
-    loadPublishedFlowDetail,
-    loadPublishedFlows,
-    publishedFlowDetailError,
-    publishedFlows,
-    publishedFlowsError,
-    selectedPublishedFlow,
-    selectedPublishedFlowKey,
-    updatePublishedFlow,
-    uploadPublishedFlowAsset,
-  } = usePublishedFlows({ onUnauthorized: handleUnauthorized });
+  const accountSettings = useAccountSettings({ onUnauthorized: handleUnauthorized });
   const previewMode = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("preview");
@@ -188,11 +198,9 @@ export function AuthenticatedApp() {
   const activeTitle =
     activeItem === "projects"
       ? "Projects"
-      : activeItem === "community"
-        ? "Community"
-        : activeItem === "admin"
-          ? "Admin"
-        : activeItem === "settings"
+      : activeItem === "admin"
+        ? "Admin"
+        : activeItem === "settings" || activeItem === "profile"
           ? "Settings"
           : "Profile";
   const projectRouteKey = (project: Project | null | undefined) =>
@@ -201,7 +209,8 @@ export function AuthenticatedApp() {
     projectRouteKey(project) === routeKey || project.id === routeKey;
   const {
     bookmarkUpdatingProjectId,
-    organizePendingMemory,
+    createProjectFromRepository,
+    generateProjectMemory,
     saveProjectDescription,
     saveProjectMetadata,
     saveRepositoryConnection,
@@ -275,11 +284,12 @@ export function AuthenticatedApp() {
   const loadSession = async () => {
     setAuthStatus("loading");
     clearWorkspaceData();
+    accountSettings.clearAccountSettings();
     setErrorMessage(null);
     try {
       setCurrentUser(await fetchCurrentUser());
       setAuthStatus("authenticated");
-      await loadEvents();
+      await Promise.all([loadEvents(), accountSettings.loadAccountOverview()]);
     } catch (error) {
       if (error instanceof UnauthorizedError) {
         handleUnauthorized();
@@ -299,9 +309,10 @@ export function AuthenticatedApp() {
     clearProjectDetail();
     clearProjectFiles();
     clearRepositoryFiles();
-    clearPublishedFlows();
     clearAdminOverview();
+    accountSettings.clearAccountSettings();
     closeRepositoryConnector();
+    setIsReviewQueueOpen(false);
     setAuthStatus("unauthenticated");
     writeUrlNavigationState(DEFAULT_URL_NAVIGATION_STATE, "replace");
   };
@@ -310,14 +321,6 @@ export function AuthenticatedApp() {
     void loadSession();
   }, []);
 
-  useWorkspaceCommunityEffects({
-    activeItem,
-    authStatus,
-    loadPublishedFlowDetail,
-    loadPublishedFlows,
-    selectedPublishedFlow,
-    selectedPublishedFlowKey,
-  });
   useWorkspaceAdminEffect({
     activeItem,
     authStatus,
@@ -326,6 +329,7 @@ export function AuthenticatedApp() {
     navigateWorkspace,
   });
   useWorkspaceProjectRouteEffect({
+    allowUnlistedProject: currentUser?.is_admin === true,
     activeItem,
     hasLoadedWorkspaceData,
     navigateWorkspace,
@@ -356,11 +360,61 @@ export function AuthenticatedApp() {
 
   const openProjectDetail = (projectId: string) => {
     closeRepositoryConnector();
+    setIsReviewQueueOpen(false);
     navigateWorkspace({
       activeDetailTab: "overview",
       activeItem: "projects",
       repositoryFileContentPath: null,
       selectedProjectId: projectId,
+    });
+  };
+  const openProjectMemory = (projectId: string) => {
+    closeRepositoryConnector();
+    setIsReviewQueueOpen(false);
+    navigateWorkspace({
+      activeDetailTab: "memory",
+      activeItem: "projects",
+      repositoryFileContentPath: null,
+      selectedProjectId: projectId,
+    });
+    window.setTimeout(() => {
+      document.getElementById("project-tab-memory")?.focus();
+    }, 0);
+  };
+  const openProjectSourceSession = (projectId: string, sessionId: string) => {
+    closeRepositoryConnector();
+    setIsReviewQueueOpen(false);
+    navigateWorkspace({
+      activeDetailTab: "ai-activity",
+      activeItem: "projects",
+      activityNavigation: {
+        selectedPromptId: null,
+        selectedSessionId: sessionId,
+        selectedSessionPromptId: null,
+        view: "sessions",
+      },
+      repositoryFileContentPath: null,
+      selectedProjectId: projectId,
+    });
+    window.setTimeout(() => {
+      document.getElementById("project-tab-ai-activity")?.focus();
+    }, 0);
+  };
+  const openFirstCapturedEvent = async (event: EventRecord) => {
+    await Promise.all([loadEvents(), accountSettings.loadAccountOverview()]);
+    closeRepositoryConnector();
+    setIsReviewQueueOpen(false);
+    navigateWorkspace({
+      activeDetailTab: "ai-activity",
+      activeItem: "projects",
+      activityNavigation: {
+        selectedPromptId: null,
+        selectedSessionId: event.session_id,
+        selectedSessionPromptId: null,
+        view: "sessions",
+      },
+      repositoryFileContentPath: null,
+      selectedProjectId: event.project_id,
     });
   };
   const switchProjectDetail = (projectId: string) => {
@@ -369,6 +423,7 @@ export function AuthenticatedApp() {
     }
 
     closeRepositoryConnector();
+    setIsReviewQueueOpen(false);
     clearProjectDetail();
     clearProjectFiles();
     clearRepositoryBrowserState();
@@ -382,6 +437,7 @@ export function AuthenticatedApp() {
   };
   const closeProjectDetail = () => {
     closeRepositoryConnector();
+    setIsReviewQueueOpen(false);
     navigateWorkspace({
       activeDetailTab: "overview",
       activeItem: "projects",
@@ -397,6 +453,8 @@ export function AuthenticatedApp() {
       return;
     }
 
+    setIsReviewQueueOpen(false);
+
     if (item === "projects" && selectedProjectId) {
       closeProjectDetail();
       return;
@@ -409,6 +467,19 @@ export function AuthenticatedApp() {
       repositoryFileContentPath: null,
       selectedProjectId: null,
     });
+  };
+  const openReviewQueue = (
+    returnFocusElement: HTMLElement | null,
+    projectId: string | null = null,
+  ) => {
+    reviewQueueReturnFocusRef.current = returnFocusElement;
+    setReviewQueueProjectId(projectId);
+    closeRepositoryConnector();
+    setIsReviewQueueOpen(true);
+  };
+  const openRepositoryConnectorOverlay = (projectId: string | null) => {
+    setIsReviewQueueOpen(false);
+    openRepositoryConnector(projectId);
   };
   const selectProjectDetailTab = (tab: ProjectDetailTabId) => {
     navigateWorkspace({
@@ -446,11 +517,15 @@ export function AuthenticatedApp() {
     return <WebLoginPage errorMessage={errorMessage} isError />;
   }
 
+  const activeProjectId =
+    selectedProject?.id ?? projectDetail?.project.id ?? selectedProjectId;
+  const projectDetailBase =
+    projectDetail ?? (selectedProject ? emptyProjectDetailData(selectedProject) : null);
   const selectedProjectDetailData =
-    selectedProject === null
+    projectDetailBase === null
       ? null
       : {
-          ...(projectDetail ?? emptyProjectDetailData(selectedProject)),
+          ...projectDetailBase,
           files: projectFiles,
           filesError: projectFilesError,
           filesLoading: isProjectFilesLoading,
@@ -467,7 +542,7 @@ export function AuthenticatedApp() {
             ? "Loading GitHub repository files."
             : projectGithubFilesError ??
               projectGithubFiles?.message ??
-              (selectedProject.githubUrl
+              (projectDetailBase.project.repositoryUrl
                 ? "Sign in again with GitHub repository access to browse repository files."
                 : "This project does not have a GitHub repository remote."),
           repositoryFilesRepository: projectGithubFiles?.repository,
@@ -476,14 +551,34 @@ export function AuthenticatedApp() {
         };
   const repositoryConnector = isRepositoryConnectorOpen ? (
     <RepositoryConnector
+      existingProjectIds={projectCatalog.map((project) => project.id)}
       onManualConnect={
         repositoryConnectorProjectId &&
         !isMockGithubUnlinkedProject(repositoryConnectorProjectId)
           ? (githubUrl) =>
               saveRepositoryConnection(repositoryConnectorProjectId, githubUrl)
-          : undefined
+          : repositoryConnectorProjectId === null
+            ? async (githubUrl) => {
+                const project = await createProjectFromRepository(githubUrl);
+                navigateWorkspace({
+                  activeDetailTab: "overview",
+                  activeItem: "projects",
+                  repositoryFileContentPath: null,
+                  selectedProjectId: project.id,
+                  selectedProjectRouteKey:
+                    sanitizeProjectRouteKey(project.slug) ?? project.id,
+                });
+              }
+            : undefined
       }
       onClose={closeRepositoryConnector}
+      onFirstEvent={(event) => {
+        void openFirstCapturedEvent(event);
+      }}
+      pollingEnabled
+      repositoryAccessAvailable={currentUser?.github_repository_access === true}
+      repositoryConnectUrl={githubRepositoryConnectUrl()}
+      targetProjectId={repositoryConnectorProjectId ?? undefined}
       targetProjectName={repositoryConnectorProject?.name}
     />
   ) : null;
@@ -493,33 +588,90 @@ export function AuthenticatedApp() {
   ).length;
   const latestProfileActivityLabel =
     projectCatalog[0]?.latestActivityLabel ?? "No project activity";
+  const refreshWorkspaceAndAccount = () => {
+    void Promise.all([loadEvents(), accountSettings.loadAccountOverview()]);
+  };
   const pendingProjectRouteKey = selectedProjectRouteKey ?? selectedProjectId;
   const isResolvingProjectDetail =
-    activeItem === "projects" && selectedProject === null && Boolean(pendingProjectRouteKey);
+    activeItem === "projects" &&
+    projectDetail === null &&
+    !projectDetailError &&
+    Boolean(pendingProjectRouteKey);
   const isShowingProjectDetail =
-    activeItem === "projects" && (selectedProject !== null || isResolvingProjectDetail);
+    activeItem === "projects" &&
+    (selectedProject !== null || projectDetail !== null || Boolean(pendingProjectRouteKey));
   const projectDetailRenderData =
     selectedProjectDetailData ?? emptyProjectDetailData(selectedProject);
+  const reviewProjectCount = pendingReviewProjectCount(projectCatalog);
+  const activeCollectorTokens =
+    accountSettings.accountOverview?.collector_tokens.filter(
+      (token) => token.status === "active",
+    ) ?? [];
+  const latestCollectorToken = activeCollectorTokens
+    .filter((token) => token.last_used_at)
+    .sort(
+      (first, second) =>
+        Date.parse(second.last_used_at ?? "") - Date.parse(first.last_used_at ?? ""),
+    )[0];
+  const latestCollectorUsedAt = latestCollectorToken?.last_used_at ?? null;
+  const latestCollectorAge = latestCollectorUsedAt
+    ? Date.now() - Date.parse(latestCollectorUsedAt)
+    : null;
+  const collectorStatus = !accountSettings.accountOverview
+    ? { detail: "Checking status", tone: "muted" as const }
+    : activeCollectorTokens.length === 0
+      ? { detail: "Not set up", tone: "attention" as const }
+      : latestCollectorUsedAt === null
+        ? { detail: "Waiting for first sync", tone: "attention" as const }
+        : {
+            detail: `Synced ${
+              formatRelativeTimestamp(latestCollectorUsedAt) ?? "recently"
+            }`,
+            tone:
+              latestCollectorAge !== null && latestCollectorAge <= 24 * 60 * 60 * 1000
+                ? ("connected" as const)
+                : ("attention" as const),
+          };
 
   return (
     <div className="app-shell">
       <WorkspaceSidebar
         activeItem={activeItem}
         canUseAdmin={canUseAdmin}
+        collectorStatus={collectorStatus}
         currentUser={currentUser}
+        isReviewQueueOpen={isReviewQueueOpen}
         onLogout={logout}
         onOpenProject={openProjectDetail}
+        onOpenReviewQueue={openReviewQueue}
         onSelectItem={selectSidebarItem}
+        pendingReviewProjectCount={reviewProjectCount}
         savedProjectCount={bookmarkedProjects.length}
         savedProjects={sidebarBookmarkedProjects}
         selectedProjectId={selectedProjectId}
       />
 
       <main className="page">
+        {authorizationNotice ? (
+          <div className="workspace-notice" role="status">
+            <span>{authorizationNotice}</span>
+            <button
+              aria-label="Dismiss authorization notice"
+              onClick={() => {
+                setAuthorizationNotice(null);
+                const url = new URL(window.location.href);
+                url.searchParams.delete("auth_error");
+                window.history.replaceState(null, "", url);
+              }}
+              type="button"
+            >
+              <X aria-hidden="true" size={16} strokeWidth={1.5} />
+            </button>
+          </div>
+        ) : null}
         {isShowingProjectDetail ? (
           <>
             {repositoryConnector}
-            {/* Community publishing props are paused for now. */}
             <ProjectDetailPage
               activityNavigation={activityNavigation}
               activeTab={activeDetailTab}
@@ -540,15 +692,24 @@ export function AuthenticatedApp() {
                 selectedProject ? copiedProjectId === selectedProject.id : false
               }
               onActivityNavigationChange={selectActivityNavigation}
-              onCheckpointMemory={selectedProject ? organizePendingMemory : undefined}
+              onGenerateProjectMemory={
+                selectedProject
+                  ? () => generateProjectMemory(selectedProject.id)
+                  : undefined
+              }
               onConnectRepository={
                 selectedProject
-                  ? () => openRepositoryConnector(selectedProject.id)
+                  ? () => openRepositoryConnectorOverlay(selectedProject.id)
+                  : undefined
+              }
+              onLoadMemoryArtifacts={
+                activeProjectId
+                  ? (limit) => loadProjectMemoryArtifacts(activeProjectId, limit)
                   : undefined
               }
               onOpenAllProjects={closeProjectDetail}
               onProjectSelect={selectedProject ? switchProjectDetail : undefined}
-              onRepositoryFileSelect={selectedProject ? selectRepositoryFile : undefined}
+              onRepositoryFileSelect={activeProjectId ? selectRepositoryFile : undefined}
               onShareProject={
                 selectedProject
                   ? () => {
@@ -568,14 +729,14 @@ export function AuthenticatedApp() {
               }
               projectOptions={projectHeaderOptions}
               onRetry={
-                selectedProject
+                activeProjectId
                   ? () => {
-                      void loadProjectDetail(selectedProject.id, selectedProject);
-                      void loadProjectFiles(selectedProject.id);
-                      void loadProjectGithubFiles(selectedProject.id);
+                      void loadProjectDetail(activeProjectId, selectedProject);
+                      void loadProjectFiles(activeProjectId);
+                      void loadProjectGithubFiles(activeProjectId);
                       if (repositoryFileContentPath) {
                         void loadRepositoryFileContent(
-                          selectedProject.id,
+                          activeProjectId,
                           repositoryFileContentPath,
                         );
                       }
@@ -592,7 +753,14 @@ export function AuthenticatedApp() {
             isEventsLoading={isEventsLoading}
             onClearSearch={() => setProjectSearchQuery("")}
             onOpenProject={openProjectDetail}
-            onOpenRepositoryConnector={() => openRepositoryConnector(null)}
+            onOpenReviewQueue={(projectId, returnFocusElement) =>
+              openReviewQueue(returnFocusElement, projectId)
+            }
+            onOpenRepositoryConnector={() => openRepositoryConnectorOverlay(null)}
+            onFirstEvent={(event) => {
+              void openFirstCapturedEvent(event);
+            }}
+            onboardingPollingEnabled={!isRepositoryConnectorOpen}
             onRetry={loadEvents}
             onSearchChange={setProjectSearchQuery}
             onSortModeChange={setProjectSortMode}
@@ -603,54 +771,6 @@ export function AuthenticatedApp() {
             repositoryConnector={repositoryConnector}
             visibleProjects={visibleProjects}
           />
-        ) : COMMUNITY_FEATURE_ENABLED && activeItem === "community" ? (
-          <>
-            <header className="page-header">
-              <div>
-                <h1>{activeTitle}</h1>
-              </div>
-              <div className="page-actions">
-                <button
-                  className="toolbar-button"
-                  disabled={isPublishedFlowsLoading}
-                  onClick={loadPublishedFlows}
-                  type="button"
-                >
-                  <RefreshCw
-                    aria-hidden="true"
-                    size={16}
-                    strokeWidth={1.5}
-                  />
-                  <span>{isPublishedFlowsLoading ? "Refreshing" : "Refresh"}</span>
-                </button>
-                <span className="status-pill">
-                  {publishedFlows.length} flows
-                </span>
-              </div>
-            </header>
-
-            {publishedFlowDetailError ? (
-              <div className="auth-message" data-error="true">
-                {publishedFlowDetailError}
-              </div>
-            ) : null}
-
-            <CommunityPage
-              errorMessage={publishedFlowsError}
-              flows={publishedFlows}
-              isDetailLoading={isPublishedFlowDetailLoading}
-              isLoading={isPublishedFlowsLoading}
-              isSaving={isPublishedFlowSaving}
-              onArchiveFlow={archivePublishedFlow}
-              onReload={loadPublishedFlows}
-              onSelectFlow={(flowKey) => {
-                void loadPublishedFlowDetail(flowKey);
-              }}
-              onUpdateFlow={updatePublishedFlow}
-              onUploadAsset={uploadPublishedFlowAsset}
-              selectedFlow={selectedPublishedFlow}
-            />
-          </>
         ) : activeItem === "admin" && canUseAdmin ? (
           <>
             <header className="page-header">
@@ -665,6 +785,7 @@ export function AuthenticatedApp() {
             <AdminDashboard
               errorMessage={adminError}
               isLoading={isAdminLoading}
+              onOpenProject={openProjectDetail}
               onRefresh={() => {
                 void loadAdminOverview();
               }}
@@ -672,41 +793,38 @@ export function AuthenticatedApp() {
             />
           </>
         ) : (
-          <>
-            <header className="page-header">
-              <div>
-                <h1>{activeTitle}</h1>
-              </div>
-            </header>
-
-            {activeItem === "profile" ? (
-              <UserProfilePage
-                connectedRepositoryCount={connectedRepositoryCount}
-                currentUser={currentUser}
-                latestActivityLabel={latestProfileActivityLabel}
-                onLogout={() => {
-                  void logout();
-                }}
-                projectCount={projectCatalog.length}
-              />
-            ) : (
-              <UserSettingsPage
-                apiUrl={API_URL}
-                canUseAdmin={canUseAdmin}
-                connectedRepositoryCount={connectedRepositoryCount}
-                currentUser={currentUser}
-                isRefreshing={isEventsLoading}
-                latestActivityLabel={latestProfileActivityLabel}
-                onOpenProfile={() => selectSidebarItem("profile")}
-                onRefreshWorkspace={() => {
-                  void loadEvents();
-                }}
-                projectCount={projectCatalog.length}
-              />
-            )}
-          </>
+          <AccountWorkspaceRoute
+            account={accountSettings}
+            activeTitle={activeTitle}
+            apiUrl={API_URL}
+            canUseAdmin={canUseAdmin}
+            connectedRepositoryCount={connectedRepositoryCount}
+            currentUser={currentUser}
+            githubConnectUrl={githubRepositoryConnectUrl()}
+            isEventsLoading={isEventsLoading}
+            latestActivityLabel={latestProfileActivityLabel}
+            onRefreshWorkspace={refreshWorkspaceAndAccount}
+            projectCount={projectCatalog.length}
+          />
         )}
       </main>
+      {isReviewQueueOpen ? (
+        <ReviewQueueDrawer
+          onClose={() => {
+            setIsReviewQueueOpen(false);
+            setReviewQueueProjectId(null);
+          }}
+          onGenerateProjectMemory={generateProjectMemory}
+          onOpenProjectMemory={openProjectMemory}
+          onOpenSourceSession={openProjectSourceSession}
+          onProjectSummariesRefresh={replaceProjectSummaries}
+          onUnauthorized={handleUnauthorized}
+          projectFilterId={reviewQueueProjectId}
+          projects={projectCatalog}
+          returnFocusElement={reviewQueueReturnFocusRef.current}
+          workspaceReady={hasLoadedWorkspaceData && !isEventsLoading}
+        />
+      ) : null}
     </div>
   );
 }
