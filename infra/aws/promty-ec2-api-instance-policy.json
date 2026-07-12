@@ -13,7 +13,8 @@
         "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/github-token-encryption-key-*",
         "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/oauth-state-secret-*",
         "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/jwt-secret-*",
-        "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/ec2-postgres-password-*"
+        "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/ec2-postgres-password-*",
+        "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/global-ingest-token-*"
       ]
     },
     {

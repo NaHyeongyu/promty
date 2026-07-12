@@ -73,7 +73,7 @@ Browser reads require GitHub login and a valid PromptHub JWT session cookie. The
 
 Gemini-backed memory generation reads `PROMTY_GEMINI_API_KEY` from `.env.local`, `backend/.env.local`, or the process environment. The backend must be restarted after changing this key. `GET /api/projects/_memory/generator` reports whether Gemini is configured without exposing the key.
 
-If `PROMPTHUB_API_TOKEN` is set, `POST /api/events/batch` accepts that global `Authorization: Bearer <token>`. GitHub CLI login issues per-user collector tokens stored as hashes in `collector_tokens`. Web JWTs and collector tokens are intentionally separate.
+`POST /api/events/batch` requires `Authorization: Bearer <token>` by default. GitHub CLI login issues per-user collector tokens stored as hashes in `collector_tokens`. If `PROMPTHUB_API_TOKEN` is set, the endpoint also accepts that global token. Web JWTs and collector tokens are intentionally separate. Anonymous ingest is available only when `PROMPTHUB_ALLOW_ANONYMOUS_INGEST=true` is explicitly set for isolated local development.
 
 The web OAuth flow stores a short-lived HttpOnly nonce cookie and verifies it against the signed OAuth state in the callback. `PROMPTHUB_CORS_ORIGINS` is a comma-separated allowlist and defaults to the local Vite origins.
 
@@ -344,8 +344,9 @@ creates a placeholder project when project_id is new
 assigns projects uploaded with collector tokens to the token owner
 creates a session when session_id is new
 stores the incoming event payload as JSONB
-optionally requires Bearer auth when PROMPTHUB_API_TOKEN is set
+requires Bearer auth by default
 accepts per-user collector tokens issued through GitHub OAuth
+optionally accepts a global PROMPTHUB_API_TOKEN
 requires web JWT auth for browser event reads
 rejects empty batches and batches larger than 500 events
 accepts exact event-id replays as idempotent no-ops

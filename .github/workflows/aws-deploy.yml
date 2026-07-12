@@ -68,6 +68,7 @@ jobs:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
         run: |
           docker build \
+            --platform linux/amd64 \
             -f backend/Dockerfile \
             -t "${REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}" \
             -t "${REGISTRY}/${ECR_REPOSITORY}:latest" \
@@ -88,7 +89,7 @@ jobs:
               "docker rm -f promty-backend || true",
               "docker run -d --name promty-backend --restart unless-stopped --network promty --env-file /opt/promty/backend.env ${REGISTRY}/${ECR_REPOSITORY}:latest",
               "sleep 8",
-              "curl -fsS http://127.0.0.1/health",
+              "docker exec promty-backend python -c \"import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8011/health', timeout=5).read().decode())\"",
               "docker image prune -f"
             ]
           }

@@ -202,7 +202,7 @@ GET  /api/events
 GET  /health
 ```
 
-`POST /api/events/batch` accepts:
+`POST /api/events/batch` requires `Authorization: Bearer <token>` in production and accepts:
 
 ```json
 {
@@ -282,7 +282,7 @@ Web users sign in through GitHub OAuth. The backend issues a short-lived HS256 J
 
 Prompt text, AI response text, and unified diff patch text in raw event storage are encrypted at rest with application-level encryption. Project/session IDs, timestamps, file paths, line counts, and status metadata remain queryable for sorting and filtering. Prompt and response text are capped before encryption and default to 50,000 characters. Derived memory artifacts and artifact-version metadata are not covered by this envelope yet and must not be treated as secret storage.
 
-Collectors do not use the web JWT. CLI login issues a separate per-user collector token stored as a hash in PostgreSQL. `POST /api/events/batch` accepts that collector token as `Authorization: Bearer <token>`. `PROMPTHUB_API_TOKEN` remains available as an optional local/global ingest token.
+Collectors do not use the web JWT. CLI login issues a separate per-user collector token stored as a hash in PostgreSQL. `POST /api/events/batch` accepts that collector token as `Authorization: Bearer <token>`. `PROMPTHUB_API_TOKEN` remains available as an optional local/global ingest token. Anonymous ingest is disabled by default; only set `PROMPTHUB_ALLOW_ANONYMOUS_INGEST=true` for isolated local development.
 
 The web OAuth flow uses a signed state value plus a short-lived HttpOnly nonce cookie to reduce login CSRF risk.
 

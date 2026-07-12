@@ -113,6 +113,9 @@ class Settings:
         )
     )
     api_token: str | None = field(default_factory=lambda: _optional_env("PROMPTHUB_API_TOKEN"))
+    allow_anonymous_ingest: bool = field(
+        default_factory=lambda: _bool_env("PROMPTHUB_ALLOW_ANONYMOUS_INGEST", False)
+    )
     github_client_id: str | None = field(
         default_factory=lambda: _optional_env("PROMPTHUB_GITHUB_CLIENT_ID")
     )

@@ -406,8 +406,9 @@ AWS deploy workflow:
 .github/workflows/aws-deploy.yml
 ```
 
-`AWS Deploy` is manual. It does not automatically deploy every PR. Deploy after
-the target commit is ready and CI is green.
+`AWS Deploy` is manual. It does not automatically deploy every PR. The AWS OIDC
+trust policy allows the production deploy role only from `refs/heads/master`.
+Deploy after the target commit is merged and CI is green.
 
 Run deploy from the GitHub UI:
 
@@ -458,7 +459,7 @@ The deploy workflow:
 9. sends an SSM command to EC2
 10. pulls the latest image on EC2
 11. replaces the `promty-backend` container
-12. checks `http://127.0.0.1/health` on EC2
+12. checks backend health inside the `promty-backend` container
 
 GitHub repository secrets required by the workflow:
 
@@ -532,6 +533,7 @@ promty/prod/github-client-secret
 promty/prod/github-token-encryption-key
 promty/prod/oauth-state-secret
 promty/prod/jwt-secret
+promty/prod/global-ingest-token
 ```
 
 The old `promty/prod/database-url` secret was used for the one-time RDS to EC2
@@ -556,7 +558,7 @@ aws ssm send-command \
   --region ap-southeast-2 \
   --instance-ids i-066ab5e01b9685b6a \
   --document-name AWS-RunShellScript \
-  --parameters 'commands=["docker restart promty-backend","curl -fsS http://127.0.0.1/health"]'
+  --parameters 'commands=["docker restart promty-backend","docker exec promty-backend python -c \"import urllib.request; print(urllib.request.urlopen('\''http://127.0.0.1:8011/health'\'', timeout=5).read().decode())\""]'
 ```
 
 ## Domain And DNS
@@ -710,6 +712,7 @@ aws ecr get-login-password \
       --password-stdin 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com
 
 docker build \
+  --platform linux/amd64 \
   -f backend/Dockerfile \
   -t 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com/promty/backend:latest \
   .
@@ -731,7 +734,7 @@ aws ssm send-command \
     "docker rm -f promty-backend || true",
     "docker run -d --name promty-backend --restart unless-stopped --network promty --env-file /opt/promty/backend.env 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com/promty/backend:latest",
     "sleep 8",
-    "curl -fsS http://127.0.0.1/health"
+    "docker exec promty-backend python -c \"import urllib.request; print(urllib.request.urlopen('\''http://127.0.0.1:8011/health'\'', timeout=5).read().decode())\""
   ]'
 ```
 

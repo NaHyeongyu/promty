@@ -66,6 +66,7 @@ Aliases: promty.org, www.promty.org
 Status: Deployed
 Origin: promty-prod-frontend-435917083683.s3.ap-southeast-2.amazonaws.com
 Origin access control id: ETUAJRENPIY53
+Response headers policy: 67f7725c-6f97-4210-82d7-5512b31e9d03 Managed-SecurityHeadersPolicy
 ```
 
 S3 frontend bucket:
@@ -233,6 +234,7 @@ promty/prod/github-client-secret
 promty/prod/github-token-encryption-key
 promty/prod/oauth-state-secret
 promty/prod/jwt-secret
+promty/prod/global-ingest-token
 ```
 
 `promty/prod/database-url` is the previous RDS URL and was used for one-time
@@ -268,6 +270,7 @@ infra/aws/promty-apprunner-ecr-access-trust.json
 Role name: promty-github-actions-deploy
 Role ARN: arn:aws:iam::435917083683:role/promty-github-actions-deploy
 Trusted GitHub repo: NaHyeongyu/BuildHub
+Trusted ref: refs/heads/master
 ```
 
 The deploy role can:
@@ -314,6 +317,7 @@ PROMPTHUB_AWS_REGION=ap-southeast-2
 PROMPTHUB_AWS_S3_BUCKET=promty-prod-assets-435917083683
 PROMPTHUB_AWS_S3_PREFIX=published-flow-assets
 PROMPTHUB_APP_ENCRYPTION_KEY_ID=aws-prod
+PROMPTHUB_API_TOKEN=<secret from promty/prod/global-ingest-token>
 PROMTY_MEMORY_GENERATOR=local
 PROMTY_MEMORY_DRAFT_GENERATOR=local
 PROMTY_PROJECT_MEMORY_GENERATOR=local

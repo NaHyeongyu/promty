@@ -68,6 +68,7 @@ write_env "PROMPTHUB_GITHUB_CLIENT_SECRET" "$(fetch_secret promty/prod/github-cl
 write_env "PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_KEY" "$(fetch_secret promty/prod/github-token-encryption-key)"
 write_env "PROMPTHUB_OAUTH_STATE_SECRET" "$(fetch_secret promty/prod/oauth-state-secret)"
 write_env "PROMPTHUB_JWT_SECRET" "$(fetch_secret promty/prod/jwt-secret)"
+write_env "PROMPTHUB_API_TOKEN" "$(fetch_secret promty/prod/global-ingest-token)"
 chmod 600 "${APP_DIR}/backend.env"
 
 docker pull postgres:18-alpine
@@ -108,12 +109,18 @@ docker run -d \
   "${BACKEND_IMAGE}"
 
 cat > "${APP_DIR}/Caddyfile" <<'EOF'
-http:// {
-  reverse_proxy promty-backend:8011
+:80 {
+  redir https://api.promty.org{uri} 308
 }
 
 api.promty.org {
   encode gzip
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    X-Frame-Options "DENY"
+  }
   reverse_proxy promty-backend:8011
 }
 EOF
@@ -184,7 +191,7 @@ systemctl daemon-reload
 systemctl enable --now promty-db-backup.timer
 
 for attempt in {1..30}; do
-  if curl -fsS http://127.0.0.1/health; then
+  if docker exec promty-backend python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8011/health', timeout=5).read().decode())"; then
     echo "Promty EC2 bootstrap complete"
     exit 0
   fi
@@ -193,5 +200,5 @@ done
 
 docker logs --tail 80 promty-backend || true
 docker logs --tail 80 promty-caddy || true
-curl -fsS http://127.0.0.1/health
+docker exec promty-backend python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8011/health', timeout=5).read().decode())"
 echo "Promty EC2 bootstrap complete"
