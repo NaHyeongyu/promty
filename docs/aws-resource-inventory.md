@@ -49,10 +49,11 @@ infra/aws/promty-acm-validation-records.json
 The API is currently served by Caddy on EC2. Caddy obtains and renews the
 `api.promty.org` TLS certificate through Let's Encrypt.
 
-Legacy App Runner domain validation records are still tracked in:
+Historical App Runner domain validation records were removed from Route 53.
+The cleanup batch is tracked in:
 
 ```text
-infra/aws/promty-apprunner-api-domain-validation-records.json
+infra/aws/promty-apprunner-api-domain-validation-delete-records.json
 ```
 
 ## Frontend
@@ -207,20 +208,23 @@ Cost-reduction cleanup:
 Deleted NAT gateway: nat-0fed17885361650db
 Released NAT elastic IP allocation: eipalloc-0f5803a28421ddec2
 Released NAT public IP: 32.236.253.122
+Deleted App Runner service: promty-prod-api
+Deleted App Runner VPC connectors:
+  promty-prod-vpc-connector
+  promty-prod-vpc-connector-nat
+Deleted App Runner IAM roles:
+  promty-apprunner-ecr-access
+  promty-apprunner-instance
 ```
 
 Legacy networking objects may remain because they do not materially affect the
-monthly run rate. Remove them later only after confirming no rollback is needed:
+monthly run rate:
 
 ```text
 Private route table: rtb-06de908c3a504844d
 Legacy App Runner security group: sg-07bcfdc3e060768d9
 NAT App Runner security group: sg-0fb1480facd964b0e
 RDS security group: sg-0c72a43cc84b5deef
-Legacy App Runner VPC connector:
-  arn:aws:apprunner:ap-southeast-2:435917083683:vpcconnector/promty-prod-vpc-connector/1/7ce24bfd0e1c4a9db9fbc8086b5e53a4
-NAT App Runner VPC connector:
-  arn:aws:apprunner:ap-southeast-2:435917083683:vpcconnector/promty-prod-vpc-connector-nat/1/280069a9ab9e46e4817f07222989b896
 ```
 
 ## Secrets Manager
@@ -243,15 +247,19 @@ migration. The active EC2 backend now uses a local Postgres URL generated in
 
 ## Legacy App Runner
 
-App Runner is no longer the production API target.
+App Runner is no longer the production API target and the service has been
+deleted.
 
 ```text
 Service name: promty-prod-api
 Service ARN: arn:aws:apprunner:ap-southeast-2:435917083683:service/promty-prod-api/04be6335c00f43fb86dd2d3506f95700
 Default URL: https://xcyfny8pb3.ap-southeast-2.awsapprunner.com
-Status: PAUSED
+Status: DELETED
 Previous custom domain: https://api.promty.org
 Image: 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com/promty/backend:latest
+VPC connectors: deleted
+IAM roles: deleted
+Route 53 validation records: deleted
 ```
 
 Legacy App Runner configuration files:

@@ -68,7 +68,7 @@ Instance type: t3a.micro
 IAM role: promty-ec2-api-instance
 ```
 
-Legacy App Runner is paused and no longer receives `api.promty.org` traffic.
+Legacy App Runner has been deleted and no longer receives `api.promty.org` traffic.
 Previous RDS was deleted after creating final snapshot
 `promty-prod-db-final-20260712-ec2-cutover`.
 
@@ -673,14 +673,16 @@ aws s3 ls s3://promty-prod-assets-435917083683/database-backups/ \
   --region ap-southeast-2
 ```
 
-Check legacy App Runner status:
+Confirm App Runner has no remaining services or VPC connectors:
 
 ```bash
-aws apprunner describe-service \
+aws apprunner list-services \
   --profile promty-prod \
-  --region ap-southeast-2 \
-  --service-arn "arn:aws:apprunner:ap-southeast-2:435917083683:service/promty-prod-api/04be6335c00f43fb86dd2d3506f95700" \
-  --query "Service.{Status:Status,ServiceUrl:ServiceUrl}"
+  --region ap-southeast-2
+
+aws apprunner list-vpc-connectors \
+  --profile promty-prod \
+  --region ap-southeast-2
 ```
 
 ## Manual Emergency Deploy
@@ -930,7 +932,7 @@ The current low-cost baseline depends on keeping these choices:
 - one EC2 Elastic IP for `api.promty.org`
 - no NAT Gateway
 - no running RDS instance
-- App Runner paused or deleted
+- App Runner deleted
 - backups in S3 instead of a running managed database
 
 Do not recreate NAT Gateway, App Runner active service, or RDS unless the extra

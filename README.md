@@ -247,7 +247,7 @@ docs/aws-resource-inventory.md
 `CI` runs Python static checks, backend and collector tests, collector package
 validation, and the frontend production build. `AWS Deploy` is a manual workflow
 that builds the frontend for S3/CloudFront, publishes the backend image to ECR,
-and starts an App Runner deployment. See
+and restarts the EC2 backend through AWS Systems Manager. See
 [AWS and GitHub Deployment Runbook](docs/aws-github-deployment.md) for the
 complete Git, AWS CLI, domain, secret, deployment, and troubleshooting guide.
 Published flow assets can use S3 by setting:
