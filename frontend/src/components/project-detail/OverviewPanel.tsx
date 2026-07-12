@@ -160,12 +160,12 @@ export function OverviewPanel({
           </div>
           <strong>
             {pendingMemoryCount > 0
-              ? `${pendingMemoryCount} captured ${pendingMemoryCount === 1 ? "range" : "ranges"}`
+              ? "Project memory ready"
               : latestMemory?.title ?? "No memory yet"}
           </strong>
           <p>
             {pendingMemoryCount > 0
-              ? "Review captured work before adding it to long-term memory."
+              ? "Captured work is ready for one project-wide memory update."
               : latestMemory?.summary ?? "Memory will collect decisions and implementation context."}
           </p>
           {onOpenMemory ? (

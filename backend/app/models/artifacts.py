@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -21,6 +21,14 @@ class Artifact(Base):
             "type",
             "updated_at",
             "created_at",
+        ),
+        Index(
+            "ux_artifacts_memory_storage_key",
+            "project_id",
+            "type",
+            "storage_key",
+            unique=True,
+            postgresql_where=text("type IN ('MemoryTask', 'MemoryDraft', 'ProjectMemory')"),
         ),
     )
 

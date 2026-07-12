@@ -29,7 +29,7 @@ export function WorkspaceSidebar({
   onOpenProject,
   onOpenReviewQueue,
   onSelectItem,
-  pendingReviewCount,
+  pendingReviewProjectCount,
   savedProjectCount,
   savedProjects,
   selectedProjectId,
@@ -43,7 +43,7 @@ export function WorkspaceSidebar({
   onOpenProject: (projectId: string) => void;
   onOpenReviewQueue: (returnFocusElement: HTMLElement | null) => void;
   onSelectItem: (item: SidebarItemId) => void;
-  pendingReviewCount: number;
+  pendingReviewProjectCount: number;
   savedProjectCount: number;
   savedProjects: Project[];
   selectedProjectId: string | null;
@@ -144,7 +144,18 @@ export function WorkspaceSidebar({
             ariaControls="review-queue"
             ariaExpanded={isReviewQueueOpen}
             ariaHasPopup="dialog"
-            badge={pendingReviewCount > 0 ? pendingReviewCount : undefined}
+            ariaLabel={
+              pendingReviewProjectCount > 0
+                ? `Review queue, ${pendingReviewProjectCount} ${
+                    pendingReviewProjectCount === 1 ? "project" : "projects"
+                  } pending review`
+                : "Review queue"
+            }
+            badge={
+              pendingReviewProjectCount > 0
+                ? pendingReviewProjectCount
+                : undefined
+            }
             icon={Inbox}
             label="Review queue"
             onClick={openReviewQueue}
@@ -273,6 +284,7 @@ const SidebarNavItem = function SidebarNavItem({
   ariaControls,
   ariaExpanded,
   ariaHasPopup,
+  ariaLabel,
   badge,
   icon: Icon,
   label,
@@ -284,6 +296,7 @@ const SidebarNavItem = function SidebarNavItem({
   ariaControls?: string;
   ariaExpanded?: boolean;
   ariaHasPopup?: "dialog";
+  ariaLabel?: string;
   badge?: number;
   icon: typeof Folder;
   label: string;
@@ -296,6 +309,7 @@ const SidebarNavItem = function SidebarNavItem({
       aria-controls={ariaControls}
       aria-expanded={ariaExpanded}
       aria-haspopup={ariaHasPopup}
+      aria-label={ariaLabel}
       aria-pressed={ariaHasPopup ? undefined : active}
       className="sidebar-item"
       data-active={active}
@@ -306,7 +320,11 @@ const SidebarNavItem = function SidebarNavItem({
     >
       <Icon aria-hidden="true" className="sidebar-icon" size={18} strokeWidth={1.5} />
       <span>{label}</span>
-      {badge ? <span className="sidebar-item-badge">{badge}</span> : null}
+      {badge ? (
+        <span aria-hidden="true" className="sidebar-item-badge">
+          {badge}
+        </span>
+      ) : null}
     </button>
   );
 };

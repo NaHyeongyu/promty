@@ -9,14 +9,15 @@ from sqlalchemy.orm import Session as DBSession
 from app.core.security import require_web_user
 from app.db.session import get_db
 from app.models.users import User
-from app.schemas.memory import ProjectMemoryUpdateRequest
+from app.schemas.memory import ProjectMemoryGenerateRequest, ProjectMemoryUpdateRequest
 from app.services.memory.workflows import (
-    checkpoint_project_session_response,
     compile_project_memory_response,
     complete_project_session_response,
+    generate_project_memory_response,
     list_pending_memory_ranges_response,
     list_project_artifacts_response,
     memory_generator_status,
+    read_project_memory_batch_response,
     read_project_memory_response,
     refresh_memory_review_queue_response,
     update_project_memory_response,
@@ -84,23 +85,36 @@ def complete_project_session(
     return response
 
 
-@router.post("/{project_id}/sessions/{session_id}/checkpoint")
-def checkpoint_project_session(
+@router.post("/{project_id}/memory/generate")
+def generate_project_memory(
     project_id: UUID,
-    session_id: UUID,
-    regenerate: bool = Query(default=False),
+    payload: ProjectMemoryGenerateRequest,
     current_user: User = Depends(require_web_user),
     db: DBSession = Depends(get_db),
 ) -> dict[str, Any]:
-    response = checkpoint_project_session_response(
+    response = generate_project_memory_response(
         db,
+        idempotency_key=str(payload.idempotency_key),
         project_id=project_id,
-        regenerate=regenerate,
-        session_id=session_id,
         user=current_user,
     )
     db.commit()
     return response
+
+
+@router.get("/{project_id}/memory/batches/{batch_id}")
+def read_project_memory_batch(
+    project_id: UUID,
+    batch_id: UUID,
+    current_user: User = Depends(require_web_user),
+    db: DBSession = Depends(get_db),
+) -> dict[str, Any]:
+    return read_project_memory_batch_response(
+        db,
+        batch_id=batch_id,
+        project_id=project_id,
+        user=current_user,
+    )
 
 
 @router.post("/{project_id}/memory/project/compile")

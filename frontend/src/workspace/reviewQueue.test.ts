@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  pendingReviewProjectCount,
   pendingReviewProjects,
+  reviewQueueProjectBatch,
   reviewQueueSessionsFromRanges,
-  totalPendingReviewCount,
+  totalPendingRangeCount,
 } from "./reviewQueue";
 import type {
   Project,
@@ -98,13 +100,48 @@ describe("review queue", () => {
     ]);
   });
 
-  it("filters projects and totals captured ranges", () => {
-    const projects = [project("alpha", 0), project("beta", 2), project("gamma", 1)];
+  it("counts pending projects separately from captured ranges", () => {
+    const projects = [project("alpha", 0), project("beta", 2), project("gamma", 5)];
 
     expect(pendingReviewProjects(projects).map((item) => item.id)).toEqual([
       "beta",
       "gamma",
     ]);
-    expect(totalPendingReviewCount(projects)).toBe(3);
+    expect(pendingReviewProjectCount(projects)).toBe(2);
+    expect(totalPendingRangeCount(projects)).toBe(7);
+  });
+
+  it("builds one project batch from every checkpointable session", () => {
+    const sessions = reviewQueueSessionsFromRanges([
+      pendingRange(),
+      pendingRange({
+        changed_file_count: 3,
+        draft_id: "draft-2",
+        prompt_count: 2,
+        session_id: "session-2",
+      }),
+      pendingRange({
+        can_checkpoint: false,
+        changed_file_count: 8,
+        draft_id: "draft-3",
+        prompt_count: 4,
+        session_id: "session-3",
+      }),
+    ]);
+
+    expect(reviewQueueProjectBatch(sessions)).toEqual({
+      changedFileCount: 5,
+      promptCount: 3,
+      rangeCount: 2,
+      sessionIds: ["session-1", "session-2"],
+    });
+  });
+
+  it("marks a project batch unavailable when no session can create memory", () => {
+    const sessions = reviewQueueSessionsFromRanges([
+      pendingRange({ can_checkpoint: false }),
+    ]);
+
+    expect(reviewQueueProjectBatch(sessions).sessionIds).toEqual([]);
   });
 });

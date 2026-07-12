@@ -381,6 +381,44 @@
   gap: var(--bh-space-2);
 }
 
+.review-queue-project-action-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--bh-space-4);
+  border-top: 1px solid var(--bh-color-border);
+  padding: var(--bh-space-4) var(--bh-space-5);
+  background: var(--bh-color-surface-secondary);
+}
+
+.review-queue-project-action-bar > div {
+  display: grid;
+  min-width: 0;
+  gap: var(--bh-space-1);
+}
+
+.review-queue-project-action-bar strong,
+.review-queue-project-action-bar span {
+  overflow-wrap: anywhere;
+}
+
+.review-queue-project-action-bar strong {
+  color: var(--bh-color-text-primary);
+  font-size: var(--bh-font-size-small);
+  font-weight: var(--bh-font-weight-section);
+}
+
+.review-queue-project-action-bar > div > span {
+  color: var(--bh-color-text-muted);
+  font-size: var(--bh-font-size-caption);
+  line-height: var(--bh-line-height-body);
+}
+
+.review-queue-project-action-bar .review-queue-primary-action {
+  min-width: 190px;
+  max-width: 100%;
+}
+
 .review-queue-primary-action,
 .review-queue-secondary-action {
   display: inline-flex;
@@ -508,7 +546,8 @@
   .review-queue-session,
   .review-queue-error,
   .review-queue-loading,
-  .review-queue-project-empty {
+  .review-queue-project-empty,
+  .review-queue-project-action-bar {
     padding-right: var(--bh-space-4);
     padding-left: var(--bh-space-4);
   }
@@ -518,14 +557,24 @@
   }
 }
 
-@media (max-width: 420px) {
-  .review-queue-session-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (max-width: 560px) {
+  .review-queue-project-action-bar {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
   }
 
-  .review-queue-primary-action,
-  .review-queue-secondary-action {
+  .review-queue-project-action-bar .review-queue-primary-action {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .review-queue-session-actions {
+    display: block;
+  }
+
+  .review-queue-session-actions .review-queue-secondary-action {
     width: 100%;
     min-width: 0;
     padding-right: var(--bh-space-2);

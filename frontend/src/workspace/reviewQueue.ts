@@ -18,6 +18,13 @@ export type ReviewQueueSession = {
   tool: string;
 };
 
+export type ReviewQueueProjectBatch = {
+  changedFileCount: number;
+  promptCount: number;
+  rangeCount: number;
+  sessionIds: string[];
+};
+
 function normalizedCount(value: number | null | undefined) {
   return Number.isFinite(value) ? Math.max(0, value ?? 0) : 0;
 }
@@ -112,7 +119,34 @@ export function pendingReviewProjects(projects: Project[]) {
   return projects.filter((project) => project.pendingMemoryCount > 0);
 }
 
-export function totalPendingReviewCount(projects: Project[]) {
+export function pendingReviewProjectCount(projects: Project[]) {
+  return pendingReviewProjects(projects).length;
+}
+
+export function reviewQueueProjectBatch(
+  sessions: ReviewQueueSession[],
+): ReviewQueueProjectBatch {
+  const readySessions = sessions.filter((session) => session.canCreateMemory);
+  return {
+    changedFileCount: readySessions.reduce(
+      (total, session) => total + session.changedFileCount,
+      0,
+    ),
+    promptCount: readySessions.reduce(
+      (total, session) => total + session.promptCount,
+      0,
+    ),
+    rangeCount: readySessions.reduce(
+      (total, session) => total + session.draftCount,
+      0,
+    ),
+    sessionIds: Array.from(
+      new Set(readySessions.map((session) => session.sessionId)),
+    ),
+  };
+}
+
+export function totalPendingRangeCount(projects: Project[]) {
   return pendingReviewProjects(projects).reduce(
     (total, project) => total + project.pendingMemoryCount,
     0,

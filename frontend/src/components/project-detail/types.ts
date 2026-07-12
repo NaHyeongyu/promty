@@ -156,6 +156,8 @@ export type ProjectMemoryArtifact = {
   generator: string | null;
   id: string;
   lastEventAt: string | null;
+  memoryBatchId: string | null;
+  memoryBatchIds: string[];
   memoryScope: ProjectMemoryScope | null;
   model: string | null;
   needsUserVerification: boolean | null;
@@ -169,6 +171,8 @@ export type ProjectMemoryArtifact = {
     title: string;
   }>;
   sessionId: string | null;
+  sourceDraftIds: string[];
+  sourceSessionIds: string[];
   sliceIndex: number | null;
   startSequence: number | null;
   summary: string | null;

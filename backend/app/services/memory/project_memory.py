@@ -42,6 +42,13 @@ def _source_memory_context(artifact: Artifact) -> dict[str, Any]:
         "reason": artifact.reason,
         "sections": artifact.sections,
         "source_draft_id": metadata.get("source_draft_id"),
+        "source_draft_ids": metadata.get("source_draft_ids") or [],
+        "source_draft_version_ids": metadata.get("source_draft_version_ids") or [],
+        "source_session_ids": metadata.get("source_session_ids") or [],
+        "memory_batch_id": metadata.get("memory_batch_id"),
+        "first_event_at": metadata.get("first_event_at"),
+        "last_event_at": metadata.get("last_event_at"),
+        "session_id": str(artifact.session_id) if artifact.session_id else None,
         "summary": artifact.summary,
         "tags": artifact.tags,
         "technologies": artifact.technologies,
@@ -125,15 +132,11 @@ def _local_project_memory_snapshot(
             "## Core Workflow\n" + "\n".join(f"- {item}" for item in workflow),
             "## Important Decisions\n"
             + (
-                "\n".join(
-                    f"- {item['decision']}: {item['reason']}"
-                    for item in important_decisions
-                )
+                "\n".join(f"- {item['decision']}: {item['reason']}" for item in important_decisions)
                 if important_decisions
                 else "- No generated decisions yet."
             ),
-            "## Technical Assumptions\n"
-            + "\n".join(f"- {item}" for item in technical_assumptions),
+            "## Technical Assumptions\n" + "\n".join(f"- {item}" for item in technical_assumptions),
             "## Instructions For Future AI Agents\n"
             + "\n".join(
                 [
@@ -144,29 +147,31 @@ def _local_project_memory_snapshot(
             ),
         ]
     )
-    return ProjectMemorySnapshot.parse_obj({
-        "body_markdown": body_markdown,
-        "confidence": 0.45 if verified_memories else 0.2,
-        "sections": {
-            "core_workflow": workflow,
-            "current_direction": current_direction,
-            "important_decisions": important_decisions,
-            "instructions_for_future_ai_agents": [
-                "Use generated and user-edited memory as the source of truth.",
-                "Do not rely on pending drafts or ignored memories.",
-                "Preserve existing memory workflow thresholds unless the user changes them.",
-            ],
-            "open_questions": [],
-            "product_goal": product_goal,
-            "rejected_directions": [],
-            "technical_assumptions": technical_assumptions,
-        },
-        "snapshot_type": "project_memory",
-        "source_memory_ids": source_memory_ids,
-        "warnings": ["Local fallback compiler was used."]
-        if provider_name(settings.project_memory_generator) in {"gemini", "openai"}
-        else [],
-    }).dict()
+    return ProjectMemorySnapshot.parse_obj(
+        {
+            "body_markdown": body_markdown,
+            "confidence": 0.45 if verified_memories else 0.2,
+            "sections": {
+                "core_workflow": workflow,
+                "current_direction": current_direction,
+                "important_decisions": important_decisions,
+                "instructions_for_future_ai_agents": [
+                    "Use generated and user-edited memory as the source of truth.",
+                    "Do not rely on pending drafts or ignored memories.",
+                    "Preserve existing memory workflow thresholds unless the user changes them.",
+                ],
+                "open_questions": [],
+                "product_goal": product_goal,
+                "rejected_directions": [],
+                "technical_assumptions": technical_assumptions,
+            },
+            "snapshot_type": "project_memory",
+            "source_memory_ids": source_memory_ids,
+            "warnings": ["Local fallback compiler was used."]
+            if provider_name(settings.project_memory_generator) in {"gemini", "openai"}
+            else [],
+        }
+    ).dict()
 
 
 def _project_memory_payload(
@@ -207,11 +212,7 @@ def _project_memory_payload(
         "outcome": snapshot.get("body_markdown"),
         "prompt_event_ids": snapshot.get("source_memory_ids") or [],
         "reason": sections.get("current_direction") or "Compiled from verified memories.",
-        "sections": [
-            section
-            for section in rendered_sections
-            if section["summary"]
-        ],
+        "sections": [section for section in rendered_sections if section["summary"]],
         "summary": sections.get("current_direction") or "Compiled project memory snapshot.",
         "tags": sorted(set([*(project.tags or []), "project-memory"]))[:12],
         "technologies": [],
@@ -237,13 +238,32 @@ def list_project_memory_artifacts(
     source_memories = [
         artifact
         for artifact in artifacts
-        if (
-            metadata := artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}
-        ).get("review_state")
+        if (metadata := artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}).get(
+            "review_state"
+        )
         in {REVIEW_STATE_GENERATED, REVIEW_STATE_VERIFIED}
         and metadata.get("artifact_stage") in {"generated_memory", "verified_memory"}
     ]
     return source_memories[:limit]
+
+
+def count_project_memory_artifacts(
+    db: DBSession,
+    *,
+    project_id: UUID,
+    since: Any | None = None,
+) -> int:
+    filters = [
+        Artifact.project_id == project_id,
+        Artifact.type == MEMORY_ARTIFACT_TYPE,
+        Artifact.metadata_["review_state"].astext.in_(
+            [REVIEW_STATE_GENERATED, REVIEW_STATE_VERIFIED]
+        ),
+        Artifact.metadata_["artifact_stage"].astext.in_(["generated_memory", "verified_memory"]),
+    ]
+    if since is not None:
+        filters.append(Artifact.created_at >= since)
+    return db.scalar(select(func.count(Artifact.id)).where(*filters)) or 0
 
 
 def list_project_memory_history_artifacts(
@@ -285,18 +305,55 @@ def compile_project_memory(
     *,
     force_regenerate: bool = False,
     project_id: UUID,
+    required_source_memories: list[Artifact] | None = None,
 ) -> Artifact:
     project = db.get(Project, project_id)
     if project is None:
         raise ValueError("Project not found")
     existing = _latest_project_memory_snapshot(db, project_id)
-    source_memories = list_project_memory_artifacts(
+    recent_source_memories = list_project_memory_artifacts(
         db,
         project_id=project_id,
         limit=100,
     )
+    required_source_memories = sorted(
+        required_source_memories or [],
+        key=lambda memory: (memory.updated_at, memory.created_at),
+        reverse=True,
+    )
+    required_ids = {memory.id for memory in required_source_memories}
+    source_memories = [
+        *required_source_memories,
+        *(memory for memory in recent_source_memories if memory.id not in required_ids),
+    ]
     source_memory_ids = [str(memory.id) for memory in source_memories]
-    existing_metadata = existing.metadata_ if existing and isinstance(existing.metadata_, dict) else {}
+    source_session_ids = list(
+        dict.fromkeys(
+            source_session_id
+            for memory in source_memories
+            for source_session_id in (
+                (memory.metadata_ or {}).get("source_session_ids")
+                if isinstance(memory.metadata_, dict)
+                and isinstance(memory.metadata_.get("source_session_ids"), list)
+                else [str(memory.session_id)]
+                if memory.session_id
+                else []
+            )
+            if isinstance(source_session_id, str) and source_session_id
+        )
+    )
+    memory_batch_ids = list(
+        dict.fromkeys(
+            memory_batch_id
+            for memory in source_memories
+            if isinstance(memory.metadata_, dict)
+            and isinstance((memory_batch_id := memory.metadata_.get("memory_batch_id")), str)
+            and memory_batch_id
+        )
+    )
+    existing_metadata = (
+        existing.metadata_ if existing and isinstance(existing.metadata_, dict) else {}
+    )
     if (
         existing is not None
         and not force_regenerate
@@ -310,10 +367,7 @@ def compile_project_memory(
         project=project,
         verified_memories=source_memories,
     )
-    source_memory_context = [
-        _source_memory_context(memory)
-        for memory in source_memories
-    ]
+    source_memory_context = [_source_memory_context(memory) for memory in source_memories]
     context = {
         "previous_project_memory": previous_snapshot.metadata_.get("project_memory_snapshot")
         if previous_snapshot and isinstance(previous_snapshot.metadata_, dict)
@@ -341,6 +395,11 @@ def compile_project_memory(
                 "requested_generator": generator_for_provider(provider, stage="project"),
             }
 
+    snapshot = {
+        **snapshot,
+        "source_memory_ids": source_memory_ids,
+    }
+
     payload = _project_memory_payload(
         generator=generator,
         project=project,
@@ -351,10 +410,12 @@ def compile_project_memory(
         artifact_type=PROJECT_MEMORY_ARTIFACT_TYPE,
         event_id=None,
         extra_metadata={
+            "memory_batch_ids": memory_batch_ids,
             "memory_scope": "project",
             "project_memory_snapshot": snapshot,
             "review_state": REVIEW_STATE_GENERATED,
             "source_memory_ids": snapshot.get("source_memory_ids") or source_memory_ids,
+            "source_session_ids": source_session_ids,
             **generation_metadata,
         },
         payload=payload,
@@ -374,7 +435,9 @@ def update_project_memory_snapshot(
     if project is None:
         raise ValueError("Project not found")
     existing = _latest_project_memory_snapshot(db, project_id)
-    existing_metadata = existing.metadata_ if existing and isinstance(existing.metadata_, dict) else {}
+    existing_metadata = (
+        existing.metadata_ if existing and isinstance(existing.metadata_, dict) else {}
+    )
     previous_snapshot = (
         existing_metadata.get("project_memory_snapshot")
         if isinstance(existing_metadata.get("project_memory_snapshot"), dict)

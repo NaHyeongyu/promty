@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -129,3 +130,7 @@ class ProjectMemorySnapshot(BaseModel):
 
 class ProjectMemoryUpdateRequest(BaseModel):
     body_markdown: str = Field(min_length=1)
+
+
+class ProjectMemoryGenerateRequest(BaseModel):
+    idempotency_key: UUID

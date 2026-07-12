@@ -77,6 +77,16 @@ def test_review_queue_refresh_route_is_exposed() -> None:
     assert "post" in operation
 
 
+def test_memory_generation_is_project_scoped() -> None:
+    from app.main import app
+
+    paths = app.openapi()["paths"]
+
+    assert "post" in paths["/api/projects/{project_id}/memory/generate"]
+    assert "get" in paths["/api/projects/{project_id}/memory/batches/{batch_id}"]
+    assert "/api/projects/{project_id}/sessions/{session_id}/checkpoint" not in paths
+
+
 def test_review_queue_refresh_isolates_project_materialization_errors(
     monkeypatch,
 ) -> None:

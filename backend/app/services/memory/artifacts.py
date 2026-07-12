@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import case, desc, func, select
+from sqlalchemy import case, desc, func, or_, select
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import settings
@@ -31,6 +31,7 @@ from app.services.memory.providers import (
 from app.services.memory.session_completion import complete_session_if_ready
 from app.services.memory.project_memory import (
     compile_project_memory as compile_project_memory,
+    count_project_memory_artifacts as count_project_memory_artifacts,
     count_project_memory_history_artifacts as count_project_memory_history_artifacts,
     get_latest_project_memory as get_latest_project_memory,
     list_project_memory_history_artifacts as list_project_memory_history_artifacts,
@@ -338,7 +339,9 @@ def _evidence_event_range(evidence: dict[str, Any]) -> tuple[str | None, str | N
 
 def _pending_draft_range(artifact: Artifact) -> dict[str, Any]:
     metadata = artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}
-    evidence = metadata.get("draft_evidence") if isinstance(metadata.get("draft_evidence"), dict) else {}
+    evidence = (
+        metadata.get("draft_evidence") if isinstance(metadata.get("draft_evidence"), dict) else {}
+    )
     prompts = evidence.get("prompts") if isinstance(evidence.get("prompts"), list) else []
     responses = evidence.get("responses") if isinstance(evidence.get("responses"), list) else []
     changed_files = (
@@ -399,9 +402,7 @@ def _pending_draft_generation_context(
         if isinstance(metadata.get("last_event_id"), str):
             last_event_id = metadata["last_event_id"]
         draft_changed_files = (
-            evidence.get("changed_files")
-            if isinstance(evidence.get("changed_files"), list)
-            else []
+            evidence.get("changed_files") if isinstance(evidence.get("changed_files"), list) else []
         )
         draft_commits = evidence.get("commits") if isinstance(evidence.get("commits"), list) else []
         draft_events = evidence.get("events") if isinstance(evidence.get("events"), list) else []
@@ -409,9 +410,7 @@ def _pending_draft_generation_context(
         draft_responses = (
             evidence.get("responses") if isinstance(evidence.get("responses"), list) else []
         )
-        changed_files.extend(
-            file for file in draft_changed_files if isinstance(file, dict)
-        )
+        changed_files.extend(file for file in draft_changed_files if isinstance(file, dict))
         commits.extend(commit for commit in draft_commits if isinstance(commit, dict))
         events.extend(event for event in draft_events if isinstance(event, dict))
         prompt_events.extend(
@@ -482,12 +481,12 @@ def _pending_draft_generation_context(
     }
 
 
-def list_project_memory_pending_ranges(
+def materialize_project_memory_drafts(
     db: DBSession,
     *,
-    limit: int = 20,
+    limit: int | None = None,
     project_id: UUID,
-) -> list[dict[str, Any]]:
+) -> None:
     latest_session_activity = (
         select(
             Event.session_id.label("session_id"),
@@ -504,33 +503,48 @@ def list_project_memory_pending_ranges(
         .subquery()
     )
     idle_before = utc_now() - SESSION_IDLE_COMPLETE_AFTER
-    sessions = list(
-        db.execute(
-            select(Session)
-            .join(
-                latest_session_activity,
-                latest_session_activity.c.session_id == Session.id,
-            )
-            .where(
-                Session.project_id == project_id,
-                Session.ended_at.is_(None),
+    session_query = (
+        select(Session)
+        .join(
+            latest_session_activity,
+            latest_session_activity.c.session_id == Session.id,
+        )
+        .where(
+            Session.project_id == project_id,
+            or_(
+                Session.ended_at.is_not(None),
                 func.coalesce(
                     latest_session_activity.c.latest_prompt_at,
                     latest_session_activity.c.latest_event_at,
                 )
                 <= idle_before,
-            )
-            .order_by(desc(Session.started_at))
-            .limit(limit)
-        ).scalars()
+            ),
+        )
+        .order_by(desc(Session.started_at))
     )
+    if limit is not None:
+        session_query = session_query.limit(limit)
+    sessions = list(db.execute(session_query).scalars())
     for session in sessions:
-        completion = complete_session_if_ready(db, session, force=False)
+        completion = (
+            {"completed": True}
+            if session.ended_at is not None
+            else complete_session_if_ready(db, session, force=False)
+        )
         generate_due_memory_artifacts_for_session(
             db,
             session,
             finalize=completion["completed"],
         )
+
+
+def list_project_memory_pending_ranges(
+    db: DBSession,
+    *,
+    limit: int = 20,
+    project_id: UUID,
+) -> list[dict[str, Any]]:
+    materialize_project_memory_drafts(db, limit=limit, project_id=project_id)
 
     pending_drafts = list(
         db.execute(
@@ -582,7 +596,11 @@ def generate_context_memories_for_session(
     context = _pending_draft_generation_context(db, session, pending_drafts)
     covered_start_sequence = context["window"]["start_sequence"]
     covered_end_sequence = context["window"]["end_sequence"]
-    latest_sequence = covered_end_sequence if isinstance(covered_end_sequence, int) else _latest_event_sequence(db, session)
+    latest_sequence = (
+        covered_end_sequence
+        if isinstance(covered_end_sequence, int)
+        else _latest_event_sequence(db, session)
+    )
     source_draft_ids = [str(draft.id) for draft in pending_drafts]
     payloads, generation_metadata = _build_memory_draft_payloads_from_context(
         context,
@@ -594,8 +612,7 @@ def generate_context_memories_for_session(
     event_id = UUID(context["last_event_id"]) if context["last_event_id"] else None
     for index, (payload, draft_metadata) in enumerate(payloads, start=1):
         storage_key = (
-            f"memory/session/{session.id}/generated/"
-            f"{latest_sequence or 0}/{trigger_reason}/{index}"
+            f"memory/session/{session.id}/generated/{latest_sequence or 0}/{trigger_reason}/{index}"
         )
         existing_memory = db.execute(
             select(Artifact).where(
@@ -739,9 +756,9 @@ def list_project_memory_drafts(
     filtered = [
         artifact
         for artifact in artifacts
-        if (
-            (metadata := artifact.metadata_ if isinstance(artifact.metadata_, dict) else {})
-        ).get("artifact_stage")
+        if (metadata := artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}).get(
+            "artifact_stage"
+        )
         == "memory_draft"
         and metadata.get("review_state") == REVIEW_STATE_DRAFT
         and metadata.get("summary_level") == 2

@@ -47,6 +47,7 @@ import {
 } from "./workspace/navigation";
 import { emptyProjectDetailData } from "./workspace/projectDetailMappers";
 import { isMockGithubUnlinkedProject } from "./workspace/previewData";
+import { pendingReviewProjectCount } from "./workspace/reviewQueue";
 import type {
   AuthStatus,
   AuthUser,
@@ -209,8 +210,7 @@ export function AuthenticatedApp() {
   const {
     bookmarkUpdatingProjectId,
     createProjectFromRepository,
-    organizePendingMemory,
-    organizeProjectPendingMemory,
+    generateProjectMemory,
     saveProjectDescription,
     saveProjectMetadata,
     saveRepositoryConnection,
@@ -602,10 +602,7 @@ export function AuthenticatedApp() {
     (selectedProject !== null || projectDetail !== null || Boolean(pendingProjectRouteKey));
   const projectDetailRenderData =
     selectedProjectDetailData ?? emptyProjectDetailData(selectedProject);
-  const pendingReviewCount = projectCatalog.reduce(
-    (total, project) => total + project.pendingMemoryCount,
-    0,
-  );
+  const reviewProjectCount = pendingReviewProjectCount(projectCatalog);
   const activeCollectorTokens =
     accountSettings.accountOverview?.collector_tokens.filter(
       (token) => token.status === "active",
@@ -648,7 +645,7 @@ export function AuthenticatedApp() {
         onOpenProject={openProjectDetail}
         onOpenReviewQueue={openReviewQueue}
         onSelectItem={selectSidebarItem}
-        pendingReviewCount={pendingReviewCount}
+        pendingReviewProjectCount={reviewProjectCount}
         savedProjectCount={bookmarkedProjects.length}
         savedProjects={sidebarBookmarkedProjects}
         selectedProjectId={selectedProjectId}
@@ -695,7 +692,11 @@ export function AuthenticatedApp() {
                 selectedProject ? copiedProjectId === selectedProject.id : false
               }
               onActivityNavigationChange={selectActivityNavigation}
-              onCheckpointMemory={selectedProject ? organizePendingMemory : undefined}
+              onGenerateProjectMemory={
+                selectedProject
+                  ? () => generateProjectMemory(selectedProject.id)
+                  : undefined
+              }
               onConnectRepository={
                 selectedProject
                   ? () => openRepositoryConnectorOverlay(selectedProject.id)
@@ -813,7 +814,7 @@ export function AuthenticatedApp() {
             setIsReviewQueueOpen(false);
             setReviewQueueProjectId(null);
           }}
-          onCreateMemory={organizeProjectPendingMemory}
+          onGenerateProjectMemory={generateProjectMemory}
           onOpenProjectMemory={openProjectMemory}
           onOpenSourceSession={openProjectSourceSession}
           onProjectSummariesRefresh={replaceProjectSummaries}

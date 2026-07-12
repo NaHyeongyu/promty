@@ -1,13 +1,14 @@
 import { useRef, useState } from "react";
 import { UnauthorizedError } from "../api/client";
 import {
-  checkpointProjectSession,
   createProject,
   fetchProjectSummaries,
+  generateProjectMemory as requestProjectMemoryGeneration,
   updateProjectBookmark,
   updateProjectDescription,
   updateProjectMetadata,
   updateRepositoryConnection,
+  type ProjectMemoryGenerationResponse,
   type ProjectMetadataPatch,
 } from "../api/projects";
 import { isMockGithubUnlinkedProject } from "../workspace/previewData";
@@ -97,37 +98,12 @@ export function useProjectActions({
     }
   };
 
-  const organizeProjectPendingMemory = async (
-    projectId: string,
-    sessionIds: string[],
-  ) => {
-    const uniqueSessionIds = Array.from(new Set(sessionIds.filter(Boolean)));
-    if (uniqueSessionIds.length === 0) {
-      return {
-        message: "No captured work is ready for memory.",
-        status: "no_memory" as const,
-      };
-    }
-
-    let completedSessionCount = 0;
-    let mutationError: unknown = null;
-    let projectMemoryGenerated = false;
-
-    for (const sessionId of uniqueSessionIds) {
-      try {
-        const payload = await checkpointProjectSession(projectId, sessionId);
-        completedSessionCount += 1;
-        if (payload.status === "memory_generated") {
-          projectMemoryGenerated = true;
-        }
-      } catch (error) {
-        mutationError = error;
-        break;
-      }
-    }
-
-    if (mutationError instanceof UnauthorizedError) {
-      return rethrowAfterUnauthorized(mutationError);
+  const generateProjectMemory = async (projectId: string) => {
+    let payload: ProjectMemoryGenerationResponse;
+    try {
+      payload = await requestProjectMemoryGeneration(projectId);
+    } catch (error) {
+      return rethrowAfterUnauthorized(error);
     }
 
     let refreshFailed = false;
@@ -158,40 +134,15 @@ export function useProjectActions({
       refreshFailed = true;
     }
 
-    if (mutationError) {
-      if (!projectMemoryGenerated) {
-        throw mutationError;
-      }
-      return {
-        message: `Memory was created for ${completedSessionCount} ${
-          completedSessionCount === 1 ? "session" : "sessions"
-        }, but a later session could not be processed.`,
-        status: "memory_generated" as const,
-      };
-    }
-
-    if (!projectMemoryGenerated) {
-      return {
-        message: refreshFailed
-          ? "No new memory was generated, and project status could not be refreshed."
-          : "No new memory was generated.",
-        status: "no_memory" as const,
-      };
-    }
-
     return {
-      message: refreshFailed
-        ? "Memory was created. Project status will refresh with the review queue."
-        : "Project Memory document was generated.",
-      status: "memory_generated" as const,
+      ...payload,
+      message:
+        refreshFailed && payload.status === "memory_generated"
+          ? "Project memory was created. Project status will refresh with the review queue."
+          : refreshFailed
+            ? `${payload.message} Project status could not be refreshed.`
+            : payload.message,
     };
-  };
-
-  const organizePendingMemory = async (sessionIds: string[]) => {
-    if (!selectedProjectId) {
-      throw new Error("Select a project before organizing Pending Memory.");
-    }
-    return organizeProjectPendingMemory(selectedProjectId, sessionIds);
   };
 
   const saveRepositoryConnection = async (
@@ -256,8 +207,7 @@ export function useProjectActions({
   return {
     bookmarkUpdatingProjectId,
     createProjectFromRepository,
-    organizePendingMemory,
-    organizeProjectPendingMemory,
+    generateProjectMemory,
     saveProjectDescription,
     saveProjectMetadata,
     saveRepositoryConnection,

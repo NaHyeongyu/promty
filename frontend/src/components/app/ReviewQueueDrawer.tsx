@@ -22,13 +22,14 @@ import { UnauthorizedError } from "../../api/client";
 import {
   fetchProjectMemoryPendingRanges,
   refreshMemoryReviewQueue,
+  type ProjectMemoryGenerationResponse,
 } from "../../api/projects";
 import { formatLabelValue } from "../../lib/formatters";
 import {
   pendingReviewProjects,
+  reviewQueueProjectBatch,
   reviewQueueSessionsFromRanges,
-  totalPendingReviewCount,
-  type ReviewQueueSession,
+  type ReviewQueueProjectBatch,
 } from "../../workspace/reviewQueue";
 import type {
   Project,
@@ -42,10 +43,7 @@ type QueueProjectState = {
   status: "error" | "loaded" | "loading";
 };
 
-type MemoryActionResult = {
-  message: string;
-  status: string;
-};
+type MemoryActionResult = ProjectMemoryGenerationResponse;
 
 function formatCapturedRange(firstEventAt: string | null, lastEventAt: string | null) {
   const firstDate = firstEventAt ? new Date(firstEventAt) : null;
@@ -86,7 +84,7 @@ function sessionMetricLabel(count: number, singular: string) {
 
 export function ReviewQueueDrawer({
   onClose,
-  onCreateMemory,
+  onGenerateProjectMemory,
   onOpenProjectMemory,
   onOpenSourceSession,
   onProjectSummariesRefresh,
@@ -97,10 +95,7 @@ export function ReviewQueueDrawer({
   workspaceReady,
 }: {
   onClose: () => void;
-  onCreateMemory: (
-    projectId: string,
-    sessionIds: string[],
-  ) => Promise<MemoryActionResult>;
+  onGenerateProjectMemory: (projectId: string) => Promise<MemoryActionResult>;
   onOpenProjectMemory: (projectId: string) => void;
   onOpenSourceSession: (projectId: string, sessionId: string) => void;
   onProjectSummariesRefresh: (projects: ProjectSummary[]) => void;
@@ -116,23 +111,17 @@ export function ReviewQueueDrawer({
       ? pendingProjects.filter((project) => project.id === projectFilterId)
       : pendingProjects;
   }, [projectFilterId, projects]);
-  const pendingCount = useMemo(
-    () =>
-      projectFilterId
-        ? reviewProjects.reduce(
-            (total, project) => total + project.pendingMemoryCount,
-            0,
-          )
-        : totalPendingReviewCount(projects),
-    [projectFilterId, projects, reviewProjects],
-  );
+  const pendingProjectCount = reviewProjects.length;
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(
     reviewProjects[0]?.id ?? null,
   );
   const [projectStates, setProjectStates] = useState<
     Record<string, QueueProjectState | undefined>
   >({});
-  const [activeSessionKey, setActiveSessionKey] = useState<string | null>(null);
+  const [creatingProjectId, setCreatingProjectId] = useState<string | null>(null);
+  const [remoteUpdatingProjectIds, setRemoteUpdatingProjectIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [actionError, setActionError] = useState<string | null>(null);
   const [isQueueRefreshing, setIsQueueRefreshing] = useState(true);
   const [queueRefreshError, setQueueRefreshError] = useState<string | null>(null);
@@ -143,12 +132,12 @@ export function ReviewQueueDrawer({
   const isMountedRef = useRef(true);
   const hasRefreshedQueueRef = useRef(false);
   const pendingFocusRef = useRef<
-    { key: string; type: "project" | "session" } | { type: "close" } | null
+    { key: string; type: "project" | "projectAction" } | { type: "close" } | null
   >(null);
   const projectToggleRefs = useRef(new Map<string, HTMLButtonElement>());
   const queueRefreshControllerRef = useRef<AbortController | null>(null);
   const requestControllersRef = useRef(new Map<string, AbortController>());
-  const sessionActionRefs = useRef(new Map<string, HTMLButtonElement>());
+  const projectActionRefs = useRef(new Map<string, HTMLButtonElement>());
   const suppressFocusRestoreRef = useRef(false);
 
   const loadProjectRanges = useCallback(
@@ -364,13 +353,13 @@ export function ReviewQueueDrawer({
         ? closeButtonRef.current
         : pendingFocus.type === "project"
           ? projectToggleRefs.current.get(pendingFocus.key)
-          : sessionActionRefs.current.get(pendingFocus.key);
+          : projectActionRefs.current.get(pendingFocus.key);
     if (!target || target.disabled) {
       return;
     }
     target.focus();
     pendingFocusRef.current = null;
-  }, [activeSessionKey, expandedProjectId, projectStates, reviewProjects]);
+  }, [creatingProjectId, expandedProjectId, projectStates, reviewProjects]);
 
   const keepFocusInsideDrawer = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key !== "Tab") {
@@ -412,20 +401,42 @@ export function ReviewQueueDrawer({
     action();
   };
 
-  const createMemory = async (project: Project, session: ReviewQueueSession) => {
-    const sessionKey = `${project.id}:${session.sessionId}`;
-    setActiveSessionKey(sessionKey);
+  const createProjectMemory = async (
+    project: Project,
+    projectBatch: ReviewQueueProjectBatch,
+  ) => {
+    if (
+      projectBatch.sessionIds.length === 0 ||
+      creatingProjectId !== null ||
+      remoteUpdatingProjectIds.has(project.id)
+    ) {
+      return;
+    }
+
+    setCreatingProjectId(project.id);
     setActionError(null);
     setStatusMessage(null);
     try {
-      const result = await onCreateMemory(project.id, [session.sessionId]);
+      const result = await onGenerateProjectMemory(project.id);
       if (!isMountedRef.current) {
         return;
       }
       if (result.status === "memory_generated") {
-        setStatusMessage(`Memory created for ${project.name}.`);
+        setStatusMessage(`Project memory created for ${project.name}.`);
+      } else if (result.status === "generation_failed") {
+        setActionError(result.message);
+      } else if (result.status === "generation_in_progress") {
+        setRemoteUpdatingProjectIds((current) => new Set(current).add(project.id));
+        setStatusMessage(result.message);
       } else {
         setStatusMessage(result.message);
+      }
+      if (result.status !== "generation_in_progress") {
+        setRemoteUpdatingProjectIds((current) => {
+          const next = new Set(current);
+          next.delete(project.id);
+          return next;
+        });
       }
       const snapshot = await refreshQueueSnapshot();
       if (!snapshot || !isMountedRef.current) {
@@ -437,10 +448,11 @@ export function ReviewQueueDrawer({
       const ranges = projectSnapshot?.ranges ?? [];
       const remainingSessions = reviewQueueSessionsFromRanges(ranges);
       if (remainingSessions.length > 0) {
-        pendingFocusRef.current = {
-          key: `${project.id}:${remainingSessions[0].sessionId}`,
-          type: "session",
-        };
+        const remainingBatch = reviewQueueProjectBatch(remainingSessions);
+        setExpandedProjectId(project.id);
+        pendingFocusRef.current = remainingBatch.sessionIds.length > 0
+          ? { key: project.id, type: "projectAction" }
+          : { key: project.id, type: "project" };
       } else {
         const nextProject = snapshot.projects.find(
           (item) =>
@@ -460,7 +472,7 @@ export function ReviewQueueDrawer({
       }
     } finally {
       if (isMountedRef.current) {
-        setActiveSessionKey(null);
+        setCreatingProjectId(null);
       }
     }
   };
@@ -501,7 +513,7 @@ export function ReviewQueueDrawer({
           </div>
           <div className="review-queue-header-actions">
             <span className="review-queue-count">
-              {pendingCount} {pendingCount === 1 ? "range" : "ranges"}
+              {pendingProjectCount} {pendingProjectCount === 1 ? "project" : "projects"}
             </span>
             <button
               aria-label="Close review queue"
@@ -589,6 +601,9 @@ export function ReviewQueueDrawer({
                 const isExpanded = project.id === expandedProjectId;
                 const projectState = projectStates[project.id];
                 const sessions = reviewQueueSessionsFromRanges(projectState?.ranges ?? []);
+                const projectBatch = reviewQueueProjectBatch(sessions);
+                const isCreating =
+                  creatingProjectId === project.id || remoteUpdatingProjectIds.has(project.id);
                 const visibleRangeCount = projectState?.ranges.length ?? 0;
                 const panelId = `review-queue-project-${project.id}`;
 
@@ -618,9 +633,7 @@ export function ReviewQueueDrawer({
                         <span>
                           <strong>{project.name}</strong>
                           <small>
-                            {project.pendingMemoryCount}{" "}
-                            {project.pendingMemoryCount === 1 ? "captured range" : "captured ranges"}
-                            {` · ${project.latestActivityLabel}`}
+                            {`Project memory ready · ${project.latestActivityLabel}`}
                           </small>
                         </span>
                         <ChevronDown
@@ -644,7 +657,11 @@ export function ReviewQueueDrawer({
                     </div>
 
                     {isExpanded ? (
-                      <div className="review-queue-project-panel" id={panelId}>
+                      <div
+                        aria-busy={isCreating || undefined}
+                        className="review-queue-project-panel"
+                        id={panelId}
+                      >
                         {projectState?.status === "loading" ||
                         (isQueueRefreshing && !projectState) ? (
                           <div className="review-queue-loading" role="status">
@@ -672,8 +689,6 @@ export function ReviewQueueDrawer({
                           <>
                             <div className="review-queue-sessions">
                               {sessions.map((session) => {
-                                const sessionKey = `${project.id}:${session.sessionId}`;
-                                const isCreating = activeSessionKey === sessionKey;
                                 return (
                                   <article className="review-queue-session" key={session.sessionId}>
                                     <div className="review-queue-session-heading">
@@ -704,9 +719,6 @@ export function ReviewQueueDrawer({
                                           "file change",
                                         )}
                                       </span>
-                                      {session.draftCount > 1 ? (
-                                        <span>{session.draftCount} ranges</span>
-                                      ) : null}
                                     </div>
                                     <div className="review-queue-session-actions">
                                       <button
@@ -728,45 +740,6 @@ export function ReviewQueueDrawer({
                                         />
                                         <span>Source session</span>
                                       </button>
-                                      <button
-                                        aria-busy={isCreating || undefined}
-                                        aria-disabled={
-                                          !session.canCreateMemory || activeSessionKey !== null
-                                        }
-                                        className="review-queue-primary-action"
-                                        onClick={() => {
-                                          if (
-                                            !session.canCreateMemory ||
-                                            activeSessionKey !== null
-                                          ) {
-                                            return;
-                                          }
-                                          void createMemory(project, session);
-                                        }}
-                                        ref={(element) => {
-                                          if (element) {
-                                            sessionActionRefs.current.set(sessionKey, element);
-                                          } else {
-                                            sessionActionRefs.current.delete(sessionKey);
-                                          }
-                                        }}
-                                        type="button"
-                                      >
-                                        {isCreating ? (
-                                          <LoaderCircle
-                                            aria-hidden="true"
-                                            size={15}
-                                            strokeWidth={1.5}
-                                          />
-                                        ) : (
-                                          <Sparkles
-                                            aria-hidden="true"
-                                            size={15}
-                                            strokeWidth={1.5}
-                                          />
-                                        )}
-                                        <span>{isCreating ? "Creating" : "Create memory"}</span>
-                                      </button>
                                     </div>
                                   </article>
                                 );
@@ -774,10 +747,60 @@ export function ReviewQueueDrawer({
                             </div>
                             {visibleRangeCount < project.pendingMemoryCount ? (
                               <p className="review-queue-truncation">
-                                Showing the latest {visibleRangeCount} of{" "}
-                                {project.pendingMemoryCount} captured ranges.
+                                Some older source activity is not shown. All captured work in this
+                                project will be included.
                               </p>
                             ) : null}
+                            <div className="review-queue-project-action-bar">
+                              <div>
+                                <strong>
+                                  {projectBatch.sessionIds.length > 0
+                                    ? "All captured work in this project"
+                                    : "No sessions ready"}
+                                </strong>
+                                <span>One project-wide memory update</span>
+                              </div>
+                              <button
+                                aria-busy={isCreating || undefined}
+                                aria-disabled={
+                                  projectBatch.sessionIds.length === 0 ||
+                                  creatingProjectId !== null ||
+                                  remoteUpdatingProjectIds.has(project.id)
+                                }
+                                aria-label={`Create project memory for ${project.name}`}
+                                className="review-queue-primary-action"
+                                onClick={() =>
+                                  void createProjectMemory(project, projectBatch)
+                                }
+                                ref={(element) => {
+                                  if (element) {
+                                    projectActionRefs.current.set(project.id, element);
+                                  } else {
+                                    projectActionRefs.current.delete(project.id);
+                                  }
+                                }}
+                                type="button"
+                              >
+                                {isCreating ? (
+                                  <LoaderCircle
+                                    aria-hidden="true"
+                                    size={15}
+                                    strokeWidth={1.5}
+                                  />
+                                ) : (
+                                  <Sparkles
+                                    aria-hidden="true"
+                                    size={15}
+                                    strokeWidth={1.5}
+                                  />
+                                )}
+                                <span>
+                                  {isCreating
+                                    ? "Creating project memory"
+                                    : "Create project memory"}
+                                </span>
+                              </button>
+                            </div>
                           </>
                         ) : projectState?.status === "loaded" ? (
                           <div className="review-queue-project-empty">

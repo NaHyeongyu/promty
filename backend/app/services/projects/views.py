@@ -23,8 +23,9 @@ from app.services.event_payload_security import (
     decrypt_event_payload,
 )
 from app.services.memory.artifacts import (
-    count_project_memory_history_artifacts,
-    list_project_memory_history_artifacts,
+    count_project_memory_artifacts,
+    get_latest_project_memory,
+    list_project_memory_artifacts,
 )
 from app.services.memory.serializers import (
     serialize_memory_artifact_summary,
@@ -121,8 +122,7 @@ def project_for_user(
 ) -> Project:
     project = db.get(Project, project_id)
     if project is None or (
-        project.owner_id != current_user.id
-        and not (allow_admin and is_admin_user(current_user))
+        project.owner_id != current_user.id and not (allow_admin and is_admin_user(current_user))
     ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -416,8 +416,7 @@ def _prompt_activity_items(
         return []
 
     payloads = prompt_payloads or {
-        event.id: decrypt_event_payload(event.event_type, event.payload)
-        for event in prompt_events
+        event.id: decrypt_event_payload(event.event_type, event.payload) for event in prompt_events
     }
     prompt_changes = _prompt_file_changes(
         db,
@@ -671,11 +670,11 @@ def read_project_detail_response(
             func.max(Event.created_at),
         ).where(Event.project_id == project.id)
     ).one()
-    memory_artifact_count = count_project_memory_history_artifacts(
+    memory_artifact_count = count_project_memory_artifacts(
         db,
         project_id=project.id,
     )
-    memory_artifact_count_since_yesterday = count_project_memory_history_artifacts(
+    memory_artifact_count_since_yesterday = count_project_memory_artifacts(
         db,
         project_id=project.id,
         since=since_yesterday_at,
@@ -690,10 +689,19 @@ def read_project_detail_response(
         project_id=project.id,
         since=since_yesterday_at,
     )
-    memory_artifacts = list_project_memory_history_artifacts(
+    memory_artifacts = list_project_memory_artifacts(
         db,
         limit=10,
         project_id=project.id,
+    )
+    project_memory_artifact = get_latest_project_memory(db, project_id=project.id)
+    visible_memory_artifacts = [
+        *([project_memory_artifact] if project_memory_artifact is not None else []),
+        *memory_artifacts,
+    ]
+    latest_memory_artifact_at = max(
+        (artifact.updated_at for artifact in visible_memory_artifacts),
+        default=None,
     )
 
     return {
@@ -729,9 +737,9 @@ def read_project_detail_response(
             "total_sessions": session_count,
         },
         "memory": {
-            "latest_artifact_at": iso(memory_artifacts[0].updated_at) if memory_artifacts else None,
+            "latest_artifact_at": iso(latest_memory_artifact_at),
             "recent_artifacts": [
-                serialize_memory_artifact_summary(artifact) for artifact in memory_artifacts
+                serialize_memory_artifact_summary(artifact) for artifact in visible_memory_artifacts
             ],
             "total_artifacts": memory_artifact_count,
         },

@@ -18,9 +18,23 @@ export type ProjectDetailResourcesResponse = ProjectDetailApiResponse & {
   };
 };
 
-export type ProjectCheckpointResponse = {
-  message?: string;
-  status?: string;
+export type ProjectMemoryGenerationStatus =
+  | "generation_in_progress"
+  | "memory_generated"
+  | "no_memory"
+  | "no_pending"
+  | "generation_failed";
+
+export type ProjectMemoryGenerationResponse = {
+  batch_id: string;
+  error?: {
+    code: string;
+    message: string;
+    retryable: boolean;
+  } | null;
+  message: string;
+  retryable?: boolean;
+  status: ProjectMemoryGenerationStatus;
 };
 
 export type ProjectCreatePayload = {
@@ -29,6 +43,25 @@ export type ProjectCreatePayload = {
   github_url: string;
   name?: string | null;
 };
+
+function projectMemoryIdempotencyStorageKey(projectId: string) {
+  return `promty:project-memory-batch:${projectId}`;
+}
+
+function projectMemoryIdempotencyKey(projectId: string) {
+  const storageKey = projectMemoryIdempotencyStorageKey(projectId);
+  const existing = window.sessionStorage.getItem(storageKey);
+  if (existing) {
+    return existing;
+  }
+  const idempotencyKey = crypto.randomUUID();
+  window.sessionStorage.setItem(storageKey, idempotencyKey);
+  return idempotencyKey;
+}
+
+function clearProjectMemoryIdempotencyKey(projectId: string) {
+  window.sessionStorage.removeItem(projectMemoryIdempotencyStorageKey(projectId));
+}
 
 export function fetchProjectSummaries(): Promise<ProjectSummary[]> {
   return requestJson<ProjectSummary[]>("/api/projects", {}, {
@@ -125,20 +158,38 @@ export function refreshMemoryReviewQueue(
   );
 }
 
-export function checkpointProjectSession(
+export async function generateProjectMemory(
   projectId: string,
-  sessionId: string,
-): Promise<ProjectCheckpointResponse> {
-  return requestJson<ProjectCheckpointResponse>(
-    `/api/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(
-      sessionId,
-    )}/checkpoint`,
-    { method: "POST" },
+): Promise<ProjectMemoryGenerationResponse> {
+  let response = await requestJsonBody<ProjectMemoryGenerationResponse>(
+    `/api/projects/${encodeURIComponent(projectId)}/memory/generate`,
+    "POST",
+    { idempotency_key: projectMemoryIdempotencyKey(projectId) },
     {
-      errorMessage: "Pending Work organization failed",
-      unauthorizedMessage: "Sign in again before organizing Pending Memory.",
+      errorMessage: "Project memory generation failed",
+      unauthorizedMessage: "Sign in again before creating project memory.",
     },
   );
+  for (let attempt = 0; response.status === "generation_in_progress" && attempt < 300; attempt += 1) {
+    await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+    response = await requestJson<ProjectMemoryGenerationResponse>(
+      `/api/projects/${encodeURIComponent(projectId)}/memory/batches/${encodeURIComponent(
+        response.batch_id,
+      )}`,
+      undefined,
+      {
+        errorMessage: "Project memory status request failed",
+        unauthorizedMessage: "Sign in again before checking project memory.",
+      },
+    );
+  }
+  if (
+    response.status !== "generation_in_progress" &&
+    (response.status !== "generation_failed" || response.retryable === false)
+  ) {
+    clearProjectMemoryIdempotencyKey(projectId);
+  }
+  return response;
 }
 
 export function fetchProjectMemoryArtifacts(

@@ -241,7 +241,7 @@ function ProjectRow({
           >
             <strong>
               <CircleAlert aria-hidden="true" size={14} strokeWidth={1.5} />
-              {`${project.pendingMemoryCount} to review`}
+              Project memory ready
             </strong>
             <small>Open review queue</small>
           </button>

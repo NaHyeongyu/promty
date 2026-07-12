@@ -155,6 +155,8 @@ export type ProjectDetailApiResponse = {
       generator: string | null;
       id: string;
       last_event_at?: string | null;
+      memory_batch_id?: string | null;
+      memory_batch_ids?: string[];
       memory_scope?: string | null;
       model: string | null;
       needs_user_verification?: boolean | null;
@@ -168,6 +170,8 @@ export type ProjectDetailApiResponse = {
         title: string;
       }>;
       session_id: string | null;
+      source_draft_ids?: string[];
+      source_session_ids?: string[];
       slice_index?: number | null;
       start_sequence?: number | null;
       summary: string | null;

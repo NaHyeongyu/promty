@@ -83,18 +83,19 @@
   background: var(--bh-button-primary-bg);
 }
 
-.bh-memory-primary-action:hover,
-.bh-memory-pending-row button:hover {
+.bh-memory-primary-action:hover:not([aria-disabled="true"]),
+.bh-memory-pending-row button:hover:not(:disabled) {
   border-color: var(--bh-color-border-hover);
   background: var(--bh-color-surface-hover);
 }
 
-.bh-memory-primary-action:hover {
+.bh-memory-primary-action:hover:not([aria-disabled="true"]) {
   border-color: var(--bh-button-primary-bg-hover);
   color: var(--bh-button-primary-text);
   background: var(--bh-button-primary-bg-hover);
 }
 
+.bh-memory-primary-action[aria-disabled="true"],
 .bh-memory-primary-action:disabled,
 .bh-memory-pending-row button:disabled {
   cursor: not-allowed;
@@ -189,6 +190,8 @@
     0 8px 18px rgb(0 0 0 / 28%);
 }
 
+.bh-memory-document-request[data-generating="true"]
+  > .bh-memory-primary-action[aria-disabled="true"],
 .bh-memory-document-request[data-generating="true"] > .bh-memory-primary-action:disabled {
   cursor: progress;
   opacity: 1;
@@ -743,6 +746,11 @@
   background: transparent;
   font-weight: var(--bh-font-weight-label);
   cursor: pointer;
+}
+
+.bh-memory-source-actions {
+  display: grid;
+  gap: var(--bh-space-2);
 }
 
 .bh-memory-source-action:hover {

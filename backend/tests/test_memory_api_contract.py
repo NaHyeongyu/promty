@@ -31,8 +31,11 @@ def _artifact(*, artifact_type: str = MEMORY_ARTIFACT_TYPE) -> Artifact:
             "draft_type": "work_log",
             "end_sequence": 8,
             "memory_scope": "generated",
+            "memory_batch_id": "batch-1",
             "review_state": REVIEW_STATE_GENERATED,
             "source_chunk_ids": ["chunk-1"],
+            "source_draft_ids": ["draft-1"],
+            "source_session_ids": ["session-1"],
             "start_sequence": 1,
             "summary_level": 2,
             "trigger_reason": "batch_organize",
@@ -65,6 +68,9 @@ def test_generated_memory_serializer_matches_frontend_contract() -> None:
     assert serialized["artifact_stage"] == "generated_memory"
     assert serialized["memory_scope"] == "generated"
     assert serialized["review_state"] == "generated"
+    assert serialized["memory_batch_id"] == "batch-1"
+    assert serialized["source_draft_ids"] == ["draft-1"]
+    assert serialized["source_session_ids"] == ["session-1"]
     assert serialized["summary_level"] == 2
     assert serialized["start_sequence"] == 1
     assert serialized["end_sequence"] == 8

@@ -4,6 +4,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.time import utc_now
@@ -168,11 +169,13 @@ def write_memory_artifact_payload(
     storage_key: str,
 ) -> Artifact:
     artifact = db.execute(
-        select(Artifact).where(
+        select(Artifact)
+        .where(
             Artifact.project_id == project_id,
             Artifact.type == artifact_type,
             Artifact.storage_key == storage_key,
         )
+        .with_for_update()
     ).scalar_one_or_none()
     if artifact is None:
         artifact = Artifact(
@@ -183,8 +186,20 @@ def write_memory_artifact_payload(
             title=payload["title"],
             storage_key=storage_key,
         )
-        db.add(artifact)
-        db.flush()
+        try:
+            with db.begin_nested():
+                db.add(artifact)
+                db.flush()
+        except IntegrityError:
+            artifact = db.execute(
+                select(Artifact)
+                .where(
+                    Artifact.project_id == project_id,
+                    Artifact.type == artifact_type,
+                    Artifact.storage_key == storage_key,
+                )
+                .with_for_update()
+            ).scalar_one()
 
     generation_metadata = {
         "event_count": payload["event_count"],
