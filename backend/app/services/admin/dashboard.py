@@ -497,7 +497,7 @@ def _recent_events(db: Session) -> list[dict[str, Any]]:
             "id": str(event.id),
             "project_id": str(event.project_id),
             "sequence": event.sequence,
-            "session_id": str(event.session_id),
+            "session_id": str(event.session_id) if event.session_id is not None else None,
             "tool": event.tool,
         }
         for event in db.execute(

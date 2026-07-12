@@ -22,6 +22,7 @@ def main() -> None:
             select(Event)
             .where(Event.event_type == "PromptSubmitted")
             .order_by(Event.created_at, Event.sequence)
+            .execution_options(yield_per=BATCH_SIZE)
         ).scalars()
         count = 0
         for event in events:
