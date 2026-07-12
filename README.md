@@ -71,7 +71,7 @@ Supported remote formats include `git@github.com:OWNER/REPO.git`, `ssh://git@git
 Run the published npm package with:
 
 ```bash
-npx @prompthub/cli init
+npx promty-collector init
 ```
 
 The npm package includes the Python collector and uses `python3` by default. Set

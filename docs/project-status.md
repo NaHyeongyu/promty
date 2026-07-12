@@ -409,7 +409,7 @@ Event storage uses inserts for new events. Re-uploading the same event id is ide
 Not implemented yet:
 
 ```text
-published npm/npx package wrapper
+published npm registry release
 device registration
 production routing/auth shell
 SSE or WebSocket updates
@@ -425,12 +425,12 @@ Temporary behavior:
 backend creates a system user for ingested events
 device_id remains null
 frontend still uses polling rather than server-pushed updates
-GitHub OAuth returns 503 until PROMPTHUB_GITHUB_CLIENT_ID and PROMPTHUB_GITHUB_CLIENT_SECRET are configured
+npm publish for promty-collector is pending npm OTP or recovery code
 ```
 
 ## Next Recommended Milestones
 
-1. Package the collector flow as `npx @prompthub/cli init`.
+1. Publish and validate the collector flow with `npx promty-collector init`.
 2. Add event ownership checks after project/device registration lands.
 3. Validate Claude Code hooks end-to-end.
 4. Add backend tests around OAuth token issuance, ingest auth, and idempotency.

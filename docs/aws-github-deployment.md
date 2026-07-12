@@ -9,9 +9,9 @@ GitHub
   -> GitHub Actions CI
   -> GitHub Actions AWS Deploy
   -> ECR backend image
+  -> App Runner backend service
   -> S3 frontend static build
   -> CloudFront frontend distribution
-  -> Backend runtime on ECS, App Runner, or another container service
   -> RDS PostgreSQL
   -> S3 published-flow assets
 ```
@@ -34,15 +34,14 @@ Set these secrets before running `AWS Deploy` manually:
 ```text
 AWS_ROLE_TO_ASSUME
 AWS_REGION
+APP_RUNNER_SERVICE_ARN
 ECR_REPOSITORY
 FRONTEND_S3_BUCKET
 CLOUDFRONT_DISTRIBUTION_ID
 VITE_PROMPTHUB_API_URL
 ```
 
-`FRONTEND_S3_BUCKET`, `CLOUDFRONT_DISTRIBUTION_ID`, and
-`VITE_PROMPTHUB_API_URL` are optional for the workflow shape, but production
-frontend deploys should set them.
+These are already stored in GitHub repo `NaHyeongyu/BuildHub`.
 
 Use GitHub OIDC for `AWS_ROLE_TO_ASSUME`. The AWS role should allow:
 
@@ -58,32 +57,39 @@ s3:DeleteObject
 s3:ListBucket
 s3:PutObject
 cloudfront:CreateInvalidation
+apprunner:StartDeployment
 ```
 
-Scope the S3 and CloudFront permissions to the production buckets/distribution.
+Scope S3, ECR, and App Runner permissions to the production resources.
+CloudFront invalidation remains account-wide in the current inline policy
+because CloudFront uses global ARNs.
+
+The deploy workflow pushes the backend image with both the commit SHA and
+`latest`. App Runner is configured to run the `latest` tag, and the workflow
+calls `apprunner:StartDeployment` after pushing the image.
 
 ## Backend Runtime Environment
 
 Configure the backend service with:
 
 ```text
-DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/promty
-PROMPTHUB_API_PUBLIC_URL=https://api.example.com
-PROMPTHUB_APP_URL=https://app.example.com
-PROMPTHUB_CORS_ORIGINS=https://app.example.com
-PROMPTHUB_GITHUB_CLIENT_ID=
-PROMPTHUB_GITHUB_CLIENT_SECRET=
-PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_KEY=
-PROMPTHUB_APP_ENCRYPTION_KEY=
-PROMPTHUB_APP_ENCRYPTION_KEY_ID=aws-prod
-PROMPTHUB_OAUTH_STATE_SECRET=
-PROMPTHUB_JWT_SECRET=
+DATABASE_URL=stored in Secrets Manager
+PROMPTHUB_API_PUBLIC_URL=https://api.promty.org
+PROMPTHUB_APP_URL=https://promty.org
+PROMPTHUB_CORS_ORIGINS=https://promty.org,https://www.promty.org
+PROMPTHUB_GITHUB_CLIENT_ID=stored in Secrets Manager
+PROMPTHUB_GITHUB_CLIENT_SECRET=stored in Secrets Manager
+PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_KEY=stored in Secrets Manager
+PROMPTHUB_APP_ENCRYPTION_KEY=stored in Secrets Manager
+PROMPTHUB_OAUTH_STATE_SECRET=stored in Secrets Manager
+PROMPTHUB_JWT_SECRET=stored in Secrets Manager
 PROMPTHUB_SESSION_COOKIE_SECURE=true
 PROMPTHUB_SESSION_COOKIE_SAMESITE=lax
 PROMPTHUB_PUBLISHED_FLOW_ASSET_STORAGE=s3
-PROMPTHUB_AWS_REGION=
-PROMPTHUB_AWS_S3_BUCKET=
+PROMPTHUB_AWS_REGION=ap-southeast-2
+PROMPTHUB_AWS_S3_BUCKET=promty-prod-assets-435917083683
 PROMPTHUB_AWS_S3_PREFIX=published-flow-assets
+PROMPTHUB_APP_ENCRYPTION_KEY_ID=aws-prod
 ```
 
 The backend image exposes port `8011` and serves `GET /health`.
@@ -93,8 +99,8 @@ The backend image exposes port `8011` and serves `GET /health`.
 In the GitHub OAuth app, configure:
 
 ```text
-Homepage URL: https://app.example.com
-Authorization callback URL: https://api.example.com/api/auth/github/callback
+Homepage URL: https://promty.org
+Authorization callback URL: https://api.promty.org/api/auth/github/callback
 ```
 
 The web flow requests repository access so the app can list repositories and browse

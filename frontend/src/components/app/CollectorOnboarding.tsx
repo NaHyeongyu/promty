@@ -178,7 +178,7 @@ export function CollectorSetupFlow({
             disabledReason={
               hasAcceptedScope ? undefined : "Confirm the collection scope to copy this command."
             }
-            helperText="@prompthub/cli is the existing npm package name for the Promty collector."
+            helperText="promty-collector is the npm package name for the local collector."
             label="Project terminal"
           />
         </div>

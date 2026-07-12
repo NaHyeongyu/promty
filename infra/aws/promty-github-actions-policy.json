@@ -43,6 +43,12 @@
       "Effect": "Allow",
       "Action": "cloudfront:CreateInvalidation",
       "Resource": "*"
+    },
+    {
+      "Sid": "AppRunnerDeployment",
+      "Effect": "Allow",
+      "Action": "apprunner:StartDeployment",
+      "Resource": "arn:aws:apprunner:ap-southeast-2:435917083683:service/promty-prod-api/04be6335c00f43fb86dd2d3506f95700"
     }
   ]
 }
