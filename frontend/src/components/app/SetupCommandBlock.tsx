@@ -3,7 +3,10 @@ import { Check, Copy } from "lucide-react";
 import { API_URL } from "../../config";
 
 export function setupCommandText() {
-  return `npx promty-collector init --app-url ${window.location.origin} --api-url ${API_URL}`;
+  const profile = window.location.hostname === "promty.org" || window.location.hostname === "www.promty.org"
+    ? "prod"
+    : "dev";
+  return `npx promty-collector init --profile ${profile} --app-url ${window.location.origin} --api-url ${API_URL}`;
 }
 
 export function SetupCommandBlock({

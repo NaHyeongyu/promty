@@ -104,6 +104,26 @@
   line-height: var(--bh-line-height-body);
 }
 
+.auth-docs-link {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: var(--bh-space-2);
+  margin-top: calc(var(--bh-space-3) * -1);
+  color: var(--bh-color-text-muted);
+  font-size: var(--bh-font-size-caption);
+  line-height: var(--bh-line-height-body);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition: color var(--bh-duration-fast), text-decoration-color var(--bh-duration-fast);
+}
+
+.auth-docs-link:hover {
+  color: var(--bh-color-text-primary);
+  text-decoration-color: currentColor;
+}
+
 .auth-message {
   border: 1px solid var(--bh-color-border);
   border-radius: var(--bh-radius-sm);

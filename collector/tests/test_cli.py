@@ -14,6 +14,7 @@ from cli import (
     CODEX_HOOKS,
     LOGIN_CALLBACK_HTML,
     build_parser,
+    _apply_profile_defaults,
     install_hooks,
     main,
 )
@@ -50,6 +51,80 @@ def test_capture_keeps_legacy_adapter_compatibility() -> None:
     args = build_parser().parse_args(["capture", "--tool", "cursor"])
 
     assert args.tool == "cursor"
+
+
+@pytest.mark.parametrize(
+    ("profile", "app_url", "api_url"),
+    (
+        ("dev", "http://127.0.0.1:5173", "http://127.0.0.1:8011"),
+        ("prod", "https://promty.org", "https://api.promty.org"),
+    ),
+)
+def test_profile_uses_isolated_config_queue_and_uploader_files(
+    profile: str,
+    app_url: str,
+    api_url: str,
+) -> None:
+    args = build_parser().parse_args(["init", "--profile", profile])
+
+    _apply_profile_defaults(args)
+
+    profile_root = Path.home() / ".prompthub" / "profiles" / profile
+    assert args.app_url == app_url
+    assert args.api_url == api_url
+    assert args.config_path == str(profile_root / "config.json")
+    assert args.queue_path == str(profile_root / "events")
+    assert args.pid_path == str(profile_root / "uploader.pid")
+    assert args.log_path == str(profile_root / "uploader.log")
+
+
+def test_profile_does_not_override_explicit_urls_or_paths() -> None:
+    args = build_parser().parse_args(
+        [
+            "init",
+            "--profile",
+            "prod",
+            "--api-url",
+            "https://api.example.test",
+            "--config-path",
+            "/tmp/promty-test.json",
+        ]
+    )
+
+    _apply_profile_defaults(args)
+
+    assert args.api_url == "https://api.example.test"
+    assert args.config_path == "/tmp/promty-test.json"
+
+
+def test_profile_queue_path_is_written_into_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repository"
+    repo_root.mkdir()
+    monkeypatch.setattr(cli, "_git_root", lambda _: repo_root)
+    args = build_parser().parse_args(
+        [
+            "install-hooks",
+            "--tool",
+            "codex-cli",
+            "--hook-command",
+            "promty",
+            "--repo-root",
+            str(repo_root),
+            "--profile",
+            "dev",
+        ]
+    )
+    _apply_profile_defaults(args)
+
+    assert install_hooks(args) == 0
+
+    config = json.loads((repo_root / ".codex" / "hooks.json").read_text())
+    command = config["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
+    expected_queue = Path.home() / ".prompthub" / "profiles" / "dev" / "events"
+    assert command == f"promty capture --tool codex-cli --queue-path {expected_queue}"
 
 
 def test_runtime_launcher_uses_a_durable_copy(

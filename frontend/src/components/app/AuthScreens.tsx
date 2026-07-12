@@ -1,5 +1,6 @@
 import {
   ArrowRight,
+  BookOpen,
   FolderGit2,
   KeyRound,
   Laptop,
@@ -86,6 +87,15 @@ export function CliLoginPage() {
           <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.5} />
           <span>Return to your terminal after GitHub approval.</span>
         </div>
+        <a
+          className="auth-docs-link"
+          href="/docs/collector"
+          rel="noreferrer"
+          target="_blank"
+        >
+          <BookOpen aria-hidden="true" size={15} strokeWidth={1.5} />
+          Collector setup guide
+        </a>
       </section>
     </main>
   );
@@ -159,6 +169,15 @@ export function WebLoginPage({
           <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.5} />
           <span>This sign-in requests identity and email access only.</span>
         </div>
+        <a
+          className="auth-docs-link"
+          href="/docs/collector"
+          rel="noreferrer"
+          target="_blank"
+        >
+          <BookOpen aria-hidden="true" size={15} strokeWidth={1.5} />
+          Learn how to connect Codex and Claude Code
+        </a>
       </section>
     </main>
   );

@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import os
 import secrets
+import shlex
 import subprocess
 import sys
 import time
@@ -47,6 +48,7 @@ from uploader.client import PromptHubUploader
 from uploader.queue import JSONLQueue
 
 InstallTarget = Literal["all", "claude-code", "codex-cli"]
+Profile = Literal["dev", "prod"]
 INSTALL_TOOLS: tuple[SupportedTool, ...] = ("codex-cli", "claude-code")
 INSTALL_TOOL_ALIASES: dict[str, InstallTarget] = {
     "all": "all",
@@ -54,6 +56,10 @@ INSTALL_TOOL_ALIASES: dict[str, InstallTarget] = {
     "claude-code": "claude-code",
     "codex": "codex-cli",
     "codex-cli": "codex-cli",
+}
+PROFILE_URLS: dict[Profile, tuple[str, str]] = {
+    "dev": ("http://127.0.0.1:5173", "http://127.0.0.1:8011"),
+    "prod": ("https://promty.org", "https://api.promty.org"),
 }
 CODEX_HOOKS: tuple[dict[str, Any], ...] = (
     {
@@ -182,6 +188,26 @@ def _tools_for_install_target(target: InstallTarget) -> tuple[SupportedTool, ...
     if target == "all":
         return INSTALL_TOOLS
     return (target,)
+
+
+def _apply_profile_defaults(args: argparse.Namespace) -> None:
+    profile = getattr(args, "profile", None)
+    if not profile:
+        return
+
+    profile_root = Path("~/.prompthub/profiles").expanduser() / profile
+    app_url, api_url = PROFILE_URLS[profile]
+    defaults = {
+        "app_url": app_url,
+        "api_url": api_url,
+        "config_path": str(profile_root / "config.json"),
+        "queue_path": str(profile_root / "events"),
+        "pid_path": str(profile_root / "uploader.pid"),
+        "log_path": str(profile_root / "uploader.log"),
+    }
+    for name, value in defaults.items():
+        if hasattr(args, name) and getattr(args, name) is None:
+            setattr(args, name, value)
 
 
 def _apply_known_session(
@@ -615,6 +641,7 @@ def _install_codex_hooks(
     command_prefix: str,
     normalized_tool: SupportedTool,
     repo_root: Path,
+    queue_path: str | None = None,
 ) -> int:
     hooks_path = repo_root / ".codex" / "hooks.json"
     config = _read_hooks_config(hooks_path)
@@ -622,6 +649,8 @@ def _install_codex_hooks(
 
     for spec in CODEX_HOOKS:
         command = f"{command_prefix} {spec['subcommand']} --tool {normalized_tool}"
+        if queue_path:
+            command += f" --queue-path {shlex.quote(str(Path(queue_path).expanduser()))}"
         hook = {
             "type": "command",
             "command": command,
@@ -649,6 +678,7 @@ def _install_claude_hooks(
     command_prefix: str,
     normalized_tool: SupportedTool,
     repo_root: Path,
+    queue_path: str | None = None,
 ) -> int:
     settings_path = repo_root / ".claude" / "settings.local.json"
     config = _read_hooks_config(settings_path)
@@ -656,6 +686,8 @@ def _install_claude_hooks(
 
     for spec in CLAUDE_HOOKS:
         command = f"{command_prefix} {spec['subcommand']} --tool {normalized_tool}"
+        if queue_path:
+            command += f" --queue-path {shlex.quote(str(Path(queue_path).expanduser()))}"
         hook = {
             "type": "command",
             "command": command,
@@ -687,6 +719,8 @@ def install_hooks(args: argparse.Namespace) -> int:
         command_prefix = quote_command_path(launcher_path)
         print(f"Promty runtime ready: {launcher_path}")
 
+    queue_path = getattr(args, "queue_path", None)
+
     failures: list[tuple[SupportedTool, Exception]] = []
     for normalized_tool in _tools_for_install_target(target):
         try:
@@ -695,12 +729,14 @@ def install_hooks(args: argparse.Namespace) -> int:
                     command_prefix=command_prefix,
                     normalized_tool=normalized_tool,
                     repo_root=repo_root,
+                    queue_path=queue_path,
                 )
             elif normalized_tool == "claude-code":
                 _install_claude_hooks(
                     command_prefix=command_prefix,
                     normalized_tool=normalized_tool,
                     repo_root=repo_root,
+                    queue_path=queue_path,
                 )
             else:
                 raise AssertionError(f"Unexpected hook tool: {normalized_tool}")
@@ -757,6 +793,8 @@ def start_uploader(args: argparse.Namespace) -> int:
         "--interval",
         str(max(args.interval, 0.25)),
     ]
+    if getattr(args, "queue_path", None):
+        command.extend(["--queue-path", str(Path(args.queue_path).expanduser())])
     process = subprocess.Popen(
         command,
         stdout=log_file,
@@ -910,6 +948,7 @@ def init(args: argparse.Namespace) -> int:
         source=None,
         repo_root=args.repo_root,
         hook_command=args.hook_command,
+        queue_path=args.queue_path,
     )
     hooks_result = install_hooks(install_args)
 
@@ -920,6 +959,7 @@ def init(args: argparse.Namespace) -> int:
             interval=args.upload_interval,
             log_path=args.log_path,
             pid_path=args.pid_path,
+            queue_path=args.queue_path,
             token=args.token,
         )
         start_uploader(uploader_args)
@@ -997,6 +1037,7 @@ def build_parser() -> argparse.ArgumentParser:
     upload_parser.add_argument("--token", default=None)
     upload_parser.add_argument("--config-path")
     upload_parser.add_argument("--queue-path")
+    upload_parser.add_argument("--profile", choices=sorted(PROFILE_URLS))
     upload_parser.add_argument("--limit", type=int, default=100)
     upload_parser.add_argument("--timeout", type=float, default=10)
     upload_parser.add_argument(
@@ -1017,6 +1058,7 @@ def build_parser() -> argparse.ArgumentParser:
     login_parser.add_argument("--api-url")
     login_parser.add_argument("--callback-port", type=int, default=0)
     login_parser.add_argument("--config-path")
+    login_parser.add_argument("--profile", choices=sorted(PROFILE_URLS))
     login_parser.add_argument("--no-browser", action="store_true")
     login_parser.add_argument("--timeout", type=float, default=180)
     login_parser.add_argument("--token")
@@ -1036,6 +1078,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Deprecated alias for --tool",
     )
     install_hooks_parser.add_argument("--repo-root")
+    install_hooks_parser.add_argument("--profile", choices=sorted(PROFILE_URLS))
+    install_hooks_parser.add_argument("--queue-path")
     install_hooks_parser.add_argument(
         "--hook-command",
         help="Command prefix that the AI tool should call before the hook subcommand.",
@@ -1048,6 +1092,8 @@ def build_parser() -> argparse.ArgumentParser:
     start_uploader_parser.add_argument("--interval", type=float, default=2)
     start_uploader_parser.add_argument("--log-path")
     start_uploader_parser.add_argument("--pid-path")
+    start_uploader_parser.add_argument("--profile", choices=sorted(PROFILE_URLS))
+    start_uploader_parser.add_argument("--queue-path")
     start_uploader_parser.add_argument("--token")
     start_uploader_parser.set_defaults(func=start_uploader)
 
@@ -1059,6 +1105,7 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument("--repo-root")
     doctor_parser.add_argument("--timeout", type=float, default=3)
     doctor_parser.add_argument("--token")
+    doctor_parser.add_argument("--profile", choices=sorted(PROFILE_URLS))
     doctor_parser.add_argument(
         "--tool",
         choices=sorted(INSTALL_TOOL_ALIASES),
@@ -1076,6 +1123,8 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--log-path")
     init_parser.add_argument("--no-browser", action="store_true")
     init_parser.add_argument("--pid-path")
+    init_parser.add_argument("--profile", choices=sorted(PROFILE_URLS))
+    init_parser.add_argument("--queue-path")
     init_parser.add_argument("--repo-root")
     init_parser.add_argument("--skip-login", action="store_true")
     init_parser.add_argument("--skip-uploader", action="store_true")
@@ -1096,6 +1145,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    _apply_profile_defaults(args)
     try:
         return args.func(args)
     except KeyboardInterrupt:

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Bookmark,
+  BookOpen,
   ChevronDown,
   Folder,
   Gauge,
@@ -223,6 +224,19 @@ export function WorkspaceSidebar({
               <small>{collectorStatus.detail}</small>
             </span>
           </button>
+
+          <a
+            className="sidebar-docs-link"
+            href="/docs/collector"
+            rel="noreferrer"
+            target="_blank"
+          >
+            <BookOpen aria-hidden="true" size={16} strokeWidth={1.5} />
+            <span>
+              <strong>Setup guide</strong>
+              <small>Codex & Claude Code</small>
+            </span>
+          </a>
 
           <div className="sidebar-account" ref={accountMenuRef}>
             <button

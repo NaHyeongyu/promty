@@ -54,8 +54,7 @@ User-facing setup flow:
 
 ```bash
 python3 collector/src/cli.py init \
-  --app-url http://127.0.0.1:5173 \
-  --api-url http://127.0.0.1:8011
+  --profile dev
 ```
 
 `init` opens the Promty login page, uses GitHub sign-in to receive a collector token, writes local Promty config, installs Codex and Claude Code hooks, and starts the uploader in the background.
@@ -73,6 +72,10 @@ Run the published npm package with:
 ```bash
 npx promty-collector init
 ```
+
+Use `--profile dev` for local development and `--profile prod` for production.
+Profiles isolate login credentials, uploader processes, logs, and event queues so
+switching environments cannot overwrite another environment's collector state.
 
 The npm package includes the Python collector and uses `python3` by default. Set
 `PROMTY_PYTHON` when a different Python executable is required.
