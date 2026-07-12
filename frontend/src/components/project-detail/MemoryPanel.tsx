@@ -387,11 +387,15 @@ function MemoryArtifactDetailDrawer({
 
 export function MemoryPanel({
   data,
+  isProjectMemoryGenerationActive = false,
+  isProjectMemoryGenerationDelayed = false,
   onGenerateProjectMemory,
   onLoadMemoryArtifacts,
   onOpenSession,
 }: {
   data: ProjectDetailData;
+  isProjectMemoryGenerationActive?: boolean;
+  isProjectMemoryGenerationDelayed?: boolean;
   onGenerateProjectMemory?: () => Promise<MemoryGenerationResult>;
   onLoadMemoryArtifacts?: (limit: number) => Promise<ProjectMemoryArtifact[]>;
   onOpenSession?: (sessionId: string) => void;
@@ -438,6 +442,7 @@ export function MemoryPanel({
     generatedArtifacts.length < totalGeneratedArtifactCount &&
     generatedArtifacts.length < 100;
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
+  const [isGenerationStatusDelayed, setIsGenerationStatusDelayed] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [generationRetryable, setGenerationRetryable] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -447,6 +452,11 @@ export function MemoryPanel({
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const generationRequestRef = useRef(0);
   const projectIdRef = useRef(data.project.id);
+  const previousSharedDelayedRef = useRef(isProjectMemoryGenerationDelayed);
+  const isGenerationActive =
+    isGenerating ||
+    isRemoteGenerationActive ||
+    isProjectMemoryGenerationActive;
   const selectedArtifact =
     generatedArtifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
 
@@ -461,9 +471,23 @@ export function MemoryPanel({
     setGenerationError(null);
     setGenerationRetryable(true);
     setGenerationStatus(null);
+    setIsGenerationStatusDelayed(false);
     setIsGenerating(false);
     setIsRemoteGenerationActive(false);
   }, [data.project.id]);
+
+  useEffect(() => {
+    const wasDelayed = previousSharedDelayedRef.current;
+    previousSharedDelayedRef.current = isProjectMemoryGenerationDelayed;
+    if (
+      wasDelayed &&
+      !isProjectMemoryGenerationDelayed &&
+      isGenerationStatusDelayed
+    ) {
+      setGenerationStatus(null);
+      setIsGenerationStatusDelayed(false);
+    }
+  }, [isGenerationStatusDelayed, isProjectMemoryGenerationDelayed]);
 
   useEffect(() => {
     if (!selectedArtifactId) {
@@ -491,8 +515,7 @@ export function MemoryPanel({
     if (
       !onGenerateProjectMemory ||
       checkpointableSessionCount === 0 ||
-      isGenerating ||
-      isRemoteGenerationActive
+      isGenerationActive
     ) {
       return;
     }
@@ -501,6 +524,7 @@ export function MemoryPanel({
     setGenerationError(null);
     setGenerationRetryable(true);
     setGenerationStatus(null);
+    setIsGenerationStatusDelayed(false);
     setIsRemoteGenerationActive(false);
     const projectId = data.project.id;
     const requestId = generationRequestRef.current + 1;
@@ -518,9 +542,14 @@ export function MemoryPanel({
         setGenerationRetryable(result.retryable !== false);
       } else if (result.status === "generation_in_progress") {
         setGenerationStatus(result.message);
+        setIsGenerationStatusDelayed(false);
         setIsRemoteGenerationActive(true);
+      } else if (result.status === "generation_delayed") {
+        setGenerationStatus(result.message);
+        setIsGenerationStatusDelayed(true);
       } else {
         setGenerationStatus(result.message);
+        setIsGenerationStatusDelayed(false);
       }
     } catch (error) {
       if (
@@ -596,11 +625,13 @@ export function MemoryPanel({
             </div>
             <span>
               {projectMemoryArtifact
-                ? `${projectMemoryArtifact.sourceSessionIds.length} source ${
-                    projectMemoryArtifact.sourceSessionIds.length === 1
-                      ? "session"
-                      : "sessions"
-                  }`
+                ? projectMemoryArtifact.sourceSessionIds.length > 0
+                  ? `${projectMemoryArtifact.sourceSessionIds.length} source ${
+                      projectMemoryArtifact.sourceSessionIds.length === 1
+                        ? "session"
+                        : "sessions"
+                    }`
+                  : "Compiled"
                 : "Empty"}
             </span>
           </div>
@@ -633,9 +664,9 @@ export function MemoryPanel({
 
           {hasPendingDocumentation ? (
             <article
-              aria-busy={isGenerating || isRemoteGenerationActive || undefined}
+              aria-busy={isGenerationActive || undefined}
               className="bh-memory-document-request"
-              data-generating={isGenerating || isRemoteGenerationActive ? "true" : "false"}
+              data-generating={isGenerationActive ? "true" : "false"}
             >
               <div className="bh-memory-document-row-main">
                 <h3>Work ready for memory</h3>
@@ -644,12 +675,11 @@ export function MemoryPanel({
                 </p>
               </div>
               <button
-                aria-busy={isGenerating || isRemoteGenerationActive || undefined}
+                aria-busy={isGenerationActive || undefined}
                 aria-disabled={
                   checkpointableSessionCount === 0 ||
                   !onGenerateProjectMemory ||
-                  isGenerating ||
-                  isRemoteGenerationActive
+                  isGenerationActive
                 }
                 className="bh-memory-primary-action"
                 onClick={() => void createProjectMemory()}
@@ -657,8 +687,10 @@ export function MemoryPanel({
               >
                 <Sparkles aria-hidden="true" size={16} strokeWidth={1.7} />
                 <span>
-                  {isGenerating || isRemoteGenerationActive
+                  {isGenerationActive
                     ? "Updating project memory"
+                    : isProjectMemoryGenerationDelayed
+                      ? "Check update status"
                     : generationError
                       ? generationRetryable
                         ? "Retry update"
@@ -666,7 +698,7 @@ export function MemoryPanel({
                       : "Create project memory"}
                 </span>
               </button>
-              {isGenerating || isRemoteGenerationActive ? (
+              {isGenerationActive ? (
                 <div
                   aria-live="polite"
                   className="bh-memory-generation-status"

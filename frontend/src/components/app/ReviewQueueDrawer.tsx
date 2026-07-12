@@ -83,6 +83,8 @@ function sessionMetricLabel(count: number, singular: string) {
 }
 
 export function ReviewQueueDrawer({
+  activeProjectMemoryGenerationIds,
+  delayedProjectMemoryGenerationIds,
   onClose,
   onGenerateProjectMemory,
   onOpenProjectMemory,
@@ -94,6 +96,8 @@ export function ReviewQueueDrawer({
   returnFocusElement,
   workspaceReady,
 }: {
+  activeProjectMemoryGenerationIds: ReadonlySet<string>;
+  delayedProjectMemoryGenerationIds: ReadonlySet<string>;
   onClose: () => void;
   onGenerateProjectMemory: (projectId: string) => Promise<MemoryActionResult>;
   onOpenProjectMemory: (projectId: string) => void;
@@ -127,6 +131,7 @@ export function ReviewQueueDrawer({
   const [queueRefreshError, setQueueRefreshError] = useState<string | null>(null);
   const [queueRefreshWarning, setQueueRefreshWarning] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [statusTone, setStatusTone] = useState<"success" | "warning">("success");
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const isMountedRef = useRef(true);
@@ -408,6 +413,7 @@ export function ReviewQueueDrawer({
     if (
       projectBatch.sessionIds.length === 0 ||
       creatingProjectId !== null ||
+      activeProjectMemoryGenerationIds.has(project.id) ||
       remoteUpdatingProjectIds.has(project.id)
     ) {
       return;
@@ -416,6 +422,7 @@ export function ReviewQueueDrawer({
     setCreatingProjectId(project.id);
     setActionError(null);
     setStatusMessage(null);
+    setStatusTone("success");
     try {
       const result = await onGenerateProjectMemory(project.id);
       if (!isMountedRef.current) {
@@ -423,13 +430,19 @@ export function ReviewQueueDrawer({
       }
       if (result.status === "memory_generated") {
         setStatusMessage(`Project memory created for ${project.name}.`);
+        setStatusTone("success");
       } else if (result.status === "generation_failed") {
         setActionError(result.message);
       } else if (result.status === "generation_in_progress") {
         setRemoteUpdatingProjectIds((current) => new Set(current).add(project.id));
         setStatusMessage(result.message);
+        setStatusTone("warning");
+      } else if (result.status === "generation_delayed") {
+        setStatusMessage(result.message);
+        setStatusTone("warning");
       } else {
         setStatusMessage(result.message);
+        setStatusTone("success");
       }
       if (result.status !== "generation_in_progress") {
         setRemoteUpdatingProjectIds((current) => {
@@ -437,6 +450,13 @@ export function ReviewQueueDrawer({
           next.delete(project.id);
           return next;
         });
+      }
+      if (
+        result.status === "generation_delayed" ||
+        result.status === "generation_in_progress" ||
+        result.status === "generation_failed"
+      ) {
+        return;
       }
       const snapshot = await refreshQueueSnapshot();
       if (!snapshot || !isMountedRef.current) {
@@ -529,8 +549,16 @@ export function ReviewQueueDrawer({
 
         <div className="review-queue-body">
           {statusMessage ? (
-            <div className="review-queue-notice" role="status">
-              <CheckCircle2 aria-hidden="true" size={16} strokeWidth={1.5} />
+            <div
+              className="review-queue-notice"
+              data-warning={statusTone === "warning" || undefined}
+              role="status"
+            >
+              {statusTone === "warning" ? (
+                <CircleAlert aria-hidden="true" size={16} strokeWidth={1.5} />
+              ) : (
+                <CheckCircle2 aria-hidden="true" size={16} strokeWidth={1.5} />
+              )}
               <span>{statusMessage}</span>
             </div>
           ) : null}
@@ -603,7 +631,10 @@ export function ReviewQueueDrawer({
                 const sessions = reviewQueueSessionsFromRanges(projectState?.ranges ?? []);
                 const projectBatch = reviewQueueProjectBatch(sessions);
                 const isCreating =
-                  creatingProjectId === project.id || remoteUpdatingProjectIds.has(project.id);
+                  creatingProjectId === project.id ||
+                  activeProjectMemoryGenerationIds.has(project.id) ||
+                  remoteUpdatingProjectIds.has(project.id);
+                const isDelayed = delayedProjectMemoryGenerationIds.has(project.id);
                 const visibleRangeCount = projectState?.ranges.length ?? 0;
                 const panelId = `review-queue-project-${project.id}`;
 
@@ -765,9 +796,16 @@ export function ReviewQueueDrawer({
                                 aria-disabled={
                                   projectBatch.sessionIds.length === 0 ||
                                   creatingProjectId !== null ||
+                                  activeProjectMemoryGenerationIds.has(project.id) ||
                                   remoteUpdatingProjectIds.has(project.id)
                                 }
-                                aria-label={`Create project memory for ${project.name}`}
+                                aria-label={
+                                  isCreating
+                                    ? `Updating project memory for ${project.name}`
+                                    : isDelayed
+                                      ? `Check update status for ${project.name}`
+                                      : `Create project memory for ${project.name}`
+                                }
                                 className="review-queue-primary-action"
                                 onClick={() =>
                                   void createProjectMemory(project, projectBatch)
@@ -797,6 +835,8 @@ export function ReviewQueueDrawer({
                                 <span>
                                   {isCreating
                                     ? "Creating project memory"
+                                    : isDelayed
+                                      ? "Check update status"
                                     : "Create project memory"}
                                 </span>
                               </button>

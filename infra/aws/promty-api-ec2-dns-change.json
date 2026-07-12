@@ -1,0 +1,31 @@
+{
+  "Comment": "Move api.promty.org from App Runner to the low-cost EC2 API instance.",
+  "Changes": [
+    {
+      "Action": "DELETE",
+      "ResourceRecordSet": {
+        "Name": "api.promty.org.",
+        "Type": "CNAME",
+        "TTL": 300,
+        "ResourceRecords": [
+          {
+            "Value": "xcyfny8pb3.ap-southeast-2.awsapprunner.com"
+          }
+        ]
+      }
+    },
+    {
+      "Action": "CREATE",
+      "ResourceRecordSet": {
+        "Name": "api.promty.org.",
+        "Type": "A",
+        "TTL": 60,
+        "ResourceRecords": [
+          {
+            "Value": "13.237.112.139"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "Comment": "Remove obsolete App Runner custom domain validation records after deleting App Runner.",
+  "Changes": [
+    {
+      "Action": "DELETE",
+      "ResourceRecordSet": {
+        "Name": "_66fcb6a4c86b4547ee4ff821eec970c0.api.promty.org.",
+        "Type": "CNAME",
+        "TTL": 300,
+        "ResourceRecords": [
+          {
+            "Value": "_aeba7c538939d3b395e3cced07e2dc74.jkddzztszm.acm-validations.aws."
+          }
+        ]
+      }
+    },
+    {
+      "Action": "DELETE",
+      "ResourceRecordSet": {
+        "Name": "_65f21883f77190393196aeeda5823853.z0z7a7nmkgdb57mo3dw35hwe834mrm3.api.promty.org.",
+        "Type": "CNAME",
+        "TTL": 300,
+        "ResourceRecords": [
+          {
+            "Value": "_6f614a9cc4b31a702267af81ed6d5498.jkddzztszm.acm-validations.aws."
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -130,6 +130,164 @@ def test_install_hooks_uses_durable_launcher(
         assert str(Path(cli.__file__).resolve()) not in commands[0]
 
 
+def test_init_installs_codex_and_claude_hooks_by_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repository"
+    repo_root.mkdir()
+    launcher_path = tmp_path / "promty-home" / "bin" / "promty"
+    runtime_install_count = 0
+
+    def fake_install_runtime() -> Path:
+        nonlocal runtime_install_count
+        runtime_install_count += 1
+        return launcher_path
+
+    monkeypatch.setattr(cli, "_git_root", lambda _: repo_root)
+    monkeypatch.setattr(cli, "install_runtime", fake_install_runtime)
+    args = build_parser().parse_args(
+        [
+            "init",
+            "--repo-root",
+            str(repo_root),
+            "--skip-login",
+            "--skip-uploader",
+        ]
+    )
+
+    assert args.tool == "all"
+    assert args.func(args) == 0
+    assert runtime_install_count == 1
+    assert args.func(args) == 0
+    assert runtime_install_count == 2
+
+    for tool, settings_path, specs in (
+        ("codex-cli", Path(".codex/hooks.json"), CODEX_HOOKS),
+        ("claude-code", Path(".claude/settings.local.json"), CLAUDE_HOOKS),
+    ):
+        config = json.loads((repo_root / settings_path).read_text(encoding="utf-8"))
+        for spec in specs:
+            groups = config["hooks"][spec["event"]]
+            commands = [hook["command"] for group in groups for hook in group["hooks"]]
+            assert len(commands) == 1
+            assert str(launcher_path) in commands[0]
+            assert f"--tool {tool}" in commands[0]
+
+
+@pytest.mark.parametrize(
+    ("tool", "expected_path", "unexpected_path"),
+    (
+        ("codex-cli", Path(".codex/hooks.json"), Path(".claude/settings.local.json")),
+        ("claude-code", Path(".claude/settings.local.json"), Path(".codex/hooks.json")),
+    ),
+)
+def test_init_keeps_explicit_single_tool_installation(
+    tool: str,
+    expected_path: Path,
+    unexpected_path: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repository"
+    repo_root.mkdir()
+    monkeypatch.setenv("PROMTY_HOME", str(tmp_path / "promty-home"))
+    monkeypatch.setenv("PROMTY_PYTHON", sys.executable)
+    monkeypatch.setattr(cli, "_git_root", lambda _: repo_root)
+    args = build_parser().parse_args(
+        [
+            "init",
+            "--tool",
+            tool,
+            "--repo-root",
+            str(repo_root),
+            "--skip-login",
+            "--skip-uploader",
+        ]
+    )
+
+    assert args.func(args) == 0
+    assert (repo_root / expected_path).is_file()
+    assert not (repo_root / unexpected_path).exists()
+
+
+def test_init_attempts_both_hooks_and_fails_on_partial_installation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo_root = tmp_path / "repository"
+    codex_hooks_path = repo_root / ".codex" / "hooks.json"
+    codex_hooks_path.parent.mkdir(parents=True)
+    codex_hooks_path.write_text("not-json", encoding="utf-8")
+    monkeypatch.setenv("PROMTY_HOME", str(tmp_path / "promty-home"))
+    monkeypatch.setenv("PROMTY_PYTHON", sys.executable)
+    monkeypatch.setattr(cli, "_git_root", lambda _: repo_root)
+    uploader_start_count = 0
+
+    def fake_start_uploader(_: object) -> int:
+        nonlocal uploader_start_count
+        uploader_start_count += 1
+        return 0
+
+    monkeypatch.setattr(cli, "start_uploader", fake_start_uploader)
+    args = build_parser().parse_args(
+        [
+            "init",
+            "--repo-root",
+            str(repo_root),
+            "--skip-login",
+        ]
+    )
+
+    assert args.func(args) == 1
+    assert uploader_start_count == 1
+    output = capsys.readouterr()
+    assert "codex-cli hook installation failed" in output.err
+    assert "Promty hook installation incomplete" in output.err
+    assert "Promty init incomplete" in output.err
+    assert "Promty init complete" not in output.out
+    assert (repo_root / ".claude" / "settings.local.json").is_file()
+
+
+def test_doctor_can_check_both_hook_integrations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo_root = tmp_path / "repository"
+    repo_root.mkdir()
+    monkeypatch.setattr(cli, "_git_root", lambda _: repo_root)
+    install_args = build_parser().parse_args(
+        [
+            "install-hooks",
+            "--tool",
+            "all",
+            "--hook-command",
+            "promty",
+            "--repo-root",
+            str(repo_root),
+        ]
+    )
+    assert install_hooks(install_args) == 0
+    capsys.readouterr()
+
+    monkeypatch.setattr(cli, "read_config", lambda _: {"auth": {}})
+    monkeypatch.setattr(cli, "resolve_token", lambda *_: "collector-token")
+    monkeypatch.setattr(cli, "_queue_status", lambda _: (True, "empty"))
+    monkeypatch.setattr(cli, "_health_status", lambda *_: (True, "ok"))
+    monkeypatch.setattr(cli, "_read_pid", lambda _: 123)
+    monkeypatch.setattr(cli, "_pid_is_running", lambda _: True)
+    doctor_args = build_parser().parse_args(
+        ["doctor", "--tool", "all", "--repo-root", str(repo_root)]
+    )
+
+    assert doctor_args.func(doctor_args) == 0
+    output = capsys.readouterr().out
+    assert "hooks/codex-cli: ok" in output
+    assert "hooks/claude-code: ok" in output
+
+
 def test_install_hooks_migrates_legacy_prompthub_command(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

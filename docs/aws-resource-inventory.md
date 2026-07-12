@@ -10,7 +10,7 @@ Default region: ap-southeast-2
 Deployment profile: promty-prod
 ```
 
-## Domain
+## Domains
 
 ```text
 Hosted zone: promty.org
@@ -19,7 +19,14 @@ Frontend domains: promty.org, www.promty.org
 API domain: api.promty.org
 ```
 
-## Certificate
+Current API DNS:
+
+```text
+api.promty.org A 13.237.112.139
+Record file: infra/aws/promty-api-ec2-dns-change.json
+```
+
+## Certificates
 
 CloudFront-compatible ACM certificate:
 
@@ -39,14 +46,19 @@ Validation records are tracked in:
 infra/aws/promty-acm-validation-records.json
 ```
 
-App Runner also manages its own certificate for `api.promty.org`. Its DNS
-validation records are tracked in:
+The API is currently served by Caddy on EC2. Caddy obtains and renews the
+`api.promty.org` TLS certificate through Let's Encrypt.
+
+Historical App Runner domain validation records were removed from Route 53.
+The cleanup batch is tracked in:
 
 ```text
-infra/aws/promty-apprunner-api-domain-validation-records.json
+infra/aws/promty-apprunner-api-domain-validation-delete-records.json
 ```
 
-## CloudFront
+## Frontend
+
+CloudFront:
 
 ```text
 Distribution id: E3RJ7YU3NUZQSF
@@ -55,30 +67,10 @@ Aliases: promty.org, www.promty.org
 Status: Deployed
 Origin: promty-prod-frontend-435917083683.s3.ap-southeast-2.amazonaws.com
 Origin access control id: ETUAJRENPIY53
+Response headers policy: 67f7725c-6f97-4210-82d7-5512b31e9d03 Managed-SecurityHeadersPolicy
 ```
 
-CloudFront and frontend DNS configuration are tracked in:
-
-```text
-infra/aws/promty-cloudfront-distribution.json
-infra/aws/promty-cloudfront-oac.json
-infra/aws/promty-frontend-bucket-policy.json
-infra/aws/promty-frontend-dns-records.json
-```
-
-## ECR
-
-```text
-Repository name: promty/backend
-Repository ARN: arn:aws:ecr:ap-southeast-2:435917083683:repository/promty/backend
-Repository URI: 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com/promty/backend
-Scan on push: enabled
-Encryption: AES256
-```
-
-## S3
-
-Frontend bucket:
+S3 frontend bucket:
 
 ```text
 Name: promty-prod-frontend-435917083683
@@ -88,7 +80,103 @@ Versioning: enabled
 Default encryption: AES256
 ```
 
-Private asset bucket:
+Frontend configuration files:
+
+```text
+infra/aws/promty-cloudfront-distribution.json
+infra/aws/promty-cloudfront-oac.json
+infra/aws/promty-frontend-bucket-policy.json
+infra/aws/promty-frontend-dns-records.json
+```
+
+## Backend Image
+
+ECR:
+
+```text
+Repository name: promty/backend
+Repository ARN: arn:aws:ecr:ap-southeast-2:435917083683:repository/promty/backend
+Repository URI: 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com/promty/backend
+Scan on push: enabled
+Encryption: AES256
+```
+
+## Active API Runtime
+
+The production API currently runs on one low-cost EC2 instance with Docker.
+
+```text
+Instance id: i-066ab5e01b9685b6a
+Instance type: t3a.micro
+AMI: ami-077acc0a911fb6286
+Elastic IP allocation: eipalloc-007935ede4ad5e019
+Elastic IP address: 13.237.112.139
+Subnet: subnet-0d63d0c4ab49394a4
+Security group: sg-03e4e45c3aaee5581
+IAM role: promty-ec2-api-instance
+Instance profile: promty-ec2-api-instance
+```
+
+Inbound rules:
+
+```text
+tcp/80 from 0.0.0.0/0 and ::/0
+tcp/443 from 0.0.0.0/0 and ::/0
+No SSH inbound rule
+```
+
+Runtime containers:
+
+```text
+promty-postgres: postgres:18-alpine
+promty-backend: 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com/promty/backend:latest
+promty-caddy: caddy:2-alpine
+```
+
+EC2 bootstrap and IAM files:
+
+```text
+infra/aws/promty-ec2-api-user-data.sh
+infra/aws/promty-ec2-api-instance-trust.json
+infra/aws/promty-ec2-api-instance-policy.json
+```
+
+## Database
+
+Active database:
+
+```text
+Engine: PostgreSQL 18 Docker container
+Container: promty-postgres
+Database name: promty
+Username: promty_admin
+Data path on EC2: /opt/promty/postgresql
+```
+
+Backups:
+
+```text
+S3 bucket: promty-prod-assets-435917083683
+S3 prefix: database-backups/
+Systemd timer: promty-db-backup.timer
+Schedule: daily at 03:17 UTC
+Latest verified manual backup: s3://promty-prod-assets-435917083683/database-backups/promty-20260712T053417Z.dump
+```
+
+Previous RDS database:
+
+```text
+Identifier: promty-prod-db
+Endpoint: promty-prod-db.cvaakqisupj8.ap-southeast-2.rds.amazonaws.com
+Engine: PostgreSQL 18
+Class: db.t4g.micro
+Status: deleted on 2026-07-12
+Final snapshot: promty-prod-db-final-20260712-ec2-cutover
+Final snapshot status: available
+Final snapshot size: 20 GB
+```
+
+## Private Asset Bucket
 
 ```text
 Name: promty-prod-assets-435917083683
@@ -96,85 +184,92 @@ ARN: arn:aws:s3:::promty-prod-assets-435917083683
 Public access: blocked
 Versioning: enabled
 Default encryption: AES256
-```
-
-## RDS
-
-```text
-Engine: PostgreSQL
-Identifier: promty-prod-db
-Endpoint: promty-prod-db.cvaakqisupj8.ap-southeast-2.rds.amazonaws.com
-Port: 5432
-Database name: promty
-Username: promty_admin
-Storage encryption: enabled
-Deletion protection: enabled
-Subnet group: promty-prod-db-subnet-group
-Security group: sg-0c72a43cc84b5deef
+Application asset prefix: published-flow-assets/
+Database backup prefix: database-backups/
 ```
 
 ## Networking
 
 ```text
 VPC: vpc-05abd8dcef72223fa
-Subnets:
+Public API subnet: subnet-0d63d0c4ab49394a4 ap-southeast-2a
+Other existing subnets:
   subnet-04375abf87cc69d46 ap-southeast-2c
-  subnet-0d63d0c4ab49394a4 ap-southeast-2a
   subnet-0e3be0293016e6f06 ap-southeast-2b
-Private App Runner subnets:
+Previous private App Runner subnets:
   subnet-0af40d93ce08cdcdb ap-southeast-2a 172.31.240.0/24
   subnet-0429cf93c3adaf1da ap-southeast-2b 172.31.241.0/24
   subnet-0ce13e28691072dcf ap-southeast-2c 172.31.242.0/24
-NAT gateway: nat-0fed17885361650db
-NAT elastic IP allocation: eipalloc-0f5803a28421ddec2
+```
+
+Cost-reduction cleanup:
+
+```text
+Deleted NAT gateway: nat-0fed17885361650db
+Released NAT elastic IP allocation: eipalloc-0f5803a28421ddec2
+Released NAT public IP: 32.236.253.122
+Deleted App Runner service: promty-prod-api
+Deleted App Runner VPC connectors:
+  promty-prod-vpc-connector
+  promty-prod-vpc-connector-nat
+Deleted App Runner IAM roles:
+  promty-apprunner-ecr-access
+  promty-apprunner-instance
+```
+
+Legacy networking objects may remain because they do not materially affect the
+monthly run rate:
+
+```text
 Private route table: rtb-06de908c3a504844d
 Legacy App Runner security group: sg-07bcfdc3e060768d9
 NAT App Runner security group: sg-0fb1480facd964b0e
 RDS security group: sg-0c72a43cc84b5deef
-RDS inbound rules:
-  tcp/5432 from sg-07bcfdc3e060768d9
-  tcp/5432 from sg-0fb1480facd964b0e
-Active App Runner VPC connector:
-  arn:aws:apprunner:ap-southeast-2:435917083683:vpcconnector/promty-prod-vpc-connector-nat/1/280069a9ab9e46e4817f07222989b896
-Legacy App Runner VPC connector:
-  arn:aws:apprunner:ap-southeast-2:435917083683:vpcconnector/promty-prod-vpc-connector/1/7ce24bfd0e1c4a9db9fbc8086b5e53a4
 ```
 
 ## Secrets Manager
 
 ```text
 promty/prod/database-url
+promty/prod/ec2-postgres-password
 promty/prod/app-encryption-key
 promty/prod/github-client-id
 promty/prod/github-client-secret
 promty/prod/github-token-encryption-key
 promty/prod/oauth-state-secret
 promty/prod/jwt-secret
+promty/prod/global-ingest-token
 ```
 
-GitHub OAuth client id and secret are stored in Secrets Manager and exposed to
-App Runner as runtime secrets.
+`promty/prod/database-url` is the previous RDS URL and was used for one-time
+migration. The active EC2 backend now uses a local Postgres URL generated in
+`/opt/promty/backend.env`.
 
-## App Runner
+## Legacy App Runner
+
+App Runner is no longer the production API target and the service has been
+deleted.
 
 ```text
 Service name: promty-prod-api
 Service ARN: arn:aws:apprunner:ap-southeast-2:435917083683:service/promty-prod-api/04be6335c00f43fb86dd2d3506f95700
 Default URL: https://xcyfny8pb3.ap-southeast-2.awsapprunner.com
-Custom domain: https://api.promty.org
-Status: RUNNING
-Custom domain status: active
+Status: DELETED
+Previous custom domain: https://api.promty.org
 Image: 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com/promty/backend:latest
-Health check: GET /health on port 8011
+VPC connectors: deleted
+IAM roles: deleted
+Route 53 validation records: deleted
 ```
 
-App Runner roles and service configuration:
+Legacy App Runner configuration files:
 
 ```text
-ECR access role: arn:aws:iam::435917083683:role/promty-apprunner-ecr-access
-Instance role: arn:aws:iam::435917083683:role/promty-apprunner-instance
-Service config: infra/aws/promty-apprunner-service.json
-API DNS record: infra/aws/promty-api-dns-records.json
+infra/aws/promty-apprunner-service.json
+infra/aws/promty-api-dns-records.json
+infra/aws/promty-apprunner-instance-trust.json
+infra/aws/promty-apprunner-instance-policy.json
+infra/aws/promty-apprunner-ecr-access-trust.json
 ```
 
 ## GitHub Actions IAM
@@ -183,7 +278,15 @@ API DNS record: infra/aws/promty-api-dns-records.json
 Role name: promty-github-actions-deploy
 Role ARN: arn:aws:iam::435917083683:role/promty-github-actions-deploy
 Trusted GitHub repo: NaHyeongyu/BuildHub
+Trusted ref: refs/heads/master
 ```
+
+The deploy role can:
+
+- push backend images to ECR
+- sync frontend files to the frontend S3 bucket
+- create CloudFront invalidations
+- send SSM commands to EC2 instance `i-066ab5e01b9685b6a`
 
 Policy files:
 
@@ -197,20 +300,21 @@ infra/aws/promty-github-actions-policy.json
 ```text
 AWS_ROLE_TO_ASSUME=arn:aws:iam::435917083683:role/promty-github-actions-deploy
 AWS_REGION=ap-southeast-2
-APP_RUNNER_SERVICE_ARN=arn:aws:apprunner:ap-southeast-2:435917083683:service/promty-prod-api/04be6335c00f43fb86dd2d3506f95700
+AWS_EC2_INSTANCE_ID=i-066ab5e01b9685b6a
 ECR_REPOSITORY=promty/backend
 FRONTEND_S3_BUCKET=promty-prod-frontend-435917083683
 CLOUDFRONT_DISTRIBUTION_ID=E3RJ7YU3NUZQSF
 VITE_PROMPTHUB_API_URL=https://api.promty.org
 ```
 
-These are already stored in GitHub repo `NaHyeongyu/BuildHub`.
+These are stored in GitHub repo `NaHyeongyu/BuildHub`.
 
 ## Backend Runtime Environment
 
-These values are configured on App Runner:
+These values are configured on EC2 in `/opt/promty/backend.env`:
 
 ```text
+DATABASE_URL=postgresql+psycopg://promty_admin:<secret>@promty-postgres:5432/promty
 PROMPTHUB_API_PUBLIC_URL=https://api.promty.org
 PROMPTHUB_APP_URL=https://promty.org
 PROMPTHUB_CORS_ORIGINS=https://promty.org,https://www.promty.org
@@ -221,19 +325,11 @@ PROMPTHUB_AWS_REGION=ap-southeast-2
 PROMPTHUB_AWS_S3_BUCKET=promty-prod-assets-435917083683
 PROMPTHUB_AWS_S3_PREFIX=published-flow-assets
 PROMPTHUB_APP_ENCRYPTION_KEY_ID=aws-prod
+PROMPTHUB_API_TOKEN=<secret from promty/prod/global-ingest-token>
 PROMTY_MEMORY_GENERATOR=local
 PROMTY_MEMORY_DRAFT_GENERATOR=local
 PROMTY_PROJECT_MEMORY_GENERATOR=local
 ```
 
-Stored as App Runner runtime secrets from Secrets Manager:
-
-```text
-DATABASE_URL
-PROMPTHUB_GITHUB_CLIENT_ID
-PROMPTHUB_GITHUB_CLIENT_SECRET
-PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_KEY
-PROMPTHUB_APP_ENCRYPTION_KEY
-PROMPTHUB_OAUTH_STATE_SECRET
-PROMPTHUB_JWT_SECRET
-```
+Secret values are fetched from Secrets Manager during EC2 bootstrap and written
+to the local env file.

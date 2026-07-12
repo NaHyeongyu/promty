@@ -10,7 +10,7 @@ import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib import error, parse, request
 import webbrowser
 
@@ -46,7 +46,10 @@ from session_index import SessionIndex
 from uploader.client import PromptHubUploader
 from uploader.queue import JSONLQueue
 
-INSTALL_TOOL_ALIASES: dict[str, SupportedTool] = {
+InstallTarget = Literal["all", "claude-code", "codex-cli"]
+INSTALL_TOOLS: tuple[SupportedTool, ...] = ("codex-cli", "claude-code")
+INSTALL_TOOL_ALIASES: dict[str, InstallTarget] = {
+    "all": "all",
     "claude": "claude-code",
     "claude-code": "claude-code",
     "codex": "codex-cli",
@@ -163,6 +166,22 @@ def _normalize_required_tool(args: argparse.Namespace) -> SupportedTool:
     if not tool:
         raise ValueError("Expected --tool")
     return normalize_tool(tool)
+
+
+def _normalize_install_target(args: argparse.Namespace) -> InstallTarget:
+    tool = getattr(args, "source", None) or getattr(args, "tool", None)
+    if not tool:
+        raise ValueError("Expected --tool")
+    try:
+        return INSTALL_TOOL_ALIASES[tool]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported hook integration: {tool}") from exc
+
+
+def _tools_for_install_target(target: InstallTarget) -> tuple[SupportedTool, ...]:
+    if target == "all":
+        return INSTALL_TOOLS
+    return (target,)
 
 
 def _apply_known_session(
@@ -659,9 +678,7 @@ def _install_claude_hooks(
 
 
 def install_hooks(args: argparse.Namespace) -> int:
-    normalized_tool = _normalize_required_tool(args)
-    if normalized_tool not in INSTALL_TOOL_ALIASES.values():
-        raise ValueError("Promty hook installation supports codex-cli and claude-code")
+    target = _normalize_install_target(args)
     repo_root = _git_root(args.repo_root)
     if args.hook_command:
         command_prefix = args.hook_command
@@ -669,19 +686,32 @@ def install_hooks(args: argparse.Namespace) -> int:
         launcher_path = install_runtime()
         command_prefix = quote_command_path(launcher_path)
         print(f"Promty runtime ready: {launcher_path}")
-    if normalized_tool == "codex-cli":
-        return _install_codex_hooks(
-            command_prefix=command_prefix,
-            normalized_tool=normalized_tool,
-            repo_root=repo_root,
-        )
-    if normalized_tool == "claude-code":
-        return _install_claude_hooks(
-            command_prefix=command_prefix,
-            normalized_tool=normalized_tool,
-            repo_root=repo_root,
-        )
-    raise AssertionError(f"Unexpected hook tool: {normalized_tool}")
+
+    failures: list[tuple[SupportedTool, Exception]] = []
+    for normalized_tool in _tools_for_install_target(target):
+        try:
+            if normalized_tool == "codex-cli":
+                _install_codex_hooks(
+                    command_prefix=command_prefix,
+                    normalized_tool=normalized_tool,
+                    repo_root=repo_root,
+                )
+            elif normalized_tool == "claude-code":
+                _install_claude_hooks(
+                    command_prefix=command_prefix,
+                    normalized_tool=normalized_tool,
+                    repo_root=repo_root,
+                )
+            else:
+                raise AssertionError(f"Unexpected hook tool: {normalized_tool}")
+        except Exception as exc:
+            failures.append((normalized_tool, exc))
+            print(f"{normalized_tool} hook installation failed: {exc}", file=sys.stderr)
+
+    if failures:
+        print("Promty hook installation incomplete", file=sys.stderr)
+        return 1
+    return 0
 
 
 def _pid_is_running(pid: int) -> bool:
@@ -809,17 +839,26 @@ def doctor(args: argparse.Namespace) -> int:
     api_url = resolve_api_url(args.api_url, args.config_path)
     token = resolve_token(args.token, args.config_path)
     config = read_config(args.config_path)
-    normalized_tool = normalize_tool(args.tool)
+    target = _normalize_install_target(args)
+    target_tools = _tools_for_install_target(target)
     try:
         repo_root = _git_root(args.repo_root)
-        hooks_status = _hook_status(repo_root, normalized_tool)
+        hook_results = [
+            (tool, _hook_status(repo_root, tool))
+            for tool in target_tools
+        ]
     except Exception as exc:
-        hooks_status = (False, f"git root error: {exc}")
+        hook_results = [
+            (tool, (False, f"git root error: {exc}"))
+            for tool in target_tools
+        ]
 
     checks: list[tuple[str, bool, str]] = []
     checks.append(("config", bool(config), str(args.config_path or "~/.prompthub/config.json")))
     checks.append(("login", token is not None, "token saved" if token else "not logged in"))
-    checks.append(("hooks", *hooks_status))
+    for tool, hooks_status in hook_results:
+        check_name = "hooks" if target != "all" else f"hooks/{tool}"
+        checks.append((check_name, *hooks_status))
     checks.append(("queue", *_queue_status(args.queue_path)))
     checks.append(("backend", *_health_status(api_url, args.timeout)))
     pid_path = Path(args.pid_path).expanduser() if args.pid_path else DEFAULT_UPLOADER_PID_PATH
@@ -872,7 +911,7 @@ def init(args: argparse.Namespace) -> int:
         repo_root=args.repo_root,
         hook_command=args.hook_command,
     )
-    install_hooks(install_args)
+    hooks_result = install_hooks(install_args)
 
     if not args.skip_uploader:
         uploader_args = argparse.Namespace(
@@ -884,6 +923,13 @@ def init(args: argparse.Namespace) -> int:
             token=args.token,
         )
         start_uploader(uploader_args)
+
+    if hooks_result != 0:
+        print(
+            "Promty init incomplete; fix the hook error and run this command again.",
+            file=sys.stderr,
+        )
+        return 1
 
     print("Promty init complete")
     return 0
@@ -982,7 +1028,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--tool",
         choices=sorted(INSTALL_TOOL_ALIASES),
         default="codex-cli",
-        help="Hook integration to install (Codex CLI or Claude Code).",
+        help="Hook integration to install (Codex CLI, Claude Code, or all).",
     )
     install_hooks_parser.add_argument(
         "--source",
@@ -1037,8 +1083,8 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument(
         "--tool",
         choices=sorted(INSTALL_TOOL_ALIASES),
-        default="codex-cli",
-        help="Hook integration to install (Codex CLI or Claude Code).",
+        default="all",
+        help="Hook integration to install (defaults to Codex CLI and Claude Code).",
     )
     init_parser.add_argument("--username")
     init_parser.add_argument("--upload-interval", type=float, default=2)

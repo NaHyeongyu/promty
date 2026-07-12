@@ -39,7 +39,6 @@ export function useFirstEventPolling({
   waitForNewEvent?: boolean;
 } = {}) {
   const [status, setStatus] = useState<FirstEventPollingStatus>("checking");
-  const [lastCheckedAt, setLastCheckedAt] = useState<Date | null>(null);
   const checkingRef = useRef(false);
   const detectedRef = useRef(false);
   const baselineEventIdRef = useRef<string | null | undefined>(undefined);
@@ -69,7 +68,6 @@ export function useFirstEventPolling({
     try {
       const events = await probeRef.current();
       const firstEvent = firstMatchingEvent(events, eventFilterRef.current);
-      setLastCheckedAt(new Date());
       if (waitForNewEvent && baselineEventIdRef.current === undefined) {
         baselineEventIdRef.current = firstEvent?.id ?? null;
         setStatus("waiting");
@@ -87,7 +85,6 @@ export function useFirstEventPolling({
         setStatus("waiting");
       }
     } catch {
-      setLastCheckedAt(new Date());
       setStatus("retrying");
     } finally {
       checkingRef.current = false;
@@ -110,5 +107,5 @@ export function useFirstEventPolling({
     return () => window.clearInterval(interval);
   }, [checkNow, enabled, intervalMs]);
 
-  return { checkNow, lastCheckedAt, status };
+  return { checkNow, status };
 }

@@ -1,0 +1,8 @@
+{
+  "commands": [
+    "cat > /opt/promty/Caddyfile <<'EOF'\n:80 {\n  redir https://api.promty.org{uri} 308\n}\n\napi.promty.org {\n  encode gzip\n  header {\n    Strict-Transport-Security \"max-age=31536000; includeSubDomains\"\n    X-Content-Type-Options \"nosniff\"\n    Referrer-Policy \"strict-origin-when-cross-origin\"\n    X-Frame-Options \"DENY\"\n  }\n  reverse_proxy promty-backend:8011\n}\nEOF",
+    "docker restart promty-caddy >/dev/null",
+    "sleep 3",
+    "docker exec promty-backend python -c \"import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8011/health', timeout=5).read().decode())\""
+  ]
+}

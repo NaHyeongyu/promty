@@ -222,8 +222,9 @@ creates a session when session_id is new
 inserts new events and treats exact event-id replays as idempotent no-ops
 stores payloads as PostgreSQL JSONB
 stores project git_remote/github_url metadata when collector payloads include it
-optionally requires Bearer auth when PROMPTHUB_API_TOKEN is set
+requires Bearer auth by default
 accepts per-user collector tokens issued through GitHub OAuth
+optionally accepts a global PROMPTHUB_API_TOKEN
 issues HttpOnly JWT session cookies for web users
 requires web JWT auth for GET /api/events
 filters event reads by the authenticated project owner

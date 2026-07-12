@@ -184,7 +184,7 @@ export function RepositoryConnector({
 
         {connectionMode === "collector" || !onManualConnect ? (
           <>
-            <CollectorSetupFlow compact projectName={targetProjectName} />
+            <CollectorSetupFlow projectName={targetProjectName} />
             {pollingEnabled ? (
               <CollectorEventWaiter
                 eventFilter={(event) =>

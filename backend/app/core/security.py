@@ -120,7 +120,7 @@ def require_ingest_token(
     db: Session = Depends(get_db),
 ) -> User | None:
     token = _bearer_token(authorization)
-    if settings.api_token is None and token is None:
+    if settings.api_token is None and token is None and settings.allow_anonymous_ingest:
         return None
 
     if settings.api_token is not None and token is not None:

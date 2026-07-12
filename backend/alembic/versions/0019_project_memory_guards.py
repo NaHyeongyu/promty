@@ -17,6 +17,7 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 MEMORY_TYPES = "'MemoryTask', 'MemoryDraft', 'ProjectMemory'"
+ARCHIVED_MEMORY_TYPE = "MemoryArchive"
 
 
 def upgrade() -> None:
@@ -85,71 +86,141 @@ def upgrade() -> None:
     op.execute(
         sa.text(
             f"""
-            WITH ranked AS (
+            CREATE TEMPORARY TABLE project_memory_artifact_duplicate_map (
+                duplicate_id uuid PRIMARY KEY,
+                survivor_id uuid NOT NULL
+            ) ON COMMIT DROP;
+
+            INSERT INTO project_memory_artifact_duplicate_map (duplicate_id, survivor_id)
+            SELECT id, survivor_id
+            FROM (
                 SELECT
                     id,
-                    row_number() OVER (
-                        PARTITION BY project_id, type, storage_key
-                        ORDER BY updated_at DESC, created_at DESC, id DESC
-                    ) AS duplicate_rank
+                    first_value(id) OVER duplicate_group AS survivor_id,
+                    row_number() OVER duplicate_group AS duplicate_rank
                 FROM artifacts
                 WHERE type IN ({MEMORY_TYPES})
-            )
-            UPDATE project_memory_batches
+                WINDOW duplicate_group AS (
+                    PARTITION BY project_id, type, storage_key
+                    ORDER BY updated_at DESC, created_at DESC, id DESC
+                )
+            ) AS ranked
+            WHERE duplicate_rank > 1;
+
+            CREATE TEMPORARY TABLE project_memory_affected_batches (
+                batch_id uuid PRIMARY KEY
+            ) ON COMMIT DROP;
+
+            INSERT INTO project_memory_affected_batches (batch_id)
+            SELECT DISTINCT items.batch_id
+            FROM project_memory_batch_items AS items
+            JOIN project_memory_batches AS batches ON batches.id = items.batch_id
+            LEFT JOIN artifact_versions AS versions ON versions.id = items.draft_version_id
+            LEFT JOIN project_memory_artifact_duplicate_map AS draft_duplicates
+                ON draft_duplicates.duplicate_id = items.draft_id
+            LEFT JOIN project_memory_artifact_duplicate_map AS version_duplicates
+                ON version_duplicates.duplicate_id = versions.artifact_id
+            WHERE batches.status IN ('pending', 'running', 'failed')
+              AND (
+                  draft_duplicates.duplicate_id IS NOT NULL
+                  OR version_duplicates.duplicate_id IS NOT NULL
+              );
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            """
+            UPDATE project_memory_batches AS batches
             SET
                 status = 'superseded',
                 result_status = 'generation_failed',
                 error_code = 'duplicate_snapshot_source',
-                error_message = 'A duplicate snapshot source was removed during migration.'
-            WHERE id IN (
-                SELECT items.batch_id
-                FROM project_memory_batch_items AS items
-                JOIN ranked ON ranked.id = items.draft_id
-                WHERE ranked.duplicate_rank > 1
+                error_message = 'A duplicate snapshot source was archived during migration.',
+                lease_expires_at = NULL,
+                completed_at = COALESCE(batches.completed_at, timezone('utc', now())),
+                updated_at = timezone('utc', now())
+            FROM project_memory_affected_batches AS affected
+            WHERE batches.id = affected.batch_id
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            """
+            DELETE FROM project_memory_batch_items AS items
+            USING project_memory_affected_batches AS affected
+            WHERE items.batch_id = affected.batch_id
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            """
+            UPDATE project_memory_batches AS batches
+            SET project_memory_artifact_id = duplicates.survivor_id
+            FROM project_memory_artifact_duplicate_map AS duplicates
+            WHERE batches.project_memory_artifact_id = duplicates.duplicate_id
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            """
+            UPDATE project_memory_batches AS batches
+            SET generated_artifact_ids = (
+                SELECT COALESCE(
+                    jsonb_agg(to_jsonb(mapped.artifact_id) ORDER BY mapped.first_ordinal),
+                    '[]'::jsonb
+                )
+                FROM (
+                    SELECT
+                        COALESCE(duplicates.survivor_id::text, entries.artifact_id) AS artifact_id,
+                        min(entries.ordinality) AS first_ordinal
+                    FROM jsonb_array_elements_text(batches.generated_artifact_ids)
+                        WITH ORDINALITY AS entries(artifact_id, ordinality)
+                    LEFT JOIN project_memory_artifact_duplicate_map AS duplicates
+                        ON duplicates.duplicate_id::text = entries.artifact_id
+                    GROUP BY COALESCE(duplicates.survivor_id::text, entries.artifact_id)
+                ) AS mapped
             )
+            WHERE jsonb_typeof(batches.generated_artifact_ids) = 'array'
+              AND EXISTS (
+                  SELECT 1
+                  FROM jsonb_array_elements_text(batches.generated_artifact_ids) AS entries(artifact_id)
+                  JOIN project_memory_artifact_duplicate_map AS duplicates
+                    ON duplicates.duplicate_id::text = entries.artifact_id
+              )
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            """
+            UPDATE artifact_generation_jobs AS jobs
+            SET artifact_id = duplicates.survivor_id
+            FROM project_memory_artifact_duplicate_map AS duplicates
+            WHERE jobs.artifact_id = duplicates.duplicate_id
             """
         )
     )
     op.execute(
         sa.text(
             f"""
-            WITH ranked AS (
-                SELECT
-                    id,
-                    row_number() OVER (
-                        PARTITION BY project_id, type, storage_key
-                        ORDER BY updated_at DESC, created_at DESC, id DESC
-                    ) AS duplicate_rank
-                FROM artifacts
-                WHERE type IN ({MEMORY_TYPES})
-            )
-            DELETE FROM project_memory_batch_items
-            WHERE draft_id IN (
-                SELECT id FROM ranked WHERE duplicate_rank > 1
-            )
+            UPDATE artifacts AS artifacts_to_archive
+            SET
+                type = '{ARCHIVED_MEMORY_TYPE}',
+                metadata = artifacts_to_archive.metadata || jsonb_build_object(
+                    'deduplicated_into', duplicates.survivor_id,
+                    'deduplicated_original_type', artifacts_to_archive.type
+                )
+            FROM project_memory_artifact_duplicate_map AS duplicates
+            WHERE artifacts_to_archive.id = duplicates.duplicate_id
             """
         )
     )
-    op.execute(
-        sa.text(
-            f"""
-            WITH ranked AS (
-                SELECT
-                    id,
-                    row_number() OVER (
-                        PARTITION BY project_id, type, storage_key
-                        ORDER BY updated_at DESC, created_at DESC, id DESC
-                    ) AS duplicate_rank
-                FROM artifacts
-                WHERE type IN ({MEMORY_TYPES})
-            )
-            DELETE FROM artifacts
-            WHERE id IN (
-                SELECT id FROM ranked WHERE duplicate_rank > 1
-            )
-            """
-        )
-    )
+    # Keep dedupe and uniqueness in one transaction. Large installations should drain
+    # artifact writers while this one-time index is built to avoid ingestion latency.
     op.create_index(
         "ux_artifacts_memory_storage_key",
         "artifacts",
@@ -161,13 +232,141 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index("ux_artifacts_memory_storage_key", table_name="artifacts")
+    op.execute(
+        sa.text(
+            f"""
+            UPDATE artifacts
+            SET
+                type = metadata ->> 'deduplicated_original_type',
+                metadata = metadata - 'deduplicated_into' - 'deduplicated_original_type'
+            WHERE type = '{ARCHIVED_MEMORY_TYPE}'
+              AND metadata ? 'deduplicated_original_type'
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            """
+            CREATE TEMPORARY TABLE project_memory_downgrade_restorable_batches (
+                batch_id uuid PRIMARY KEY
+            ) ON COMMIT DROP;
+
+            INSERT INTO project_memory_downgrade_restorable_batches (batch_id)
+            SELECT batches.id
+            FROM project_memory_batches AS batches
+            WHERE batches.status = 'superseded'
+              AND batches.error_code = 'duplicate_snapshot_source'
+              AND jsonb_typeof(batches.snapshot_manifest) = 'array'
+              AND jsonb_array_length(batches.snapshot_manifest) > 0
+              AND jsonb_array_length(batches.snapshot_manifest) = (
+                  SELECT count(DISTINCT (manifest.item ->> 'draft_id'))
+                  FROM jsonb_array_elements(batches.snapshot_manifest) AS manifest(item)
+              )
+              AND jsonb_array_length(batches.snapshot_manifest) = (
+                  SELECT count(DISTINCT (manifest.item ->> 'ordinal'))
+                  FROM jsonb_array_elements(batches.snapshot_manifest) AS manifest(item)
+              )
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM jsonb_array_elements(batches.snapshot_manifest) AS manifest(item)
+                  LEFT JOIN artifacts AS drafts
+                    ON drafts.id = (manifest.item ->> 'draft_id')::uuid
+                  LEFT JOIN artifact_versions AS versions
+                    ON versions.id = (manifest.item ->> 'draft_version_id')::uuid
+                   AND versions.artifact_id = drafts.id
+                  LEFT JOIN project_memory_batch_items AS claimed_drafts
+                    ON claimed_drafts.draft_id = drafts.id
+                  LEFT JOIN project_memory_batch_items AS claimed_ordinals
+                    ON claimed_ordinals.batch_id = batches.id
+                   AND claimed_ordinals.ordinal = (manifest.item ->> 'ordinal')::integer
+                  WHERE drafts.id IS NULL
+                     OR versions.id IS NULL
+                     OR claimed_drafts.draft_id IS NOT NULL
+                     OR claimed_ordinals.batch_id IS NOT NULL
+              )
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            """
+            INSERT INTO project_memory_batch_items (
+                batch_id,
+                draft_id,
+                draft_version_id,
+                source_session_id,
+                ordinal
+            )
+            SELECT
+                batches.id,
+                (manifest.item ->> 'draft_id')::uuid,
+                (manifest.item ->> 'draft_version_id')::uuid,
+                CASE
+                    WHEN manifest.item ->> 'source_session_id' IS NULL THEN NULL
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM sessions
+                        WHERE sessions.id = (manifest.item ->> 'source_session_id')::uuid
+                    ) THEN (manifest.item ->> 'source_session_id')::uuid
+                    ELSE NULL
+                END,
+                (manifest.item ->> 'ordinal')::integer
+            FROM project_memory_batches AS batches
+            JOIN project_memory_downgrade_restorable_batches AS restorable
+              ON restorable.batch_id = batches.id
+            CROSS JOIN LATERAL jsonb_array_elements(batches.snapshot_manifest)
+                AS manifest(item)
+            JOIN artifacts AS drafts
+              ON drafts.id = (manifest.item ->> 'draft_id')::uuid
+            JOIN artifact_versions AS versions
+              ON versions.id = (manifest.item ->> 'draft_version_id')::uuid
+             AND versions.artifact_id = drafts.id
+            WHERE batches.status = 'superseded'
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            """
+            DELETE FROM project_memory_batch_items AS items
+            USING project_memory_batches AS batches
+            WHERE items.batch_id = batches.id
+              AND batches.status = 'superseded'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM project_memory_downgrade_restorable_batches AS restorable
+                  WHERE restorable.batch_id = batches.id
+              )
+            """
+        )
+    )
     op.drop_constraint(
         "ck_project_memory_batches_status",
         "project_memory_batches",
         type_="check",
     )
     op.execute(
-        sa.text("UPDATE project_memory_batches SET status = 'failed' WHERE status = 'superseded'")
+        sa.text(
+            """
+            UPDATE project_memory_batches AS batches
+            SET status = 'failed'
+            FROM project_memory_downgrade_restorable_batches AS restorable
+            WHERE batches.id = restorable.batch_id
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            """
+            UPDATE project_memory_batches
+            SET
+                status = 'succeeded',
+                result_status = 'no_pending',
+                error_code = 'downgrade_snapshot_unavailable',
+                error_message = 'The exact superseded snapshot could not be restored during downgrade.'
+            WHERE status = 'superseded'
+            """
+        )
     )
     op.create_check_constraint(
         "ck_project_memory_batches_status",

@@ -135,3 +135,30 @@ class ProjectMemoryBatchItem(Base):
     draft = relationship("Artifact", foreign_keys=[draft_id])
     draft_version = relationship("ArtifactVersion", foreign_keys=[draft_version_id])
     source_session = relationship("Session", foreign_keys=[source_session_id])
+
+
+class ProjectMemoryBatchRequest(Base):
+    __tablename__ = "project_memory_batch_requests"
+
+    project_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    idempotency_key: Mapped[str] = mapped_column(
+        String(64),
+        primary_key=True,
+    )
+    # A batch FK would make alias inserts wait behind the batch's final FOR UPDATE lock.
+    batch_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        index=True,
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        nullable=False,
+    )
+
+    project = relationship("Project")

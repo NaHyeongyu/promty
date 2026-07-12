@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { UnauthorizedError } from "../api/client";
 import {
   fetchProjectDetailResources,
@@ -19,8 +19,10 @@ export function useProjectDetail({ onUnauthorized }: UseProjectDetailOptions) {
   const [projectDetail, setProjectDetail] = useState<ProjectDetailData | null>(null);
   const [projectDetailError, setProjectDetailError] = useState<string | null>(null);
   const [isProjectDetailLoading, setIsProjectDetailLoading] = useState(false);
+  const projectDetailRequestRef = useRef(0);
 
   const clearProjectDetail = () => {
+    projectDetailRequestRef.current += 1;
     setProjectDetail(null);
     setProjectDetailError(null);
     setIsProjectDetailLoading(false);
@@ -52,11 +54,13 @@ export function useProjectDetail({ onUnauthorized }: UseProjectDetailOptions) {
     if (!shouldApply()) {
       return;
     }
+    const requestId = projectDetailRequestRef.current + 1;
+    projectDetailRequestRef.current = requestId;
     setIsProjectDetailLoading(true);
     setProjectDetailError(null);
     try {
       const payload = await fetchProjectDetailResources(projectId, signal);
-      if (shouldApply()) {
+      if (projectDetailRequestRef.current === requestId && shouldApply()) {
         setProjectDetail(projectDetailDataFromApi(payload, fallbackProject));
       }
     } catch (error) {
@@ -68,13 +72,13 @@ export function useProjectDetail({ onUnauthorized }: UseProjectDetailOptions) {
         setProjectDetail(null);
         return;
       }
-      if (shouldApply()) {
+      if (projectDetailRequestRef.current === requestId && shouldApply()) {
         setProjectDetailError(
           error instanceof Error ? error.message : "Project detail request failed",
         );
       }
     } finally {
-      if (!signal?.aborted && shouldApply()) {
+      if (projectDetailRequestRef.current === requestId && shouldApply()) {
         setIsProjectDetailLoading(false);
       }
     }

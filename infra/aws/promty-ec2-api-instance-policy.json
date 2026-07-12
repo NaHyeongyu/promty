@@ -1,0 +1,43 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadPromtyRuntimeSecrets",
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": [
+        "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/database-url-*",
+        "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/app-encryption-key-*",
+        "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/github-client-id-*",
+        "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/github-client-secret-*",
+        "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/github-token-encryption-key-*",
+        "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/oauth-state-secret-*",
+        "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/jwt-secret-*",
+        "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/ec2-postgres-password-*",
+        "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/global-ingest-token-*"
+      ]
+    },
+    {
+      "Sid": "UsePromtyAssetAndBackupBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetBucketLocation",
+        "s3:ListBucket"
+      ],
+      "Resource": "arn:aws:s3:::promty-prod-assets-435917083683"
+    },
+    {
+      "Sid": "WritePromtyAssetsAndDatabaseBackups",
+      "Effect": "Allow",
+      "Action": [
+        "s3:DeleteObject",
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::promty-prod-assets-435917083683/published-flow-assets/*",
+        "arn:aws:s3:::promty-prod-assets-435917083683/database-backups/*"
+      ]
+    }
+  ]
+}

@@ -45,10 +45,22 @@
       "Resource": "*"
     },
     {
-      "Sid": "AppRunnerDeployment",
+      "Sid": "Ec2SsmDeployment",
       "Effect": "Allow",
-      "Action": "apprunner:StartDeployment",
-      "Resource": "arn:aws:apprunner:ap-southeast-2:435917083683:service/promty-prod-api/04be6335c00f43fb86dd2d3506f95700"
+      "Action": "ssm:SendCommand",
+      "Resource": [
+        "arn:aws:ec2:ap-southeast-2:435917083683:instance/i-066ab5e01b9685b6a",
+        "arn:aws:ssm:ap-southeast-2::document/AWS-RunShellScript"
+      ]
+    },
+    {
+      "Sid": "Ec2SsmDeploymentStatus",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetCommandInvocation",
+        "ssm:ListCommandInvocations"
+      ],
+      "Resource": "*"
     }
   ]
 }

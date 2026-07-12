@@ -1,0 +1,259 @@
+from __future__ import annotations
+
+from dataclasses import replace
+from types import SimpleNamespace
+from uuid import uuid4
+
+import pytest
+
+from app.services.memory import project_memory
+from app.services.memory import workflows
+
+
+def _base_state(project_id):
+    return project_memory._ProjectMemoryBaseState(
+        base_guard="project-memory-v1:base",
+        existing_artifact_id=None,
+        existing_source_memory_ids=(),
+        previous_snapshot=None,
+        project_context=project_memory._freeze_json(
+            {
+                "default_branch": "main",
+                "description": "Compilation boundary test",
+                "git_remote": None,
+                "id": str(project_id),
+                "name": "PromptHub",
+                "slug": "prompthub",
+                "tags": ["memory"],
+                "visibility": "private",
+            }
+        ),
+        source_memory_contexts=(
+            project_memory._freeze_json(
+                {
+                    "created_at": "2026-07-11T00:00:00+00:00",
+                    "id": str(uuid4()),
+                    "memory_batch_id": "older-batch",
+                    "source_session_ids": [str(uuid4())],
+                    "summary": "Older durable context",
+                    "title": "Older memory",
+                    "updated_at": "2026-07-11T00:00:00+00:00",
+                }
+            ),
+        ),
+    )
+
+
+def test_prepare_compilation_detaches_and_deeply_freezes_preview_context(monkeypatch) -> None:
+    project_id = uuid4()
+    base_state = _base_state(project_id)
+    monkeypatch.setattr(
+        project_memory,
+        "_project_memory_base_state",
+        lambda _db, _project_id: base_state,
+    )
+    preview_id = str(uuid4())
+    preview = {
+        "created_at": "2026-07-12T00:00:00+00:00",
+        "id": preview_id,
+        "memory_batch_id": "current-batch",
+        "source_session_ids": [str(uuid4())],
+        "summary": "Current batch preview",
+        "tags": ["preview"],
+        "title": "Current memory",
+        "updated_at": "2026-07-12T00:00:00+00:00",
+    }
+
+    compilation_input = project_memory.prepare_project_memory_compilation(
+        object(),  # type: ignore[arg-type]
+        project_id,
+        [preview],
+    )
+    preview["summary"] = "mutated after preparation"
+    preview["tags"].append("mutated")
+
+    assert compilation_input.base_guard == base_state.base_guard
+    assert compilation_input.source_memory_ids[0] == preview_id
+    assert compilation_input.source_memory_contexts[0]["summary"] == "Current batch preview"
+    assert compilation_input.source_memory_contexts[0]["tags"] == ("preview",)
+    assert compilation_input.memory_batch_ids == ("current-batch", "older-batch")
+    with pytest.raises(TypeError):
+        compilation_input.source_memory_contexts[0]["summary"] = "not allowed"  # type: ignore[index]
+
+
+def test_generate_compilation_returns_frozen_payload_without_database_access(monkeypatch) -> None:
+    project_id = uuid4()
+    base_state = _base_state(project_id)
+    monkeypatch.setattr(
+        project_memory,
+        "_project_memory_base_state",
+        lambda _db, _project_id: base_state,
+    )
+    preview_id = str(uuid4())
+    compilation_input = project_memory.prepare_project_memory_compilation(
+        object(),  # type: ignore[arg-type]
+        project_id,
+        [
+            {
+                "id": preview_id,
+                "memory_batch_id": "current-batch",
+                "source_session_ids": [str(uuid4())],
+                "summary": "Prepared outside the final transaction",
+                "title": "Prepared memory",
+            }
+        ],
+    )
+    compilation_input = replace(compilation_input, provider="disabled")
+
+    prepared = project_memory.generate_project_memory_compilation(compilation_input)
+
+    assert prepared.base_guard == compilation_input.base_guard
+    assert prepared.project_id == project_id
+    assert prepared.payload is not None
+    assert prepared.payload["prompt_event_ids"][0] == preview_id
+    assert prepared.extra_metadata is not None
+    assert prepared.extra_metadata["source_memory_ids"][0] == preview_id
+    assert prepared.snapshot is not None
+    assert prepared.snapshot["source_memory_ids"][0] == preview_id
+    with pytest.raises(TypeError):
+        prepared.payload["title"] = "not allowed"  # type: ignore[index]
+
+
+def test_write_compilation_only_persists_prepared_values(monkeypatch) -> None:
+    project_id = uuid4()
+    prepared = project_memory.PreparedProjectMemoryCompilation(
+        base_guard="project-memory-v1:base",
+        existing_artifact_id=None,
+        extra_metadata=project_memory._freeze_json({"source_memory_ids": ["memory-id"]}),
+        payload=project_memory._freeze_json(
+            {
+                "changed_files": [],
+                "commit_sha": None,
+                "event_count": 1,
+                "first_event_id": None,
+                "generator": "test-generator",
+                "last_event_id": None,
+                "model": None,
+                "outcome": "Project Memory",
+                "prompt_event_ids": ["memory-id"],
+                "reason": "Current direction",
+                "sections": [],
+                "summary": "Current direction",
+                "tags": ["project-memory"],
+                "technologies": [],
+                "title": "PromptHub Project Memory",
+                "tool": "promty",
+            }
+        ),
+        project_id=project_id,
+        reuse_existing=False,
+        snapshot=project_memory._freeze_json({"source_memory_ids": ["memory-id"]}),
+    )
+    calls = []
+    artifact = SimpleNamespace(id=uuid4())
+
+    def write(_db, **kwargs):
+        calls.append(kwargs)
+        return artifact
+
+    monkeypatch.setattr(project_memory, "write_memory_artifact_payload", write)
+    monkeypatch.setattr(
+        project_memory,
+        "compile_project_memory_snapshot",
+        lambda *_args, **_kwargs: pytest.fail("write must not invoke the provider"),
+    )
+
+    result = project_memory.write_project_memory_compilation(
+        object(),  # type: ignore[arg-type]
+        prepared,
+    )
+
+    assert result is artifact
+    assert len(calls) == 1
+    assert calls[0]["project_id"] == project_id
+    assert calls[0]["payload"]["prompt_event_ids"] == ["memory-id"]
+
+
+def test_guard_recomputes_the_current_db_base(monkeypatch) -> None:
+    project_id = uuid4()
+    base_state = _base_state(project_id)
+    monkeypatch.setattr(
+        project_memory,
+        "_project_memory_base_state",
+        lambda _db, _project_id: replace(base_state, base_guard="project-memory-v1:current"),
+    )
+
+    assert (
+        project_memory.project_memory_compilation_guard(
+            object(),  # type: ignore[arg-type]
+            project_id,
+        )
+        == "project-memory-v1:current"
+    )
+
+
+def test_manual_compile_releases_transaction_before_provider(monkeypatch) -> None:
+    project_id = uuid4()
+    artifact = SimpleNamespace(id=uuid4())
+
+    class FakeDB:
+        transaction_open = True
+        commit_count = 0
+
+        def commit(self) -> None:
+            self.transaction_open = False
+            self.commit_count += 1
+
+        def rollback(self) -> None:
+            self.transaction_open = False
+
+    db = FakeDB()
+    compilation_input = SimpleNamespace(base_guard="guard")
+    prepared = SimpleNamespace(base_guard="guard")
+
+    monkeypatch.setattr(
+        workflows,
+        "project_for_user",
+        lambda *_args, **_kwargs: SimpleNamespace(id=project_id),
+    )
+    monkeypatch.setattr(
+        workflows,
+        "prepare_project_memory_compilation",
+        lambda *_args, **_kwargs: compilation_input,
+    )
+
+    def generate(_input):
+        assert db.transaction_open is False
+        return prepared
+
+    monkeypatch.setattr(workflows, "generate_project_memory_compilation", generate)
+    monkeypatch.setattr(
+        workflows,
+        "lock_project_memory",
+        lambda *_args, **_kwargs: setattr(db, "transaction_open", True),
+    )
+    monkeypatch.setattr(
+        workflows,
+        "project_memory_compilation_guard",
+        lambda *_args, **_kwargs: "guard",
+    )
+    monkeypatch.setattr(
+        workflows,
+        "write_project_memory_compilation",
+        lambda *_args, **_kwargs: artifact,
+    )
+    monkeypatch.setattr(
+        workflows,
+        "serialize_project_memory_snapshot",
+        lambda _artifact: {"artifact": str(_artifact.id)},
+    )
+
+    result = workflows.compile_project_memory_response(
+        db,  # type: ignore[arg-type]
+        project_id=project_id,
+        regenerate=False,
+        user=SimpleNamespace(),  # type: ignore[arg-type]
+    )
+
+    assert result == {"artifact": str(artifact.id)}
+    assert db.commit_count == 1

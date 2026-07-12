@@ -2,10 +2,8 @@ import { useEffect, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { API_URL } from "../../config";
 
-export type CollectorTool = "claude-code" | "codex-cli";
-
-export function setupCommandText(tool: CollectorTool = "codex-cli") {
-  return `npx promty-collector init --tool ${tool} --app-url ${window.location.origin} --api-url ${API_URL}`;
+export function setupCommandText() {
+  return `npx promty-collector init --app-url ${window.location.origin} --api-url ${API_URL}`;
 }
 
 export function SetupCommandBlock({
