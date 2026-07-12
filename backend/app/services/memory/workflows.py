@@ -23,12 +23,17 @@ from app.services.memory.serializers import (
     serialize_memory_artifact_summary,
 )
 from app.services.memory.artifacts import (
-    compile_project_memory,
     list_project_memory_artifacts,
     generate_due_memory_artifacts_for_session,
     get_latest_project_memory,
     list_project_memory_pending_ranges,
     update_project_memory_snapshot,
+)
+from app.services.memory.project_memory import (
+    generate_project_memory_compilation,
+    prepare_project_memory_compilation,
+    project_memory_compilation_guard,
+    write_project_memory_compilation,
 )
 from app.services.memory.batches import (
     generate_project_memory_batch,
@@ -271,13 +276,32 @@ def compile_project_memory_response(
     user: User,
 ) -> dict[str, Any]:
     project = project_for_user(db, project_id, user)
-    lock_project_memory(db, project.id)
-    artifact = compile_project_memory(
-        db,
-        force_regenerate=regenerate,
-        project_id=project.id,
+    authorized_project_id = project.id
+    for _attempt in range(2):
+        compilation_input = prepare_project_memory_compilation(
+            db,
+            authorized_project_id,
+            force_regenerate=regenerate,
+        )
+        db.commit()
+        prepared = generate_project_memory_compilation(compilation_input)
+
+        lock_project_memory(db, authorized_project_id)
+        if (
+            project_memory_compilation_guard(db, authorized_project_id)
+            != prepared.base_guard
+        ):
+            db.rollback()
+            continue
+        artifact = write_project_memory_compilation(db, prepared)
+        return serialize_project_memory_snapshot(artifact) or {
+            "artifact": None,
+            "snapshot": None,
+        }
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="Project Memory changed during compilation. Try again.",
     )
-    return serialize_project_memory_snapshot(artifact) or {"artifact": None, "snapshot": None}
 
 
 def read_project_memory_response(

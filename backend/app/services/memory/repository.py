@@ -160,6 +160,7 @@ def _event_range_metadata(
 def write_memory_artifact_payload(
     db: DBSession,
     *,
+    artifact_id: UUID | None = None,
     artifact_type: str,
     event_id: UUID | None,
     extra_metadata: dict[str, Any],
@@ -178,13 +179,18 @@ def write_memory_artifact_payload(
         .with_for_update()
     ).scalar_one_or_none()
     if artifact is None:
+        artifact_values: dict[str, Any] = {
+            "event_id": event_id,
+            "project_id": project_id,
+            "session_id": session_id,
+            "storage_key": storage_key,
+            "title": payload["title"],
+            "type": artifact_type,
+        }
+        if artifact_id is not None:
+            artifact_values["id"] = artifact_id
         artifact = Artifact(
-            project_id=project_id,
-            session_id=session_id,
-            event_id=event_id,
-            type=artifact_type,
-            title=payload["title"],
-            storage_key=storage_key,
+            **artifact_values,
         )
         try:
             with db.begin_nested():
@@ -200,6 +206,8 @@ def write_memory_artifact_payload(
                 )
                 .with_for_update()
             ).scalar_one()
+    if artifact_id is not None and artifact.id != artifact_id:
+        raise ValueError("Memory artifact storage key belongs to a different artifact")
 
     generation_metadata = {
         "event_count": payload["event_count"],

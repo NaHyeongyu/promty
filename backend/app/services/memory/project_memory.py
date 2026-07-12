@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import dataclass
+import hashlib
+import json
+from types import MappingProxyType
+from typing import Any, Mapping
 from uuid import UUID
 
 from sqlalchemy import desc, func, select
@@ -27,6 +31,76 @@ from app.services.memory.providers import (
 )
 from app.services.memory.repository import write_memory_artifact_payload
 from app.services.memory_pipeline import compile_project_memory_snapshot
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectMemoryCompilationInput:
+    base_guard: str
+    existing_artifact_id: UUID | None
+    force_regenerate: bool
+    previous_snapshot: Mapping[str, Any] | None
+    project_context: Mapping[str, Any]
+    project_id: UUID
+    provider: str
+    reuse_existing: bool
+    source_memory_contexts: tuple[Mapping[str, Any], ...]
+    source_memory_ids: tuple[str, ...]
+    source_session_ids: tuple[str, ...]
+    memory_batch_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedProjectMemoryCompilation:
+    base_guard: str
+    existing_artifact_id: UUID | None
+    extra_metadata: Mapping[str, Any] | None
+    payload: Mapping[str, Any] | None
+    project_id: UUID
+    reuse_existing: bool
+    snapshot: Mapping[str, Any] | None
+
+
+@dataclass(frozen=True, slots=True)
+class _ProjectMemoryBaseState:
+    base_guard: str
+    existing_artifact_id: UUID | None
+    existing_source_memory_ids: tuple[str, ...]
+    previous_snapshot: Mapping[str, Any] | None
+    project_context: Mapping[str, Any]
+    source_memory_contexts: tuple[Mapping[str, Any], ...]
+
+
+class ProjectMemoryCompilationConflict(RuntimeError):
+    """The compilation base changed while provider generation was in flight."""
+
+
+def _freeze_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType({str(key): _freeze_json(item) for key, item in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_json(item) for item in value)
+    if value is None or isinstance(value, (bool, float, int, str)):
+        return value
+    raise TypeError("Project Memory compilation values must be JSON-compatible")
+
+
+def _thaw_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _thaw_json(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_json(item) for item in value]
+    return value
+
+
+def _guard_token(value: Mapping[str, Any]) -> str:
+    canonical = json.dumps(
+        _thaw_json(value),
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return f"project-memory-v1:{digest}"
 
 
 def _source_memory_context(artifact: Artifact) -> dict[str, Any]:
@@ -64,7 +138,7 @@ def _latest_project_memory_snapshot(db: DBSession, project_id: UUID) -> Artifact
             Artifact.project_id == project_id,
             Artifact.type == PROJECT_MEMORY_ARTIFACT_TYPE,
         )
-        .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
+        .order_by(desc(Artifact.updated_at), desc(Artifact.created_at), desc(Artifact.id))
         .limit(1)
     ).scalar_one_or_none()
 
@@ -82,20 +156,88 @@ def _project_context(project: Project) -> dict[str, Any]:
     }
 
 
-def _local_project_memory_snapshot(
+def _project_memory_base_state(
+    db: DBSession,
+    project_id: UUID,
+) -> _ProjectMemoryBaseState:
+    project = db.get(Project, project_id)
+    if project is None:
+        raise ValueError("Project not found")
+    existing = _latest_project_memory_snapshot(db, project_id)
+    source_memories = list_project_memory_artifacts(
+        db,
+        project_id=project_id,
+        limit=100,
+    )
+    project_context = _project_context(project)
+    source_memory_contexts = [_source_memory_context(memory) for memory in source_memories]
+    existing_metadata = (
+        existing.metadata_ if existing and isinstance(existing.metadata_, dict) else {}
+    )
+    previous_snapshot = (
+        existing_metadata.get("project_memory_snapshot")
+        if isinstance(existing_metadata.get("project_memory_snapshot"), dict)
+        else None
+    )
+    existing_source_memory_ids = (
+        existing_metadata.get("source_memory_ids")
+        if isinstance(existing_metadata.get("source_memory_ids"), list)
+        else []
+    )
+    guard_context = {
+        "existing_project_memory": (
+            {
+                "generator": existing.generator,
+                "id": str(existing.id),
+                "project_memory_snapshot": previous_snapshot,
+                "review_state": existing_metadata.get("review_state"),
+                "source_memory_ids": existing_source_memory_ids,
+                "updated_at": iso(existing.updated_at),
+            }
+            if existing is not None
+            else None
+        ),
+        "project_context": project_context,
+        "source_memories": source_memory_contexts,
+    }
+    return _ProjectMemoryBaseState(
+        base_guard=_guard_token(guard_context),
+        existing_artifact_id=existing.id if existing is not None else None,
+        existing_source_memory_ids=tuple(
+            value for value in existing_source_memory_ids if isinstance(value, str) and value
+        ),
+        previous_snapshot=_freeze_json(previous_snapshot)
+        if previous_snapshot is not None
+        else None,
+        project_context=_freeze_json(project_context),
+        source_memory_contexts=tuple(_freeze_json(memory) for memory in source_memory_contexts),
+    )
+
+
+def project_memory_compilation_guard(db: DBSession, project_id: UUID) -> str:
+    """Return a deterministic token for the DB state used by Project Memory compilation."""
+
+    return _project_memory_base_state(db, project_id).base_guard
+
+
+def _local_project_memory_snapshot_from_context(
     *,
-    previous_snapshot: Artifact | None,
-    project: Project,
-    verified_memories: list[Artifact],
+    project_context: Mapping[str, Any],
+    requested_provider: str,
+    source_memory_contexts: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    source_memory_ids = [str(memory.id) for memory in verified_memories]
+    source_memory_ids = [
+        memory_id
+        for memory in source_memory_contexts
+        if isinstance((memory_id := memory.get("id")), str) and memory_id
+    ]
     product_goal = (
-        project.description
+        project_context.get("description")
         or "Promty captures generated AI coding memory for future project context."
     )
     current_direction = (
-        verified_memories[0].summary
-        if verified_memories and verified_memories[0].summary
+        source_memory_contexts[0].get("summary")
+        if source_memory_contexts and source_memory_contexts[0].get("summary")
         else "No generated memory has established a detailed current direction yet."
     )
     workflow = [
@@ -109,11 +251,12 @@ def _local_project_memory_snapshot(
     ]
     important_decisions = [
         {
-            "decision": memory.title,
-            "reason": memory.reason or memory.summary or "",
-            "source_memory_ids": [str(memory.id)],
+            "decision": memory.get("title") or "Untitled memory",
+            "reason": memory.get("reason") or memory.get("summary") or "",
+            "source_memory_ids": [memory["id"]],
         }
-        for memory in verified_memories[:12]
+        for memory in source_memory_contexts[:12]
+        if isinstance(memory.get("id"), str) and memory.get("id")
     ]
     technical_assumptions = [
         "Project Memory uses generated and user-edited memories by default.",
@@ -147,10 +290,10 @@ def _local_project_memory_snapshot(
             ),
         ]
     )
-    return ProjectMemorySnapshot.parse_obj(
+    return ProjectMemorySnapshot.model_validate(
         {
             "body_markdown": body_markdown,
-            "confidence": 0.45 if verified_memories else 0.2,
+            "confidence": 0.45 if source_memory_contexts else 0.2,
             "sections": {
                 "core_workflow": workflow,
                 "current_direction": current_direction,
@@ -168,16 +311,16 @@ def _local_project_memory_snapshot(
             "snapshot_type": "project_memory",
             "source_memory_ids": source_memory_ids,
             "warnings": ["Local fallback compiler was used."]
-            if provider_name(settings.project_memory_generator) in {"gemini", "openai"}
+            if requested_provider in {"gemini", "openai"}
             else [],
         }
-    ).dict()
+    ).model_dump()
 
 
 def _project_memory_payload(
     *,
     generator: str,
-    project: Project,
+    project_context: Mapping[str, Any],
     snapshot: dict[str, Any],
 ) -> dict[str, Any]:
     sections = snapshot.get("sections") if isinstance(snapshot.get("sections"), dict) else {}
@@ -214,9 +357,9 @@ def _project_memory_payload(
         "reason": sections.get("current_direction") or "Compiled from verified memories.",
         "sections": [section for section in rendered_sections if section["summary"]],
         "summary": sections.get("current_direction") or "Compiled project memory snapshot.",
-        "tags": sorted(set([*(project.tags or []), "project-memory"]))[:12],
+        "tags": sorted(set([*(project_context.get("tags") or []), "project-memory"]))[:12],
         "technologies": [],
-        "title": f"{project.name} Project Memory",
+        "title": f"{project_context.get('name') or 'Project'} Project Memory",
         "tool": "promty",
     }
 
@@ -231,7 +374,7 @@ def list_project_memory_artifacts(
         db.execute(
             select(Artifact)
             .where(Artifact.project_id == project_id, Artifact.type == MEMORY_ARTIFACT_TYPE)
-            .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
+            .order_by(desc(Artifact.updated_at), desc(Artifact.created_at), desc(Artifact.id))
             .limit(limit * 3)
         ).scalars()
     )
@@ -279,7 +422,7 @@ def list_project_memory_history_artifacts(
                 Artifact.project_id == project_id,
                 Artifact.type.in_([MEMORY_ARTIFACT_TYPE, PROJECT_MEMORY_ARTIFACT_TYPE]),
             )
-            .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
+            .order_by(desc(Artifact.updated_at), desc(Artifact.created_at), desc(Artifact.id))
             .limit(limit)
         ).scalars()
     )
@@ -300,83 +443,135 @@ def count_project_memory_history_artifacts(
     return db.scalar(select(func.count(Artifact.id)).where(*filters)) or 0
 
 
-def compile_project_memory(
+def _required_context_sort_key(context: Mapping[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(context.get("updated_at") or ""),
+        str(context.get("created_at") or ""),
+        str(context.get("id") or ""),
+    )
+
+
+def prepare_project_memory_compilation(
     db: DBSession,
+    project_id: UUID,
+    required_source_memory_contexts: list[dict[str, Any]] | None = None,
     *,
     force_regenerate: bool = False,
-    project_id: UUID,
-    required_source_memories: list[Artifact] | None = None,
-) -> Artifact:
-    project = db.get(Project, project_id)
-    if project is None:
-        raise ValueError("Project not found")
-    existing = _latest_project_memory_snapshot(db, project_id)
-    recent_source_memories = list_project_memory_artifacts(
-        db,
-        project_id=project_id,
-        limit=100,
-    )
-    required_source_memories = sorted(
-        required_source_memories or [],
-        key=lambda memory: (memory.updated_at, memory.created_at),
+) -> ProjectMemoryCompilationInput:
+    """Capture all DB-backed compiler inputs as detached, immutable values."""
+
+    base_state = _project_memory_base_state(db, project_id)
+    raw_required_contexts = required_source_memory_contexts or []
+    if any(not isinstance(context, Mapping) for context in raw_required_contexts):
+        raise ValueError("Required source memory contexts must be objects")
+    sorted_required_contexts = sorted(
+        [_thaw_json(context) for context in raw_required_contexts],
+        key=_required_context_sort_key,
         reverse=True,
     )
-    required_ids = {memory.id for memory in required_source_memories}
-    source_memories = [
-        *required_source_memories,
-        *(memory for memory in recent_source_memories if memory.id not in required_ids),
+    invalid_required_contexts = [
+        context
+        for context in sorted_required_contexts
+        if not isinstance(context.get("id"), str) or not context.get("id")
     ]
-    source_memory_ids = [str(memory.id) for memory in source_memories]
-    source_session_ids = list(
+    if invalid_required_contexts:
+        raise ValueError("Required source memory contexts must include a non-empty string id")
+    required_contexts_by_id: dict[str, dict[str, Any]] = {}
+    for context in sorted_required_contexts:
+        required_contexts_by_id.setdefault(context["id"], context)
+    required_contexts = list(required_contexts_by_id.values())
+    required_ids = {context["id"] for context in required_contexts}
+    source_memory_contexts = [
+        *required_contexts,
+        *(
+            _thaw_json(context)
+            for context in base_state.source_memory_contexts
+            if context.get("id") not in required_ids
+        ),
+    ]
+    source_memory_ids = tuple(
+        context["id"]
+        for context in source_memory_contexts
+        if isinstance(context.get("id"), str) and context.get("id")
+    )
+    source_session_ids = tuple(
         dict.fromkeys(
             source_session_id
-            for memory in source_memories
+            for memory in source_memory_contexts
             for source_session_id in (
-                (memory.metadata_ or {}).get("source_session_ids")
-                if isinstance(memory.metadata_, dict)
-                and isinstance(memory.metadata_.get("source_session_ids"), list)
-                else [str(memory.session_id)]
-                if memory.session_id
+                memory.get("source_session_ids")
+                if isinstance(memory.get("source_session_ids"), list)
+                else [memory.get("session_id")]
+                if memory.get("session_id")
                 else []
             )
             if isinstance(source_session_id, str) and source_session_id
         )
     )
-    memory_batch_ids = list(
+    memory_batch_ids = tuple(
         dict.fromkeys(
-            memory_batch_id
-            for memory in source_memories
-            if isinstance(memory.metadata_, dict)
-            and isinstance((memory_batch_id := memory.metadata_.get("memory_batch_id")), str)
-            and memory_batch_id
+            memory.get("memory_batch_id")
+            for memory in source_memory_contexts
+            if isinstance(memory.get("memory_batch_id"), str) and memory.get("memory_batch_id")
         )
     )
-    existing_metadata = (
-        existing.metadata_ if existing and isinstance(existing.metadata_, dict) else {}
+    return ProjectMemoryCompilationInput(
+        base_guard=base_state.base_guard,
+        existing_artifact_id=base_state.existing_artifact_id,
+        force_regenerate=force_regenerate,
+        previous_snapshot=base_state.previous_snapshot,
+        project_context=base_state.project_context,
+        project_id=project_id,
+        provider=provider_name(settings.project_memory_generator),
+        reuse_existing=(
+            base_state.existing_artifact_id is not None
+            and not force_regenerate
+            and base_state.existing_source_memory_ids == source_memory_ids
+        ),
+        source_memory_contexts=tuple(_freeze_json(context) for context in source_memory_contexts),
+        source_memory_ids=source_memory_ids,
+        source_session_ids=source_session_ids,
+        memory_batch_ids=memory_batch_ids,
     )
-    if (
-        existing is not None
-        and not force_regenerate
-        and existing_metadata.get("source_memory_ids") == source_memory_ids
-    ):
-        return existing
 
-    previous_snapshot = existing
-    local_snapshot = _local_project_memory_snapshot(
-        previous_snapshot=previous_snapshot,
-        project=project,
-        verified_memories=source_memories,
+
+def generate_project_memory_compilation(
+    compilation_input: ProjectMemoryCompilationInput,
+) -> PreparedProjectMemoryCompilation:
+    """Run Project Memory generation using detached input and no database access."""
+
+    if compilation_input.reuse_existing:
+        return PreparedProjectMemoryCompilation(
+            base_guard=compilation_input.base_guard,
+            existing_artifact_id=compilation_input.existing_artifact_id,
+            extra_metadata=None,
+            payload=None,
+            project_id=compilation_input.project_id,
+            reuse_existing=True,
+            snapshot=None,
+        )
+
+    project_context = _thaw_json(compilation_input.project_context)
+    previous_snapshot = (
+        _thaw_json(compilation_input.previous_snapshot)
+        if compilation_input.previous_snapshot is not None
+        else None
     )
-    source_memory_context = [_source_memory_context(memory) for memory in source_memories]
+    source_memory_contexts = [
+        _thaw_json(context) for context in compilation_input.source_memory_contexts
+    ]
+    local_snapshot = _local_project_memory_snapshot_from_context(
+        project_context=project_context,
+        requested_provider=compilation_input.provider,
+        source_memory_contexts=source_memory_contexts,
+    )
     context = {
-        "previous_project_memory": previous_snapshot.metadata_.get("project_memory_snapshot")
-        if previous_snapshot and isinstance(previous_snapshot.metadata_, dict)
-        else None,
-        "project_context": _project_context(project),
-        "source_memories": source_memory_context,
-        "verified_memories": source_memory_context,
+        "previous_project_memory": previous_snapshot,
+        "project_context": project_context,
+        "source_memories": source_memory_contexts,
+        "verified_memories": source_memory_contexts,
     }
-    provider = provider_name(settings.project_memory_generator)
+    provider = compilation_input.provider
     if provider not in {"gemini", "openai"}:
         snapshot = local_snapshot
         generator = LOCAL_MEMORY_GENERATOR
@@ -397,32 +592,79 @@ def compile_project_memory(
 
     snapshot = {
         **snapshot,
-        "source_memory_ids": source_memory_ids,
+        "source_memory_ids": list(compilation_input.source_memory_ids),
     }
-
     payload = _project_memory_payload(
         generator=generator,
-        project=project,
+        project_context=project_context,
         snapshot=snapshot,
     )
+    extra_metadata = {
+        "memory_batch_ids": list(compilation_input.memory_batch_ids),
+        "memory_scope": "project",
+        "project_memory_snapshot": snapshot,
+        "review_state": REVIEW_STATE_GENERATED,
+        "source_memory_ids": snapshot.get("source_memory_ids")
+        or list(compilation_input.source_memory_ids),
+        "source_session_ids": list(compilation_input.source_session_ids),
+        **generation_metadata,
+    }
+    return PreparedProjectMemoryCompilation(
+        base_guard=compilation_input.base_guard,
+        existing_artifact_id=compilation_input.existing_artifact_id,
+        extra_metadata=_freeze_json(extra_metadata),
+        payload=_freeze_json(payload),
+        project_id=compilation_input.project_id,
+        reuse_existing=False,
+        snapshot=_freeze_json(snapshot),
+    )
+
+
+def write_project_memory_compilation(
+    db: DBSession,
+    prepared: PreparedProjectMemoryCompilation,
+) -> Artifact:
+    """Persist a prepared compilation without invoking a model provider."""
+
+    if prepared.reuse_existing:
+        if prepared.existing_artifact_id is None:
+            raise ProjectMemoryCompilationConflict("Reusable Project Memory artifact is missing")
+        existing = db.get(Artifact, prepared.existing_artifact_id)
+        if existing is None or existing.project_id != prepared.project_id:
+            raise ProjectMemoryCompilationConflict("Reusable Project Memory artifact changed")
+        return existing
+    if prepared.payload is None or prepared.extra_metadata is None:
+        raise ValueError("Prepared Project Memory payload is incomplete")
     return write_memory_artifact_payload(
         db,
+        artifact_id=prepared.existing_artifact_id,
         artifact_type=PROJECT_MEMORY_ARTIFACT_TYPE,
         event_id=None,
-        extra_metadata={
-            "memory_batch_ids": memory_batch_ids,
-            "memory_scope": "project",
-            "project_memory_snapshot": snapshot,
-            "review_state": REVIEW_STATE_GENERATED,
-            "source_memory_ids": snapshot.get("source_memory_ids") or source_memory_ids,
-            "source_session_ids": source_session_ids,
-            **generation_metadata,
-        },
-        payload=payload,
-        project_id=project_id,
+        extra_metadata=_thaw_json(prepared.extra_metadata),
+        payload=_thaw_json(prepared.payload),
+        project_id=prepared.project_id,
         session_id=None,
-        storage_key=f"memory/project/{project_id}/latest",
+        storage_key=f"memory/project/{prepared.project_id}/latest",
     )
+
+
+def compile_project_memory(
+    db: DBSession,
+    *,
+    force_regenerate: bool = False,
+    project_id: UUID,
+    required_source_memories: list[Artifact] | None = None,
+) -> Artifact:
+    compilation_input = prepare_project_memory_compilation(
+        db,
+        project_id,
+        [_source_memory_context(memory) for memory in (required_source_memories or [])],
+        force_regenerate=force_regenerate,
+    )
+    prepared = generate_project_memory_compilation(compilation_input)
+    if project_memory_compilation_guard(db, project_id) != prepared.base_guard:
+        raise ProjectMemoryCompilationConflict("Project Memory compilation base changed")
+    return write_project_memory_compilation(db, prepared)
 
 
 def update_project_memory_snapshot(
@@ -444,14 +686,17 @@ def update_project_memory_snapshot(
         else None
     )
     if previous_snapshot is None:
-        previous_snapshot = _local_project_memory_snapshot(
-            previous_snapshot=existing,
-            project=project,
-            verified_memories=list_project_memory_artifacts(
-                db,
-                project_id=project_id,
-                limit=100,
-            ),
+        previous_snapshot = _local_project_memory_snapshot_from_context(
+            project_context=_project_context(project),
+            requested_provider=provider_name(settings.project_memory_generator),
+            source_memory_contexts=[
+                _source_memory_context(memory)
+                for memory in list_project_memory_artifacts(
+                    db,
+                    project_id=project_id,
+                    limit=100,
+                )
+            ],
         )
     snapshot = {
         **previous_snapshot,
@@ -467,7 +712,7 @@ def update_project_memory_snapshot(
     }
     payload = _project_memory_payload(
         generator=existing.generator if existing and existing.generator else LOCAL_MEMORY_GENERATOR,
-        project=project,
+        project_context=_project_context(project),
         snapshot=snapshot,
     )
     return write_memory_artifact_payload(

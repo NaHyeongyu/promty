@@ -14,6 +14,8 @@ import {
 import { isMockGithubUnlinkedProject } from "../workspace/previewData";
 import type { Project, ProjectSummary } from "../workspace/types";
 
+const PROJECT_MEMORY_REFRESH_TIMEOUT_MS = 15_000;
+
 type UseProjectActionsOptions = {
   applyProjectSummaryToDetail: (updatedProject: ProjectSummary) => void;
   clearRepositoryFiles: () => void;
@@ -46,6 +48,13 @@ export function useProjectActions({
 }: UseProjectActionsOptions) {
   const [bookmarkUpdatingProjectId, setBookmarkUpdatingProjectId] = useState<string | null>(
     null,
+  );
+  const [activeProjectMemoryGenerationIds, setActiveProjectMemoryGenerationIds] =
+    useState<Set<string>>(() => new Set());
+  const [delayedProjectMemoryGenerationIds, setDelayedProjectMemoryGenerationIds] =
+    useState<Set<string>>(() => new Set());
+  const projectMemoryGenerationRequestsRef = useRef(
+    new Map<string, Promise<ProjectMemoryGenerationResponse>>(),
   );
   const selectedProjectIdRef = useRef(selectedProjectId);
   const selectedProjectRef = useRef(selectedProject);
@@ -98,7 +107,7 @@ export function useProjectActions({
     }
   };
 
-  const generateProjectMemory = async (projectId: string) => {
+  const runProjectMemoryGeneration = async (projectId: string) => {
     let payload: ProjectMemoryGenerationResponse;
     try {
       payload = await requestProjectMemoryGeneration(projectId);
@@ -106,20 +115,33 @@ export function useProjectActions({
       return rethrowAfterUnauthorized(error);
     }
 
+    if (
+      payload.status === "generation_delayed" ||
+      payload.status === "generation_in_progress" ||
+      payload.status === "generation_failed"
+    ) {
+      return payload;
+    }
+
     let refreshFailed = false;
+    const refreshController = new AbortController();
+    const refreshTimeoutId = window.setTimeout(
+      () => refreshController.abort(),
+      PROJECT_MEMORY_REFRESH_TIMEOUT_MS,
+    );
     try {
       const shouldApplyDetail = () => selectedProjectIdRef.current === projectId;
       const detailRefresh = shouldApplyDetail()
         ? loadProjectDetail(
             projectId,
             selectedProjectRef.current,
-            undefined,
+            refreshController.signal,
             shouldApplyDetail,
           )
         : Promise.resolve();
       const [, projectSummaries] = await Promise.all([
         detailRefresh,
-        fetchProjectSummaries(),
+        fetchProjectSummaries(refreshController.signal),
       ]);
       const updatedProject = projectSummaries.find(
         (project) => project.id === projectId,
@@ -132,6 +154,8 @@ export function useProjectActions({
         return rethrowAfterUnauthorized(error);
       }
       refreshFailed = true;
+    } finally {
+      window.clearTimeout(refreshTimeoutId);
     }
 
     return {
@@ -143,6 +167,50 @@ export function useProjectActions({
             ? `${payload.message} Project status could not be refreshed.`
             : payload.message,
     };
+  };
+
+  const generateProjectMemory = (
+    projectId: string,
+  ): Promise<ProjectMemoryGenerationResponse> => {
+    const existingRequest = projectMemoryGenerationRequestsRef.current.get(projectId);
+    if (existingRequest) {
+      return existingRequest;
+    }
+
+    setActiveProjectMemoryGenerationIds((current) => {
+      const next = new Set(current);
+      next.add(projectId);
+      return next;
+    });
+
+    const request = runProjectMemoryGeneration(projectId).then((result) => {
+      setDelayedProjectMemoryGenerationIds((current) => {
+        const next = new Set(current);
+        if (result.status === "generation_delayed") {
+          next.add(projectId);
+        } else {
+          next.delete(projectId);
+        }
+        return next;
+      });
+      return result;
+    });
+    let trackedRequest: Promise<ProjectMemoryGenerationResponse>;
+    trackedRequest = request.finally(() => {
+      if (
+        projectMemoryGenerationRequestsRef.current.get(projectId) !== trackedRequest
+      ) {
+        return;
+      }
+      projectMemoryGenerationRequestsRef.current.delete(projectId);
+      setActiveProjectMemoryGenerationIds((current) => {
+        const next = new Set(current);
+        next.delete(projectId);
+        return next;
+      });
+    });
+    projectMemoryGenerationRequestsRef.current.set(projectId, trackedRequest);
+    return trackedRequest;
   };
 
   const saveRepositoryConnection = async (
@@ -205,8 +273,10 @@ export function useProjectActions({
   };
 
   return {
+    activeProjectMemoryGenerationIds,
     bookmarkUpdatingProjectId,
     createProjectFromRepository,
+    delayedProjectMemoryGenerationIds,
     generateProjectMemory,
     saveProjectDescription,
     saveProjectMetadata,

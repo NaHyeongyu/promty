@@ -19,6 +19,7 @@ export type ProjectDetailResourcesResponse = ProjectDetailApiResponse & {
 };
 
 export type ProjectMemoryGenerationStatus =
+  | "generation_delayed"
   | "generation_in_progress"
   | "memory_generated"
   | "no_memory"
@@ -44,6 +45,9 @@ export type ProjectCreatePayload = {
   name?: string | null;
 };
 
+const PROJECT_MEMORY_GENERATION_TIMEOUT_MS = 10 * 60 * 1_000;
+const PROJECT_MEMORY_POLL_INTERVAL_MS = 2_000;
+
 function projectMemoryIdempotencyStorageKey(projectId: string) {
   return `promty:project-memory-batch:${projectId}`;
 }
@@ -63,8 +67,38 @@ function clearProjectMemoryIdempotencyKey(projectId: string) {
   window.sessionStorage.removeItem(projectMemoryIdempotencyStorageKey(projectId));
 }
 
-export function fetchProjectSummaries(): Promise<ProjectSummary[]> {
-  return requestJson<ProjectSummary[]>("/api/projects", {}, {
+function delayedProjectMemoryResponse(
+  response?: ProjectMemoryGenerationResponse,
+): ProjectMemoryGenerationResponse {
+  return {
+    ...(response ?? { batch_id: "" }),
+    message: "This update is taking longer than expected. Check its status to continue.",
+    retryable: true,
+    status: "generation_delayed",
+  };
+}
+
+function waitForProjectMemoryPoll(delayMs: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      signal.removeEventListener("abort", handleAbort);
+      resolve();
+    }, delayMs);
+    const handleAbort = () => {
+      window.clearTimeout(timeoutId);
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", handleAbort, { once: true });
+  });
+}
+
+export function fetchProjectSummaries(signal?: AbortSignal): Promise<ProjectSummary[]> {
+  return requestJson<ProjectSummary[]>("/api/projects", { signal }, {
     errorMessage: "Projects request failed",
     unauthorizedMessage: "Sign in again before loading projects.",
   });
@@ -161,31 +195,60 @@ export function refreshMemoryReviewQueue(
 export async function generateProjectMemory(
   projectId: string,
 ): Promise<ProjectMemoryGenerationResponse> {
-  let response = await requestJsonBody<ProjectMemoryGenerationResponse>(
-    `/api/projects/${encodeURIComponent(projectId)}/memory/generate`,
-    "POST",
-    { idempotency_key: projectMemoryIdempotencyKey(projectId) },
-    {
-      errorMessage: "Project memory generation failed",
-      unauthorizedMessage: "Sign in again before creating project memory.",
-    },
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(
+    () => controller.abort(),
+    PROJECT_MEMORY_GENERATION_TIMEOUT_MS,
   );
-  for (let attempt = 0; response.status === "generation_in_progress" && attempt < 300; attempt += 1) {
-    await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+  let response: ProjectMemoryGenerationResponse | undefined;
+
+  try {
     response = await requestJson<ProjectMemoryGenerationResponse>(
-      `/api/projects/${encodeURIComponent(projectId)}/memory/batches/${encodeURIComponent(
-        response.batch_id,
-      )}`,
-      undefined,
+      `/api/projects/${encodeURIComponent(projectId)}/memory/generate`,
       {
-        errorMessage: "Project memory status request failed",
-        unauthorizedMessage: "Sign in again before checking project memory.",
+        body: JSON.stringify({
+          idempotency_key: projectMemoryIdempotencyKey(projectId),
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+        signal: controller.signal,
+      },
+      {
+        errorMessage: "Project memory generation failed",
+        unauthorizedMessage: "Sign in again before creating project memory.",
       },
     );
+    while (response.status === "generation_in_progress") {
+      await waitForProjectMemoryPoll(
+        PROJECT_MEMORY_POLL_INTERVAL_MS,
+        controller.signal,
+      );
+      response = await requestJson<ProjectMemoryGenerationResponse>(
+        `/api/projects/${encodeURIComponent(projectId)}/memory/batches/${encodeURIComponent(
+          response.batch_id,
+        )}`,
+        { signal: controller.signal },
+        {
+          errorMessage: "Project memory status request failed",
+          unauthorizedMessage: "Sign in again before checking project memory.",
+        },
+      );
+    }
+  } catch (error) {
+    if (controller.signal.aborted) {
+      return delayedProjectMemoryResponse(response);
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+
+  if (!response) {
+    return delayedProjectMemoryResponse();
   }
   if (
-    response.status !== "generation_in_progress" &&
-    (response.status !== "generation_failed" || response.retryable === false)
+    ["memory_generated", "no_memory", "no_pending"].includes(response.status) ||
+    (response.status === "generation_failed" && response.retryable === false)
   ) {
     clearProjectMemoryIdempotencyKey(projectId);
   }

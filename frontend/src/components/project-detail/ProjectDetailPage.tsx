@@ -29,6 +29,8 @@ type ProjectDetailPageProps = {
   isLoading?: boolean;
   isRefreshing?: boolean;
   isBookmarkUpdating?: boolean;
+  isProjectMemoryGenerationActive?: boolean;
+  isProjectMemoryGenerationDelayed?: boolean;
   isShareCopied?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onConnectRepository?: () => void;
@@ -95,6 +97,8 @@ function ProjectPanel({
   data,
   errorMessage,
   isLoading,
+  isProjectMemoryGenerationActive,
+  isProjectMemoryGenerationDelayed,
   onActivityNavigationChange,
   onGenerateProjectMemory,
   onLoadMemoryArtifacts,
@@ -109,6 +113,8 @@ function ProjectPanel({
   data: ProjectDetailData;
   errorMessage?: string | null;
   isLoading?: boolean;
+  isProjectMemoryGenerationActive?: boolean;
+  isProjectMemoryGenerationDelayed?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onGenerateProjectMemory?: () => Promise<MemoryGenerationResult>;
   onLoadMemoryArtifacts?: (limit: number) => Promise<ProjectMemoryArtifact[]>;
@@ -158,6 +164,8 @@ function ProjectPanel({
     return (
       <MemoryPanel
         data={data}
+        isProjectMemoryGenerationActive={isProjectMemoryGenerationActive}
+        isProjectMemoryGenerationDelayed={isProjectMemoryGenerationDelayed}
         onGenerateProjectMemory={onGenerateProjectMemory}
         onLoadMemoryArtifacts={onLoadMemoryArtifacts}
         onOpenSession={(sessionId) => {
@@ -208,6 +216,8 @@ export function ProjectDetailPage({
   isLoading,
   isRefreshing,
   isBookmarkUpdating,
+  isProjectMemoryGenerationActive,
+  isProjectMemoryGenerationDelayed,
   isShareCopied,
   onActivityNavigationChange,
   onGenerateProjectMemory,
@@ -268,6 +278,8 @@ export function ProjectDetailPage({
           data={data}
           errorMessage={errorMessage}
           isLoading={isLoading}
+          isProjectMemoryGenerationActive={isProjectMemoryGenerationActive}
+          isProjectMemoryGenerationDelayed={isProjectMemoryGenerationDelayed}
           onActivityNavigationChange={onActivityNavigationChange}
           onGenerateProjectMemory={onGenerateProjectMemory}
           onLoadMemoryArtifacts={onLoadMemoryArtifacts}

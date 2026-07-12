@@ -4,12 +4,11 @@ import { fetchCurrentUser, logoutSession } from "./api/auth";
 import { UnauthorizedError } from "./api/client";
 import { AdminDashboard } from "./components/app/AdminDashboard";
 import { AccountWorkspaceRoute } from "./components/app/AccountWorkspaceRoute";
-import { WebLoginPage } from "./components/app/AuthScreens";
+import { AuthLoadingPage, WebLoginPage } from "./components/app/AuthScreens";
 import { ProjectsPage } from "./components/app/ProjectsPage";
 import { ReviewQueueDrawer } from "./components/app/ReviewQueueDrawer";
 import { RepositoryConnector } from "./components/app/RepositoryConnector";
 import { WorkspaceSidebar } from "./components/app/WorkspaceSidebar";
-import { LoadingScreen } from "./components/app/WorkspaceStates";
 import {
   ProjectDetailPage,
   type ActivityNavigationState,
@@ -208,8 +207,10 @@ export function AuthenticatedApp() {
   const projectMatchesRouteKey = (project: Project, routeKey: string) =>
     projectRouteKey(project) === routeKey || project.id === routeKey;
   const {
+    activeProjectMemoryGenerationIds,
     bookmarkUpdatingProjectId,
     createProjectFromRepository,
+    delayedProjectMemoryGenerationIds,
     generateProjectMemory,
     saveProjectDescription,
     saveProjectMetadata,
@@ -506,7 +507,7 @@ export function AuthenticatedApp() {
   };
 
   if (authStatus === "loading") {
-    return <LoadingScreen />;
+    return <AuthLoadingPage />;
   }
 
   if (authStatus === "unauthenticated") {
@@ -687,6 +688,16 @@ export function AuthenticatedApp() {
                   ? bookmarkUpdatingProjectId === selectedProject.id
                   : false
               }
+              isProjectMemoryGenerationActive={
+                activeProjectId
+                  ? activeProjectMemoryGenerationIds.has(activeProjectId)
+                  : false
+              }
+              isProjectMemoryGenerationDelayed={
+                activeProjectId
+                  ? delayedProjectMemoryGenerationIds.has(activeProjectId)
+                  : false
+              }
               isRefreshing={isProjectDetailLoading && projectDetail !== null}
               isShareCopied={
                 selectedProject ? copiedProjectId === selectedProject.id : false
@@ -810,6 +821,8 @@ export function AuthenticatedApp() {
       </main>
       {isReviewQueueOpen ? (
         <ReviewQueueDrawer
+          activeProjectMemoryGenerationIds={activeProjectMemoryGenerationIds}
+          delayedProjectMemoryGenerationIds={delayedProjectMemoryGenerationIds}
           onClose={() => {
             setIsReviewQueueOpen(false);
             setReviewQueueProjectId(null);
