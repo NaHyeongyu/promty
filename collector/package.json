@@ -3,6 +3,10 @@
   "version": "0.1.1",
   "description": "Promty local event collector",
   "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NaHyeongyu/BuildHub.git"
+  },
   "type": "module",
   "bin": {
     "promty": "bin/promty.js",
