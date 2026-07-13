@@ -12,7 +12,12 @@ export function AccountWorkspaceRoute({
   githubConnectUrl,
   isEventsLoading,
   latestActivityLabel,
+  latestMemoryLabel,
+  memoryCount,
+  onOpenRepositoryConnector,
+  onOpenReviewQueue,
   onRefreshWorkspace,
+  pendingMemoryCount,
   projectCount,
 }: {
   account: AccountSettingsController;
@@ -24,7 +29,12 @@ export function AccountWorkspaceRoute({
   githubConnectUrl: string;
   isEventsLoading: boolean;
   latestActivityLabel: string;
+  latestMemoryLabel: string;
+  memoryCount: number;
+  onOpenRepositoryConnector: () => void;
+  onOpenReviewQueue: (returnFocusElement: HTMLElement) => void;
   onRefreshWorkspace: () => void;
+  pendingMemoryCount: number;
   projectCount: number;
 }) {
   return (
@@ -48,12 +58,17 @@ export function AccountWorkspaceRoute({
           isSaving={account.isAccountSaving}
           isRefreshing={isEventsLoading}
           latestActivityLabel={latestActivityLabel}
+          latestMemoryLabel={latestMemoryLabel}
+          memoryCount={memoryCount}
           onClearCreatedCollectorToken={() => account.setCreatedCollectorToken(null)}
           onCreateCollectorToken={account.createCollectorToken}
           onDisconnectGithub={account.disconnectGithubConnection}
+          onOpenRepositoryConnector={onOpenRepositoryConnector}
+          onOpenReviewQueue={onOpenReviewQueue}
           onRefreshWorkspace={onRefreshWorkspace}
           onRenameCollectorToken={account.renameCollectorToken}
           onRevokeCollectorToken={account.revokeCollectorToken}
+          pendingMemoryCount={pendingMemoryCount}
           projectCount={projectCount}
         />
     </>

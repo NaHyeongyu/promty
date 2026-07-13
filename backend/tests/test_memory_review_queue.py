@@ -20,24 +20,29 @@ class FakeSession:
         return FakeNestedTransaction()
 
 
-def test_review_queue_refresh_materializes_projects_before_recount(monkeypatch) -> None:
-    project_id = uuid4()
-    initial_summary = {
-        "id": str(project_id),
-        "pending_memory_count": 0,
-    }
-    refreshed_summary = {
-        "id": str(project_id),
-        "pending_memory_count": 2,
-    }
-    summary_calls = iter([[initial_summary], [refreshed_summary]])
+def test_review_queue_refresh_queries_ranges_only_for_projects_with_pending_work(
+    monkeypatch,
+) -> None:
+    pending_project_id = uuid4()
+    empty_project_id = uuid4()
+    project_summaries = [
+        {
+            "id": str(empty_project_id),
+            "pending_memory_count": 0,
+        },
+        {
+            "id": str(pending_project_id),
+            "pending_memory_count": 2,
+        },
+    ]
+    summary_calls: list[object] = []
     pending_calls: list[tuple[object, int, object]] = []
 
-    monkeypatch.setattr(
-        workflows,
-        "list_project_summaries",
-        lambda _db, *, current_user: next(summary_calls),
-    )
+    def summaries(_db, *, current_user):
+        summary_calls.append(current_user)
+        return project_summaries
+
+    monkeypatch.setattr(workflows, "list_project_summaries", summaries)
 
     def pending_ranges(db, *, limit, project_id):
         pending_calls.append((db, limit, project_id))
@@ -50,23 +55,58 @@ def test_review_queue_refresh_materializes_projects_before_recount(monkeypatch) 
     )
 
     db = FakeSession()
+    user = object()
     response = workflows.refresh_memory_review_queue_response(
         db,
         limit=100,
-        user=object(),
+        user=user,
     )
 
-    assert pending_calls == [(db, 100, project_id)]
+    assert summary_calls == [user]
+    assert pending_calls == [(db, 100, pending_project_id)]
     assert response["errors"] == []
-    assert response["project_summaries"] == [refreshed_summary]
+    assert response["project_summaries"] == project_summaries
     assert response["projects"] == [
         {
             "pending_count": 2,
-            "project_id": str(project_id),
+            "project_id": str(pending_project_id),
             "ranges": [{"draft_id": "draft-1"}, {"draft_id": "draft-2"}],
         }
     ]
     assert response["total_pending_count"] == 2
+
+
+def test_review_queue_refresh_skips_range_query_when_all_projects_are_empty(
+    monkeypatch,
+) -> None:
+    project_id = uuid4()
+    summary = {
+        "id": str(project_id),
+        "pending_memory_count": 0,
+    }
+    monkeypatch.setattr(
+        workflows,
+        "list_project_summaries",
+        lambda _db, *, current_user: [summary],
+    )
+    monkeypatch.setattr(
+        workflows,
+        "list_project_memory_pending_ranges",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("empty projects must not query pending ranges")
+        ),
+    )
+
+    response = workflows.refresh_memory_review_queue_response(
+        FakeSession(),
+        limit=100,
+        user=object(),
+    )
+
+    assert response["errors"] == []
+    assert response["project_summaries"] == [summary]
+    assert response["projects"] == []
+    assert response["total_pending_count"] == 0
 
 
 def test_review_queue_refresh_route_is_exposed() -> None:
@@ -92,20 +132,15 @@ def test_review_queue_refresh_isolates_project_materialization_errors(
 ) -> None:
     failing_project_id = uuid4()
     healthy_project_id = uuid4()
-    initial_summaries = [
-        {"id": str(failing_project_id), "pending_memory_count": 0},
-        {"id": str(healthy_project_id), "pending_memory_count": 0},
-    ]
-    refreshed_summaries = [
-        {"id": str(failing_project_id), "pending_memory_count": 0},
+    project_summaries = [
+        {"id": str(failing_project_id), "pending_memory_count": 1},
         {"id": str(healthy_project_id), "pending_memory_count": 1},
     ]
-    summary_calls = iter([initial_summaries, refreshed_summaries])
 
     monkeypatch.setattr(
         workflows,
         "list_project_summaries",
-        lambda _db, *, current_user: next(summary_calls),
+        lambda _db, *, current_user: project_summaries,
     )
 
     def pending_ranges(_db, *, limit, project_id):
@@ -131,6 +166,7 @@ def test_review_queue_refresh_isolates_project_materialization_errors(
             "project_id": str(failing_project_id),
         }
     ]
+    assert response["project_summaries"] == project_summaries
     assert response["projects"] == [
         {
             "pending_count": 1,

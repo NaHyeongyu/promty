@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import type { AuthUser, Project, SidebarItemId } from "../../workspace/types";
+import { useI18n } from "../../i18n/I18nProvider";
 import { BrandLockup } from "./Branding";
 
 export type CollectorSidebarStatus = {
@@ -49,13 +50,14 @@ export function WorkspaceSidebar({
   savedProjects: Project[];
   selectedProjectId: string | null;
 }) {
+  const { t } = useI18n();
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const accountButtonRef = useRef<HTMLButtonElement>(null);
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const mobileToggleRef = useRef<HTMLButtonElement>(null);
   const reviewQueueButtonRef = useRef<HTMLButtonElement>(null);
-  const sidebarUserName = currentUser?.username ?? "Account";
+  const sidebarUserName = currentUser?.username ?? t("settings.account");
   const sidebarUserInitial = sidebarUserName.trim().charAt(0).toUpperCase() || "P";
 
   useEffect(() => {
@@ -105,7 +107,7 @@ export function WorkspaceSidebar({
   return (
     <aside
       className="sidebar"
-      aria-label="Primary navigation"
+      aria-label={t("nav.primary")}
       data-mobile-open={isMobileMenuOpen || undefined}
     >
       <div className="sidebar-header">
@@ -115,7 +117,9 @@ export function WorkspaceSidebar({
         <button
           aria-expanded={isMobileMenuOpen}
           aria-controls="workspace-sidebar-content"
-          aria-label={isMobileMenuOpen ? "Close navigation" : "Open navigation"}
+          aria-label={
+            isMobileMenuOpen ? t("nav.closeNavigation") : t("nav.openNavigation")
+          }
           className="sidebar-mobile-toggle"
           data-review-queue-fallback-focus="true"
           onClick={() => setIsMobileMenuOpen((current) => !current)}
@@ -133,24 +137,23 @@ export function WorkspaceSidebar({
       <div className="sidebar-content" id="workspace-sidebar-content">
         <div className="sidebar-divider" />
 
-        <nav className="sidebar-nav" aria-label="Workspace">
+        <nav className="sidebar-nav" aria-label={t("nav.workspace")}>
           <SidebarNavItem
             active={activeItem === "projects"}
             icon={Folder}
-            label="Projects"
+            label={t("nav.projects")}
             onClick={() => selectItem("projects")}
           />
           <SidebarNavItem
             active={isReviewQueueOpen}
+            action
             ariaControls="review-queue"
             ariaExpanded={isReviewQueueOpen}
             ariaHasPopup="dialog"
             ariaLabel={
               pendingReviewProjectCount > 0
-                ? `Review queue, ${pendingReviewProjectCount} ${
-                    pendingReviewProjectCount === 1 ? "project" : "projects"
-                  } pending review`
-                : "Review queue"
+                ? `${t("nav.reviewQueue")}, ${pendingReviewProjectCount}`
+                : t("nav.reviewQueue")
             }
             badge={
               pendingReviewProjectCount > 0
@@ -158,15 +161,15 @@ export function WorkspaceSidebar({
                 : undefined
             }
             icon={Inbox}
-            label="Review queue"
+            label={t("nav.reviewQueue")}
             onClick={openReviewQueue}
             ref={reviewQueueButtonRef}
             reviewQueueFallbackFocus
           />
 
-          <section className="sidebar-saved-section" aria-label="Pinned projects">
+          <section className="sidebar-saved-section" aria-label={t("nav.pinned")}>
             <div className="sidebar-saved-header">
-              <span>Pinned</span>
+              <span>{t("nav.pinned")}</span>
               <small>{savedProjectCount}</small>
             </div>
             {savedProjects.length > 0 ? (
@@ -194,7 +197,7 @@ export function WorkspaceSidebar({
                 ))}
               </div>
             ) : (
-              <p className="sidebar-saved-empty">Pin projects for quick access.</p>
+              <p className="sidebar-saved-empty">{t("nav.pinnedEmpty")}</p>
             )}
           </section>
 
@@ -202,14 +205,13 @@ export function WorkspaceSidebar({
             <SidebarNavItem
               active={activeItem === "admin"}
               icon={Gauge}
-              label="Admin"
+              label={t("nav.admin")}
               onClick={() => selectItem("admin")}
             />
           ) : null}
         </nav>
 
         <div className="sidebar-spacer" />
-        <div className="sidebar-divider" />
 
         <div className="sidebar-footer">
           <button
@@ -220,7 +222,7 @@ export function WorkspaceSidebar({
           >
             <Radio aria-hidden="true" size={16} strokeWidth={1.5} />
             <span>
-              <strong>Collector</strong>
+              <strong>{t("nav.collector")}</strong>
               <small>{collectorStatus.detail}</small>
             </span>
           </button>
@@ -233,7 +235,7 @@ export function WorkspaceSidebar({
           >
             <BookOpen aria-hidden="true" size={16} strokeWidth={1.5} />
             <span>
-              <strong>Setup guide</strong>
+              <strong>{t("nav.setupGuide")}</strong>
               <small>Codex & Claude Code</small>
             </span>
           </a>
@@ -257,7 +259,7 @@ export function WorkspaceSidebar({
               </span>
               <span className="sidebar-profile-copy">
                 <span>{sidebarUserName}</span>
-                <span>{currentUser?.email ?? "Account settings"}</span>
+                <span>{currentUser?.email ?? t("nav.accountSettings")}</span>
               </span>
               <ChevronDown
                 aria-hidden="true"
@@ -271,7 +273,7 @@ export function WorkspaceSidebar({
               <div className="sidebar-account-menu" id="sidebar-account-actions">
                 <button onClick={() => selectItem("settings")} type="button">
                   <Settings aria-hidden="true" size={16} strokeWidth={1.5} />
-                  <span>Settings</span>
+                  <span>{t("common.settings")}</span>
                 </button>
                 <button
                   className="is-danger"
@@ -282,7 +284,7 @@ export function WorkspaceSidebar({
                   type="button"
                 >
                   <LogOut aria-hidden="true" size={16} strokeWidth={1.5} />
-                  <span>Log out</span>
+                  <span>{t("nav.logout")}</span>
                 </button>
               </div>
             ) : null}
@@ -295,6 +297,7 @@ export function WorkspaceSidebar({
 
 const SidebarNavItem = function SidebarNavItem({
   active,
+  action = false,
   ariaControls,
   ariaExpanded,
   ariaHasPopup,
@@ -307,6 +310,7 @@ const SidebarNavItem = function SidebarNavItem({
   reviewQueueFallbackFocus,
 }: {
   active: boolean;
+  action?: boolean;
   ariaControls?: string;
   ariaExpanded?: boolean;
   ariaHasPopup?: "dialog";
@@ -325,7 +329,7 @@ const SidebarNavItem = function SidebarNavItem({
       aria-haspopup={ariaHasPopup}
       aria-label={ariaLabel}
       aria-pressed={ariaHasPopup ? undefined : active}
-      className="sidebar-item"
+      className={action ? "sidebar-item sidebar-item-action" : "sidebar-item"}
       data-active={active}
       data-review-queue-fallback-focus={reviewQueueFallbackFocus || undefined}
       onClick={onClick}

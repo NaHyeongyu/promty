@@ -7,29 +7,23 @@ import {
   useState,
 } from "react";
 import {
-  BookOpen,
+  ArrowRight,
   CheckCircle2,
-  ChevronDown,
   CircleAlert,
-  Files,
   LoaderCircle,
-  MessageSquareText,
   RefreshCw,
-  Sparkles,
+  Search,
   X,
 } from "lucide-react";
 import { UnauthorizedError } from "../../api/client";
 import {
   fetchProjectMemoryPendingRanges,
   refreshMemoryReviewQueue,
-  type ProjectMemoryGenerationResponse,
 } from "../../api/projects";
-import { formatLabelValue } from "../../lib/formatters";
 import {
   pendingReviewProjects,
   reviewQueueProjectBatch,
   reviewQueueSessionsFromRanges,
-  type ReviewQueueProjectBatch,
 } from "../../workspace/reviewQueue";
 import type {
   Project,
@@ -42,8 +36,6 @@ type QueueProjectState = {
   ranges: ProjectMemoryPendingRangeApiResponse[];
   status: "error" | "loaded" | "loading";
 };
-
-type MemoryActionResult = ProjectMemoryGenerationResponse;
 
 function formatCapturedRange(firstEventAt: string | null, lastEventAt: string | null) {
   const firstDate = firstEventAt ? new Date(firstEventAt) : null;
@@ -78,17 +70,34 @@ function formatCapturedRange(firstEventAt: string | null, lastEventAt: string | 
   return `${dateFormatter.format(validFirst)}–${dateFormatter.format(validLast)}`;
 }
 
-function sessionMetricLabel(count: number, singular: string) {
+function metricLabel(count: number, singular: string) {
   return `${count} ${count === 1 ? singular : `${singular}s`}`;
 }
 
+function projectCapturedRange(ranges: ProjectMemoryPendingRangeApiResponse[]) {
+  const timestamps = ranges.flatMap((range) =>
+    [range.first_event_at, range.last_event_at].filter(
+      (value): value is string =>
+        typeof value === "string" && !Number.isNaN(Date.parse(value)),
+    ),
+  );
+  if (timestamps.length === 0) {
+    return formatCapturedRange(null, null);
+  }
+  timestamps.sort((left, right) => Date.parse(left) - Date.parse(right));
+  return formatCapturedRange(timestamps.at(0) ?? null, timestamps.at(-1) ?? null);
+}
+
+function oldestCapturedTimestamp(ranges: ProjectMemoryPendingRangeApiResponse[]) {
+  return ranges.reduce((oldest, range) => {
+    const timestamp = Date.parse(range.first_event_at ?? range.last_event_at ?? "");
+    return Number.isNaN(timestamp) ? oldest : Math.min(oldest, timestamp);
+  }, Number.POSITIVE_INFINITY);
+}
+
 export function ReviewQueueDrawer({
-  activeProjectMemoryGenerationIds,
-  delayedProjectMemoryGenerationIds,
   onClose,
-  onGenerateProjectMemory,
   onOpenProjectMemory,
-  onOpenSourceSession,
   onProjectSummariesRefresh,
   onUnauthorized,
   projectFilterId,
@@ -96,12 +105,8 @@ export function ReviewQueueDrawer({
   returnFocusElement,
   workspaceReady,
 }: {
-  activeProjectMemoryGenerationIds: ReadonlySet<string>;
-  delayedProjectMemoryGenerationIds: ReadonlySet<string>;
   onClose: () => void;
-  onGenerateProjectMemory: (projectId: string) => Promise<MemoryActionResult>;
   onOpenProjectMemory: (projectId: string) => void;
-  onOpenSourceSession: (projectId: string, sessionId: string) => void;
   onProjectSummariesRefresh: (projects: ProjectSummary[]) => void;
   onUnauthorized: () => void;
   projectFilterId?: string | null;
@@ -116,34 +121,48 @@ export function ReviewQueueDrawer({
       : pendingProjects;
   }, [projectFilterId, projects]);
   const pendingProjectCount = reviewProjects.length;
-  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(
-    reviewProjects[0]?.id ?? null,
-  );
   const [projectStates, setProjectStates] = useState<
     Record<string, QueueProjectState | undefined>
   >({});
-  const [creatingProjectId, setCreatingProjectId] = useState<string | null>(null);
-  const [remoteUpdatingProjectIds, setRemoteUpdatingProjectIds] = useState<Set<string>>(
-    () => new Set(),
+  const [projectSearchQuery, setProjectSearchQuery] = useState("");
+  const [projectSortMode, setProjectSortMode] = useState<"oldest" | "largest">(
+    "oldest",
   );
-  const [actionError, setActionError] = useState<string | null>(null);
   const [isQueueRefreshing, setIsQueueRefreshing] = useState(true);
   const [queueRefreshError, setQueueRefreshError] = useState<string | null>(null);
   const [queueRefreshWarning, setQueueRefreshWarning] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [statusTone, setStatusTone] = useState<"success" | "warning">("success");
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const isMountedRef = useRef(true);
   const hasRefreshedQueueRef = useRef(false);
-  const pendingFocusRef = useRef<
-    { key: string; type: "project" | "projectAction" } | { type: "close" } | null
-  >(null);
-  const projectToggleRefs = useRef(new Map<string, HTMLButtonElement>());
   const queueRefreshControllerRef = useRef<AbortController | null>(null);
   const requestControllersRef = useRef(new Map<string, AbortController>());
-  const projectActionRefs = useRef(new Map<string, HTMLButtonElement>());
   const suppressFocusRestoreRef = useRef(false);
+  const showQueueControls = !projectFilterId && pendingProjectCount >= 8;
+  const visibleReviewProjects = useMemo(() => {
+    const normalizedQuery = showQueueControls
+      ? projectSearchQuery.trim().toLocaleLowerCase()
+      : "";
+    return reviewProjects
+      .filter((project) =>
+        normalizedQuery
+          ? project.name.toLocaleLowerCase().includes(normalizedQuery)
+          : true,
+      )
+      .sort((left, right) => {
+        if (projectSortMode === "largest") {
+          return (
+            right.pendingMemoryCount - left.pendingMemoryCount ||
+            left.name.localeCompare(right.name)
+          );
+        }
+        return (
+          oldestCapturedTimestamp(projectStates[left.id]?.ranges ?? []) -
+            oldestCapturedTimestamp(projectStates[right.id]?.ranges ?? []) ||
+          left.name.localeCompare(right.name)
+        );
+      });
+  }, [projectSearchQuery, projectSortMode, projectStates, reviewProjects, showQueueControls]);
 
   const loadProjectRanges = useCallback(
     async (projectId: string) => {
@@ -244,17 +263,6 @@ export function ReviewQueueDrawer({
         );
       }
       onProjectSummariesRefresh(snapshot.project_summaries);
-      const visibleQueueProjects = projectFilterId
-        ? snapshot.projects.filter((project) => project.project_id === projectFilterId)
-        : snapshot.projects;
-      setExpandedProjectId((currentProjectId) =>
-        currentProjectId &&
-        visibleQueueProjects.some(
-          (project) => project.project_id === currentProjectId,
-        )
-          ? currentProjectId
-          : visibleQueueProjects[0]?.project_id ?? null,
-      );
       return snapshot;
     } catch (error) {
       if (controller.signal.aborted || !isMountedRef.current) {
@@ -276,7 +284,7 @@ export function ReviewQueueDrawer({
         setIsQueueRefreshing(false);
       }
     }
-  }, [onProjectSummariesRefresh, onUnauthorized, projectFilterId]);
+  }, [onProjectSummariesRefresh, onUnauthorized]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -324,48 +332,6 @@ export function ReviewQueueDrawer({
     void refreshQueueSnapshot();
   }, [refreshQueueSnapshot, workspaceReady]);
 
-  useEffect(() => {
-    if (
-      expandedProjectId &&
-      !reviewProjects.some((project) => project.id === expandedProjectId)
-    ) {
-      const nextProjectId = reviewProjects[0]?.id ?? null;
-      pendingFocusRef.current = nextProjectId
-        ? { key: nextProjectId, type: "project" }
-        : { type: "close" };
-      setExpandedProjectId(nextProjectId);
-    }
-  }, [expandedProjectId, reviewProjects]);
-
-  useEffect(() => {
-    if (
-      expandedProjectId &&
-      hasRefreshedQueueRef.current &&
-      !isQueueRefreshing &&
-      !projectStates[expandedProjectId]
-    ) {
-      void loadProjectRanges(expandedProjectId);
-    }
-  }, [expandedProjectId, isQueueRefreshing, loadProjectRanges, projectStates]);
-
-  useEffect(() => {
-    const pendingFocus = pendingFocusRef.current;
-    if (!pendingFocus) {
-      return;
-    }
-    const target =
-      pendingFocus.type === "close"
-        ? closeButtonRef.current
-        : pendingFocus.type === "project"
-          ? projectToggleRefs.current.get(pendingFocus.key)
-          : projectActionRefs.current.get(pendingFocus.key);
-    if (!target || target.disabled) {
-      return;
-    }
-    target.focus();
-    pendingFocusRef.current = null;
-  }, [creatingProjectId, expandedProjectId, projectStates, reviewProjects]);
-
   const keepFocusInsideDrawer = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key !== "Tab") {
       return;
@@ -406,97 +372,6 @@ export function ReviewQueueDrawer({
     action();
   };
 
-  const createProjectMemory = async (
-    project: Project,
-    projectBatch: ReviewQueueProjectBatch,
-  ) => {
-    if (
-      projectBatch.sessionIds.length === 0 ||
-      creatingProjectId !== null ||
-      activeProjectMemoryGenerationIds.has(project.id) ||
-      remoteUpdatingProjectIds.has(project.id)
-    ) {
-      return;
-    }
-
-    setCreatingProjectId(project.id);
-    setActionError(null);
-    setStatusMessage(null);
-    setStatusTone("success");
-    try {
-      const result = await onGenerateProjectMemory(project.id);
-      if (!isMountedRef.current) {
-        return;
-      }
-      if (result.status === "memory_generated") {
-        setStatusMessage(`Project memory created for ${project.name}.`);
-        setStatusTone("success");
-      } else if (result.status === "generation_failed") {
-        setActionError(result.message);
-      } else if (result.status === "generation_in_progress") {
-        setRemoteUpdatingProjectIds((current) => new Set(current).add(project.id));
-        setStatusMessage(result.message);
-        setStatusTone("warning");
-      } else if (result.status === "generation_delayed") {
-        setStatusMessage(result.message);
-        setStatusTone("warning");
-      } else {
-        setStatusMessage(result.message);
-        setStatusTone("success");
-      }
-      if (result.status !== "generation_in_progress") {
-        setRemoteUpdatingProjectIds((current) => {
-          const next = new Set(current);
-          next.delete(project.id);
-          return next;
-        });
-      }
-      if (
-        result.status === "generation_delayed" ||
-        result.status === "generation_in_progress" ||
-        result.status === "generation_failed"
-      ) {
-        return;
-      }
-      const snapshot = await refreshQueueSnapshot();
-      if (!snapshot || !isMountedRef.current) {
-        return;
-      }
-      const projectSnapshot = snapshot.projects.find(
-        (item) => item.project_id === project.id,
-      );
-      const ranges = projectSnapshot?.ranges ?? [];
-      const remainingSessions = reviewQueueSessionsFromRanges(ranges);
-      if (remainingSessions.length > 0) {
-        const remainingBatch = reviewQueueProjectBatch(remainingSessions);
-        setExpandedProjectId(project.id);
-        pendingFocusRef.current = remainingBatch.sessionIds.length > 0
-          ? { key: project.id, type: "projectAction" }
-          : { key: project.id, type: "project" };
-      } else {
-        const nextProject = snapshot.projects.find(
-          (item) =>
-            item.project_id !== project.id &&
-            (!projectFilterId || item.project_id === projectFilterId),
-        );
-        pendingFocusRef.current = nextProject
-          ? { key: nextProject.project_id, type: "project" }
-          : { type: "close" };
-        setExpandedProjectId(nextProject?.project_id ?? null);
-      }
-    } catch (error) {
-      if (isMountedRef.current) {
-        setActionError(
-          error instanceof Error ? error.message : "Memory could not be created.",
-        );
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setCreatingProjectId(null);
-      }
-    }
-  };
-
   return (
     <div
       className="review-queue-overlay"
@@ -528,13 +403,12 @@ export function ReviewQueueDrawer({
       >
         <header className="review-queue-header">
           <div>
-            <span>Memory inbox</span>
-            <h2 id="review-queue-title">Review queue</h2>
+            <h2 id="review-queue-title">Memory queue</h2>
+            <p>
+              {pendingProjectCount} {pendingProjectCount === 1 ? "project" : "projects"} ready
+            </p>
           </div>
           <div className="review-queue-header-actions">
-            <span className="review-queue-count">
-              {pendingProjectCount} {pendingProjectCount === 1 ? "project" : "projects"}
-            </span>
             <button
               aria-label="Close review queue"
               className="review-queue-icon-button"
@@ -548,26 +422,6 @@ export function ReviewQueueDrawer({
         </header>
 
         <div className="review-queue-body">
-          {statusMessage ? (
-            <div
-              className="review-queue-notice"
-              data-warning={statusTone === "warning" || undefined}
-              role="status"
-            >
-              {statusTone === "warning" ? (
-                <CircleAlert aria-hidden="true" size={16} strokeWidth={1.5} />
-              ) : (
-                <CheckCircle2 aria-hidden="true" size={16} strokeWidth={1.5} />
-              )}
-              <span>{statusMessage}</span>
-            </div>
-          ) : null}
-          {actionError ? (
-            <div className="review-queue-notice" data-error="true" role="alert">
-              <CircleAlert aria-hidden="true" size={16} strokeWidth={1.5} />
-              <span>{actionError}</span>
-            </div>
-          ) : null}
           {queueRefreshError && reviewProjects.length > 0 ? (
             <div className="review-queue-notice" data-error="true" role="alert">
               <CircleAlert aria-hidden="true" size={16} strokeWidth={1.5} />
@@ -599,6 +453,33 @@ export function ReviewQueueDrawer({
             </div>
           ) : null}
 
+          {showQueueControls && reviewProjects.length > 0 ? (
+            <div className="review-queue-controls">
+              <label className="review-queue-search">
+                <Search aria-hidden="true" size={15} strokeWidth={1.5} />
+                <input
+                  aria-label="Search projects"
+                  onChange={(event) => setProjectSearchQuery(event.target.value)}
+                  placeholder="Search projects"
+                  type="search"
+                  value={projectSearchQuery}
+                />
+              </label>
+              <label className="review-queue-sort">
+                <select
+                  aria-label="Sort projects"
+                  onChange={(event) =>
+                    setProjectSortMode(event.target.value as "oldest" | "largest")
+                  }
+                  value={projectSortMode}
+                >
+                  <option value="oldest">Oldest waiting</option>
+                  <option value="largest">Most accumulated</option>
+                </select>
+              </label>
+            </div>
+          ) : null}
+
           {!workspaceReady || (isQueueRefreshing && !queueRefreshError && reviewProjects.length === 0) ? (
             <div className="review-queue-global-state" role="status">
               <LoaderCircle aria-hidden="true" size={20} strokeWidth={1.5} />
@@ -625,234 +506,81 @@ export function ReviewQueueDrawer({
             </div>
           ) : reviewProjects.length > 0 ? (
             <div className="review-queue-projects">
-              {reviewProjects.map((project) => {
-                const isExpanded = project.id === expandedProjectId;
+              {visibleReviewProjects.map((project) => {
                 const projectState = projectStates[project.id];
                 const sessions = reviewQueueSessionsFromRanges(projectState?.ranges ?? []);
                 const projectBatch = reviewQueueProjectBatch(sessions);
-                const isCreating =
-                  creatingProjectId === project.id ||
-                  activeProjectMemoryGenerationIds.has(project.id) ||
-                  remoteUpdatingProjectIds.has(project.id);
-                const isDelayed = delayedProjectMemoryGenerationIds.has(project.id);
                 const visibleRangeCount = projectState?.ranges.length ?? 0;
-                const panelId = `review-queue-project-${project.id}`;
+                const chunkCount = Math.max(
+                  visibleRangeCount,
+                  project.pendingMemoryCount,
+                );
 
                 return (
                   <section className="review-queue-project" key={project.id}>
-                    <div className="review-queue-project-header">
-                      <button
-                        aria-controls={panelId}
-                        aria-expanded={isExpanded}
-                        className="review-queue-project-toggle"
-                        onClick={() => {
-                          const nextProjectId = isExpanded ? null : project.id;
-                          setExpandedProjectId(nextProjectId);
-                          if (nextProjectId && !projectState) {
-                            void loadProjectRanges(nextProjectId);
-                          }
-                        }}
-                        ref={(element) => {
-                          if (element) {
-                            projectToggleRefs.current.set(project.id, element);
-                          } else {
-                            projectToggleRefs.current.delete(project.id);
-                          }
-                        }}
-                        type="button"
-                      >
-                        <span>
+                    {projectState?.status === "loading" ||
+                    (isQueueRefreshing && !projectState) ? (
+                      <div className="review-queue-loading" role="status">
+                        <LoaderCircle aria-hidden="true" size={18} strokeWidth={1.5} />
+                        <span>Loading {project.name}</span>
+                      </div>
+                    ) : projectState?.status === "error" ? (
+                      <div className="review-queue-error" role="alert">
+                        <CircleAlert aria-hidden="true" size={18} strokeWidth={1.5} />
+                        <div>
                           <strong>{project.name}</strong>
-                          <small>
-                            {`Project memory ready · ${project.latestActivityLabel}`}
-                          </small>
-                        </span>
-                        <ChevronDown
-                          aria-hidden="true"
-                          data-expanded={isExpanded || undefined}
-                          size={17}
-                          strokeWidth={1.5}
-                        />
-                      </button>
-                      <button
-                        aria-label={`Open ${project.name} memory`}
-                        className="review-queue-icon-button"
-                        onClick={() =>
-                          navigateFromQueue(() => onOpenProjectMemory(project.id))
-                        }
-                        title="Open project memory"
-                        type="button"
-                      >
-                        <BookOpen aria-hidden="true" size={17} strokeWidth={1.5} />
-                      </button>
-                    </div>
-
-                    {isExpanded ? (
-                      <div
-                        aria-busy={isCreating || undefined}
-                        className="review-queue-project-panel"
-                        id={panelId}
-                      >
-                        {projectState?.status === "loading" ||
-                        (isQueueRefreshing && !projectState) ? (
-                          <div className="review-queue-loading" role="status">
-                            <LoaderCircle aria-hidden="true" size={18} strokeWidth={1.5} />
-                            <span>Loading captured work</span>
+                          <span>{projectState.errorMessage}</span>
+                        </div>
+                        <button
+                          aria-label={`Retry ${project.name} review queue`}
+                          className="review-queue-icon-button"
+                          onClick={() => void loadProjectRanges(project.id)}
+                          title="Retry"
+                          type="button"
+                        >
+                          <RefreshCw aria-hidden="true" size={16} strokeWidth={1.5} />
+                        </button>
+                      </div>
+                    ) : visibleRangeCount > 0 ? (
+                      <div className="review-queue-project-row">
+                        <div className="review-queue-project-copy">
+                          <div className="review-queue-project-heading">
+                            <strong>{project.name}</strong>
+                            <span>Ready</span>
                           </div>
-                        ) : projectState?.status === "error" ? (
-                          <div className="review-queue-error" role="alert">
-                            <CircleAlert aria-hidden="true" size={18} strokeWidth={1.5} />
-                            <div>
-                              <strong>Captured work could not be loaded</strong>
-                              <span>{projectState.errorMessage}</span>
-                            </div>
-                            <button
-                              aria-label={`Retry ${project.name} review queue`}
-                              className="review-queue-icon-button"
-                              onClick={() => void loadProjectRanges(project.id)}
-                              title="Retry"
-                              type="button"
-                            >
-                              <RefreshCw aria-hidden="true" size={16} strokeWidth={1.5} />
-                            </button>
-                          </div>
-                        ) : sessions.length > 0 ? (
-                          <>
-                            <div className="review-queue-sessions">
-                              {sessions.map((session) => {
-                                return (
-                                  <article className="review-queue-session" key={session.sessionId}>
-                                    <div className="review-queue-session-heading">
-                                      <span>
-                                        {formatLabelValue(session.tool, "AI")}{" "}
-                                        session
-                                      </span>
-                                      <strong>
-                                        {formatCapturedRange(
-                                          session.firstEventAt,
-                                          session.lastEventAt,
-                                        )}
-                                      </strong>
-                                    </div>
-                                    <div className="review-queue-session-metrics">
-                                      <span>
-                                        <MessageSquareText
-                                          aria-hidden="true"
-                                          size={14}
-                                          strokeWidth={1.5}
-                                        />
-                                        {sessionMetricLabel(session.promptCount, "prompt")}
-                                      </span>
-                                      <span>
-                                        <Files aria-hidden="true" size={14} strokeWidth={1.5} />
-                                        {sessionMetricLabel(
-                                          session.changedFileCount,
-                                          "file change",
-                                        )}
-                                      </span>
-                                    </div>
-                                    <div className="review-queue-session-actions">
-                                      <button
-                                        className="review-queue-secondary-action"
-                                        onClick={() =>
-                                          navigateFromQueue(() =>
-                                            onOpenSourceSession(
-                                              project.id,
-                                              session.sessionId,
-                                            ),
-                                          )
-                                        }
-                                        type="button"
-                                      >
-                                        <MessageSquareText
-                                          aria-hidden="true"
-                                          size={15}
-                                          strokeWidth={1.5}
-                                        />
-                                        <span>Source session</span>
-                                      </button>
-                                    </div>
-                                  </article>
-                                );
-                              })}
-                            </div>
-                            {visibleRangeCount < project.pendingMemoryCount ? (
-                              <p className="review-queue-truncation">
-                                Some older source activity is not shown. All captured work in this
-                                project will be included.
-                              </p>
-                            ) : null}
-                            <div className="review-queue-project-action-bar">
-                              <div>
-                                <strong>
-                                  {projectBatch.sessionIds.length > 0
-                                    ? "All captured work in this project"
-                                    : "No sessions ready"}
-                                </strong>
-                                <span>One project-wide memory update</span>
-                              </div>
-                              <button
-                                aria-busy={isCreating || undefined}
-                                aria-disabled={
-                                  projectBatch.sessionIds.length === 0 ||
-                                  creatingProjectId !== null ||
-                                  activeProjectMemoryGenerationIds.has(project.id) ||
-                                  remoteUpdatingProjectIds.has(project.id)
-                                }
-                                aria-label={
-                                  isCreating
-                                    ? `Updating project memory for ${project.name}`
-                                    : isDelayed
-                                      ? `Check update status for ${project.name}`
-                                      : `Create project memory for ${project.name}`
-                                }
-                                className="review-queue-primary-action"
-                                onClick={() =>
-                                  void createProjectMemory(project, projectBatch)
-                                }
-                                ref={(element) => {
-                                  if (element) {
-                                    projectActionRefs.current.set(project.id, element);
-                                  } else {
-                                    projectActionRefs.current.delete(project.id);
-                                  }
-                                }}
-                                type="button"
-                              >
-                                {isCreating ? (
-                                  <LoaderCircle
-                                    aria-hidden="true"
-                                    size={15}
-                                    strokeWidth={1.5}
-                                  />
-                                ) : (
-                                  <Sparkles
-                                    aria-hidden="true"
-                                    size={15}
-                                    strokeWidth={1.5}
-                                  />
-                                )}
-                                <span>
-                                  {isCreating
-                                    ? "Creating project memory"
-                                    : isDelayed
-                                      ? "Check update status"
-                                    : "Create project memory"}
-                                </span>
-                              </button>
-                            </div>
-                          </>
-                        ) : projectState?.status === "loaded" ? (
-                          <div className="review-queue-project-empty">
-                            <CheckCircle2 aria-hidden="true" size={18} strokeWidth={1.5} />
-                            <span>No captured work remains in this project.</span>
-                          </div>
-                        ) : null}
+                          <p className="review-queue-project-meta">
+                            <span>{metricLabel(chunkCount, "chunk")}</span>
+                            <span>{metricLabel(projectBatch.promptCount, "prompt")}</span>
+                            <span>{projectCapturedRange(projectState?.ranges ?? [])}</span>
+                          </p>
+                        </div>
+                        <button
+                          aria-label={`Review and generate memory for ${project.name}`}
+                          className="review-queue-primary-action review-queue-project-action"
+                          onClick={() =>
+                            navigateFromQueue(() => onOpenProjectMemory(project.id))
+                          }
+                          type="button"
+                        >
+                          <span>Review &amp; generate</span>
+                          <ArrowRight aria-hidden="true" size={15} strokeWidth={1.5} />
+                        </button>
+                      </div>
+                    ) : projectState?.status === "loaded" ? (
+                      <div className="review-queue-project-empty">
+                        <CheckCircle2 aria-hidden="true" size={18} strokeWidth={1.5} />
+                        <span>No captured work remains in {project.name}.</span>
                       </div>
                     ) : null}
                   </section>
                 );
               })}
+              {visibleReviewProjects.length === 0 ? (
+                <div className="review-queue-search-empty">
+                  <strong>No matching projects</strong>
+                  <span>Try a different project name.</span>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div

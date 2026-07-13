@@ -16,6 +16,12 @@ EventType = Literal[
     "SessionEnded",
 ]
 
+EVENT_FILES_MAX_ITEMS = 5_000
+EVENT_CHANGES_MAX_ITEMS = 5_000
+EVENT_RESOURCE_ENTRIES_MAX_PER_BATCH = 10_000
+EVENT_FILE_PATH_MAX_CHARS = 2_048
+EVENT_CHANGE_PATCH_MAX_CHARS = 524_288
+
 
 class PayloadModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -65,7 +71,7 @@ class ResponseReceivedPayload(PayloadModel):
 
 
 class FilesChangedPayload(PayloadModel):
-    files: list[str] = Field(default_factory=list)
+    files: list[str] = Field(default_factory=list, max_length=EVENT_FILES_MAX_ITEMS)
     cwd: str | None = None
     session_id: str | None = None
     prompt_event_id: str | None = None
@@ -80,9 +86,33 @@ class FilesChangedPayload(PayloadModel):
     detected_at: str | None = None
     source: str | None = None
     summary: dict | None = None
-    changes: list[dict] = Field(default_factory=list)
+    changes: list[dict] = Field(default_factory=list, max_length=EVENT_CHANGES_MAX_ITEMS)
     change_detection_complete: bool | None = None
     no_changes: bool | None = None
+
+    @field_validator("files")
+    @classmethod
+    def limit_file_path_lengths(cls, values: list[str]) -> list[str]:
+        if any(len(value) > EVENT_FILE_PATH_MAX_CHARS for value in values):
+            raise ValueError(f"file paths must be at most {EVENT_FILE_PATH_MAX_CHARS} characters")
+        return values
+
+    @field_validator("changes")
+    @classmethod
+    def limit_change_content(cls, values: list[dict]) -> list[dict]:
+        for change in values:
+            for key in ("path", "old_path", "before_path"):
+                path = change.get(key)
+                if isinstance(path, str) and len(path) > EVENT_FILE_PATH_MAX_CHARS:
+                    raise ValueError(
+                        f"change paths must be at most {EVENT_FILE_PATH_MAX_CHARS} characters"
+                    )
+            patch = change.get("patch")
+            if isinstance(patch, str) and len(patch) > EVENT_CHANGE_PATCH_MAX_CHARS:
+                raise ValueError(
+                    f"change patches must be at most {EVENT_CHANGE_PATCH_MAX_CHARS} characters"
+                )
+        return values
 
 
 class CommitCreatedPayload(PayloadModel):
@@ -163,6 +193,23 @@ class EventRead(EventCreate):
 
 class EventBatchCreate(BaseModel):
     events: list[EventCreate] = Field(..., min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def limit_resource_entries(self) -> EventBatchCreate:
+        resource_entries = 0
+        for event in self.events:
+            if event.event_type != "FilesChanged" or not isinstance(
+                event.payload,
+                FilesChangedPayload,
+            ):
+                continue
+            resource_entries += len(event.payload.changes or event.payload.files)
+            if resource_entries > EVENT_RESOURCE_ENTRIES_MAX_PER_BATCH:
+                raise ValueError(
+                    "event batch contains more than "
+                    f"{EVENT_RESOURCE_ENTRIES_MAX_PER_BATCH} file changes"
+                )
+        return self
 
 
 class EventBatchResponse(BaseModel):

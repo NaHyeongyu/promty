@@ -12,6 +12,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -39,6 +40,18 @@ class ProjectMemoryBatch(Base):
             "status",
             "updated_at",
         ),
+        Index(
+            "ix_project_memory_batches_pending_created",
+            "created_at",
+            "id",
+            postgresql_where=text("status = 'pending'"),
+        ),
+        Index(
+            "ix_project_memory_batches_running_lease",
+            "lease_expires_at",
+            "id",
+            postgresql_where=text("status = 'running'"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -62,6 +75,7 @@ class ProjectMemoryBatch(Base):
     status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
     result_status: Mapped[str | None] = mapped_column(String(32))
     attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    chunk_results: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
     generated_artifact_ids: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     source_session_ids: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     snapshot_manifest: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)

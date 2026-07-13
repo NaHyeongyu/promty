@@ -33,6 +33,10 @@ services:
       PROMPTHUB_API_PUBLIC_URL: http://127.0.0.1:8011
       PROMPTHUB_APP_URL: http://127.0.0.1:5173
       PROMPTHUB_CORS_ORIGINS: http://127.0.0.1:5173,http://localhost:5173
+      PROMPTHUB_DATABASE_POOL_SIZE: "5"
+      PROMPTHUB_DATABASE_MAX_OVERFLOW: "2"
+      PROMPTHUB_DATABASE_POOL_TIMEOUT_SECONDS: "5"
+      PROMPTHUB_DATABASE_POOL_RECYCLE_SECONDS: "300"
       PROMPTHUB_SESSION_COOKIE_SECURE: "false"
     ports:
       - "8011:8011"
@@ -44,10 +48,34 @@ services:
         - CMD
         - python
         - -c
-        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8011/health')
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8011/health/ready')
       interval: 5s
       timeout: 3s
       retries: 20
+
+  memory-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command:
+      - python
+      - -m
+      - app.workers.project_memory
+    env_file:
+      - path: docker/compose.env
+        required: true
+      - path: .env.local
+        required: false
+    environment:
+      DATABASE_URL: postgresql+psycopg://prompthub:prompthub@postgres:5432/prompthub
+      PROMPTHUB_DATABASE_POOL_SIZE: "2"
+      PROMPTHUB_DATABASE_MAX_OVERFLOW: "1"
+      PROMPTHUB_DATABASE_POOL_TIMEOUT_SECONDS: "5"
+      PROMPTHUB_DATABASE_POOL_RECYCLE_SECONDS: "300"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
 
   frontend:
     image: node:22-alpine

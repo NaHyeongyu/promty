@@ -77,6 +77,18 @@ Use `--profile dev` for local development and `--profile prod` for production.
 Profiles isolate login credentials, uploader processes, logs, and event queues so
 switching environments cannot overwrite another environment's collector state.
 
+To store every captured event in both environments, initialize both profiles
+explicitly:
+
+```bash
+npx promty-collector init --profiles dev,prod
+```
+
+The collector creates each event once, writes the same event ID to independent
+profile queues, and uploads each queue separately. A backend outage therefore
+does not block or remove the other profile's pending events. Verify all targets
+with `npx promty-collector doctor --profiles dev,prod --tool all`.
+
 The background uploader checks npm for a newer collector every six hours. When
 an update is available, it installs the content-addressed runtime and restarts
 itself with the same profile and queue. Pass `--no-auto-update` to `init` or
@@ -210,6 +222,8 @@ Current API contract:
 POST /api/events/batch
 GET  /api/events
 GET  /health
+GET  /health/live
+GET  /health/ready
 ```
 
 `POST /api/events/batch` requires `Authorization: Bearer <token>` in production and accepts:
@@ -282,6 +296,19 @@ export PROMPTHUB_APP_ENCRYPTION_KEY="replace-with-app-data-encryption-secret"
 export PROMPTHUB_APP_ENCRYPTION_KEY_ID="local"
 export PROMPTHUB_PROMPT_MAX_CHARS="50000"
 export PROMPTHUB_RESPONSE_MAX_CHARS="50000"
+export PROMPTHUB_EVENT_BATCH_MAX_BODY_BYTES="33554432"
+export PROMPTHUB_MEMORY_SLICE_EVENT_MAX_ROWS="500"
+export PROMPTHUB_MEMORY_SLICE_MAX_SLICES_PER_CALL="4"
+export PROMPTHUB_MEMORY_DRAFT_PROMPT_MAX_BYTES="131072"
+export PROMPTHUB_MEMORY_DRAFT_EVIDENCE_MAX_BYTES="98304"
+export PROMPTHUB_PROJECT_MEMORY_PROMPT_MAX_BYTES="262144"
+export PROMPTHUB_MEMORY_PROVIDER_RESPONSE_MAX_BYTES="1048576"
+export PROMPTHUB_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS="8192"
+export PROMPTHUB_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS="120"
+export PROMPTHUB_PROJECT_MEMORY_BATCH_MAX_DRAFTS="60"
+export PROMPTHUB_MEMORY_WORKER_POLL_SECONDS="2"
+export PROMPTHUB_MEMORY_WORKER_HEARTBEAT_SECONDS="60"
+export PROMPTHUB_MEMORY_WORKER_CHUNK_CONCURRENCY="2"
 export PROMPTHUB_OAUTH_STATE_SECRET="replace-with-oauth-state-secret"
 export PROMPTHUB_JWT_SECRET="replace-with-jwt-secret"
 export PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS="3600"
@@ -329,13 +356,25 @@ Start the complete local stack, including migrations:
 docker compose up --build
 ```
 
-The frontend is available at `http://127.0.0.1:5173` and the API health check at
-`http://127.0.0.1:8011/health`. To run only PostgreSQL and manage processes on
+The frontend is available at `http://127.0.0.1:5173` and the API readiness check at
+`http://127.0.0.1:8011/health/ready`. To run only PostgreSQL and manage processes on
 the host instead:
 
 ```bash
 docker compose up -d postgres
 ./.venv/bin/alembic -c backend/alembic.ini upgrade head
+```
+
+Then run the API and Project Memory worker in separate terminals:
+
+```bash
+cd backend
+../.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8011
+```
+
+```bash
+cd backend
+../.venv/bin/python -m app.workers.project_memory
 ```
 
 Compose loads development-only fallback secrets from `docker/compose.env` and

@@ -1,4 +1,6 @@
 import { BookOpen } from "lucide-react";
+import { useI18n } from "../../i18n/I18nProvider";
+import { githubRepositoryUrl } from "../../lib/github";
 import { ActivityPanel } from "./ActivityPanel";
 import { EmptyState } from "./EmptyState";
 import { FilesPanel } from "./FilesPanel";
@@ -51,13 +53,6 @@ type ProjectDetailPageProps = {
   onTabChange: (tabId: ProjectDetailTabId) => void;
   projectOptions?: ProjectHeaderProjectOption[];
 };
-const projectTabs: ProjectDetailTab[] = [
-  { id: "overview", label: "Overview" },
-  { id: "memory", label: "Memory" },
-  { id: "ai-activity", label: "Sessions" },
-  { id: "files", label: "Files" },
-];
-
 function projectHeaderModelNames(data: ProjectDetailData) {
   const modelItem = data.overview.find((item) => item.title === "AI Models");
   if (!modelItem?.value || modelItem.value === "Not captured") {
@@ -89,6 +84,10 @@ function projectHeaderLastActivityLabel(data: ProjectDetailData) {
   return lastActivityItem.value !== "No activity"
     ? lastActivityItem.value
     : undefined;
+}
+
+function hasReadyMemory(data: ProjectDetailData) {
+  return data.memory.pendingRanges.length > 0;
 }
 
 function ProjectPanel({
@@ -152,8 +151,6 @@ function ProjectPanel({
     return (
       <OverviewPanel
         data={data}
-        onOpenActivity={() => onTabChange("ai-activity")}
-        onOpenMemory={() => onTabChange("memory")}
         onSaveProjectMetadata={onSaveProjectMetadata}
         onSaveDescription={onSaveDescription}
       />
@@ -234,6 +231,20 @@ export function ProjectDetailPage({
   onTabChange,
   projectOptions = [],
 }: ProjectDetailPageProps) {
+  const { t } = useI18n();
+  const repositoryUrl = githubRepositoryUrl(data.project.repositoryUrl);
+  const projectTabs: ProjectDetailTab[] = [
+    { id: "overview", label: t("project.overview") },
+    { id: "memory", label: t("project.memory") },
+    { id: "ai-activity", label: t("project.prompts") },
+    {
+      externalHref: repositoryUrl ?? undefined,
+      externalIcon: repositoryUrl ? "github" : undefined,
+      id: "files",
+      label: t("project.files"),
+    },
+  ];
+
   return (
     <section
       className="bh-project-detail"
@@ -260,6 +271,7 @@ export function ProjectDetailPage({
 
       <ProjectTabs
         activeTab={activeTab}
+        notifications={{ memory: hasReadyMemory(data) }}
         onTabChange={onTabChange}
         tabs={projectTabs}
       />

@@ -1,18 +1,25 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from datetime import timedelta
 import hashlib
 import logging
+import re
+from threading import Event as ThreadEvent, Thread
 from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from sqlalchemy import delete, desc, func, or_, select
+from sqlalchemy import cast, delete, desc, func, or_, select, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.time import utc_now
+from app.core.config import settings
+from app.db.session import SessionLocal
 from app.models.artifact_versions import ArtifactVersion
 from app.models.artifacts import Artifact
 from app.models.project_memory_batches import (
@@ -24,7 +31,6 @@ from app.models.projects import Project
 from app.models.sessions import Session
 from app.services.memory.artifacts import (
     _pending_draft_generation_context,
-    materialize_project_memory_drafts,
 )
 from app.services.memory.context import dedupe_files, truncate
 from app.services.memory.constants import (
@@ -51,6 +57,7 @@ PROJECT_MEMORY_BATCH_CHUNK_SIZE = 6
 PROJECT_MEMORY_BATCH_GENERATOR = "project-memory-batch-v1"
 PROJECT_MEMORY_BATCH_LEASE = timedelta(minutes=10)
 PROJECT_MEMORY_BATCH_TRIGGER = "project_batch"
+HTTP_STATUS_PATTERN = re.compile(r"\bHTTP(?: status)?\s+([1-5][0-9]{2})\b")
 
 
 class ProjectMemoryBatchError(RuntimeError):
@@ -63,6 +70,65 @@ class ProjectMemoryBatchGenerationError(ProjectMemoryBatchError):
 
 class ProjectMemoryBatchInvariantError(ProjectMemoryBatchError):
     code = "snapshot_invalid"
+
+
+class ProjectMemoryBatchLeaseLostError(ProjectMemoryBatchGenerationError):
+    code = "lease_lost"
+
+
+def _heartbeat_interval_seconds() -> float:
+    return max(settings.memory_worker_heartbeat_seconds, 1.0)
+
+
+def _extend_batch_lease(batch_id: UUID, attempt_count: int) -> bool:
+    db = SessionLocal()
+    try:
+        now = utc_now()
+        result = db.execute(
+            update(ProjectMemoryBatch)
+            .where(
+                ProjectMemoryBatch.id == batch_id,
+                ProjectMemoryBatch.status == "running",
+                ProjectMemoryBatch.attempt_count == attempt_count,
+                ProjectMemoryBatch.lease_expires_at.is_not(None),
+                ProjectMemoryBatch.lease_expires_at > now,
+            )
+            .values(
+                lease_expires_at=now + PROJECT_MEMORY_BATCH_LEASE,
+                updated_at=now,
+            )
+        )
+        db.commit()
+        return bool(result.rowcount)
+    except Exception:
+        db.rollback()
+        logger.exception("Project Memory batch %s heartbeat failed", batch_id)
+        return False
+    finally:
+        db.close()
+
+
+@contextmanager
+def _batch_lease_heartbeat(batch_id: UUID, attempt_count: int):
+    stopped = ThreadEvent()
+
+    def heartbeat() -> None:
+        interval = _heartbeat_interval_seconds()
+        while not stopped.wait(interval):
+            if not _extend_batch_lease(batch_id, attempt_count):
+                return
+
+    thread = Thread(
+        target=heartbeat,
+        name=f"project-memory-heartbeat-{batch_id}",
+        daemon=True,
+    )
+    thread.start()
+    try:
+        yield
+    finally:
+        stopped.set()
+        thread.join(timeout=_heartbeat_interval_seconds() + 1.0)
 
 
 @dataclass(frozen=True)
@@ -101,6 +167,7 @@ class BatchAttemptSnapshot:
     project_name: str
     snapshot_manifest: list[dict[str, Any]]
     source_session_ids: list[str]
+    chunk_results: dict[str, list[GeneratedChunkPayload]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -314,20 +381,34 @@ def _latest_versions_by_artifact(
     db: DBSession,
     draft_ids: list[UUID],
 ) -> dict[UUID, ArtifactVersion]:
-    versions = list(
-        db.execute(
-            select(ArtifactVersion)
-            .where(ArtifactVersion.artifact_id.in_(draft_ids))
-            .order_by(
-                ArtifactVersion.artifact_id,
-                desc(ArtifactVersion.version),
-            )
-        ).scalars()
+    if not draft_ids:
+        return {}
+
+    versions = db.execute(
+        select(ArtifactVersion)
+        .where(ArtifactVersion.artifact_id.in_(draft_ids))
+        .distinct(ArtifactVersion.artifact_id)
+        .order_by(
+            ArtifactVersion.artifact_id,
+            desc(ArtifactVersion.version),
+        )
+    ).scalars()
+    return {version.artifact_id: version for version in versions}
+
+
+def _pending_draft_claim_statement(project_id: UUID, snapshot_at: Any):
+    claimed_drafts = select(ProjectMemoryBatchItem.draft_id)
+    return (
+        select(Artifact)
+        .where(
+            *_pending_draft_filters(project_id),
+            Artifact.updated_at <= snapshot_at,
+            Artifact.id.not_in(claimed_drafts),
+        )
+        .order_by(Artifact.created_at, Artifact.id)
+        .limit(settings.project_memory_batch_max_drafts)
+        .with_for_update()
     )
-    latest: dict[UUID, ArtifactVersion] = {}
-    for version in versions:
-        latest.setdefault(version.artifact_id, version)
-    return latest
 
 
 def _prepare_batch(
@@ -337,21 +418,8 @@ def _prepare_batch(
     project_id: UUID,
     user_id: UUID,
 ) -> ProjectMemoryBatch:
-    materialize_project_memory_drafts(db, project_id=project_id)
     snapshot_at = utc_now()
-    claimed_drafts = select(ProjectMemoryBatchItem.draft_id)
-    drafts = list(
-        db.execute(
-            select(Artifact)
-            .where(
-                *_pending_draft_filters(project_id),
-                Artifact.updated_at <= snapshot_at,
-                Artifact.id.not_in(claimed_drafts),
-            )
-            .order_by(Artifact.created_at, Artifact.id)
-            .with_for_update()
-        ).scalars()
-    )
+    drafts = list(db.execute(_pending_draft_claim_statement(project_id, snapshot_at)).scalars())
     versions = _latest_versions_by_artifact(db, [draft.id for draft in drafts])
     missing_versions = [str(draft.id) for draft in drafts if draft.id not in versions]
     if missing_versions:
@@ -662,6 +730,133 @@ def _generate_chunk_payloads(
     ]
 
 
+def _chunk_key(generation: PendingChunkGeneration) -> str:
+    version_ids = [str(snapshot.version_id) for snapshot in generation.snapshots]
+    digest = hashlib.sha256("\x1f".join(version_ids).encode("utf-8")).hexdigest()
+    return f"draft-versions-v1:{digest}"
+
+
+def _serialize_generated_chunk(chunk: GeneratedChunkPayload) -> dict[str, Any]:
+    return {
+        "first_event_at": chunk.first_event_at,
+        "last_event_at": chunk.last_event_at,
+        "metadata": chunk.metadata,
+        "payload": chunk.payload,
+        "source_draft_ids": chunk.source_draft_ids,
+        "source_draft_version_ids": chunk.source_draft_version_ids,
+        "source_session_id": chunk.source_session_id,
+    }
+
+
+def _deserialize_generated_chunk(value: Any) -> GeneratedChunkPayload:
+    if not isinstance(value, dict):
+        raise ProjectMemoryBatchInvariantError("Stored chunk result is invalid")
+    metadata = value.get("metadata")
+    payload = value.get("payload")
+    source_draft_ids = value.get("source_draft_ids")
+    source_draft_version_ids = value.get("source_draft_version_ids")
+    source_session_id = value.get("source_session_id")
+    if (
+        not isinstance(metadata, dict)
+        or not isinstance(payload, dict)
+        or not isinstance(source_draft_ids, list)
+        or not all(isinstance(item, str) for item in source_draft_ids)
+        or not isinstance(source_draft_version_ids, list)
+        or not all(isinstance(item, str) for item in source_draft_version_ids)
+        or not isinstance(source_session_id, str)
+    ):
+        raise ProjectMemoryBatchInvariantError("Stored chunk result is invalid")
+    first_event_at = value.get("first_event_at")
+    last_event_at = value.get("last_event_at")
+    if first_event_at is not None and not isinstance(first_event_at, str):
+        raise ProjectMemoryBatchInvariantError("Stored chunk result is invalid")
+    if last_event_at is not None and not isinstance(last_event_at, str):
+        raise ProjectMemoryBatchInvariantError("Stored chunk result is invalid")
+    return GeneratedChunkPayload(
+        first_event_at=first_event_at,
+        last_event_at=last_event_at,
+        metadata=metadata,
+        payload=payload,
+        source_draft_ids=source_draft_ids,
+        source_draft_version_ids=source_draft_version_ids,
+        source_session_id=source_session_id,
+    )
+
+
+def _deserialize_chunk_result(
+    value: Any,
+    *,
+    generation: PendingChunkGeneration,
+) -> list[GeneratedChunkPayload]:
+    if not isinstance(value, dict):
+        raise ProjectMemoryBatchInvariantError("Stored chunk progress is invalid")
+    expected_version_ids = [str(snapshot.version_id) for snapshot in generation.snapshots]
+    if value.get("draft_version_ids") != expected_version_ids:
+        raise ProjectMemoryBatchInvariantError(
+            "Stored chunk progress does not match the captured draft versions"
+        )
+    payloads = value.get("payloads")
+    if not isinstance(payloads, list):
+        raise ProjectMemoryBatchInvariantError("Stored chunk progress is invalid")
+    chunks = [_deserialize_generated_chunk(payload) for payload in payloads]
+    expected_draft_ids = [str(snapshot.id) for snapshot in generation.snapshots]
+    if any(
+        chunk.source_draft_version_ids != expected_version_ids
+        or chunk.source_draft_ids != expected_draft_ids
+        or chunk.source_session_id != generation.source_session_id
+        for chunk in chunks
+    ):
+        raise ProjectMemoryBatchInvariantError(
+            "Stored chunk result does not match the captured draft versions"
+        )
+    return chunks
+
+
+def _persist_chunk_result(
+    *,
+    batch_id: UUID,
+    chunk_key: str,
+    chunks: list[GeneratedChunkPayload],
+    expected_attempt_count: int,
+    generation: PendingChunkGeneration,
+) -> None:
+    expected_version_ids = [str(snapshot.version_id) for snapshot in generation.snapshots]
+    stored_result = {
+        chunk_key: {
+            "draft_version_ids": expected_version_ids,
+            "payloads": [_serialize_generated_chunk(chunk) for chunk in chunks],
+        }
+    }
+    db = SessionLocal()
+    try:
+        now = utc_now()
+        result = db.execute(
+            update(ProjectMemoryBatch)
+            .where(
+                ProjectMemoryBatch.id == batch_id,
+                ProjectMemoryBatch.status == "running",
+                ProjectMemoryBatch.attempt_count == expected_attempt_count,
+                ProjectMemoryBatch.lease_expires_at.is_not(None),
+                ProjectMemoryBatch.lease_expires_at > now,
+            )
+            .values(
+                chunk_results=ProjectMemoryBatch.chunk_results.op("||")(cast(stored_result, JSONB)),
+                lease_expires_at=now + PROJECT_MEMORY_BATCH_LEASE,
+                updated_at=now,
+            )
+        )
+        if not result.rowcount:
+            raise ProjectMemoryBatchLeaseLostError(
+                "Project Memory batch lease was lost before chunk progress was saved"
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 def _prepare_batch_attempt(
     db: DBSession,
     *,
@@ -669,10 +864,13 @@ def _prepare_batch_attempt(
     expected_attempt_count: int,
 ) -> BatchAttemptSnapshot | None:
     batch = db.get(ProjectMemoryBatch, batch_id)
+    now = utc_now()
     if (
         batch is None
         or batch.status != "running"
         or batch.attempt_count != expected_attempt_count
+        or batch.lease_expires_at is None
+        or batch.lease_expires_at <= now
     ):
         db.commit()
         return None
@@ -703,8 +901,15 @@ def _prepare_batch_attempt(
     project = db.get(Project, batch.project_id)
     if project is None:
         raise ProjectMemoryBatchInvariantError("Project not found")
+    stored_chunk_results = batch.chunk_results if isinstance(batch.chunk_results, dict) else {}
+    chunk_results = {
+        key: _deserialize_chunk_result(stored_chunk_results[key], generation=generation)
+        for generation in chunk_generations
+        if (key := _chunk_key(generation)) in stored_chunk_results
+    }
     prepared = BatchAttemptSnapshot(
         batch_id=batch.id,
+        chunk_results=chunk_results,
         chunk_generations=chunk_generations,
         project_id=batch.project_id,
         project_name=project.name,
@@ -717,17 +922,85 @@ def _prepare_batch_attempt(
 
 def _generate_batch_chunks(
     prepared: BatchAttemptSnapshot,
+    *,
+    expected_attempt_count: int | None = None,
 ) -> list[GeneratedChunkPayload]:
-    generated_chunks: list[GeneratedChunkPayload] = []
-    for generation in prepared.chunk_generations:
-        generated_chunks.extend(
-            _generate_chunk_payloads(
-                context=generation.context,
-                snapshots=generation.snapshots,
-                source_session_id=generation.source_session_id,
-            )
+    ordered_results: list[list[GeneratedChunkPayload] | None] = [
+        prepared.chunk_results.get(_chunk_key(generation))
+        for generation in prepared.chunk_generations
+    ]
+    missing = [
+        (index, generation)
+        for index, (generation, result) in enumerate(
+            zip(prepared.chunk_generations, ordered_results, strict=True)
         )
-    return generated_chunks
+        if result is None
+    ]
+
+    def generate(
+        index: int, generation: PendingChunkGeneration
+    ) -> tuple[int, list[GeneratedChunkPayload]]:
+        chunks = _generate_chunk_payloads(
+            context=generation.context,
+            snapshots=generation.snapshots,
+            source_session_id=generation.source_session_id,
+        )
+        if expected_attempt_count is not None:
+            _persist_chunk_result(
+                batch_id=prepared.batch_id,
+                chunk_key=_chunk_key(generation),
+                chunks=chunks,
+                expected_attempt_count=expected_attempt_count,
+                generation=generation,
+            )
+        return index, chunks
+
+    if missing:
+        concurrency = min(settings.memory_worker_chunk_concurrency, len(missing))
+        with ThreadPoolExecutor(
+            max_workers=max(1, concurrency),
+            thread_name_prefix=f"project-memory-chunk-{prepared.batch_id}",
+        ) as executor:
+            remaining = iter(missing)
+            in_flight = {}
+
+            def submit_next() -> bool:
+                try:
+                    index, generation = next(remaining)
+                except StopIteration:
+                    return False
+                future = executor.submit(generate, index, generation)
+                in_flight[future] = index
+                return True
+
+            for _ in range(max(1, concurrency)):
+                if not submit_next():
+                    break
+
+            try:
+                while in_flight:
+                    completed, _pending = wait(
+                        in_flight,
+                        return_when=FIRST_COMPLETED,
+                    )
+                    completed.update(future for future in in_flight if future.done())
+                    for future in sorted(
+                        completed,
+                        key=in_flight.__getitem__,
+                    ):
+                        index, chunks = future.result()
+                        ordered_results[index] = chunks
+                    for future in completed:
+                        del in_flight[future]
+                    for _ in completed:
+                        if not submit_next():
+                            break
+            except BaseException:
+                for future in in_flight:
+                    future.cancel()
+                raise
+
+    return [chunk for result in ordered_results if result is not None for chunk in result]
 
 
 def _unique_strings(values: list[Any]) -> list[str]:
@@ -945,9 +1218,7 @@ def _consume_batch_snapshots(
     rows: list[tuple[ProjectMemoryBatchItem, Artifact, PendingDraftSnapshot, Session]],
 ) -> None:
     contributed_draft_ids = {
-        UUID(draft_id)
-        for chunk in generated_chunks
-        for draft_id in chunk.source_draft_ids
+        UUID(draft_id) for chunk in generated_chunks for draft_id in chunk.source_draft_ids
     }
     generated_ids = [str(memory.id)] if memory is not None else []
     consumed_at = utc_now()
@@ -982,7 +1253,13 @@ def _finalize_batch_attempt(
         .where(ProjectMemoryBatch.id == prepared.batch_id)
         .with_for_update()
     ).scalar_one()
-    if batch.status != "running" or batch.attempt_count != expected_attempt_count:
+    now = utc_now()
+    if (
+        batch.status != "running"
+        or batch.attempt_count != expected_attempt_count
+        or batch.lease_expires_at is None
+        or batch.lease_expires_at <= now
+    ):
         db.commit()
         return batch
     if (
@@ -1001,9 +1278,7 @@ def _finalize_batch_attempt(
         )
 
     memory = (
-        _write_project_batch_memory(db, prepared_memory)
-        if prepared_memory is not None
-        else None
+        _write_project_batch_memory(db, prepared_memory) if prepared_memory is not None else None
     )
     _consume_batch_snapshots(
         db,
@@ -1018,11 +1293,11 @@ def _finalize_batch_attempt(
         else None
     )
 
-    now = utc_now()
     batch.status = "succeeded"
     batch.result_status = "memory_generated" if memory is not None else "no_memory"
     batch.generated_artifact_ids = [str(memory.id)] if memory is not None else []
     batch.project_memory_artifact_id = project_memory.id if project_memory else None
+    batch.chunk_results = {}
     batch.error_code = None
     batch.error_message = None
     batch.lease_expires_at = None
@@ -1050,14 +1325,13 @@ def _record_batch_failure(
     is_terminal = isinstance(error, ProjectMemoryBatchInvariantError)
     batch.status = "superseded" if is_terminal else "failed"
     batch.result_status = "generation_failed"
-    batch.error_code = (
-        error.code if isinstance(error, ProjectMemoryBatchError) else "generation_failed"
-    )
-    batch.error_message = str(error)[:2000]
+    batch.error_code = _batch_failure_code(error)
+    batch.error_message = _safe_batch_failure_message(error)
     batch.lease_expires_at = None
     batch.completed_at = now
     batch.updated_at = now
     if is_terminal:
+        batch.chunk_results = {}
         db.execute(
             delete(ProjectMemoryBatchItem).where(ProjectMemoryBatchItem.batch_id == batch.id)
         )
@@ -1066,15 +1340,27 @@ def _record_batch_failure(
     return batch
 
 
-def _run_prepared_batch(
+def _batch_failure_code(error: Exception) -> str:
+    return error.code if isinstance(error, ProjectMemoryBatchError) else "generation_failed"
+
+
+def _safe_batch_failure_message(error: Exception) -> str:
+    if isinstance(error, ProjectMemoryBatchLeaseLostError):
+        return "Project Memory batch lease was lost."
+    if isinstance(error, ProjectMemoryBatchInvariantError):
+        return "Project Memory batch snapshot is invalid."
+    status_match = HTTP_STATUS_PATTERN.search(str(error))
+    if status_match is not None:
+        return f"Memory provider request failed with HTTP status {status_match.group(1)}."
+    return "Project Memory generation failed."
+
+
+def _execute_claimed_batch(
     db: DBSession,
     *,
     batch_id: UUID,
-    replayed: bool,
-) -> dict[str, Any]:
-    batch, claimed, attempt_count = _claim_batch_run(db, batch_id)
-    if not claimed:
-        return serialize_project_memory_batch(db, batch, replayed=True)
+    attempt_count: int,
+) -> ProjectMemoryBatch:
     try:
         prepared = _prepare_batch_attempt(
             db,
@@ -1085,9 +1371,12 @@ def _run_prepared_batch(
             current = db.get(ProjectMemoryBatch, batch_id)
             if current is None:
                 raise ProjectMemoryBatchInvariantError("Project Memory batch not found")
-            return serialize_project_memory_batch(db, current, replayed=True)
+            return current
 
-        generated_chunks = _generate_batch_chunks(prepared)
+        generated_chunks = _generate_batch_chunks(
+            prepared,
+            expected_attempt_count=attempt_count,
+        )
         prepared_memory = (
             _prepare_project_batch_memory(batch=prepared, chunks=generated_chunks)
             if generated_chunks
@@ -1098,14 +1387,10 @@ def _run_prepared_batch(
             compilation_input = prepare_project_memory_compilation(
                 db,
                 project_id=prepared.project_id,
-                required_source_memory_contexts=[
-                    _prepared_batch_memory_context(prepared_memory)
-                ],
+                required_source_memory_contexts=[_prepared_batch_memory_context(prepared_memory)],
             )
             db.commit()
-            prepared_project_memory = generate_project_memory_compilation(
-                compilation_input
-            )
+            prepared_project_memory = generate_project_memory_compilation(compilation_input)
         batch = _finalize_batch_attempt(
             db,
             expected_attempt_count=attempt_count,
@@ -1116,14 +1401,90 @@ def _run_prepared_batch(
         )
     except Exception as exc:
         db.rollback()
-        logger.exception("Project Memory batch %s failed", batch_id)
+        logger.error(
+            "Project Memory batch %s failed error_code=%s",
+            batch_id,
+            _batch_failure_code(exc),
+        )
         batch = _record_batch_failure(
             db,
             batch_id=batch_id,
             error=exc,
             expected_attempt_count=attempt_count,
         )
+    return batch
+
+
+def run_project_memory_batch(
+    db: DBSession,
+    *,
+    batch_id: UUID,
+    replayed: bool = False,
+) -> dict[str, Any]:
+    batch, claimed, attempt_count = _claim_batch_run(db, batch_id)
+    if not claimed:
+        return serialize_project_memory_batch(db, batch, replayed=True)
+    with _batch_lease_heartbeat(batch_id, attempt_count):
+        batch = _execute_claimed_batch(
+            db,
+            batch_id=batch_id,
+            attempt_count=attempt_count,
+        )
     return serialize_project_memory_batch(db, batch, replayed=replayed)
+
+
+def next_project_memory_batch_id(db: DBSession) -> UUID | None:
+    now = utc_now()
+    return db.scalar(
+        select(ProjectMemoryBatch.id)
+        .where(
+            or_(
+                ProjectMemoryBatch.status == "pending",
+                (
+                    (ProjectMemoryBatch.status == "running")
+                    & (ProjectMemoryBatch.lease_expires_at.is_not(None))
+                    & (ProjectMemoryBatch.lease_expires_at <= now)
+                ),
+            )
+        )
+        .order_by(ProjectMemoryBatch.created_at, ProjectMemoryBatch.id)
+        .limit(1)
+        .with_for_update(skip_locked=True)
+    )
+
+
+def run_next_project_memory_batch(db: DBSession) -> bool:
+    batch_id = next_project_memory_batch_id(db)
+    db.commit()
+    if batch_id is None:
+        return False
+    run_project_memory_batch(db, batch_id=batch_id)
+    return True
+
+
+def _requeue_failed_batch(batch: ProjectMemoryBatch) -> None:
+    if batch.status != "failed":
+        return
+    now = utc_now()
+    batch.status = "pending"
+    batch.result_status = None
+    batch.error_code = None
+    batch.error_message = None
+    batch.lease_expires_at = None
+    batch.completed_at = None
+    batch.updated_at = now
+
+
+def _queued_batch_response(
+    db: DBSession,
+    batch: ProjectMemoryBatch,
+    *,
+    replayed: bool,
+) -> dict[str, Any]:
+    _requeue_failed_batch(batch)
+    response = serialize_project_memory_batch(db, batch, replayed=replayed)
+    db.commit()
+    return response
 
 
 def generate_project_memory_batch(
@@ -1145,9 +1506,7 @@ def generate_project_memory_batch(
             idempotency_key,
             update_legacy_keys=False,
         )
-        response = serialize_project_memory_batch(db, in_progress, replayed=True)
-        db.commit()
-        return response
+        return _queued_batch_response(db, in_progress, replayed=True)
 
     visible_active = _visible_active_batch(db, project_id=project_id)
     if visible_active is not None:
@@ -1157,18 +1516,7 @@ def generate_project_memory_batch(
             idempotency_key,
             update_legacy_keys=False,
         )
-        mapped_id = mapped.id
-        db.commit()
-        mapped = db.get(ProjectMemoryBatch, mapped_id)
-        if mapped is None:
-            raise ProjectMemoryBatchInvariantError("Project Memory batch not found")
-        if mapped.status == "pending" or (
-            mapped.status == "running"
-            and mapped.lease_expires_at is not None
-            and mapped.lease_expires_at <= utc_now()
-        ):
-            return _run_prepared_batch(db, batch_id=mapped.id, replayed=True)
-        return serialize_project_memory_batch(db, mapped, replayed=True)
+        return _queued_batch_response(db, mapped, replayed=True)
 
     lock_project_memory(db, project_id)
     existing = _batch_by_idempotency_key(
@@ -1178,36 +1526,17 @@ def generate_project_memory_batch(
     )
     if existing is not None:
         existing = _attach_idempotency_key(db, existing, idempotency_key)
-        if existing.status in {"failed", "pending"} or (
-            existing.status == "running"
-            and existing.lease_expires_at is not None
-            and existing.lease_expires_at <= utc_now()
-        ):
-            db.commit()
-            return _run_prepared_batch(db, batch_id=existing.id, replayed=True)
-        response = serialize_project_memory_batch(db, existing, replayed=True)
-        db.commit()
-        return response
+        return _queued_batch_response(db, existing, replayed=True)
 
     active = _active_batch(db, project_id=project_id)
     if active is not None:
         active = _attach_idempotency_key(db, active, idempotency_key)
-        if active.status == "pending" or (
-            active.status == "running"
-            and active.lease_expires_at is not None
-            and active.lease_expires_at <= utc_now()
-        ):
-            db.commit()
-            return _run_prepared_batch(db, batch_id=active.id, replayed=True)
-        response = serialize_project_memory_batch(db, active, replayed=True)
-        db.commit()
-        return response
+        return _queued_batch_response(db, active, replayed=True)
 
     failed = _failed_batch_for_retry(db, project_id=project_id)
     if failed is not None:
         failed = _attach_idempotency_key(db, failed, idempotency_key)
-        db.commit()
-        return _run_prepared_batch(db, batch_id=failed.id, replayed=True)
+        return _queued_batch_response(db, failed, replayed=True)
 
     batch = _prepare_batch(
         db,
@@ -1217,4 +1546,4 @@ def generate_project_memory_batch(
     )
     if batch.status == "succeeded":
         return serialize_project_memory_batch(db, batch, replayed=False)
-    return _run_prepared_batch(db, batch_id=batch.id, replayed=False)
+    return serialize_project_memory_batch(db, batch, replayed=False)

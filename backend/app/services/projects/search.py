@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import re
+from collections.abc import Iterable
 from typing import Any
 
 from sqlalchemy import select
@@ -55,10 +56,7 @@ def _hash_token(token: str) -> str:
 
 def _terms(value: str) -> list[str]:
     normalized = value.casefold()
-    return [
-        match.group(0)[:MAX_TERM_CHARS]
-        for match in SEARCH_TERM_RE.finditer(normalized)
-    ]
+    return [match.group(0)[:MAX_TERM_CHARS] for match in SEARCH_TERM_RE.finditer(normalized)]
 
 
 def _index_variants(term: str) -> list[str]:
@@ -67,8 +65,7 @@ def _index_variants(term: str) -> list[str]:
         variants.append(term[:PREFIX_TOKEN_CHARS])
     if len(term) >= NGRAM_SIZE:
         variants.extend(
-            term[index : index + NGRAM_SIZE]
-            for index in range(0, len(term) - NGRAM_SIZE + 1)
+            term[index : index + NGRAM_SIZE] for index in range(0, len(term) - NGRAM_SIZE + 1)
         )
     return variants
 
@@ -76,10 +73,7 @@ def _index_variants(term: str) -> list[str]:
 def _query_variants(term: str) -> list[str]:
     if len(term) <= NGRAM_SIZE:
         return [term]
-    return [
-        term[index : index + NGRAM_SIZE]
-        for index in range(0, len(term) - NGRAM_SIZE + 1)
-    ]
+    return [term[index : index + NGRAM_SIZE] for index in range(0, len(term) - NGRAM_SIZE + 1)]
 
 
 def _dedupe_limited(values: list[str], limit: int) -> list[str]:
@@ -101,9 +95,7 @@ def prompt_search_hashes_for_text(value: str) -> list[str]:
         variants.extend(_index_variants(term))
         if len(variants) >= MAX_INDEX_HASHES:
             break
-    return sorted(
-        _hash_token(token) for token in _dedupe_limited(variants, MAX_INDEX_HASHES)
-    )
+    return sorted(_hash_token(token) for token in _dedupe_limited(variants, MAX_INDEX_HASHES))
 
 
 def prompt_search_hashes_for_query(value: str) -> list[str]:
@@ -112,9 +104,7 @@ def prompt_search_hashes_for_query(value: str) -> list[str]:
         variants.extend(_query_variants(term))
         if len(variants) >= MAX_QUERY_HASHES:
             break
-    return sorted(
-        _hash_token(token) for token in _dedupe_limited(variants, MAX_QUERY_HASHES)
-    )
+    return sorted(_hash_token(token) for token in _dedupe_limited(variants, MAX_QUERY_HASHES))
 
 
 def prompt_search_text(event: Event, payload: dict[str, Any]) -> str:
@@ -135,27 +125,44 @@ def upsert_prompt_search_document(
     event: Event,
     payload: dict[str, Any],
 ) -> None:
-    if event.event_type != "PromptSubmitted":
+    upsert_prompt_search_documents(db, ((event, payload),))
+
+
+def upsert_prompt_search_documents(
+    db: Session,
+    event_payloads: Iterable[tuple[Event, dict[str, Any]]],
+) -> None:
+    prompt_events: dict[Any, tuple[Event, dict[str, Any]]] = {}
+    for event, payload in event_payloads:
+        if event.event_type == "PromptSubmitted":
+            prompt_events.setdefault(event.id, (event, payload))
+
+    if not prompt_events:
         return
 
-    token_hashes = prompt_search_hashes_for_text(prompt_search_text(event, payload))
-    document = db.scalar(
-        select(PromptSearchDocument).where(
-            PromptSearchDocument.prompt_event_id == event.id,
+    documents_by_event_id = {
+        document.prompt_event_id: document
+        for document in db.scalars(
+            select(PromptSearchDocument).where(
+                PromptSearchDocument.prompt_event_id.in_(prompt_events),
+            )
         )
-    )
-    if document is None:
-        db.add(
-            PromptSearchDocument(
+    }
+    for event, payload in prompt_events.values():
+        token_hashes = prompt_search_hashes_for_text(prompt_search_text(event, payload))
+        document = documents_by_event_id.get(event.id)
+        if document is None:
+            document = PromptSearchDocument(
                 project_id=event.project_id,
                 session_id=event.session_id,
                 prompt_event_id=event.id,
                 token_hashes=token_hashes,
             )
-        )
-        return
+            db.add(document)
+            documents_by_event_id[event.id] = document
+            continue
 
-    document.project_id = event.project_id
-    document.session_id = event.session_id
-    document.token_hashes = token_hashes
-    document.updated_at = utc_now()
+        document.project_id = event.project_id
+        document.session_id = event.session_id
+        document.token_hashes = token_hashes
+        document.updated_at = utc_now()

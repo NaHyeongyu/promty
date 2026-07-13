@@ -1,0 +1,155 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+from app.core.text_limits import PROJECT_MEMORY_BODY_MAX_BYTES
+from app.services.memory import draft_payloads
+from app.services.memory.cleaners import (
+    MAX_PROJECT_SECTION_TEXT_CHARS,
+    MAX_SEMANTIC_LIST_ITEMS,
+    MAX_SOURCE_ID_CHARS,
+    MAX_SOURCE_IDS,
+    clean_memory_drafts_response,
+    clean_project_memory_response,
+)
+
+
+def _draft_with_large_semantic_lists() -> dict:
+    ids = [f"event-{index}" for index in range(MAX_SOURCE_IDS + 20)]
+    return {
+        "confidence": 0.8,
+        "details": {
+            "decisions": [
+                {
+                    "decision": f"Decision {index}",
+                    "reason": "Reason",
+                    "source_event_ids": ids,
+                }
+                for index in range(MAX_SEMANTIC_LIST_ITEMS + 20)
+            ],
+            "follow_ups": [f"Follow-up {index}" for index in range(MAX_SEMANTIC_LIST_ITEMS + 20)],
+            "open_questions": [
+                {"question": f"Question {index}", "source_event_ids": ids}
+                for index in range(MAX_SEMANTIC_LIST_ITEMS + 20)
+            ],
+            "tasks": [f"Task {index}" for index in range(MAX_SEMANTIC_LIST_ITEMS + 20)],
+        },
+        "evidence": {
+            "based_on": ["pending_draft"],
+            "source_chunk_ids": [f"chunk-{index}" for index in range(MAX_SOURCE_IDS + 20)],
+            "source_event_ids": [*ids, "x" * (MAX_SOURCE_ID_CHARS + 1)],
+        },
+        "needs_user_verification": False,
+        "suggested_user_action": "save",
+        "summary": "Summary",
+        "title": "Title",
+        "type": "work_log",
+        "why_it_matters": "Reason",
+    }
+
+
+def test_draft_cleaner_hard_caps_semantic_lists_and_source_ids() -> None:
+    cleaned = clean_memory_drafts_response(
+        {"memory_drafts": [_draft_with_large_semantic_lists()]},
+        {"pending_drafts": [], "prompt_events": []},
+    )
+    draft = cleaned["memory_drafts"][0]
+
+    assert len(draft["details"]["tasks"]) == MAX_SEMANTIC_LIST_ITEMS
+    assert len(draft["details"]["decisions"]) == MAX_SEMANTIC_LIST_ITEMS
+    assert len(draft["details"]["open_questions"]) == MAX_SEMANTIC_LIST_ITEMS
+    assert len(draft["evidence"]["source_event_ids"]) == MAX_SOURCE_IDS
+    assert len(draft["evidence"]["source_chunk_ids"]) == MAX_SOURCE_IDS
+    assert all(len(value) <= MAX_SOURCE_ID_CHARS for value in draft["evidence"]["source_event_ids"])
+
+
+def test_project_cleaner_caps_utf8_body_sections_and_source_ids() -> None:
+    items = [f"Item {index}" for index in range(MAX_SEMANTIC_LIST_ITEMS + 20)]
+    ids = [f"memory-{index}" for index in range(MAX_SOURCE_IDS + 20)]
+    cleaned = clean_project_memory_response(
+        {
+            "body_markdown": "한" * PROJECT_MEMORY_BODY_MAX_BYTES,
+            "sections": {
+                "core_workflow": items,
+                "current_direction": "d" * (MAX_PROJECT_SECTION_TEXT_CHARS + 100),
+                "important_decisions": [
+                    {
+                        "decision": f"Decision {index}",
+                        "reason": "Reason",
+                        "source_memory_ids": ids,
+                    }
+                    for index in range(MAX_SEMANTIC_LIST_ITEMS + 20)
+                ],
+                "instructions_for_future_ai_agents": items,
+                "open_questions": items,
+                "product_goal": "g" * (MAX_PROJECT_SECTION_TEXT_CHARS + 100),
+                "rejected_directions": [],
+                "technical_assumptions": items,
+            },
+            "source_memory_ids": ids,
+            "warnings": items,
+        },
+        {"source_memories": []},
+    )
+
+    assert len(cleaned["body_markdown"].encode("utf-8")) <= PROJECT_MEMORY_BODY_MAX_BYTES
+    assert len(cleaned["sections"]["core_workflow"]) == MAX_SEMANTIC_LIST_ITEMS
+    assert len(cleaned["sections"]["important_decisions"]) == MAX_SEMANTIC_LIST_ITEMS
+    assert len(cleaned["sections"]["current_direction"]) <= MAX_PROJECT_SECTION_TEXT_CHARS
+    assert len(cleaned["sections"]["product_goal"]) <= MAX_PROJECT_SECTION_TEXT_CHARS
+    assert len(cleaned["source_memory_ids"]) == MAX_SOURCE_IDS
+    assert len(cleaned["warnings"]) == MAX_SEMANTIC_LIST_ITEMS
+
+
+def test_draft_payload_metadata_stores_generation_summary_not_full_response(
+    monkeypatch,
+) -> None:
+    response = {
+        "draft_generation_reason": "Generated from bounded evidence.",
+        "memory_drafts": [_draft_with_large_semantic_lists()],
+        "overall_uncertainties": [{"content": "uncertain"}] * 7,
+        "source_chunk_ids": ["chunk-1"],
+        "source_event_ids": ["event-1", "event-2"],
+        "summary_level": 2,
+    }
+    monkeypatch.setattr(
+        draft_payloads,
+        "settings",
+        SimpleNamespace(memory_draft_generator="openai"),
+    )
+    monkeypatch.setattr(
+        draft_payloads,
+        "compile_memory_drafts",
+        lambda *_args, **_kwargs: response,
+    )
+    monkeypatch.setattr(
+        draft_payloads,
+        "model_metadata_for_provider",
+        lambda _provider: {"openai_model": "gpt-test"},
+    )
+    context = {
+        "changed_files": [],
+        "commits": [],
+        "event_count": 2,
+        "first_event_id": "event-1",
+        "last_event_id": "event-2",
+        "model": "gpt-test",
+        "pending_drafts": [{"id": "chunk-1"}],
+        "prompt_events": [{"id": "event-1"}],
+        "tool": "codex",
+    }
+
+    payloads, generation_metadata = draft_payloads.build_memory_draft_payloads_from_context(
+        context,
+        trigger_reason="project_batch",
+    )
+
+    summary = generation_metadata["draft_generation"]
+    assert "memory_drafts" not in summary
+    assert "overall_uncertainties" not in summary
+    assert summary["draft_count"] == 1
+    assert summary["overall_uncertainty_count"] == 7
+    assert len(payloads) == 1
+    draft_metadata = payloads[0][1]
+    assert "overall_uncertainties" not in draft_metadata
+    assert draft_metadata["overall_uncertainty_count"] == 7

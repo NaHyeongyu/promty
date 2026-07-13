@@ -22,7 +22,9 @@ def source_event_ids_for_context(context: dict[str, Any]) -> list[str]:
     ids = [
         prompt["id"]
         for prompt in context["prompt_events"]
-        if isinstance(prompt.get("id"), str) and prompt.get("id")
+        if prompt.get("context_only") is not True
+        and isinstance(prompt.get("id"), str)
+        and prompt.get("id")
     ]
     if not ids and context.get("first_event_id"):
         ids.append(context["first_event_id"])
@@ -32,7 +34,9 @@ def source_event_ids_for_context(context: dict[str, Any]) -> list[str]:
 
 
 def source_draft_ids_for_context(context: dict[str, Any]) -> list[str]:
-    drafts = context.get("pending_drafts") if isinstance(context.get("pending_drafts"), list) else []
+    drafts = (
+        context.get("pending_drafts") if isinstance(context.get("pending_drafts"), list) else []
+    )
     return [
         draft.get("id")
         for draft in drafts
@@ -55,12 +59,14 @@ def _sections_from_memory_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
     details = draft.get("details") if isinstance(draft.get("details"), dict) else {}
     tasks = details.get("tasks") if isinstance(details.get("tasks"), list) else []
     if not tasks:
-        tasks = details.get("what_happened") if isinstance(details.get("what_happened"), list) else []
-    follow_ups = (
-        details.get("follow_ups") if isinstance(details.get("follow_ups"), list) else []
-    )
+        tasks = (
+            details.get("what_happened") if isinstance(details.get("what_happened"), list) else []
+        )
+    follow_ups = details.get("follow_ups") if isinstance(details.get("follow_ups"), list) else []
     if not follow_ups:
-        follow_ups = details.get("next_steps") if isinstance(details.get("next_steps"), list) else []
+        follow_ups = (
+            details.get("next_steps") if isinstance(details.get("next_steps"), list) else []
+        )
     open_questions = (
         [
             item.get("question")
@@ -118,6 +124,21 @@ def _sections_from_memory_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
     return sections[:4]
 
 
+def _draft_generation_summary(response: dict[str, Any]) -> dict[str, Any]:
+    drafts = response.get("memory_drafts")
+    uncertainties = response.get("overall_uncertainties")
+    source_chunk_ids = response.get("source_chunk_ids")
+    source_event_ids = response.get("source_event_ids")
+    return {
+        "draft_count": len(drafts) if isinstance(drafts, list) else 0,
+        "overall_uncertainty_count": (len(uncertainties) if isinstance(uncertainties, list) else 0),
+        "reason": truncate(response.get("draft_generation_reason"), 240),
+        "source_chunk_count": (len(source_chunk_ids) if isinstance(source_chunk_ids, list) else 0),
+        "source_event_count": (len(source_event_ids) if isinstance(source_event_ids, list) else 0),
+        "summary_level": response.get("summary_level"),
+    }
+
+
 def _payload_from_memory_draft(
     context: dict[str, Any],
     draft: dict[str, Any],
@@ -129,9 +150,7 @@ def _payload_from_memory_draft(
         details.get("what_happened") if isinstance(details.get("what_happened"), list) else []
     )
     outcome = " ".join(
-        truncate(item, 220)
-        for item in what_happened
-        if isinstance(item, str) and item.strip()
+        truncate(item, 220) for item in what_happened if isinstance(item, str) and item.strip()
     )
     changed_files = context["changed_files"]
     draft_type = string_or_none(draft.get("type")) or "thinking_note"
@@ -190,7 +209,7 @@ def build_memory_draft_payloads_from_context(
         response = compile_memory_drafts(context, provider=provider)
         generator = generator_for_provider(provider, stage="draft")
         generation_metadata = {
-            "draft_generation": response,
+            "draft_generation": _draft_generation_summary(response),
             "draft_generator": generator,
             **model_metadata_for_provider(provider),
         }
@@ -203,7 +222,9 @@ def build_memory_draft_payloads_from_context(
             "source_event_ids": source_event_ids,
         }
 
-    drafts = response.get("memory_drafts") if isinstance(response.get("memory_drafts"), list) else []
+    drafts = (
+        response.get("memory_drafts") if isinstance(response.get("memory_drafts"), list) else []
+    )
     if not drafts:
         return [], {
             **generation_metadata,
@@ -225,7 +246,11 @@ def build_memory_draft_payloads_from_context(
             "draft_index": index,
             "draft_type": draft.get("type"),
             "needs_user_verification": draft.get("needs_user_verification") is True,
-            "overall_uncertainties": response.get("overall_uncertainties", []),
+            "overall_uncertainty_count": len(
+                response.get("overall_uncertainties", [])
+                if isinstance(response.get("overall_uncertainties"), list)
+                else []
+            ),
             "source_draft_ids": source_draft_ids,
             "suggested_user_action": draft.get("suggested_user_action"),
         }

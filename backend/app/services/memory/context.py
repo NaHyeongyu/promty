@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession
 
+from app.core.config import settings
 from app.models.events import Event
 from app.models.projects import Project
 from app.models.sessions import Session
@@ -41,11 +43,7 @@ def is_generic_local_memory_summary(value: str | None) -> bool:
 def _long_text_ai_preview(value: str, *, label: str) -> str:
     head = value[:LONG_TEXT_AI_PREVIEW_EDGE]
     tail = value[-LONG_TEXT_AI_PREVIEW_EDGE:]
-    return (
-        f"[Long {label} preview: original_size={len(value)} chars]\n"
-        f"Head: {head}\n"
-        f"Tail: {tail}"
-    )
+    return f"[Long {label} preview: original_size={len(value)} chars]\nHead: {head}\nTail: {tail}"
 
 
 def _ai_text_preview(value: str | None, *, label: str) -> str | None:
@@ -119,9 +117,7 @@ def changed_files_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
                     "binary": change.get("binary") is True,
                     "old_path": string_or_none(change.get("old_path")),
                     "patch": change.get("patch") if isinstance(change.get("patch"), str) else None,
-                    "patch_omitted_reason": string_or_none(
-                        change.get("patch_omitted_reason")
-                    ),
+                    "patch_omitted_reason": string_or_none(change.get("patch_omitted_reason")),
                     "patch_truncated": change.get("patch_truncated") is True,
                     "path": path,
                     "status": string_or_none(change.get("status")) or "changed",
@@ -159,11 +155,9 @@ def event_context_payload(event_type: str, payload: dict[str, Any]) -> dict[str,
         return {
             "change_detection_complete": payload.get("change_detection_complete") is True,
             "files": [
-                file["path"]
-                for file in changed_files_from_payload(payload)[:30]
+                truncate(file["path"], 240) for file in changed_files_from_payload(payload)[:8]
             ],
             "no_changes": payload.get("no_changes") is True,
-            "summary": payload.get("summary") if isinstance(payload.get("summary"), dict) else None,
         }
     if event_type == "CommitCreated":
         return {
@@ -285,23 +279,35 @@ def build_session_memory_context(
     db: DBSession,
     session: Session,
     *,
+    context_event_rows: list[Event] | None = None,
     end_sequence: int | None = None,
+    event_rows: list[Event] | None = None,
     slice_metadata: dict[str, Any] | None = None,
     start_sequence: int | None = None,
 ) -> dict[str, Any]:
     project = session.project or db.get(Project, session.project_id)
-    query = select(Event).where(
-        Event.project_id == session.project_id,
-        Event.session_id == session.id,
-    )
-    if start_sequence is not None:
-        query = query.where(Event.sequence >= start_sequence)
-    if end_sequence is not None:
-        query = query.where(Event.sequence <= end_sequence)
-    events = list(db.execute(query.order_by(Event.sequence, Event.created_at)).scalars())
-    payloads = [(event, payload(event)) for event in events]
+    if event_rows is None:
+        query = select(Event).where(
+            Event.project_id == session.project_id,
+            Event.session_id == session.id,
+        )
+        if start_sequence is not None:
+            query = query.where(Event.sequence >= start_sequence)
+        if end_sequence is not None:
+            query = query.where(Event.sequence <= end_sequence)
+        events = list(db.execute(query.order_by(Event.sequence, Event.created_at)).scalars())
+    else:
+        events = event_rows
+    coverage_event_ids = {event.id for event in events}
+    context_events = [
+        event for event in (context_event_rows or []) if event.id not in coverage_event_ids
+    ]
+    context_event_ids = {event.id for event in context_events}
+    payloads = [(event, payload(event)) for event in [*events, *context_events]]
+    coverage_payloads = payloads[: len(events)]
     prompt_events = [
         {
+            "context_only": event.id in context_event_ids,
             "id": str(event.id),
             "prompt": _prompt_ai_text(string_or_none(event_payload.get("prompt"))),
             "prompt_original": string_or_none(event_payload.get("prompt")),
@@ -314,6 +320,7 @@ def build_session_memory_context(
     ]
     responses = [
         {
+            "context_only": event.id in context_event_ids,
             "id": str(event.id),
             "response": _response_ai_text(string_or_none(event_payload.get("response"))),
             "response_original": string_or_none(event_payload.get("response")),
@@ -324,7 +331,7 @@ def build_session_memory_context(
         for event, event_payload in payloads
         if event.event_type == "ResponseReceived"
     ]
-    response_count = sum(1 for event, _ in payloads if event.event_type == "ResponseReceived")
+    response_count = sum(1 for event in events if event.event_type == "ResponseReceived")
     commits = [
         {
             "hash": string_or_none(event_payload.get("hash")),
@@ -362,7 +369,7 @@ def build_session_memory_context(
                 "sequence": event.sequence,
                 "timestamp": iso(event.created_at),
             }
-            for event, event_payload in payloads
+            for event, event_payload in coverage_payloads
         ],
         "first_event_id": str(events[0].id) if events else None,
         "last_event_id": str(events[-1].id) if events else None,
@@ -405,6 +412,89 @@ def _ai_ready_text(value: str | None) -> dict[str, Any]:
     }
 
 
+def _edge_sample(values: list[Any], limit: int) -> list[Any]:
+    if limit <= 0:
+        return []
+    if len(values) <= limit:
+        return list(values)
+    first_count = max(1, limit // 3)
+    return [*values[:first_count], *values[-(limit - first_count) :]]
+
+
+def _compact_changed_file_metadata(file: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "additions": file.get("additions"),
+        "binary": file.get("binary") is True,
+        "deletions": file.get("deletions"),
+        "old_path": truncate(file.get("old_path"), 240) or None,
+        "patch_omitted_reason": truncate(file.get("patch_omitted_reason"), 120) or None,
+        "patch_truncated": file.get("patch_truncated") is True,
+        "path": truncate(file.get("path"), 240),
+        "status": truncate(file.get("status"), 32) or "changed",
+    }
+
+
+def _compact_commit_metadata(commit: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "hash": truncate(commit.get("hash"), 64) or None,
+        "message": truncate(commit.get("message"), 240) or None,
+    }
+
+
+def _evidence_size(value: dict[str, Any]) -> int:
+    return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
+
+def _bounded_pending_evidence(
+    evidence: dict[str, Any],
+    *,
+    original_counts: dict[str, int],
+) -> dict[str, Any]:
+    byte_limit = max(settings.memory_draft_evidence_max_bytes, 4_096)
+
+    def candidate(limits: dict[str, int]) -> dict[str, Any]:
+        bounded = {
+            **evidence,
+            **{
+                key: _edge_sample(evidence[key], limits[key])
+                for key in ("changed_files", "commits", "events", "prompts", "responses")
+            },
+        }
+        bounded["omitted"] = {
+            key: max(original_counts[key] - len(bounded[key]), 0) for key in original_counts
+        }
+        return bounded
+
+    for limits in (
+        {"changed_files": 100, "commits": 20, "events": 80, "prompts": 40, "responses": 40},
+        {"changed_files": 60, "commits": 12, "events": 40, "prompts": 20, "responses": 20},
+        {"changed_files": 30, "commits": 8, "events": 20, "prompts": 10, "responses": 10},
+        {"changed_files": 12, "commits": 4, "events": 8, "prompts": 4, "responses": 4},
+    ):
+        bounded = candidate(limits)
+        if _evidence_size(bounded) <= byte_limit:
+            return bounded
+
+    minimal = candidate(
+        {"changed_files": 4, "commits": 2, "events": 0, "prompts": 2, "responses": 2}
+    )
+    for prompt in minimal["prompts"]:
+        ai_input = prompt.get("ai_input") if isinstance(prompt.get("ai_input"), dict) else {}
+        prompt["ai_input"] = {
+            **ai_input,
+            "text": truncate(ai_input.get("text"), 160),
+        }
+    for response in minimal["responses"]:
+        response["output_preview"] = truncate(response.get("output_preview"), 160)
+    if _evidence_size(minimal) <= byte_limit:
+        return minimal
+
+    counts_only = candidate(
+        {"changed_files": 0, "commits": 0, "events": 0, "prompts": 0, "responses": 0}
+    )
+    return counts_only
+
+
 def pending_draft_evidence_from_context(context: dict[str, Any]) -> dict[str, Any]:
     prompt_events = context["prompt_events"]
     responses = context["responses"]
@@ -435,40 +525,65 @@ def pending_draft_evidence_from_context(context: dict[str, Any]) -> dict[str, An
                 ),
                 None,
             )
+        ai_input = _ai_ready_text(raw_prompt)
+        ai_input["text"] = truncate(ai_input.get("text"), 700)
+        ai_input["truncated_for_ai"] = ai_input.get("truncated_for_ai") is True or (
+            raw_prompt is not None and len(raw_prompt) > len(ai_input["text"])
+        )
         prompts.append(
             {
-                "ai_input": _ai_ready_text(raw_prompt),
+                "ai_input": ai_input,
+                "context_only": prompt.get("context_only") is True,
                 "event_id": prompt.get("id"),
-                "original_input": raw_prompt,
                 "original_length": prompt.get("prompt_original_size")
                 or (len(raw_prompt) if raw_prompt else 0),
                 "paired_response_event_id": paired_response.get("id")
                 if isinstance(paired_response, dict)
                 else None,
                 "sequence": prompt.get("sequence"),
-                "storage_truncated": prompt.get("prompt_ai_preview_truncated") is True,
+                "storage_truncated": (
+                    prompt.get("prompt_ai_preview_truncated") is True
+                    or ai_input.get("truncated_for_ai") is True
+                ),
                 "turn_id": prompt.get("turn_id"),
             }
         )
 
-    return {
-        "changed_files": changed_files,
-        "commits": context["commits"],
+    evidence = {
+        "changed_files": [
+            _compact_changed_file_metadata(file)
+            for file in changed_files
+            if isinstance(file, dict) and file.get("path")
+        ],
+        "commits": [
+            _compact_commit_metadata(commit)
+            for commit in context["commits"]
+            if isinstance(commit, dict)
+        ],
         "events": context["events"],
         "prompts": prompts,
         "responses": [
             {
+                "context_only": response.get("context_only") is True,
                 "event_id": response.get("id"),
                 "original_length": response.get("response_original_size")
                 or len(response.get("response_original") or response.get("response") or ""),
-                "original_output": string_or_none(response.get("response_original"))
-                or string_or_none(response.get("response")),
+                "output_preview": truncate(
+                    string_or_none(response.get("response_original"))
+                    or string_or_none(response.get("response")),
+                    500,
+                ),
                 "sequence": response.get("sequence"),
-                "storage_truncated": response.get("response_ai_preview_truncated") is True,
+                "storage_truncated": (
+                    response.get("response_ai_preview_truncated") is True
+                    or len(response.get("response_original") or response.get("response") or "")
+                    > 500
+                ),
                 "turn_id": response.get("turn_id"),
             }
             for response in responses
         ],
+        "schema_version": 2,
         "session": {
             "ended_at": context.get("ended_at"),
             "id": context.get("session_id"),
@@ -479,13 +594,36 @@ def pending_draft_evidence_from_context(context: dict[str, Any]) -> dict[str, An
             "tool": context.get("tool"),
         },
     }
+    return _bounded_pending_evidence(
+        evidence,
+        original_counts={
+            key: len(evidence[key])
+            for key in ("changed_files", "commits", "events", "prompts", "responses")
+        },
+    )
 
 
-def build_pending_memory_draft_payload(context: dict[str, Any]) -> dict[str, Any]:
-    evidence = pending_draft_evidence_from_context(context)
-    prompt_count = len(evidence["prompts"])
-    response_count = len(evidence["responses"])
-    file_count = len(evidence["changed_files"])
+def build_pending_memory_draft_payload(
+    context: dict[str, Any],
+    *,
+    evidence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if evidence is None:
+        evidence = pending_draft_evidence_from_context(context)
+    omitted = evidence.get("omitted") if isinstance(evidence.get("omitted"), dict) else {}
+
+    def evidence_count(key: str) -> int:
+        omitted_count = omitted.get(key)
+        return len(evidence[key]) + (omitted_count if isinstance(omitted_count, int) else 0)
+
+    prompt_count = evidence_count("prompts")
+    response_count = evidence_count("responses")
+    file_count = evidence_count("changed_files")
+    slice_metadata = context.get("slice") if isinstance(context.get("slice"), dict) else {}
+    is_continuation = (
+        slice_metadata.get("window_reason") == "event_count_continuation"
+        or slice_metadata.get("window_truncated") is True
+    )
     title = title_from_session(
         prompts=context["prompt_events"],
         project_name=context["project_name"],
@@ -509,16 +647,25 @@ def build_pending_memory_draft_payload(context: dict[str, Any]) -> dict[str, Any
         },
     ]
     return {
-        "changed_files": context["changed_files"][:100],
-        "commit_sha": context["commits"][-1]["hash"] if context["commits"] else None,
+        "changed_files": evidence["changed_files"][:100],
+        "commit_sha": evidence["commits"][-1]["hash"] if evidence["commits"] else None,
         "event_count": context["event_count"],
         "first_event_id": context["first_event_id"],
         "generator": PENDING_MEMORY_DRAFT_GENERATOR,
         "last_event_id": context["last_event_id"],
         "model": context["model"],
         "outcome": "Pending AI memory generation.",
-        "prompt_event_ids": [prompt["id"] for prompt in context["prompt_events"]],
-        "reason": "Prompt input, AI output, and file-change detection are all available.",
+        "prompt_event_ids": [
+            prompt["id"]
+            for prompt in context["prompt_events"]
+            if prompt.get("context_only") is not True
+        ],
+        "reason": (
+            "Bounded continuation of an eligible prompt window; the prompt is context-only "
+            "and event coverage remains unique to this slice."
+            if is_continuation
+            else "Prompt input, AI output, and file-change detection are all available."
+        ),
         "sections": sections,
         "summary": summary,
         "tags": sorted(

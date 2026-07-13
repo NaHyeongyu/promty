@@ -1,73 +1,10 @@
-import type { OverviewItem, ProjectDetailData } from "./types";
+import type { ProjectDetailData } from "./types";
 
 function overviewCompactNumber(value: number) {
   return Intl.NumberFormat("en", {
     maximumFractionDigits: 1,
     notation: "compact",
   }).format(value);
-}
-
-function statisticDeltaParts(delta: string | undefined) {
-  if (!delta) {
-    return null;
-  }
-
-  const [value, ...labelParts] = delta.split(" ");
-  const label = labelParts.join(" ");
-  return {
-    label,
-    value,
-  };
-}
-
-function statisticNumericValue(value: string | undefined) {
-  if (!value) {
-    return 0;
-  }
-
-  const normalizedValue = value.trim().replace(/,/g, "");
-  const match = normalizedValue.match(/^([+-]?\d+(?:\.\d+)?)([kmb])?/i);
-  if (!match) {
-    return 0;
-  }
-
-  const amount = Number.parseFloat(match[1]);
-  if (!Number.isFinite(amount)) {
-    return 0;
-  }
-
-  const suffix = match[2]?.toLowerCase();
-  const multiplier =
-    suffix === "b"
-      ? 1_000_000_000
-      : suffix === "m"
-        ? 1_000_000
-        : suffix === "k"
-          ? 1_000
-          : 1;
-  return amount * multiplier;
-}
-
-function statisticSparklinePoints(value: string, delta: string | undefined) {
-  const currentValue = Math.max(0, statisticNumericValue(value));
-  const deltaValue = Math.max(0, statisticNumericValue(delta?.split(" ")[0]));
-
-  if (currentValue === 0 && deltaValue === 0) {
-    return [0, 0, 0, 0, 0, 0, 0];
-  }
-
-  const trendUnit =
-    deltaValue > 0 ? deltaValue : Math.max(1, Math.round(currentValue * 0.08));
-  const startValue = Math.max(0, currentValue - trendUnit * 2);
-  return [
-    startValue,
-    startValue + trendUnit * 0.28,
-    startValue + trendUnit * 0.18,
-    startValue + trendUnit * 0.62,
-    startValue + trendUnit * 0.52,
-    startValue + trendUnit * 0.86,
-    currentValue,
-  ];
 }
 
 function sparklinePointCoordinates(points: number[]) {
@@ -85,9 +22,11 @@ function sparklinePointCoordinates(points: number[]) {
 }
 
 function SparklineChart({
+  label,
   points,
   type,
 }: {
+  label: string;
   points: number[];
   type: "bar" | "line";
 }) {
@@ -100,10 +39,10 @@ function SparklineChart({
 
   return (
     <svg
-      aria-hidden="true"
+      aria-label={label}
       className="bh-overview-stat-sparkline"
-      focusable="false"
       preserveAspectRatio="none"
+      role="img"
       viewBox="0 0 96 30"
     >
       {type === "bar" ? (
@@ -132,53 +71,58 @@ function SparklineChart({
 
 export function OverviewStatistics({
   data,
-  overviewItems,
 }: {
   data: ProjectDetailData;
-  overviewItems: Map<string, OverviewItem>;
 }) {
-  const filesChanged = data.activities.reduce(
-    (total, activity) => total + activity.filesChanged,
-    0,
-  );
+  const history = data.metricHistory.slice(-14);
+  const pointsFor = (
+    key: "filesChanged" | "memories" | "prompts" | "sessions",
+  ) => {
+    const points = history.map((item) => item[key]);
+    return points.length > 0 ? points : Array.from({ length: 14 }, () => 0);
+  };
   const statisticItems = [
     {
       chart: "line" as const,
-      delta: overviewItems.get("Sessions Added")?.value,
       label: "Sessions",
+      metricKey: "sessions" as const,
+      points: pointsFor("sessions"),
       tone: "sessions",
-      value: overviewItems.get("Sessions")?.value ?? "0",
     },
     {
       chart: "line" as const,
-      delta: overviewItems.get("Prompts Added")?.value,
       label: "Prompts",
+      metricKey: "prompts" as const,
+      points: pointsFor("prompts"),
       tone: "prompts",
-      value: overviewItems.get("Prompts")?.value ?? "0",
     },
     {
       chart: "line" as const,
-      delta: overviewItems.get("Files Changed Added")?.value,
       label: "Files changed",
+      metricKey: "filesChanged" as const,
+      points: pointsFor("filesChanged"),
       tone: "files",
-      value: overviewCompactNumber(filesChanged),
     },
     {
       chart: "line" as const,
-      delta: undefined,
       label: "Memories",
+      metricKey: "memories" as const,
+      points: pointsFor("memories"),
       tone: "memory",
-      value: overviewCompactNumber(data.memory.totalArtifacts),
     },
   ];
   const renderedStatisticItems = statisticItems.map((item) => ({
     ...item,
-    deltaParts: statisticDeltaParts(item.delta),
-    sparklinePoints: statisticSparklinePoints(item.value, item.delta),
+    value: overviewCompactNumber(
+      item.points.reduce((total, point) => total + point, 0),
+    ),
   }));
 
   return (
-    <section className="bh-overview-statistics" aria-label="Project statistics">
+    <section
+      className="bh-overview-statistics"
+      aria-label="Project statistics for the last 14 days"
+    >
       <dl>
         {renderedStatisticItems.map((item) => (
           <div
@@ -189,16 +133,21 @@ export function OverviewStatistics({
             <div className="bh-overview-stat-copy">
               <dt>{item.label}</dt>
               <dd>{item.value}</dd>
-              {item.deltaParts ? (
-                <span className="bh-overview-statistics-change">
-                  <strong>{item.deltaParts.value}</strong>
-                  {item.deltaParts.label ? (
-                    <small>{item.deltaParts.label}</small>
-                  ) : null}
-                </span>
-              ) : null}
+              <span className="bh-overview-statistics-change">
+                <small>Last 14 days</small>
+              </span>
             </div>
-            <SparklineChart points={item.sparklinePoints} type={item.chart} />
+            <SparklineChart
+              label={
+                history.length > 0
+                  ? `${item.label} per day for the last 14 days: ${history
+                      .map((day) => `${day.date}: ${day[item.metricKey]}`)
+                      .join(", ")}`
+                  : `${item.label} per day for the last 14 days: no recorded activity`
+              }
+              points={item.points}
+              type={item.chart}
+            />
           </div>
         ))}
       </dl>

@@ -19,6 +19,17 @@ from app.services.memory.prompts import (
     build_memory_draft_prompt,
     build_project_memory_prompt,
 )
+from app.services.memory.provider_metrics import (
+    ProviderRequestAttempt,
+    response_status,
+)
+from app.services.memory.provider_limits import (
+    ProviderResponseTooLargeError,
+    ProviderWallDeadline,
+    ProviderWallDeadlineExceededError,
+    read_limited_response,
+    sleep_before_retry_with_deadline,
+)
 from app.services.memory.retry import (
     bounded_retry_delay,
     retry_after_header_delay,
@@ -57,7 +68,7 @@ def _extract_text(response_payload: dict[str, Any]) -> str:
                     chunks.append(text)
                 refusal = part.get("refusal")
                 if isinstance(refusal, str) and refusal.strip():
-                    raise OpenAIMemoryGenerationError(f"OpenAI refused memory generation: {refusal}")
+                    raise OpenAIMemoryGenerationError("OpenAI refused memory generation.")
 
     text = "".join(chunks).strip()
     if not text:
@@ -74,13 +85,29 @@ def _retry_delay(exc: error.HTTPError | None, attempt: int) -> float:
     )
 
 
-def _request_openai_json(prompt: str) -> dict[str, Any]:
+def _request_openai_json(
+    prompt: str,
+    *,
+    stage: str = "memory_generation",
+) -> dict[str, Any]:
     if not settings.openai_api_key:
         raise OpenAIMemoryGenerationError("OpenAI API key is not configured.")
 
     model = settings.openai_model.strip() or "gpt-5-mini"
+    output_max_tokens = max(
+        int(getattr(settings, "memory_provider_output_max_tokens", 8_192)),
+        1,
+    )
+    response_max_bytes = max(
+        int(getattr(settings, "memory_provider_response_max_bytes", 1_048_576)),
+        1,
+    )
+    deadline = ProviderWallDeadline.start(
+        float(getattr(settings, "memory_provider_wall_deadline_seconds", 120.0))
+    )
     body = {
         "input": prompt,
+        "max_output_tokens": output_max_tokens,
         "model": model,
         "store": False,
         "text": {
@@ -96,6 +123,13 @@ def _request_openai_json(prompt: str) -> dict[str, Any]:
     last_error: OpenAIMemoryGenerationError | None = None
 
     for attempt in range(max_retries + 1):
+        metrics = ProviderRequestAttempt(
+            provider="openai",
+            model=model,
+            stage=stage,
+            request_bytes=len(request_payload),
+            attempt=attempt + 1,
+        )
         http_request = request.Request(
             "https://api.openai.com/v1/responses",
             data=request_payload,
@@ -108,27 +142,124 @@ def _request_openai_json(prompt: str) -> dict[str, Any]:
         try:
             with request.urlopen(
                 http_request,
-                timeout=max(settings.openai_timeout_seconds, 1),
+                timeout=deadline.request_timeout(
+                    max(settings.openai_timeout_seconds, 1),
+                ),
             ) as response:
-                response_payload = json.loads(response.read().decode("utf-8"))
-            return parse_json_text(
+                status_code = response_status(response)
+                response_payload = json.loads(
+                    read_limited_response(
+                        response,
+                        deadline=deadline,
+                        max_bytes=response_max_bytes,
+                    ).decode("utf-8")
+                )
+            parsed = parse_json_text(
                 _extract_text(response_payload),
                 error_cls=OpenAIMemoryGenerationError,
                 provider="OpenAI",
             )
+            deadline.remaining_seconds()
+            metrics.finish(outcome="success", status=status_code)
+            return parsed
+        except ProviderResponseTooLargeError:
+            metrics.finish(outcome="failure", status="response_too_large")
+            raise OpenAIMemoryGenerationError(
+                "OpenAI response exceeded the configured size limit."
+            ) from None
+        except ProviderWallDeadlineExceededError:
+            metrics.finish(outcome="failure", status="deadline_exceeded")
+            raise OpenAIMemoryGenerationError(
+                "OpenAI request exceeded the configured time limit."
+            ) from None
         except error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
             last_error = OpenAIMemoryGenerationError(
-                f"OpenAI request failed with HTTP {exc.code}: {detail[:500]}"
+                f"OpenAI request failed with HTTP status {exc.code}."
             )
-            if exc.code not in RETRYABLE_HTTP_STATUS_CODES or attempt >= max_retries:
-                raise last_error from exc
-            sleep_before_retry(_retry_delay(exc, attempt))
-        except (error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-            last_error = OpenAIMemoryGenerationError(f"OpenAI request failed: {exc}")
-            if attempt >= max_retries:
-                raise last_error from exc
-            sleep_before_retry(_retry_delay(None, attempt))
+            should_retry = exc.code in RETRYABLE_HTTP_STATUS_CODES and attempt < max_retries
+            if should_retry:
+                delay = _retry_delay(exc, attempt)
+                try:
+                    sleep_before_retry_with_deadline(
+                        deadline,
+                        delay,
+                        sleep_before_retry,
+                    )
+                except ProviderWallDeadlineExceededError:
+                    metrics.finish(outcome="failure", status="deadline_exceeded")
+                    raise OpenAIMemoryGenerationError(
+                        "OpenAI request exceeded the configured time limit."
+                    ) from None
+                metrics.finish(outcome="retry", status=f"http_{exc.code}")
+                continue
+            metrics.finish(
+                outcome="failure",
+                status=f"http_{exc.code}",
+            )
+            raise last_error from None
+        except (error.URLError, TimeoutError):
+            try:
+                deadline.remaining_seconds()
+            except ProviderWallDeadlineExceededError:
+                metrics.finish(outcome="failure", status="deadline_exceeded")
+                raise OpenAIMemoryGenerationError(
+                    "OpenAI request exceeded the configured time limit."
+                ) from None
+            last_error = OpenAIMemoryGenerationError(
+                "OpenAI request failed before receiving an HTTP response."
+            )
+            should_retry = attempt < max_retries
+            if should_retry:
+                delay = _retry_delay(None, attempt)
+                try:
+                    sleep_before_retry_with_deadline(
+                        deadline,
+                        delay,
+                        sleep_before_retry,
+                    )
+                except ProviderWallDeadlineExceededError:
+                    metrics.finish(outcome="failure", status="deadline_exceeded")
+                    raise OpenAIMemoryGenerationError(
+                        "OpenAI request exceeded the configured time limit."
+                    ) from None
+                metrics.finish(outcome="retry", status="transport_error")
+                continue
+            metrics.finish(
+                outcome="failure",
+                status="transport_error",
+            )
+            raise last_error from None
+        except json.JSONDecodeError:
+            last_error = OpenAIMemoryGenerationError("OpenAI returned an invalid JSON response.")
+            should_retry = attempt < max_retries
+            if should_retry:
+                delay = _retry_delay(None, attempt)
+                try:
+                    sleep_before_retry_with_deadline(
+                        deadline,
+                        delay,
+                        sleep_before_retry,
+                    )
+                except ProviderWallDeadlineExceededError:
+                    metrics.finish(outcome="failure", status="deadline_exceeded")
+                    raise OpenAIMemoryGenerationError(
+                        "OpenAI request exceeded the configured time limit."
+                    ) from None
+                metrics.finish(outcome="retry", status="invalid_json")
+                continue
+            metrics.finish(
+                outcome="failure",
+                status="invalid_json",
+            )
+            raise last_error from None
+        except OpenAIMemoryGenerationError:
+            metrics.finish(outcome="failure", status="invalid_response")
+            raise OpenAIMemoryGenerationError("OpenAI returned an invalid response.") from None
+        except Exception:
+            metrics.finish(outcome="failure", status="unexpected_error")
+            raise OpenAIMemoryGenerationError(
+                "OpenAI request failed before a valid response was produced."
+            ) from None
 
     if last_error is not None:
         raise last_error
@@ -136,14 +267,16 @@ def _request_openai_json(prompt: str) -> dict[str, Any]:
 
 
 def generate_openai_memory_drafts(context: dict[str, Any]) -> dict[str, Any]:
-    generated = _request_openai_json(build_memory_draft_prompt(context))
-    return MemoryDraftGeneration.parse_obj(
-        clean_memory_drafts_response(generated, context)
-    ).dict()
+    generated = _request_openai_json(
+        build_memory_draft_prompt(context),
+        stage="memory_draft_generation",
+    )
+    return MemoryDraftGeneration.parse_obj(clean_memory_drafts_response(generated, context)).dict()
 
 
 def generate_openai_project_memory(context: dict[str, Any]) -> dict[str, Any]:
-    generated = _request_openai_json(build_project_memory_prompt(context))
-    return ProjectMemorySnapshot.parse_obj(
-        clean_project_memory_response(generated, context)
-    ).dict()
+    generated = _request_openai_json(
+        build_project_memory_prompt(context),
+        stage="project_memory_generation",
+    )
+    return ProjectMemorySnapshot.parse_obj(clean_project_memory_response(generated, context)).dict()

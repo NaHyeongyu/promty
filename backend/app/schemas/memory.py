@@ -5,6 +5,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.core.text_limits import (
+    PROJECT_MEMORY_BODY_MAX_BYTES,
+    ensure_utf8_byte_limit,
+)
+
 
 class SourceConfidenceItem(BaseModel):
     source_event_ids: list[str] = Field(default_factory=list)
@@ -125,11 +130,24 @@ class ProjectMemorySnapshot(BaseModel):
     def require_body(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("body_markdown must not be empty")
-        return value
+        return ensure_utf8_byte_limit(
+            value,
+            field_name="body_markdown",
+            max_bytes=PROJECT_MEMORY_BODY_MAX_BYTES,
+        )
 
 
 class ProjectMemoryUpdateRequest(BaseModel):
     body_markdown: str = Field(min_length=1)
+
+    @field_validator("body_markdown")
+    @classmethod
+    def limit_body_bytes(cls, value: str) -> str:
+        return ensure_utf8_byte_limit(
+            value,
+            field_name="body_markdown",
+            max_bytes=PROJECT_MEMORY_BODY_MAX_BYTES,
+        )
 
 
 class ProjectMemoryGenerateRequest(BaseModel):

@@ -31,7 +31,10 @@ def session_completion_state(db: DBSession, session: Session) -> dict[str, Any]:
             "completed_at": session.ended_at,
             "reason": "explicit",
         }
-    idle_reference_at = latest_prompt_at or latest_event_at
+    # A response or file-change hook is still session activity. Using the most
+    # recent prompt alone can finalize a session while its trailing events are
+    # actively arriving.
+    idle_reference_at = latest_event_at or latest_prompt_at
     if idle_reference_at and idle_reference_at <= utc_now() - SESSION_IDLE_COMPLETE_AFTER:
         return {
             "completed": True,

@@ -135,11 +135,15 @@ def refresh_memory_review_queue_response(
     limit: int,
     user: User,
 ) -> dict[str, Any]:
-    initial_summaries = list_project_summaries(db, current_user=user)
+    project_summaries = list_project_summaries(db, current_user=user)
     errors: list[dict[str, str]] = []
+    failed_project_ids: set[str] = set()
     ranges_by_project: dict[str, list[dict[str, Any]]] = {}
 
-    for summary in initial_summaries:
+    for summary in project_summaries:
+        if summary["pending_memory_count"] <= 0:
+            ranges_by_project[summary["id"]] = []
+            continue
         project_id = UUID(summary["id"])
         try:
             with db.begin_nested():
@@ -149,6 +153,7 @@ def refresh_memory_review_queue_response(
                     project_id=project_id,
                 )
         except Exception:
+            failed_project_ids.add(summary["id"])
             logger.exception(
                 "Review queue materialization failed for project %s",
                 summary["id"],
@@ -161,7 +166,6 @@ def refresh_memory_review_queue_response(
             )
             ranges_by_project[summary["id"]] = []
 
-    project_summaries = list_project_summaries(db, current_user=user)
     queue_projects = [
         {
             "pending_count": summary["pending_memory_count"],
@@ -169,7 +173,7 @@ def refresh_memory_review_queue_response(
             "ranges": ranges_by_project.get(summary["id"], []),
         }
         for summary in project_summaries
-        if summary["pending_memory_count"] > 0
+        if summary["pending_memory_count"] > 0 and summary["id"] not in failed_project_ids
     ]
     return {
         "errors": errors,
@@ -287,10 +291,7 @@ def compile_project_memory_response(
         prepared = generate_project_memory_compilation(compilation_input)
 
         lock_project_memory(db, authorized_project_id)
-        if (
-            project_memory_compilation_guard(db, authorized_project_id)
-            != prepared.base_guard
-        ):
+        if project_memory_compilation_guard(db, authorized_project_id) != prepared.base_guard:
             db.rollback()
             continue
         artifact = write_project_memory_compilation(db, prepared)

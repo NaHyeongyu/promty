@@ -7,6 +7,7 @@ import type {
 export type SidebarItemId = "projects" | "admin" | "settings" | "profile";
 
 export type Project = {
+  defaultBranch?: string;
   id: string;
   name: string;
   createdTimestamp: string;
@@ -109,7 +110,7 @@ export type ProjectSortMode = "recent" | "added";
 export type ProjectDetailApiResponse = {
   activities: Array<{
     events: number;
-    files_changed: number;
+    files_changed?: number;
     id: string;
     last_activity_at: string | null;
     model: string;
@@ -252,6 +253,13 @@ export type ProjectDetailApiResponse = {
   }>;
   files?: FileTreeNode[];
   metrics: {
+    activity_history?: Array<{
+      date: string;
+      files_changed: number;
+      memories: number;
+      prompts: number;
+      sessions: number;
+    }>;
     connected_models: string[];
     connected_tools?: string[];
     files_changed_since_yesterday?: number;

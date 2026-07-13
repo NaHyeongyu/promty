@@ -35,9 +35,16 @@ Promty currently uses a pull-request-style memory pipeline:
 - Collector events are normalized and stored in PostgreSQL JSONB.
 - Pending `MemoryDraft` evidence packages are created after 20 user prompts, `SessionEnded`, or 1 hour without a new prompt.
 - A pending draft is created only after the latest prompt has both a `ResponseReceived` payload with response text and a `FilesChanged` marker.
-- Pending drafts store the original user prompt input, original AI output, changed-file evidence, and metadata needed for one-time AI generation.
-- Prompts over 10,000 characters are sent to AI as first 300 characters, last 300 characters, and original size while the stored evidence keeps the original text.
-- The user runs one Generate action for pending drafts. Successfully generated drafts are marked as sent and are not sent to AI again.
+- Encrypted raw events remain the source of truth. Pending drafts store a bounded,
+  patch-free evidence projection and size metadata needed for one-time AI
+  generation; provider inputs have independent per-field and total byte budgets.
+- Materialization reads at most 500 event rows per slice and persists at most
+  four slices per transaction. Longer windows resume from durable coverage
+  metadata without duplicating event coverage.
+- The user runs one Generate action for pending drafts. The API durably enqueues
+  the batch and returns `202`; a separate worker generates bounded chunks,
+  checkpoints each successful provider result, and marks consumed drafts only
+  after finalization.
 - Generated `MemoryTask` artifacts are shown in History and can be edited or removed through the memory APIs.
 - Artifact generation is recorded in `artifact_generation_jobs`.
 - Project Memory is compiled from generated and user-edited memories, not pending drafts.
@@ -49,6 +56,8 @@ PROMTY_OPENAI_API_KEY
 PROMTY_OPENAI_MODEL=gpt-5-mini
 PROMTY_MEMORY_DRAFT_GENERATOR=openai
 PROMTY_PROJECT_MEMORY_GENERATOR=openai
+PROMTY_MEMORY_SLICE_EVENT_MAX_ROWS=500
+PROMTY_MEMORY_SLICE_MAX_SLICES_PER_CALL=4
 PROMTY_GEMINI_API_KEY
 PROMTY_GEMINI_MODEL=gemini-2.5-flash
 PROMTY_GEMINI_TIMEOUT_SECONDS=30

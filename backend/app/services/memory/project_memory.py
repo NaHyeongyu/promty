@@ -11,6 +11,11 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import settings
+from app.core.text_limits import (
+    PROJECT_MEMORY_BODY_MAX_BYTES,
+    PROJECT_MEMORY_WARNING_MAX_ITEMS,
+    ensure_utf8_byte_limit,
+)
 from app.models.artifacts import Artifact
 from app.models.projects import Project
 from app.schemas.memory import ProjectMemorySnapshot
@@ -370,24 +375,23 @@ def list_project_memory_artifacts(
     limit: int = 20,
     project_id: UUID,
 ) -> list[Artifact]:
-    artifacts = list(
+    return list(
         db.execute(
             select(Artifact)
-            .where(Artifact.project_id == project_id, Artifact.type == MEMORY_ARTIFACT_TYPE)
+            .where(
+                Artifact.project_id == project_id,
+                Artifact.type == MEMORY_ARTIFACT_TYPE,
+                Artifact.metadata_["review_state"].astext.in_(
+                    [REVIEW_STATE_GENERATED, REVIEW_STATE_VERIFIED]
+                ),
+                Artifact.metadata_["artifact_stage"].astext.in_(
+                    ["generated_memory", "verified_memory"]
+                ),
+            )
             .order_by(desc(Artifact.updated_at), desc(Artifact.created_at), desc(Artifact.id))
-            .limit(limit * 3)
+            .limit(limit)
         ).scalars()
     )
-    source_memories = [
-        artifact
-        for artifact in artifacts
-        if (metadata := artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}).get(
-            "review_state"
-        )
-        in {REVIEW_STATE_GENERATED, REVIEW_STATE_VERIFIED}
-        and metadata.get("artifact_stage") in {"generated_memory", "verified_memory"}
-    ]
-    return source_memories[:limit]
 
 
 def count_project_memory_artifacts(
@@ -673,6 +677,11 @@ def update_project_memory_snapshot(
     body_markdown: str,
     project_id: UUID,
 ) -> Artifact:
+    body_markdown = ensure_utf8_byte_limit(
+        body_markdown,
+        field_name="body_markdown",
+        max_bytes=PROJECT_MEMORY_BODY_MAX_BYTES,
+    )
     project = db.get(Project, project_id)
     if project is None:
         raise ValueError("Project not found")
@@ -698,16 +707,24 @@ def update_project_memory_snapshot(
                 )
             ],
         )
+    edit_warning = "Project Memory body was edited by the user."
+    previous_warnings = (
+        previous_snapshot.get("warnings")
+        if isinstance(previous_snapshot.get("warnings"), list)
+        else []
+    )
     snapshot = {
         **previous_snapshot,
         "body_markdown": body_markdown,
         "warnings": [
-            *(
-                previous_snapshot.get("warnings")
-                if isinstance(previous_snapshot.get("warnings"), list)
-                else []
-            ),
-            "Project Memory body was edited by the user.",
+            *list(
+                dict.fromkeys(
+                    warning
+                    for warning in previous_warnings
+                    if isinstance(warning, str) and warning != edit_warning
+                )
+            )[: PROJECT_MEMORY_WARNING_MAX_ITEMS - 1],
+            edit_warning,
         ],
     }
     payload = _project_memory_payload(

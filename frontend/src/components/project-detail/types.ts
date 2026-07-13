@@ -4,6 +4,8 @@ import type { LucideProps } from "lucide-react";
 export type ProjectDetailTabId = "overview" | "memory" | "ai-activity" | "files";
 
 export type ProjectDetailTab = {
+  externalHref?: string;
+  externalIcon?: "github";
   id: ProjectDetailTabId;
   label: string;
 };
@@ -37,6 +39,7 @@ export type ProjectHeaderProps = {
 };
 
 export type ProjectDetailProject = ProjectHeaderProps & {
+  defaultBranch?: string;
   description: string;
   id: string;
   isBookmarked: boolean;
@@ -302,6 +305,13 @@ export type ProjectDetailData = {
   filesTotal?: number | null;
   filesTruncated?: boolean;
   memory: ProjectMemoryStatus;
+  metricHistory: Array<{
+    date: string;
+    filesChanged: number;
+    memories: number;
+    prompts: number;
+    sessions: number;
+  }>;
   overview: OverviewItem[];
   promptActivities: PromptActivityItem[];
   project: ProjectDetailProject;

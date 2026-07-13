@@ -10,11 +10,11 @@ describe("workspace navigation", () => {
     vi.stubGlobal("window", { location: { search: "" } });
   });
 
-  it("uses Projects and session navigation as the default", () => {
+  it("uses Projects and prompt navigation as the default", () => {
     const state = normalizeUrlNavigationState({});
 
     expect(state.activeItem).toBe("projects");
-    expect(state.activityNavigation.view).toBe("sessions");
+    expect(state.activityNavigation.view).toBe("prompts");
     expect(buildUrlNavigationSearch(state)).toBe("");
   });
 

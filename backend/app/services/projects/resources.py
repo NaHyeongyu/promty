@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.encryption import encrypt_app_text_to_string
@@ -11,6 +12,9 @@ from app.models.code_change_patches import CodeChangePatch
 from app.models.events import Event
 from app.models.project_files import ProjectFile
 from app.services.event_payload_security import CODE_CHANGE_PATCH_PURPOSE
+
+PROJECT_FILE_PREFETCH_CHUNK_SIZE = 1_000
+NormalizedChange = tuple[str, str, dict[str, Any], dict[str, Any], UUID | None]
 
 
 def _clean_path(value: Any) -> str | None:
@@ -63,9 +67,7 @@ def _patch_metadata(change: dict[str, Any]) -> dict[str, Any]:
         "binary",
     }
     return {
-        key: value
-        for key, value in change.items()
-        if key not in excluded and value is not None
+        key: value for key, value in change.items() if key not in excluded and value is not None
     }
 
 
@@ -134,12 +136,13 @@ def _upsert_project_file(
     db: DBSession,
     *,
     event: Event,
-    project_files_by_path: dict[str, ProjectFile],
+    project_files_by_key: dict[tuple[UUID, str], ProjectFile],
     path: str,
     status: str,
     metadata: dict[str, Any],
 ) -> None:
-    project_file = project_files_by_path.get(path)
+    key = (event.project_id, path)
+    project_file = project_files_by_key.get(key)
     if project_file is None:
         if status == "deleted":
             return
@@ -149,7 +152,7 @@ def _upsert_project_file(
             kind="file",
         )
         db.add(project_file)
-        project_files_by_path[path] = project_file
+        project_files_by_key[key] = project_file
 
     project_file.last_event_id = event.id
     project_file.status = "deleted" if status == "deleted" else "active"
@@ -157,48 +160,74 @@ def _upsert_project_file(
     project_file.changed_at = event.created_at
 
 
-def sync_project_resources_from_event(db: DBSession, event: Event, payload: dict[str, Any]) -> None:
-    if event.event_type != "FilesChanged":
-        return
-
+def _normalized_changes(payload: dict[str, Any]) -> list[NormalizedChange]:
     prompt_event_id = _uuid_or_none(payload.get("prompt_event_id"))
-    normalized_changes: list[tuple[str, str, dict[str, Any], dict[str, Any]]] = []
+    normalized_changes: list[NormalizedChange] = []
     for change in _changes_from_payload(payload):
         path = _clean_path(change.get("path"))
         if path is None:
             continue
         status = _status(change.get("status"))
         metadata = _resource_metadata(change)
-        normalized_changes.append((path, status, metadata, change))
+        normalized_changes.append((path, status, metadata, change, prompt_event_id))
+    return normalized_changes
 
-    if not normalized_changes:
+
+def _chunks(values: list[Any], size: int) -> Iterable[list[Any]]:
+    for index in range(0, len(values), size):
+        yield values[index : index + size]
+
+
+def sync_project_resources_from_events(
+    db: DBSession,
+    event_payloads: Iterable[tuple[Event, dict[str, Any]]],
+) -> None:
+    prepared: list[tuple[Event, list[NormalizedChange]]] = []
+    project_path_keys: set[tuple[UUID, str]] = set()
+    for event, payload in event_payloads:
+        if event.event_type != "FilesChanged":
+            continue
+        normalized_changes = _normalized_changes(payload)
+        if not normalized_changes:
+            continue
+        prepared.append((event, normalized_changes))
+        project_path_keys.update(
+            (event.project_id, path)
+            for path, _status_value, _metadata, _change, _prompt_event_id in normalized_changes
+        )
+
+    if not prepared:
         return
 
-    changed_paths = sorted({path for path, *_ in normalized_changes})
-    project_files_by_path = {
-        project_file.path: project_file
-        for project_file in db.execute(
+    project_files_by_key: dict[tuple[UUID, str], ProjectFile] = {}
+    sorted_keys = sorted(project_path_keys, key=lambda item: (str(item[0]), item[1]))
+    for key_chunk in _chunks(sorted_keys, PROJECT_FILE_PREFETCH_CHUNK_SIZE):
+        for project_file in db.scalars(
             select(ProjectFile).where(
-                ProjectFile.project_id == event.project_id,
-                ProjectFile.path.in_(changed_paths),
+                tuple_(ProjectFile.project_id, ProjectFile.path).in_(key_chunk),
             )
-        ).scalars()
-    }
+        ):
+            project_files_by_key[(project_file.project_id, project_file.path)] = project_file
 
-    for path, status, metadata, change in normalized_changes:
-        _upsert_project_file(
-            db,
-            event=event,
-            project_files_by_path=project_files_by_path,
-            path=path,
-            status=status,
-            metadata=metadata,
-        )
-        _create_code_change_patch(
-            db,
-            event=event,
-            path=path,
-            status=status,
-            change=change,
-            prompt_event_id=prompt_event_id,
-        )
+    for event, normalized_changes in prepared:
+        for path, status, metadata, change, prompt_event_id in normalized_changes:
+            _upsert_project_file(
+                db,
+                event=event,
+                project_files_by_key=project_files_by_key,
+                path=path,
+                status=status,
+                metadata=metadata,
+            )
+            _create_code_change_patch(
+                db,
+                event=event,
+                path=path,
+                status=status,
+                change=change,
+                prompt_event_id=prompt_event_id,
+            )
+
+
+def sync_project_resources_from_event(db: DBSession, event: Event, payload: dict[str, Any]) -> None:
+    sync_project_resources_from_events(db, ((event, payload),))

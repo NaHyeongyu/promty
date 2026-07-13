@@ -66,6 +66,11 @@ def _int_env(name: str, default: int) -> int:
         return default
 
 
+def _bounded_int_env(name: str, default: int, *, minimum: int) -> int:
+    value = _int_env(name, default)
+    return value if value >= minimum else default
+
+
 def _str_env_any(names: tuple[str, ...], default: str) -> str:
     for name in names:
         value = os.environ.get(name)
@@ -104,6 +109,48 @@ class Settings:
         "DATABASE_URL",
         "postgresql+psycopg://prompthub:prompthub@localhost:5432/prompthub",
     )
+    database_pool_size: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_DATABASE_POOL_SIZE",
+            5,
+            minimum=1,
+        )
+    )
+    database_max_overflow: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_DATABASE_MAX_OVERFLOW",
+            2,
+            minimum=0,
+        )
+    )
+    database_pool_timeout_seconds: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_DATABASE_POOL_TIMEOUT_SECONDS",
+            5,
+            minimum=1,
+        )
+    )
+    database_pool_recycle_seconds: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_DATABASE_POOL_RECYCLE_SECONDS",
+            300,
+            minimum=1,
+        )
+    )
+    database_statement_timeout_ms: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_DATABASE_STATEMENT_TIMEOUT_MS",
+            0,
+            minimum=0,
+        )
+    )
+    database_lock_timeout_ms: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_DATABASE_LOCK_TIMEOUT_MS",
+            0,
+            minimum=0,
+        )
+    )
     api_public_url: str = os.environ.get("PROMPTHUB_API_PUBLIC_URL", "http://127.0.0.1:8011")
     app_url: str = os.environ.get("PROMPTHUB_APP_URL", "http://127.0.0.1:5173")
     cors_origins: tuple[str, ...] = field(
@@ -140,6 +187,12 @@ class Settings:
     )
     response_max_chars: int = field(
         default_factory=lambda: _int_env("PROMPTHUB_RESPONSE_MAX_CHARS", 50000)
+    )
+    event_batch_max_body_bytes: int = field(
+        default_factory=lambda: _int_env(
+            "PROMPTHUB_EVENT_BATCH_MAX_BODY_BYTES",
+            33_554_432,
+        )
     )
     gemini_api_key: str | None = field(
         default_factory=lambda: _optional_env_any(
@@ -227,6 +280,42 @@ class Settings:
             20.0,
         )
     )
+    memory_provider_response_max_bytes: int = field(
+        default_factory=lambda: max(
+            1,
+            _int_env_any(
+                (
+                    "PROMTY_MEMORY_PROVIDER_RESPONSE_MAX_BYTES",
+                    "PROMPTHUB_MEMORY_PROVIDER_RESPONSE_MAX_BYTES",
+                ),
+                1_048_576,
+            ),
+        )
+    )
+    memory_provider_output_max_tokens: int = field(
+        default_factory=lambda: max(
+            1,
+            _int_env_any(
+                (
+                    "PROMTY_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS",
+                    "PROMPTHUB_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS",
+                ),
+                8_192,
+            ),
+        )
+    )
+    memory_provider_wall_deadline_seconds: float = field(
+        default_factory=lambda: max(
+            0.001,
+            _float_env_any(
+                (
+                    "PROMTY_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS",
+                    "PROMPTHUB_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS",
+                ),
+                120.0,
+            ),
+        )
+    )
     memory_draft_generator: str = field(
         default_factory=lambda: _str_env_any(
             ("PROMTY_MEMORY_DRAFT_GENERATOR", "PROMPTHUB_MEMORY_DRAFT_GENERATOR"),
@@ -245,10 +334,103 @@ class Settings:
             20,
         )
     )
+    memory_slice_event_max_rows: int = field(
+        default_factory=lambda: max(
+            2,
+            _int_env_any(
+                (
+                    "PROMTY_MEMORY_SLICE_EVENT_MAX_ROWS",
+                    "PROMPTHUB_MEMORY_SLICE_EVENT_MAX_ROWS",
+                ),
+                500,
+            ),
+        )
+    )
+    memory_slice_max_slices_per_call: int = field(
+        default_factory=lambda: max(
+            1,
+            _int_env_any(
+                (
+                    "PROMTY_MEMORY_SLICE_MAX_SLICES_PER_CALL",
+                    "PROMPTHUB_MEMORY_SLICE_MAX_SLICES_PER_CALL",
+                ),
+                4,
+            ),
+        )
+    )
     memory_slice_max_minutes: int = field(
         default_factory=lambda: _int_env_any(
             ("PROMTY_MEMORY_SLICE_MAX_MINUTES", "PROMPTHUB_MEMORY_SLICE_MAX_MINUTES"),
             120,
+        )
+    )
+    memory_draft_prompt_max_bytes: int = field(
+        default_factory=lambda: _int_env_any(
+            (
+                "PROMTY_MEMORY_DRAFT_PROMPT_MAX_BYTES",
+                "PROMPTHUB_MEMORY_DRAFT_PROMPT_MAX_BYTES",
+            ),
+            131_072,
+        )
+    )
+    memory_draft_evidence_max_bytes: int = field(
+        default_factory=lambda: _int_env_any(
+            (
+                "PROMTY_MEMORY_DRAFT_EVIDENCE_MAX_BYTES",
+                "PROMPTHUB_MEMORY_DRAFT_EVIDENCE_MAX_BYTES",
+            ),
+            98_304,
+        )
+    )
+    project_memory_prompt_max_bytes: int = field(
+        default_factory=lambda: _int_env_any(
+            (
+                "PROMTY_PROJECT_MEMORY_PROMPT_MAX_BYTES",
+                "PROMPTHUB_PROJECT_MEMORY_PROMPT_MAX_BYTES",
+            ),
+            262_144,
+        )
+    )
+    project_memory_batch_max_drafts: int = field(
+        default_factory=lambda: max(
+            1,
+            _int_env_any(
+                (
+                    "PROMTY_PROJECT_MEMORY_BATCH_MAX_DRAFTS",
+                    "PROMPTHUB_PROJECT_MEMORY_BATCH_MAX_DRAFTS",
+                ),
+                60,
+            ),
+        )
+    )
+    memory_worker_poll_seconds: float = field(
+        default_factory=lambda: _float_env_any(
+            (
+                "PROMTY_MEMORY_WORKER_POLL_SECONDS",
+                "PROMPTHUB_MEMORY_WORKER_POLL_SECONDS",
+            ),
+            2.0,
+        )
+    )
+    memory_worker_heartbeat_seconds: float = field(
+        default_factory=lambda: _float_env_any(
+            (
+                "PROMTY_MEMORY_WORKER_HEARTBEAT_SECONDS",
+                "PROMPTHUB_MEMORY_WORKER_HEARTBEAT_SECONDS",
+            ),
+            60.0,
+        )
+    )
+    memory_worker_chunk_concurrency: int = field(
+        default_factory=lambda: max(
+            1,
+            _int_env_any(
+                (
+                    "PROMTY_MEMORY_WORKER_CHUNK_CONCURRENCY",
+                    "PROMPTHUB_MEMORY_WORKER_CHUNK_CONCURRENCY",
+                ),
+                2,
+            ),
         )
     )
     published_flow_asset_root: str = os.environ.get(

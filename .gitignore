@@ -9,3 +9,4 @@ frontend/.vite/
 dist/
 build/
 .DS_Store
+.claude/

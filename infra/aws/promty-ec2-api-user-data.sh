@@ -9,6 +9,11 @@ ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 BACKEND_IMAGE="${ECR_REGISTRY}/promty/backend:latest"
 APP_DIR="/opt/promty"
 BACKUP_BUCKET="promty-prod-assets-435917083683"
+POSTGRES_READY_MAX_ATTEMPTS=30
+POSTGRES_READY_PROBE_TIMEOUT_SECONDS=2
+BACKEND_READY_MAX_ATTEMPTS=30
+BACKEND_READY_PROBE_TIMEOUT_SECONDS=5
+READY_RETRY_DELAY_SECONDS=2
 
 fetch_secret() {
   aws secretsmanager get-secret-value \
@@ -22,6 +27,44 @@ write_env() {
   local name="$1"
   local value="$2"
   printf "%s=%s\n" "${name}" "${value}" >> "${APP_DIR}/backend.env"
+}
+
+wait_for_postgres() {
+  local attempt
+  for ((attempt = 1; attempt <= POSTGRES_READY_MAX_ATTEMPTS; attempt++)); do
+    if docker exec promty-postgres pg_isready \
+      -U promty_admin \
+      -d promty \
+      -t "${POSTGRES_READY_PROBE_TIMEOUT_SECONDS}" >/dev/null 2>&1; then
+      echo "PostgreSQL is ready after ${attempt} attempt(s)"
+      return 0
+    fi
+    if ((attempt < POSTGRES_READY_MAX_ATTEMPTS)); then
+      sleep "${READY_RETRY_DELAY_SECONDS}"
+    fi
+  done
+
+  echo "ERROR: PostgreSQL readiness failed after ${POSTGRES_READY_MAX_ATTEMPTS} attempts (probe timeout ${POSTGRES_READY_PROBE_TIMEOUT_SECONDS}s, retry delay ${READY_RETRY_DELAY_SECONDS}s)" >&2
+  return 1
+}
+
+wait_for_backend() {
+  local phase="$1"
+  local attempt
+  for ((attempt = 1; attempt <= BACKEND_READY_MAX_ATTEMPTS; attempt++)); do
+    if docker exec promty-backend python -c \
+      "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8011/health/ready', timeout=${BACKEND_READY_PROBE_TIMEOUT_SECONDS}).read()" \
+      >/dev/null 2>&1; then
+      echo "Backend is ready during ${phase} after ${attempt} attempt(s)"
+      return 0
+    fi
+    if ((attempt < BACKEND_READY_MAX_ATTEMPTS)); then
+      sleep "${READY_RETRY_DELAY_SECONDS}"
+    fi
+  done
+
+  echo "ERROR: Backend readiness failed during ${phase} after ${BACKEND_READY_MAX_ATTEMPTS} attempts (probe timeout ${BACKEND_READY_PROBE_TIMEOUT_SECONDS}s, retry delay ${READY_RETRY_DELAY_SECONDS}s)" >&2
+  return 1
 }
 
 dnf update -y
@@ -47,6 +90,8 @@ TARGET_LIBPQ_URL="postgresql://promty_admin:${DB_PASSWORD}@promty-postgres:5432/
 
 cat > "${APP_DIR}/backend.env" <<EOF
 DATABASE_URL=postgresql+psycopg://promty_admin:${DB_PASSWORD}@promty-postgres:5432/promty
+PROMPTHUB_DATABASE_POOL_TIMEOUT_SECONDS=5
+PROMPTHUB_DATABASE_POOL_RECYCLE_SECONDS=300
 PROMPTHUB_API_PUBLIC_URL=https://api.promty.org
 PROMPTHUB_APP_URL=https://promty.org
 PROMPTHUB_CORS_ORIGINS=https://promty.org,https://www.promty.org
@@ -86,9 +131,10 @@ docker run -d \
   -v "${APP_DIR}/postgresql:/var/lib/postgresql" \
   postgres:18-alpine
 
-until docker exec promty-postgres pg_isready -U promty_admin -d promty; do
-  sleep 2
-done
+if ! wait_for_postgres; then
+  docker logs --tail 80 promty-postgres || true
+  exit 1
+fi
 
 if [ ! -f "${APP_DIR}/.rds-restored" ]; then
   docker run --rm \
@@ -106,7 +152,25 @@ docker run -d \
   --restart unless-stopped \
   --network promty \
   --env-file "${APP_DIR}/backend.env" \
+  -e PROMPTHUB_DATABASE_POOL_SIZE=5 \
+  -e PROMPTHUB_DATABASE_MAX_OVERFLOW=2 \
   "${BACKEND_IMAGE}"
+
+if ! wait_for_backend "initial startup"; then
+  docker logs --tail 80 promty-backend || true
+  exit 1
+fi
+
+docker rm -f promty-memory-worker >/dev/null 2>&1 || true
+docker run -d \
+  --name promty-memory-worker \
+  --restart unless-stopped \
+  --network promty \
+  --env-file "${APP_DIR}/backend.env" \
+  -e PROMPTHUB_DATABASE_POOL_SIZE=2 \
+  -e PROMPTHUB_DATABASE_MAX_OVERFLOW=1 \
+  "${BACKEND_IMAGE}" \
+  python -m app.workers.project_memory
 
 cat > "${APP_DIR}/Caddyfile" <<'EOF'
 :80 {
@@ -115,6 +179,9 @@ cat > "${APP_DIR}/Caddyfile" <<'EOF'
 
 api.promty.org {
   encode gzip
+  request_body {
+    max_size 32MB
+  }
   header {
     Strict-Transport-Security "max-age=31536000; includeSubDomains"
     X-Content-Type-Options "nosniff"
@@ -190,15 +257,10 @@ EOF
 systemctl daemon-reload
 systemctl enable --now promty-db-backup.timer
 
-for attempt in {1..30}; do
-  if docker exec promty-backend python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8011/health', timeout=5).read().decode())"; then
-    echo "Promty EC2 bootstrap complete"
-    exit 0
-  fi
-  sleep 2
-done
+if ! wait_for_backend "final bootstrap verification"; then
+  docker logs --tail 80 promty-backend || true
+  docker logs --tail 80 promty-caddy || true
+  exit 1
+fi
 
-docker logs --tail 80 promty-backend || true
-docker logs --tail 80 promty-caddy || true
-docker exec promty-backend python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8011/health', timeout=5).read().decode())"
 echo "Promty EC2 bootstrap complete"

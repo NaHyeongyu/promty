@@ -1,5 +1,16 @@
+function activeLocale() {
+  if (typeof document === "undefined") {
+    return "en-US";
+  }
+  return document.documentElement.lang === "ko"
+    ? "ko-KR"
+    : document.documentElement.lang === "ja"
+      ? "ja-JP"
+      : "en-US";
+}
+
 export function formatCompactNumber(value: number) {
-  return Intl.NumberFormat("en", {
+  return Intl.NumberFormat(activeLocale(), {
     maximumFractionDigits: 1,
     notation: "compact",
   }).format(value);
@@ -18,7 +29,7 @@ export function formatTimestamp(value: string) {
     return value;
   }
 
-  return Intl.DateTimeFormat("en", {
+  return Intl.DateTimeFormat(activeLocale(), {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
@@ -37,7 +48,7 @@ export function formatDate(
     return value;
   }
 
-  return Intl.DateTimeFormat("en", {
+  return Intl.DateTimeFormat(activeLocale(), {
     dateStyle: "medium",
   }).format(date);
 }
@@ -69,7 +80,7 @@ export function formatRelativeTimestamp(value: string | null | undefined) {
     { amount: 1000 * 60 * 60, unit: "hour" },
     { amount: 1000 * 60, unit: "minute" },
   ];
-  const formatter = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+  const formatter = new Intl.RelativeTimeFormat(activeLocale(), { numeric: "auto" });
   const absoluteDiff = Math.abs(diff);
   const division =
     divisions.find((item) => absoluteDiff >= item.amount) ??

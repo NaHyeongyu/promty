@@ -2,15 +2,15 @@ import { type ReactNode, useRef } from "react";
 import {
   ArrowRight,
   CircleAlert,
-  ExternalLink,
   Plus,
   RefreshCw,
   Search,
   X,
 } from "lucide-react";
 import { formatCompactNumber } from "../../lib/formatters";
+import { useI18n } from "../../i18n/I18nProvider";
 import type { EventRecord, Project, ProjectSortMode } from "../../workspace/types";
-import { GitHubIcon } from "./Branding";
+import { AiModelBadge } from "../project-detail";
 import {
   EmptyProjectsState,
   EmptyState,
@@ -61,27 +61,36 @@ export function ProjectsPage({
   repositoryConnector: ReactNode;
   visibleProjects: Project[];
 }) {
+  const { t } = useI18n();
   return (
     <>
       <header className="page-header">
-        <div>
+        <div className="projects-page-header-copy">
           <h1>{activeTitle}</h1>
+          <p>
+            {previewProjectLoading ||
+            (isEventsLoading && displayProjects.length === 0)
+              ? t("project.loading")
+              : displayProjects.length === 1
+                ? `1 ${t("project.project")}`
+                : `${displayProjects.length}${t("project.projects")}`}
+          </p>
         </div>
         <div className="page-actions">
           <button
-            className="toolbar-button"
+            className="toolbar-button project-add-button"
             onClick={onOpenRepositoryConnector}
             type="button"
           >
             <Plus aria-hidden="true" size={16} strokeWidth={1.5} />
-            <span>Add project</span>
+            <span>{t("project.add")}</span>
           </button>
         </div>
       </header>
 
       {repositoryConnector}
 
-      <section className="projects-section" aria-label="Projects">
+      <section className="projects-section" aria-label={t("nav.projects")}>
         {previewProjectLoading ? (
           <ProjectListLoadingState delayMs={0} />
         ) : isEventsLoading && displayProjects.length === 0 && !previewEmptyProjects ? (
@@ -109,27 +118,27 @@ export function ProjectsPage({
             pollingEnabled={onboardingPollingEnabled}
           />
         ) : (
-          <>
+          <div className="project-list-panel">
             <div className="project-controls">
               <label className="project-search-control">
-                <span className="bh-visually-hidden">Search projects</span>
+                <span className="bh-visually-hidden">{t("project.search")}</span>
                 <Search aria-hidden="true" size={16} strokeWidth={1.5} />
                 <input
                   onChange={(event) => onSearchChange(event.target.value)}
-                  placeholder="Search projects"
+                  placeholder={t("project.search")}
                   type="search"
                   value={projectSearchQuery}
                 />
               </label>
 
-              <div className="project-sort-control" aria-label="Sort projects">
+              <div className="project-sort-control" aria-label={t("project.sort")}>
                 <button
                   aria-pressed={projectSortMode === "recent"}
                   data-active={projectSortMode === "recent"}
                   onClick={() => onSortModeChange("recent")}
                   type="button"
                 >
-                  Recent work
+                  {t("project.recentWork")}
                 </button>
                 <button
                   aria-pressed={projectSortMode === "added"}
@@ -137,7 +146,7 @@ export function ProjectsPage({
                   onClick={() => onSortModeChange("added")}
                   type="button"
                 >
-                  Added
+                  {t("project.added")}
                 </button>
               </div>
             </div>
@@ -151,15 +160,15 @@ export function ProjectsPage({
                   <Search size={18} strokeWidth={1.5} />
                 </div>
                 <div className="project-search-empty-copy">
-                  <span>No matches</span>
-                  <h2 id="project-search-empty-title">No projects found</h2>
+                  <span>{t("project.noMatches")}</span>
+                  <h2 id="project-search-empty-title">{t("project.noProjectsFound")}</h2>
                   <p>
                     No project names match <code>{projectSearchQuery.trim()}</code>.
                   </p>
                 </div>
                 <button className="toolbar-button" onClick={onClearSearch} type="button">
                   <X aria-hidden="true" size={15} strokeWidth={1.5} />
-                  <span>Clear search</span>
+                  <span>{t("project.clearSearch")}</span>
                 </button>
               </section>
             ) : (
@@ -169,10 +178,10 @@ export function ProjectsPage({
                 data-loading={isEventsLoading ? "true" : undefined}
               >
                 <div className="project-table-header" aria-hidden="true">
-                  <span>Project</span>
-                  <span>Last work</span>
-                  <span>Memory</span>
-                  <span>Activity</span>
+                  <span>{t("project.project")}</span>
+                  <span>{t("project.lastWork")}</span>
+                  <span>{t("project.memory")}</span>
+                  <span className="project-table-number-heading">{t("project.activity")}</span>
                   <span />
                 </div>
                 <div className="project-table-body">
@@ -187,7 +196,7 @@ export function ProjectsPage({
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
       </section>
     </>
@@ -206,6 +215,7 @@ function ProjectRow({
   ) => void;
   project: Project;
 }) {
+  const { t } = useI18n();
   const openProjectButtonRef = useRef<HTMLButtonElement>(null);
 
   return (
@@ -220,11 +230,34 @@ function ProjectRow({
       <div className="project-row-main">
         <span className="project-row-name">
           <strong>{project.name}</strong>
-          <small>{project.models.join(", ") || "Model not captured"}</small>
+          <span className="project-row-models">
+            {project.models.length > 0 ? (
+              <>
+                {project.models.slice(0, 2).map((model, index) => (
+                  <AiModelBadge
+                    className="is-compact"
+                    key={`${model}-${index}`}
+                    model={model}
+                  />
+                ))}
+                {project.models.length > 2 ? (
+                  <span
+                    className="project-model-overflow"
+                    title={project.models.slice(2).join(", ")}
+                  >
+                    +{project.models.length - 2}
+                  </span>
+                ) : null}
+              </>
+            ) : (
+              <span className="project-model-empty">{t("project.modelNotCaptured")}</span>
+            )}
+          </span>
         </span>
         <span className="project-row-cell">
+          <span className="project-row-label">{t("project.lastWork")}</span>
           <strong>{project.latestActivityLabel}</strong>
-          <small>{project.sessions} sessions</small>
+          <small>{project.sessions} {t("project.sessionUnit")}</small>
         </span>
         {project.pendingMemoryCount > 0 ? (
           <button
@@ -239,40 +272,37 @@ function ProjectRow({
             }
             type="button"
           >
+            <span className="project-row-label">{t("project.memory")}</span>
             <strong>
               <CircleAlert aria-hidden="true" size={14} strokeWidth={1.5} />
-              Project memory ready
+              {t("project.memoryReadyShort")}
             </strong>
-            <small>Open review queue</small>
+            <small>{t("project.openReviewQueue")}</small>
           </button>
         ) : (
           <span className="project-row-cell">
-            <strong>{project.memoryCount} saved</strong>
+            <span className="project-row-label">{t("project.memory")}</span>
+            <strong>
+              {project.memoryCount > 0
+                ? `${project.memoryCount} ${t("project.saved")}`
+                : t("project.noMemory")}
+            </strong>
             <small>
-              {project.latestMemoryAt ? "Memory up to date" : "No memory yet"}
+              {project.latestMemoryAt ? t("project.upToDate") : t("project.nothingSaved")}
             </small>
           </span>
         )}
-        <span className="project-row-cell">
-          <strong>{formatCompactNumber(project.prompts)} prompts</strong>
-          <small>{formatCompactNumber(project.trackedFiles)} files</small>
+        <span className="project-row-cell project-row-number-cell">
+          <span className="project-row-label">{t("project.activity")}</span>
+          <strong>{formatCompactNumber(project.prompts)} {t("project.promptUnit")}</strong>
+          <small>{formatCompactNumber(project.trackedFiles)} {t("project.fileUnit")}</small>
         </span>
-        <ArrowRight aria-hidden="true" size={16} strokeWidth={1.5} />
+        <span className="project-row-actions">
+          <span className="project-row-open-indicator" aria-hidden="true">
+            <ArrowRight size={16} strokeWidth={1.5} />
+          </span>
+        </span>
       </div>
-
-      {project.githubUrl ? (
-        <a
-          aria-label={`Open ${project.name} on GitHub`}
-          className="project-row-repository"
-          href={project.githubUrl}
-          rel="noreferrer"
-          target="_blank"
-          title="Open GitHub repository"
-        >
-          <GitHubIcon />
-          <ExternalLink aria-hidden="true" size={12} strokeWidth={1.5} />
-        </a>
-      ) : null}
     </article>
   );
 }

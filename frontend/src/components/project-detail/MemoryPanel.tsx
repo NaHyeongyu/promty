@@ -406,12 +406,6 @@ export function MemoryPanel({
     (artifact) =>
       artifact.artifactStage === "project_memory" || artifact.memoryScope === "project",
   );
-  const checkpointableRanges = data.memory.pendingRanges.filter(
-    (range) => range.canCheckpoint,
-  );
-  const checkpointableSessionCount = new Set(
-    checkpointableRanges.map((range) => range.sessionId),
-  ).size;
   const generatedArtifacts = useMemo(
     () =>
       [...displayedArtifacts]
@@ -426,6 +420,13 @@ export function MemoryPanel({
   const pendingDateRange = combinedMemoryDateRange(data.memory.pendingRanges);
   const resultDateRange = combinedMemoryDateRange(generatedArtifacts);
   const hasPendingDocumentation = data.memory.pendingRanges.length > 0;
+  const pendingPromptCount = data.memory.pendingRanges.reduce(
+    (total, range) => total + range.promptCount,
+    0,
+  );
+  const pendingSessionCount = new Set(
+    data.memory.pendingRanges.map((range) => range.sessionId),
+  ).size;
   const generatedSummaryCountLabel =
     totalGeneratedArtifactCount > generatedArtifacts.length
       ? `${generatedArtifacts.length} of ${totalGeneratedArtifactCount} memory items`
@@ -514,7 +515,7 @@ export function MemoryPanel({
   const createProjectMemory = async () => {
     if (
       !onGenerateProjectMemory ||
-      checkpointableSessionCount === 0 ||
+      !hasPendingDocumentation ||
       isGenerationActive
     ) {
       return;
@@ -598,11 +599,6 @@ export function MemoryPanel({
         </div>
       </header>
 
-      <div className="bh-memory-summary-strip" aria-label="Memory status summary">
-        <span>Needs review: {hasPendingDocumentation ? "All captured work" : "None"}</span>
-        <span>Memory: {generatedSummaryCountLabel}</span>
-      </div>
-
       {generationStatus ? (
         <div className="bh-memory-status" role="status">
           {generationStatus}
@@ -611,57 +607,8 @@ export function MemoryPanel({
       <div className="bh-memory-documentation">
         <section
           className="bh-memory-document-section"
-          aria-labelledby="project-memory-document-title"
+          aria-label="Memory generation"
         >
-          <div className="bh-memory-section-header">
-            <div>
-              <span className="bh-memory-step-kicker">Current document</span>
-              <h3 id="project-memory-document-title">Project Memory</h3>
-              <p>
-                {projectMemoryArtifact?.updatedAt
-                  ? `Updated ${projectMemoryArtifact.updatedAt}`
-                  : "No compiled project memory yet."}
-              </p>
-            </div>
-            <span>
-              {projectMemoryArtifact
-                ? projectMemoryArtifact.sourceSessionIds.length > 0
-                  ? `${projectMemoryArtifact.sourceSessionIds.length} source ${
-                      projectMemoryArtifact.sourceSessionIds.length === 1
-                        ? "session"
-                        : "sessions"
-                    }`
-                  : "Compiled"
-                : "Empty"}
-            </span>
-          </div>
-          {projectMemoryArtifact?.outcome ? (
-            <MarkdownContent
-              className="bh-markdown-preview bh-memory-project-document"
-              emptyLabel="No compiled project memory yet."
-              value={projectMemoryArtifact.outcome}
-            />
-          ) : (
-            <div className="bh-memory-document-idle">
-              <strong>No Project Memory yet</strong>
-              <span>Create project memory when captured work is ready.</span>
-            </div>
-          )}
-        </section>
-
-        <section
-          className="bh-memory-document-section"
-          aria-labelledby="memory-request-title"
-        >
-          <div className="bh-memory-section-header">
-            <div>
-              <span className="bh-memory-step-kicker">Captured work</span>
-              <h3 id="memory-request-title">Needs review</h3>
-              <p>{pendingDateRange ?? "No captured work waiting."}</p>
-            </div>
-            <span>{hasPendingDocumentation ? "Ready" : "Clear"}</span>
-          </div>
-
           {hasPendingDocumentation ? (
             <article
               aria-busy={isGenerationActive || undefined}
@@ -669,7 +616,17 @@ export function MemoryPanel({
               data-generating={isGenerationActive ? "true" : "false"}
             >
               <div className="bh-memory-document-row-main">
-                <h3>Work ready for memory</h3>
+                <h3>Ready to generate</h3>
+                <div className="bh-memory-request-metrics">
+                  <span>
+                    <strong>{pendingPromptCount.toLocaleString()}</strong>
+                    {pendingPromptCount === 1 ? "prompt" : "prompts"}
+                  </span>
+                  <span>
+                    <strong>{pendingSessionCount.toLocaleString()}</strong>
+                    {pendingSessionCount === 1 ? "session" : "sessions"}
+                  </span>
+                </div>
                 <p>
                   {pendingDateRange ?? "Captured work is ready to compile."}
                 </p>
@@ -677,7 +634,7 @@ export function MemoryPanel({
               <button
                 aria-busy={isGenerationActive || undefined}
                 aria-disabled={
-                  checkpointableSessionCount === 0 ||
+                  !hasPendingDocumentation ||
                   !onGenerateProjectMemory ||
                   isGenerationActive
                 }
@@ -720,27 +677,65 @@ export function MemoryPanel({
               ) : null}
             </article>
           ) : (
-            <div className="bh-memory-document-idle">
-              <strong>No work waiting for review</strong>
-              <span>New captured sessions will appear here when memory can be created.</span>
+            <div className="bh-memory-document-idle" role="status">
+              <span>
+                {projectMemoryArtifact
+                  ? "No work waiting for review."
+                  : "No project memory yet."}
+              </span>
             </div>
           )}
         </section>
 
-        <section
-          className="bh-memory-document-section"
-          aria-labelledby="memory-history-title"
-        >
-          <div className="bh-memory-section-header">
-            <div>
-              <span className="bh-memory-step-kicker">Long-term context</span>
-              <h3 id="memory-history-title">Memory history</h3>
-              <p>{resultDateRange ?? "No memory yet."}</p>
+        {projectMemoryArtifact ? (
+          <section
+            className="bh-memory-document-section"
+            aria-labelledby="project-memory-document-title"
+          >
+            <div className="bh-memory-section-header">
+              <div>
+                <span className="bh-memory-step-kicker">Current document</span>
+                <h3 id="project-memory-document-title">Current Project Memory</h3>
+                <p>
+                  {projectMemoryArtifact.updatedAt
+                    ? `Updated ${projectMemoryArtifact.updatedAt}`
+                    : "Compiled project memory"}
+                </p>
+              </div>
+              <span>
+                {projectMemoryArtifact.sourceSessionIds.length > 0
+                  ? `${projectMemoryArtifact.sourceSessionIds.length} source ${
+                      projectMemoryArtifact.sourceSessionIds.length === 1
+                        ? "session"
+                        : "sessions"
+                    }`
+                  : "Compiled"}
+              </span>
             </div>
-            <span>{generatedArtifacts.length > 0 ? generatedSummaryCountLabel : "Empty"}</span>
-          </div>
+            <MarkdownContent
+              className="bh-markdown-preview bh-memory-project-document"
+              emptyLabel="No compiled content available."
+              value={
+                projectMemoryArtifact.outcome ?? projectMemoryArtifact.summary ?? ""
+              }
+            />
+          </section>
+        ) : null}
 
-          {generatedArtifacts.length > 0 ? (
+        {generatedArtifacts.length > 0 ? (
+          <section
+            className="bh-memory-document-section"
+            aria-labelledby="memory-history-title"
+          >
+            <div className="bh-memory-section-header">
+              <div>
+                <span className="bh-memory-step-kicker">Long-term context</span>
+                <h3 id="memory-history-title">Memory history</h3>
+                <p>{resultDateRange}</p>
+              </div>
+              <span>{generatedSummaryCountLabel}</span>
+            </div>
+
             <div className="bh-memory-context-list">
               {generatedArtifacts.map((artifact) => (
                 <MemoryArtifactCard
@@ -769,13 +764,8 @@ export function MemoryPanel({
                 </div>
               ) : null}
             </div>
-          ) : (
-            <div className="bh-memory-empty">
-              <strong>No memory yet</strong>
-              <span>Created memory will appear here with its source context.</span>
-            </div>
-          )}
-        </section>
+          </section>
+        ) : null}
       </div>
       {selectedArtifact ? (
         <MemoryArtifactDetailDrawer

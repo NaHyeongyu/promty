@@ -4,7 +4,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, case, desc, func, nullslast, select
+from sqlalchemy import and_, case, desc, func, nullslast, select, true
 from sqlalchemy.orm import Session
 
 from app.models.artifacts import Artifact
@@ -69,79 +69,100 @@ def project_summary(
 
 
 def project_summary_with_counts(db: Session, project: Project) -> dict[str, Any]:
-    session_count = (
-        db.scalar(
-            select(func.count())
-            .select_from(PromptSession)
-            .where(PromptSession.project_id == project.id)
+    session_stats = (
+        select(
+            func.count(PromptSession.id).label("session_count"),
+            func.array_agg(func.distinct(PromptSession.model))
+            .filter(PromptSession.model.is_not(None))
+            .label("connected_models"),
         )
-        or 0
+        .where(PromptSession.project_id == project.id)
+        .subquery()
     )
-    event_count = (
-        db.scalar(select(func.count()).select_from(Event).where(Event.project_id == project.id))
-        or 0
-    )
-    latest_event_at = db.scalar(
-        select(func.max(Event.created_at)).where(Event.project_id == project.id)
-    )
-    memory_count = (
-        db.scalar(
-            select(func.count())
-            .select_from(Artifact)
-            .where(
-                Artifact.project_id == project.id,
-                Artifact.type.in_(
-                    (MEMORY_ARTIFACT_TYPE, PROJECT_MEMORY_ARTIFACT_TYPE)
-                ),
-            )
+    event_stats = (
+        select(
+            func.count(Event.id).label("event_count"),
+            func.count(case((Event.event_type == "PromptSubmitted", 1))).label("prompt_count"),
+            func.max(Event.created_at).label("latest_event_at"),
         )
-        or 0
+        .where(Event.project_id == project.id)
+        .subquery()
     )
-    pending_memory_count = (
-        db.scalar(
-            select(func.count())
-            .select_from(Artifact)
-            .where(
-                Artifact.project_id == project.id,
-                Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE,
-                Artifact.metadata_["artifact_stage"].astext == PENDING_DRAFT_STAGE,
-                Artifact.metadata_["review_state"].astext == REVIEW_STATE_DRAFT,
-            )
+    artifact_stats = (
+        select(
+            func.count(
+                case(
+                    (
+                        Artifact.type.in_((MEMORY_ARTIFACT_TYPE, PROJECT_MEMORY_ARTIFACT_TYPE)),
+                        1,
+                    )
+                )
+            ).label("memory_count"),
+            func.count(
+                case(
+                    (
+                        and_(
+                            Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE,
+                            Artifact.metadata_["artifact_stage"].astext == PENDING_DRAFT_STAGE,
+                            Artifact.metadata_["review_state"].astext == REVIEW_STATE_DRAFT,
+                        ),
+                        1,
+                    )
+                )
+            ).label("pending_memory_count"),
+            func.max(
+                case(
+                    (
+                        Artifact.type.in_((MEMORY_ARTIFACT_TYPE, PROJECT_MEMORY_ARTIFACT_TYPE)),
+                        Artifact.updated_at,
+                    )
+                )
+            ).label("latest_memory_at"),
         )
-        or 0
+        .where(Artifact.project_id == project.id)
+        .subquery()
     )
-    latest_memory_at = db.scalar(
-        select(func.max(Artifact.updated_at)).where(
-            Artifact.project_id == project.id,
-            Artifact.type.in_((MEMORY_ARTIFACT_TYPE, PROJECT_MEMORY_ARTIFACT_TYPE)),
+    file_stats = (
+        select(func.count(ProjectFile.id).label("tracked_files"))
+        .where(
+            ProjectFile.project_id == project.id,
+            ProjectFile.status != "deleted",
         )
+        .subquery()
     )
-    prompt_count = (
-        db.scalar(
-            select(func.count())
-            .select_from(Event)
-            .where(Event.project_id == project.id, Event.event_type == "PromptSubmitted")
-        )
-        or 0
+    aggregate_sources = (
+        session_stats.join(event_stats, true())
+        .join(artifact_stats, true())
+        .join(file_stats, true())
     )
-    tracked_files = (
-        db.scalar(
-            select(func.count())
-            .select_from(ProjectFile)
-            .where(ProjectFile.project_id == project.id, ProjectFile.status != "deleted")
-        )
-        or 0
-    )
-    sessions = list(
-        db.execute(
-            select(PromptSession.model).where(PromptSession.project_id == project.id)
-        ).all()
-    )
+    (
+        session_count,
+        connected_model_values,
+        event_count,
+        prompt_count,
+        latest_event_at,
+        memory_count,
+        pending_memory_count,
+        latest_memory_at,
+        tracked_files,
+    ) = db.execute(
+        select(
+            session_stats.c.session_count,
+            session_stats.c.connected_models,
+            event_stats.c.event_count,
+            event_stats.c.prompt_count,
+            event_stats.c.latest_event_at,
+            artifact_stats.c.memory_count,
+            artifact_stats.c.pending_memory_count,
+            artifact_stats.c.latest_memory_at,
+            file_stats.c.tracked_files,
+        ).select_from(aggregate_sources)
+    ).one()
     return project_summary(
         project,
         connected_models=[
             model
-            for (session_model,) in sessions
+            for session_model in connected_model_values or []
             if (model := model_name(session_model)) is not None
         ],
         event_count=event_count,
@@ -197,9 +218,7 @@ def list_project_summaries(db: Session, *, current_user: User) -> list[dict[str,
             func.count(
                 case(
                     (
-                        Artifact.type.in_(
-                            (MEMORY_ARTIFACT_TYPE, PROJECT_MEMORY_ARTIFACT_TYPE)
-                        ),
+                        Artifact.type.in_((MEMORY_ARTIFACT_TYPE, PROJECT_MEMORY_ARTIFACT_TYPE)),
                         1,
                     )
                 )
@@ -209,10 +228,8 @@ def list_project_summaries(db: Session, *, current_user: User) -> list[dict[str,
                     (
                         and_(
                             Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE,
-                            Artifact.metadata_["artifact_stage"].astext
-                            == PENDING_DRAFT_STAGE,
-                            Artifact.metadata_["review_state"].astext
-                            == REVIEW_STATE_DRAFT,
+                            Artifact.metadata_["artifact_stage"].astext == PENDING_DRAFT_STAGE,
+                            Artifact.metadata_["review_state"].astext == REVIEW_STATE_DRAFT,
                         ),
                         1,
                     )
@@ -221,9 +238,7 @@ def list_project_summaries(db: Session, *, current_user: User) -> list[dict[str,
             func.max(
                 case(
                     (
-                        Artifact.type.in_(
-                            (MEMORY_ARTIFACT_TYPE, PROJECT_MEMORY_ARTIFACT_TYPE)
-                        ),
+                        Artifact.type.in_((MEMORY_ARTIFACT_TYPE, PROJECT_MEMORY_ARTIFACT_TYPE)),
                         Artifact.updated_at,
                     )
                 )

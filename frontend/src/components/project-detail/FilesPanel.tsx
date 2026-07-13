@@ -1,5 +1,4 @@
 import { BookOpen } from "lucide-react";
-import { CodeViewer } from "./CodeViewer";
 import { EmptyState } from "./EmptyState";
 import { FileTree } from "./FileTree";
 import { GitHubRepositorySetupState } from "./RepositorySetupState";
@@ -13,6 +12,7 @@ export function FilesPanel({
   onRepositoryFileSelect?: (path: string) => void;
 }) {
   const isRepositoryLinked = Boolean(data.project.repositoryUrl);
+  const openGitHubFile = isRepositoryLinked ? onRepositoryFileSelect : undefined;
 
   return (
     <div className="bh-files-layout">
@@ -57,7 +57,12 @@ export function FilesPanel({
                 Showing the first {data.files.length} tracked files.
               </div>
             ) : null}
-          <FileTree label="Tracked project files" nodes={data.files} />
+            <FileTree
+              label="Tracked project files"
+              nodes={data.files}
+              onFileSelect={openGitHubFile}
+              opensExternal={Boolean(openGitHubFile)}
+            />
           </>
         ) : (
           <EmptyState
@@ -107,18 +112,12 @@ export function FilesPanel({
             </div>
           </div>
         ) : data.repositoryFiles.length > 0 ? (
-          <div className="bh-repository-browser">
+          <div className="bh-repository-browser bh-repository-browser-external">
             <FileTree
               label="GitHub repository files"
               nodes={data.repositoryFiles}
-              onFileSelect={onRepositoryFileSelect}
-              selectedPath={data.repositoryFileSelectedPath}
-            />
-            <CodeViewer
-              content={data.repositoryFileContent}
-              errorMessage={data.repositoryFileContentError}
-              isLoading={data.repositoryFileContentLoading}
-              selectedPath={data.repositoryFileSelectedPath}
+              onFileSelect={openGitHubFile}
+              opensExternal={Boolean(openGitHubFile)}
             />
           </div>
         ) : (

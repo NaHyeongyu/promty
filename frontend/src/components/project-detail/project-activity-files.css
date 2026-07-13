@@ -1232,6 +1232,12 @@ button.bh-file-tree-row:focus-visible {
   white-space: nowrap;
 }
 
+.bh-file-tree-row .bh-file-tree-external-icon {
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: var(--bh-color-text-muted);
+}
+
 .bh-empty-state {
   max-width: 640px;
 }
@@ -1333,6 +1339,10 @@ button.bh-file-tree-row:focus-visible {
   grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
   gap: var(--bh-space-4);
   align-items: start;
+}
+
+.bh-repository-browser-external {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .bh-share-overlay {

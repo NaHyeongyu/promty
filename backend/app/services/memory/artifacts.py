@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import case, desc, func, or_, select
+from sqlalchemy import Integer, case, cast, desc, func, or_, select
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import settings
@@ -40,11 +40,12 @@ from app.services.memory.project_memory import (
 )
 from app.services.memory.windows import (
     due_memory_window as _due_memory_window,
+    _events_for_memory_window as _events_for_memory_window,
+    _latest_prompt_through_sequence as _latest_prompt_through_sequence,
     latest_memory_slice as _latest_memory_slice,
-    latest_memory_slice_end_sequence as _latest_memory_slice_end_sequence,
     latest_session_event as _latest_session_event,
     memory_slice_prompt_target as _memory_slice_prompt_target,
-    next_memory_slice_index as _next_memory_slice_index,
+    memory_slice_runtime_state as _memory_slice_runtime_state,
     slice_metadata as _slice_metadata,
 )
 from app.services.memory.repository import (
@@ -116,34 +117,44 @@ def run_artifact_generation_job(
     db.flush()
 
     try:
-        session = db.get(Session, job.session_id)
-        if session is None:
-            raise ValueError("Session not found")
-        generate_due_memory_artifacts_for_session(
-            db,
-            session,
-            finalize=True,
-            force_regenerate_latest=force_regenerate,
-        )
-        artifacts = generate_context_memories_for_session(
-            db,
-            session,
-            force_regenerate=force_regenerate,
-            trigger_reason=job.reason,
-        )
-        if not artifacts:
-            job.metadata_ = {
-                "reason": "No pending memory draft was generated.",
-                "status": "no_memory",
-            }
-        else:
-            artifact = artifacts[0]
-            job.artifact_id = artifact.id
-            job.generator = artifact.generator or job.generator
-            job.metadata_ = {
-                "generated_memory_ids": [str(item.id) for item in artifacts],
-                **(artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}),
-            }
+        # The job outcome intentionally survives a generation failure, but all
+        # memory writes must remain atomic. In particular, rolling back this
+        # savepoint restores a cleared resume marker and removes partial slices.
+        with db.begin_nested():
+            session = db.get(Session, job.session_id)
+            if session is None:
+                raise ValueError("Session not found")
+            generate_due_memory_artifacts_for_session(
+                db,
+                session,
+                finalize=True,
+                force_regenerate_latest=force_regenerate,
+            )
+            artifacts = generate_context_memories_for_session(
+                db,
+                session,
+                force_regenerate=force_regenerate,
+                trigger_reason=job.reason,
+            )
+            if not artifacts:
+                result_artifact_id = None
+                result_generator = None
+                result_metadata = {
+                    "reason": "No pending memory draft was generated.",
+                    "status": "no_memory",
+                }
+            else:
+                artifact = artifacts[0]
+                result_artifact_id = artifact.id
+                result_generator = artifact.generator
+                result_metadata = {
+                    "generated_memory_ids": [str(item.id) for item in artifacts],
+                    **(artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}),
+                }
+
+        job.artifact_id = result_artifact_id
+        job.generator = result_generator or job.generator
+        job.metadata_ = result_metadata
         job.status = "succeeded"
         job.completed_at = utc_now()
         job.error = None
@@ -181,8 +192,8 @@ def _generate_pending_draft_for_context(
     ):
         return artifact
 
-    payload = _build_pending_memory_draft_payload(context)
     evidence = _pending_draft_evidence_from_context(context)
+    payload = _build_pending_memory_draft_payload(context, evidence=evidence)
     slice_metadata = context.get("slice") if isinstance(context.get("slice"), dict) else {}
     return _write_memory_artifact_payload(
         db,
@@ -190,7 +201,7 @@ def _generate_pending_draft_for_context(
         event_id=UUID(payload["last_event_id"]) if payload["last_event_id"] else None,
         extra_metadata={
             "artifact_stage": PENDING_DRAFT_STAGE,
-            "commit_metadata": context["commits"],
+            "commit_metadata": evidence.get("commits", []),
             "draft_evidence": evidence,
             "event_count": payload["event_count"],
             "first_event_id": payload["first_event_id"],
@@ -207,6 +218,51 @@ def _generate_pending_draft_for_context(
     )
 
 
+def _clear_memory_resume_marker(db: DBSession, session: Session) -> None:
+    # Normal materialization keeps at most one marker per session: the prior
+    # marker is cleared before work and only the newest capped artifact is
+    # marked again in the same transaction.
+    artifact = db.execute(
+        select(Artifact)
+        .where(
+            Artifact.project_id == session.project_id,
+            Artifact.session_id == session.id,
+            Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE,
+            Artifact.metadata_["artifact_stage"].astext == PENDING_DRAFT_STAGE,
+            Artifact.metadata_["memory_strategy"].astext == MEMORY_WINDOW_STRATEGY,
+            Artifact.metadata_["memory_resume_required"].astext == "true",
+        )
+        .order_by(
+            desc(cast(Artifact.metadata_["end_sequence"].astext, Integer)),
+            desc(Artifact.updated_at),
+        )
+        .limit(1)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if artifact is None:
+        return
+    metadata = artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}
+    updated_metadata = {**metadata}
+    updated_metadata.pop("memory_resume_required", None)
+    artifact.metadata_ = updated_metadata
+    artifact.updated_at = utc_now()
+
+
+def _lock_memory_materialization_session(db: DBSession, session: Session) -> None:
+    """Serialize every writer of the monotonic per-session slice cursor."""
+
+    locked_session_id = db.execute(
+        select(Session.id)
+        .where(
+            Session.id == session.id,
+            Session.project_id == session.project_id,
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+    if locked_session_id is None:
+        raise ValueError("Session not found")
+
+
 def generate_due_memory_artifacts_for_session(
     db: DBSession,
     session: Session,
@@ -214,41 +270,60 @@ def generate_due_memory_artifacts_for_session(
     finalize: bool = False,
     force_regenerate_latest: bool = False,
 ) -> list[Artifact]:
+    _lock_memory_materialization_session(db, session)
     generated_artifacts: list[Artifact] = []
-    after_sequence = _latest_memory_slice_end_sequence(db, session)
+    (
+        after_sequence,
+        next_slice_index,
+        continuation_end_sequence,
+        resume_required,
+    ) = _memory_slice_runtime_state(db, session)
+    if resume_required:
+        _clear_memory_resume_marker(db, session)
 
-    while True:
+    slice_limit = max(settings.memory_slice_max_slices_per_call, 1)
+    while len(generated_artifacts) < slice_limit:
         window = _due_memory_window(
             db,
             session,
             after_sequence=after_sequence,
+            continuation_end_sequence=continuation_end_sequence,
             finalize=finalize,
         )
         if window is None:
             break
 
         selected_prompts = window["selected_prompts"]
-        if not selected_prompts:
-            break
+        start_prompt_sequence = selected_prompts[0].sequence if selected_prompts else None
+        end_prompt_sequence = selected_prompts[-1].sequence if selected_prompts else None
 
-        slice_index = _next_memory_slice_index(db, session)
         slice_metadata = {
-            "end_prompt_sequence": selected_prompts[-1].sequence,
+            "context_prompt_sequence": (
+                window["context_prompt"].sequence if window["context_prompt"] is not None else None
+            ),
+            "end_prompt_sequence": end_prompt_sequence,
             "end_sequence": window["end_sequence"],
+            "event_row_limit": window["event_row_limit"],
+            "materialization_end_sequence": window["materialization_end_sequence"],
             "memory_strategy": MEMORY_WINDOW_STRATEGY,
             "prompt_count": len(selected_prompts),
-            "slice_index": slice_index,
-            "start_prompt_sequence": selected_prompts[0].sequence,
+            "slice_index": next_slice_index,
+            "start_prompt_sequence": start_prompt_sequence,
             "start_sequence": window["start_sequence"],
             "target_prompt_count": _memory_slice_prompt_target(),
             "window_reason": window["reason"],
+            "window_truncated": window["window_truncated"],
         }
         artifact = _generate_pending_draft_for_context(
             db,
             context=_build_session_memory_context(
                 db,
                 session,
+                context_event_rows=(
+                    [window["context_prompt"]] if window["context_prompt"] is not None else None
+                ),
                 end_sequence=window["end_sequence"],
+                event_rows=window["events"],
                 slice_metadata=slice_metadata,
                 start_sequence=window["start_sequence"],
             ),
@@ -261,6 +336,21 @@ def generate_due_memory_artifacts_for_session(
         )
         generated_artifacts.append(artifact)
         after_sequence = window["end_sequence"]
+        continuation_end_sequence = (
+            window["materialization_end_sequence"]
+            if after_sequence < window["materialization_end_sequence"]
+            else None
+        )
+        next_slice_index += 1
+
+    if len(generated_artifacts) == slice_limit:
+        last_artifact = generated_artifacts[-1]
+        metadata = last_artifact.metadata_ if isinstance(last_artifact.metadata_, dict) else {}
+        last_artifact.metadata_ = {
+            **metadata,
+            "memory_resume_required": True,
+        }
+        last_artifact.updated_at = utc_now()
 
     if not generated_artifacts and force_regenerate_latest:
         latest_slice = _latest_memory_slice(db, session)
@@ -268,14 +358,33 @@ def generate_due_memory_artifacts_for_session(
             metadata = _slice_metadata(latest_slice)
             start_sequence = metadata.get("start_sequence")
             end_sequence = metadata.get("end_sequence")
+            context_prompt_sequence = metadata.get("context_prompt_sequence")
             if isinstance(start_sequence, int) and isinstance(end_sequence, int):
+                context_prompt = (
+                    _latest_prompt_through_sequence(
+                        db,
+                        session,
+                        through_sequence=context_prompt_sequence,
+                    )
+                    if isinstance(context_prompt_sequence, int)
+                    else None
+                )
                 generated_artifacts.append(
                     _generate_pending_draft_for_context(
                         db,
                         context=_build_session_memory_context(
                             db,
                             session,
+                            context_event_rows=(
+                                [context_prompt] if context_prompt is not None else None
+                            ),
                             end_sequence=end_sequence,
+                            event_rows=_events_for_memory_window(
+                                db,
+                                session,
+                                start_sequence=start_sequence,
+                                through_sequence=end_sequence,
+                            ),
                             slice_metadata=metadata,
                             start_sequence=start_sequence,
                         ),
@@ -302,6 +411,8 @@ def _pending_memory_drafts_for_session(
                 Artifact.project_id == session.project_id,
                 Artifact.session_id == session.id,
                 Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE,
+                Artifact.metadata_["artifact_stage"].astext == PENDING_DRAFT_STAGE,
+                Artifact.metadata_["review_state"].astext == REVIEW_STATE_DRAFT,
             )
             .order_by(Artifact.created_at, Artifact.updated_at)
         ).scalars()
@@ -309,10 +420,6 @@ def _pending_memory_drafts_for_session(
     pending: list[Artifact] = []
     for artifact in artifacts:
         metadata = artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}
-        if metadata.get("artifact_stage") != PENDING_DRAFT_STAGE:
-            continue
-        if metadata.get("review_state") != REVIEW_STATE_DRAFT:
-            continue
         draft_start = metadata.get("start_sequence")
         draft_end = metadata.get("end_sequence")
         if start_sequence is not None and isinstance(draft_end, int) and draft_end < start_sequence:
@@ -415,11 +522,21 @@ def _pending_draft_generation_context(
         events.extend(event for event in draft_events if isinstance(event, dict))
         prompt_events.extend(
             {
+                "context_only": prompt.get("context_only") is True,
                 "id": prompt.get("event_id"),
-                "prompt": (prompt.get("ai_input") or {}).get("text")
-                if isinstance(prompt.get("ai_input"), dict)
-                else prompt.get("original_input"),
-                "prompt_original": prompt.get("original_input"),
+                "prompt": (
+                    (prompt.get("ai_input") or {}).get("text")
+                    if isinstance(prompt.get("ai_input"), dict)
+                    else prompt.get("original_input")
+                ),
+                "prompt_original": (
+                    prompt.get("original_input")
+                    or (
+                        (prompt.get("ai_input") or {}).get("text")
+                        if isinstance(prompt.get("ai_input"), dict)
+                        else None
+                    )
+                ),
                 "prompt_original_size": prompt.get("original_length"),
                 "prompt_ai_preview_truncated": (
                     (prompt.get("ai_input") or {}).get("truncated_for_ai") is True
@@ -434,9 +551,11 @@ def _pending_draft_generation_context(
         )
         responses.extend(
             {
+                "context_only": response.get("context_only") is True,
                 "id": response.get("event_id"),
-                "response": response.get("original_output"),
-                "response_original": response.get("original_output"),
+                "response": response.get("output_preview") or response.get("original_output"),
+                "response_original": response.get("output_preview")
+                or response.get("original_output"),
                 "response_original_size": response.get("original_length"),
                 "response_ai_preview_truncated": response.get("storage_truncated") is True,
                 "sequence": response.get("sequence"),
@@ -538,14 +657,121 @@ def materialize_project_memory_drafts(
         )
 
 
+def materialize_next_idle_memory_session(db: DBSession) -> bool:
+    """Resume one bounded window group or finalize one idle open session.
+
+    The logical-end aggregate covers partial windows. The operational marker
+    covers calls that stop exactly at a completed-window boundary. Both are
+    persisted transactionally, so open and ended sessions resume after a
+    crash without an external queue flag.
+    """
+    slice_progress = (
+        select(
+            Artifact.session_id.label("session_id"),
+            func.max(cast(Artifact.metadata_["end_sequence"].astext, Integer)).label(
+                "covered_end_sequence"
+            ),
+            func.max(
+                cast(
+                    Artifact.metadata_["materialization_end_sequence"].astext,
+                    Integer,
+                )
+            ).label("materialization_end_sequence"),
+        )
+        .where(
+            Artifact.session_id.is_not(None),
+            Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE,
+            Artifact.metadata_["artifact_stage"].astext == PENDING_DRAFT_STAGE,
+            Artifact.metadata_["memory_strategy"].astext == MEMORY_WINDOW_STRATEGY,
+        )
+        .group_by(Artifact.session_id)
+        .having(
+            or_(
+                func.max(
+                    cast(
+                        Artifact.metadata_["materialization_end_sequence"].astext,
+                        Integer,
+                    )
+                )
+                > func.max(cast(Artifact.metadata_["end_sequence"].astext, Integer)),
+                func.bool_or(Artifact.metadata_["memory_resume_required"].astext == "true"),
+            )
+        )
+        .subquery()
+    )
+    session = db.execute(
+        select(Session)
+        .join(slice_progress, slice_progress.c.session_id == Session.id)
+        .order_by(Session.started_at, Session.id)
+        .limit(1)
+        .with_for_update(of=Session, skip_locked=True)
+    ).scalar_one_or_none()
+    if session is not None:
+        # The latest-row runtime state is sufficient for normal serialized
+        # writers. Clear defensively here as well so an older marker from
+        # manually repaired or pre-invariant data cannot select this session
+        # forever after a newer completed slice has been stored.
+        _clear_memory_resume_marker(db, session)
+        generate_due_memory_artifacts_for_session(
+            db,
+            session,
+            finalize=session.ended_at is not None,
+        )
+        return True
+
+    latest_session_activity = (
+        select(
+            Event.session_id.label("session_id"),
+            func.max(Event.created_at).label("latest_event_at"),
+            func.max(
+                case(
+                    (Event.event_type == "PromptSubmitted", Event.created_at),
+                    else_=None,
+                )
+            ).label("latest_prompt_at"),
+        )
+        .group_by(Event.session_id)
+        .subquery()
+    )
+    idle_before = utc_now() - SESSION_IDLE_COMPLETE_AFTER
+    session = db.execute(
+        select(Session)
+        .join(
+            latest_session_activity,
+            latest_session_activity.c.session_id == Session.id,
+        )
+        .where(
+            Session.ended_at.is_(None),
+            latest_session_activity.c.latest_event_at <= idle_before,
+        )
+        .order_by(
+            latest_session_activity.c.latest_event_at,
+            Session.started_at,
+            Session.id,
+        )
+        .limit(1)
+        .with_for_update(of=Session, skip_locked=True)
+    ).scalar_one_or_none()
+    if session is None:
+        return False
+
+    completion = complete_session_if_ready(db, session, force=False)
+    if not completion["completed"]:
+        return False
+    generate_due_memory_artifacts_for_session(
+        db,
+        session,
+        finalize=True,
+    )
+    return True
+
+
 def list_project_memory_pending_ranges(
     db: DBSession,
     *,
     limit: int = 20,
     project_id: UUID,
 ) -> list[dict[str, Any]]:
-    materialize_project_memory_drafts(db, limit=limit, project_id=project_id)
-
     pending_drafts = list(
         db.execute(
             select(Artifact)
@@ -748,22 +974,20 @@ def list_project_memory_drafts(
     artifacts = list(
         db.execute(
             select(Artifact)
-            .where(Artifact.project_id == project_id, Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE)
+            .where(
+                Artifact.project_id == project_id,
+                Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE,
+                Artifact.metadata_["artifact_stage"].astext == "memory_draft",
+                Artifact.metadata_["review_state"].astext == REVIEW_STATE_DRAFT,
+                Artifact.metadata_["summary_level"].astext == "2",
+                Artifact.metadata_["fallback_reason"].astext.is_(None),
+            )
             .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
             .limit(limit * 5)
         ).scalars()
     )
     filtered = [
-        artifact
-        for artifact in artifacts
-        if (metadata := artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}).get(
-            "artifact_stage"
-        )
-        == "memory_draft"
-        and metadata.get("review_state") == REVIEW_STATE_DRAFT
-        and metadata.get("summary_level") == 2
-        and not metadata.get("fallback_reason")
-        and not _is_generic_local_memory_summary(artifact.summary)
+        artifact for artifact in artifacts if not _is_generic_local_memory_summary(artifact.summary)
     ]
     return filtered[:limit]
 
