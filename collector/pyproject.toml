@@ -25,6 +25,8 @@ py-modules = [
   "runtime_install",
   "sequence",
   "session_index",
+  "updater",
+  "version",
 ]
 
 [tool.setuptools.packages.find]
