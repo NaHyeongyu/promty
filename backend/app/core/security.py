@@ -117,6 +117,7 @@ def _bearer_token(authorization: str | None) -> str | None:
 
 def require_ingest_token(
     authorization: str | None = Header(default=None),
+    x_promty_collector_version: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> User | None:
     token = _bearer_token(authorization)
@@ -136,6 +137,8 @@ def require_ingest_token(
         )
         if collector_token is not None:
             collector_token.last_used_at = datetime.now(timezone.utc)
+            if x_promty_collector_version:
+                collector_token.collector_version = x_promty_collector_version.strip()[:64]
             db.flush()
             return collector_token.user
 

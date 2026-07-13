@@ -48,6 +48,7 @@ class GitHubConnectionResponse(BaseModel):
 
 
 class CollectorTokenResponse(BaseModel):
+    collector_version: str | None
     created_at: str | None
     id: str
     last_used_at: str | None
@@ -59,6 +60,7 @@ class CollectorTokenResponse(BaseModel):
 class AccountOverviewResponse(BaseModel):
     collector_tokens: list[CollectorTokenResponse]
     github_connection: GitHubConnectionResponse
+    latest_collector_version: str
     user: AccountUserResponse
 
 

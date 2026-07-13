@@ -41,11 +41,13 @@ from payloads import (
     WORKSPACE_KEYS,
     get_first_string,
 )
-from runtime_install import install_runtime, quote_command_path
+from runtime_install import install_runtime, launcher_path, quote_command_path
 from sequence import SequenceStore
 from session_index import SessionIndex
 from uploader.client import PromptHubUploader
 from uploader.queue import JSONLQueue
+from updater import auto_update
+from version import COLLECTOR_VERSION
 
 InstallTarget = Literal["all", "claude-code", "codex-cli"]
 Profile = Literal["dev", "prod"]
@@ -61,6 +63,7 @@ PROFILE_URLS: dict[Profile, tuple[str, str]] = {
     "dev": ("http://127.0.0.1:5173", "http://127.0.0.1:8011"),
     "prod": ("https://promty.org", "https://api.promty.org"),
 }
+AUTO_UPDATE_INTERVAL_SECONDS = 6 * 60 * 60
 CODEX_HOOKS: tuple[dict[str, Any], ...] = (
     {
         "event": "UserPromptSubmit",
@@ -374,8 +377,20 @@ def upload(args: argparse.Namespace) -> int:
         f"{JSONLQueue(args.queue_path).path} -> {api_url} "
         f"every {interval:g}s"
     )
+    next_update_check = 0.0
     while True:
         try:
+            now = time.monotonic()
+            if not args.no_auto_update and now >= next_update_check:
+                next_update_check = now + AUTO_UPDATE_INTERVAL_SECONDS
+                updated_version = auto_update()
+                if updated_version:
+                    print(
+                        f"Promty updated {COLLECTOR_VERSION} -> {updated_version}; restarting",
+                        flush=True,
+                    )
+                    launcher = launcher_path()
+                    os.execv(str(launcher), [str(launcher), *sys.argv[1:]])
             uploaded_count = _upload_queued_events(args)
             if uploaded_count:
                 print(f"Uploaded {uploaded_count} events", flush=True)
@@ -795,6 +810,8 @@ def start_uploader(args: argparse.Namespace) -> int:
     ]
     if getattr(args, "queue_path", None):
         command.extend(["--queue-path", str(Path(args.queue_path).expanduser())])
+    if getattr(args, "no_auto_update", False):
+        command.append("--no-auto-update")
     process = subprocess.Popen(
         command,
         stdout=log_file,
@@ -960,6 +977,7 @@ def init(args: argparse.Namespace) -> int:
             log_path=args.log_path,
             pid_path=args.pid_path,
             queue_path=args.queue_path,
+            no_auto_update=args.no_auto_update,
             token=args.token,
         )
         start_uploader(uploader_args)
@@ -1038,6 +1056,7 @@ def build_parser() -> argparse.ArgumentParser:
     upload_parser.add_argument("--config-path")
     upload_parser.add_argument("--queue-path")
     upload_parser.add_argument("--profile", choices=sorted(PROFILE_URLS))
+    upload_parser.add_argument("--no-auto-update", action="store_true")
     upload_parser.add_argument("--limit", type=int, default=100)
     upload_parser.add_argument("--timeout", type=float, default=10)
     upload_parser.add_argument(
@@ -1094,6 +1113,7 @@ def build_parser() -> argparse.ArgumentParser:
     start_uploader_parser.add_argument("--pid-path")
     start_uploader_parser.add_argument("--profile", choices=sorted(PROFILE_URLS))
     start_uploader_parser.add_argument("--queue-path")
+    start_uploader_parser.add_argument("--no-auto-update", action="store_true")
     start_uploader_parser.add_argument("--token")
     start_uploader_parser.set_defaults(func=start_uploader)
 
@@ -1125,6 +1145,7 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--pid-path")
     init_parser.add_argument("--profile", choices=sorted(PROFILE_URLS))
     init_parser.add_argument("--queue-path")
+    init_parser.add_argument("--no-auto-update", action="store_true")
     init_parser.add_argument("--repo-root")
     init_parser.add_argument("--skip-login", action="store_true")
     init_parser.add_argument("--skip-uploader", action="store_true")
@@ -1139,7 +1160,16 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--upload-interval", type=float, default=2)
     init_parser.set_defaults(func=init)
 
+    update_runtime_parser = subparsers.add_parser("update-runtime")
+    update_runtime_parser.set_defaults(func=lambda _: _update_runtime())
+
     return parser
+
+
+def _update_runtime() -> int:
+    path = install_runtime()
+    print(f"Promty {COLLECTOR_VERSION} runtime ready: {path}")
+    return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:

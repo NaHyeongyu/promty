@@ -77,6 +77,13 @@ Use `--profile dev` for local development and `--profile prod` for production.
 Profiles isolate login credentials, uploader processes, logs, and event queues so
 switching environments cannot overwrite another environment's collector state.
 
+The background uploader checks npm for a newer collector every six hours. When
+an update is available, it installs the content-addressed runtime and restarts
+itself with the same profile and queue. Pass `--no-auto-update` to `init` or
+`start-uploader` to opt out. Installations older than `0.1.2` require one manual
+`npx promty-collector@latest init --profile <dev|prod>` upgrade before automatic
+updates become available.
+
 The npm package includes the Python collector and uses `python3` by default. Set
 `PROMTY_PYTHON` when a different Python executable is required.
 

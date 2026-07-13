@@ -4,6 +4,8 @@ import json
 from typing import Any
 from urllib import request
 
+from version import COLLECTOR_VERSION
+
 
 class PromptHubUploader:
     def __init__(self, api_url: str, token: str | None = None, timeout: float = 10) -> None:
@@ -16,7 +18,10 @@ class PromptHubUploader:
             return []
 
         body = json.dumps({"events": events}).encode("utf-8")
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "X-Promty-Collector-Version": COLLECTOR_VERSION,
+        }
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
 

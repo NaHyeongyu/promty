@@ -618,10 +618,21 @@ export function AuthenticatedApp() {
   const latestCollectorAge = latestCollectorUsedAt
     ? Date.now() - Date.parse(latestCollectorUsedAt)
     : null;
+  const collectorNeedsUpdate = Boolean(
+    latestCollectorToken &&
+      latestCollectorUsedAt &&
+      latestCollectorToken.collector_version !==
+        accountSettings.accountOverview?.latest_collector_version,
+  );
   const collectorStatus = !accountSettings.accountOverview
     ? { detail: "Checking status", tone: "muted" as const }
     : activeCollectorTokens.length === 0
       ? { detail: "Not set up", tone: "attention" as const }
+      : collectorNeedsUpdate
+        ? {
+            detail: `Update to ${accountSettings.accountOverview.latest_collector_version}`,
+            tone: "attention" as const,
+          }
       : latestCollectorUsedAt === null
         ? { detail: "Waiting for first sync", tone: "attention" as const }
         : {

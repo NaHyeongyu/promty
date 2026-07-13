@@ -71,6 +71,7 @@ def serialize_github_connection(
 
 def serialize_collector_token(token: CollectorToken) -> dict[str, Any]:
     return {
+        "collector_version": token.collector_version,
         "created_at": _iso(token.created_at),
         "id": str(token.id),
         "last_used_at": _iso(token.last_used_at),
@@ -98,6 +99,7 @@ def account_overview_response(db: Session, *, user: User) -> dict[str, Any]:
     serialized_user = serialize_user(user)
     serialized_user["github_repository_access"] = github_connection["connected"]
     return {
+        "latest_collector_version": "0.1.2",
         "collector_tokens": list_collector_tokens(db, user=user),
         "github_connection": github_connection,
         "user": serialized_user,

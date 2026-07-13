@@ -69,6 +69,10 @@ npx promty-collector doctor --profile <dev-or-prod> --tool all
 11. Report the status of `config`, `login`, `hooks/codex-cli`, `hooks/claude-code`, `queue`, `backend`, and `uploader`.
 12. Ask the user to submit one small, non-sensitive prompt in each tool and confirm that the new activity appears in Promty.
 
+## Updates
+
+Collector `0.1.2` and newer checks npm every six hours and updates its durable runtime automatically. The uploader restarts with the same profile and queue after a successful update. Users on an older collector must run the selected `init --profile` command once to enable automatic updates. Use `--no-auto-update` only when updates are managed externally.
+
 ## Expected hook coverage
 
 Codex writes `.codex/hooks.json` with:

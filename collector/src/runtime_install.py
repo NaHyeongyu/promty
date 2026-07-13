@@ -25,6 +25,8 @@ RUNTIME_MODULES: tuple[str, ...] = (
     "runtime_install.py",
     "sequence.py",
     "session_index.py",
+    "updater.py",
+    "version.py",
 )
 RUNTIME_PACKAGES: tuple[str, ...] = ("adapters", "uploader")
 

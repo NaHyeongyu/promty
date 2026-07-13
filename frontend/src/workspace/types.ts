@@ -49,6 +49,7 @@ export type AccountGithubConnection = {
 };
 
 export type AccountCollectorToken = {
+  collector_version: string | null;
   created_at: string | null;
   id: string;
   last_used_at: string | null;
@@ -60,6 +61,7 @@ export type AccountCollectorToken = {
 export type AccountOverview = {
   collector_tokens: AccountCollectorToken[];
   github_connection: AccountGithubConnection;
+  latest_collector_version: string;
   user: AuthUser;
 };
 
