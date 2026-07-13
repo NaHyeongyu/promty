@@ -209,6 +209,8 @@ GET  /api/projects
 POST /api/events/batch
 GET  /api/events
 GET  /health
+GET  /health/live
+GET  /health/ready
 ```
 
 The backend validates PromptHub Event v1 models and persists events to PostgreSQL.
@@ -322,6 +324,13 @@ cd backend
 ../.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8011
 ```
 
+Start the Project Memory worker in another terminal:
+
+```bash
+cd backend
+../.venv/bin/python -m app.workers.project_memory
+```
+
 Start frontend:
 
 ```bash
@@ -358,7 +367,7 @@ http://127.0.0.1:5173/cli/login
 Check backend:
 
 ```bash
-curl -sS http://127.0.0.1:8011/health
+curl -sS http://127.0.0.1:8011/health/ready
 curl -sS -i 'http://127.0.0.1:8011/api/auth/github/start?redirect_uri=http%3A%2F%2F127.0.0.1%3A54321%2Fcallback&state=abc'
 curl -sS -i 'http://127.0.0.1:8011/api/auth/github/web/start?return_to=http%3A%2F%2F127.0.0.1%3A5173%2F'
 curl -sS 'http://127.0.0.1:8011/api/events?limit=5'

@@ -47,9 +47,11 @@ export function emptyProjectDetailData(project: Project | null): ProjectDetailDa
       recentArtifacts: [],
       totalArtifacts: 0,
     },
+    metricHistory: [],
     overview: [],
     promptActivities: [],
     project: {
+      defaultBranch: project?.defaultBranch,
       description: "",
       id: project?.id ?? "",
       isBookmarked: project?.isBookmarked ?? false,
@@ -242,7 +244,7 @@ export function projectDetailDataFromApi(
   return {
     activities: payload.activities.map((activity) => ({
       events: activity.events,
-      filesChanged: activity.files_changed,
+      filesChanged: activity.files_changed ?? 0,
       id: activity.id,
       lastActivity: formatOptionalTimestamp(activity.last_activity_at),
       model: activity.model,
@@ -285,6 +287,13 @@ export function projectDetailDataFromApi(
       recentArtifacts: (memory?.recent_artifacts ?? []).map(projectMemoryArtifactFromApi),
       totalArtifacts: memory?.total_artifacts ?? 0,
     },
+    metricHistory: (payload.metrics.activity_history ?? []).map((item) => ({
+      date: item.date,
+      filesChanged: item.files_changed,
+      memories: item.memories,
+      prompts: item.prompts,
+      sessions: item.sessions,
+    })),
     overview: [
       {
         title: "Repository URL",
@@ -354,6 +363,7 @@ export function projectDetailDataFromApi(
       },
     ],
     project: {
+      defaultBranch: payload.project.default_branch,
       description: projectDescription,
       id: payload.project.id,
       isBookmarked: payload.project.is_bookmarked === true,

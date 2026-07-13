@@ -27,7 +27,7 @@ const defaultActivityNavigation: ActivityNavigationState = {
   selectedPromptId: null,
   selectedSessionId: null,
   selectedSessionPromptId: null,
-  view: "sessions",
+  view: "prompts",
 };
 
 type ActivityFeedItem =

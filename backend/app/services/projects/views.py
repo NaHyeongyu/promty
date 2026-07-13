@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.encoding import base64_urldecode, base64_urlencode
 from app.core.security import is_admin_user
+from app.models.artifacts import Artifact
 from app.models.events import Event
 from app.models.project_files import ProjectFile
 from app.models.projects import Project
@@ -26,10 +27,16 @@ from app.services.memory.artifacts import (
     get_latest_project_memory,
     list_project_memory_artifacts,
 )
+from app.services.memory.constants import (
+    MEMORY_ARTIFACT_TYPE,
+    REVIEW_STATE_GENERATED,
+    REVIEW_STATE_VERIFIED,
+)
 from app.services.memory.serializers import (
     serialize_memory_artifact_summary,
 )
 from app.services.projects.activity import (
+    file_changes_from_files_changed,
     files_changed_by_prompt_from_events,
     format_response_summary,
     iso,
@@ -43,11 +50,97 @@ from app.services.projects.activity import (
 from app.services.projects.search import prompt_search_hashes_for_query
 
 RECENT_ACTIVITY_LIMIT = 50
+PROJECT_METRIC_HISTORY_DAYS = 14
 PROMPT_RELATED_EVENT_LIMIT = 1000
 PROJECT_FILE_TREE_LIMIT = 2000
 PROMPT_RELATED_EVENT_SEQUENCE_TRAILING = 40
 
 PromptActivityCursor = tuple[datetime, int, UUID]
+
+
+def _utc_day_key(value: datetime) -> str:
+    normalized = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    return normalized.astimezone(timezone.utc).date().isoformat()
+
+
+def _project_metric_history(
+    db: Session,
+    *,
+    project_id: UUID,
+    now: datetime,
+) -> list[dict[str, Any]]:
+    today = now.astimezone(timezone.utc).date()
+    first_day = today - timedelta(days=PROJECT_METRIC_HISTORY_DAYS - 1)
+    first_day_at = datetime.combine(first_day, datetime.min.time(), tzinfo=timezone.utc)
+    history = {
+        (first_day + timedelta(days=index)).isoformat(): {
+            "date": (first_day + timedelta(days=index)).isoformat(),
+            "files_changed": 0,
+            "memories": 0,
+            "prompts": 0,
+            "sessions": 0,
+        }
+        for index in range(PROJECT_METRIC_HISTORY_DAYS)
+    }
+
+    session_timestamps = db.execute(
+        select(PromptSession.started_at).where(
+            PromptSession.project_id == project_id,
+            PromptSession.started_at >= first_day_at,
+        )
+    ).scalars()
+    for started_at in session_timestamps:
+        if (day_key := _utc_day_key(started_at)) in history:
+            history[day_key]["sessions"] += 1
+
+    prompt_timestamps = db.execute(
+        select(Event.created_at).where(
+            Event.project_id == project_id,
+            Event.event_type == "PromptSubmitted",
+            Event.created_at >= first_day_at,
+        )
+    ).scalars()
+    for created_at in prompt_timestamps:
+        if (day_key := _utc_day_key(created_at)) in history:
+            history[day_key]["prompts"] += 1
+
+    memory_timestamps = db.execute(
+        select(Artifact.created_at).where(
+            Artifact.project_id == project_id,
+            Artifact.type == MEMORY_ARTIFACT_TYPE,
+            Artifact.metadata_["review_state"].astext.in_(
+                [REVIEW_STATE_GENERATED, REVIEW_STATE_VERIFIED]
+            ),
+            Artifact.metadata_["artifact_stage"].astext.in_(
+                ["generated_memory", "verified_memory"]
+            ),
+            Artifact.created_at >= first_day_at,
+        )
+    ).scalars()
+    for created_at in memory_timestamps:
+        if (day_key := _utc_day_key(created_at)) in history:
+            history[day_key]["memories"] += 1
+
+    changed_paths_by_day: dict[str, set[str]] = {}
+    file_change_events = db.execute(
+        select(Event).where(
+            Event.project_id == project_id,
+            Event.event_type == "FilesChanged",
+            Event.created_at >= first_day_at,
+        )
+    ).scalars()
+    for event in file_change_events:
+        day_key = _utc_day_key(event.created_at)
+        if day_key not in history:
+            continue
+        changed_paths_by_day.setdefault(day_key, set()).update(
+            change["path"]
+            for change in file_changes_from_files_changed(event.payload)
+        )
+    for day_key, paths in changed_paths_by_day.items():
+        history[day_key]["files_changed"] = len(paths)
+
+    return list(history.values())
 
 
 def normalize_github_url(remote_url: str | None) -> str | None:
@@ -623,7 +716,8 @@ def read_project_detail_response(
 ) -> dict[str, Any]:
     project = project_for_user(db, project_id, current_user, allow_admin=True)
     repository_url = normalize_github_url(project.git_remote)
-    since_yesterday_at = datetime.now(timezone.utc) - timedelta(days=1)
+    now = datetime.now(timezone.utc)
+    since_yesterday_at = now - timedelta(days=1)
     session_count, session_count_since_yesterday = db.execute(
         select(
             func.count(PromptSession.id),
@@ -683,6 +777,11 @@ def read_project_detail_response(
         (artifact.updated_at for artifact in visible_memory_artifacts),
         default=None,
     )
+    activity_history = _project_metric_history(
+        db,
+        project_id=project.id,
+        now=now,
+    )
 
     return {
         "project": {
@@ -702,6 +801,7 @@ def read_project_detail_response(
             "updated_at": iso(project.updated_at),
         },
         "metrics": {
+            "activity_history": activity_history,
             "connected_models": sorted(models),
             "connected_tools": sorted(tools),
             "files_changed_since_yesterday": files_changed_since_yesterday,

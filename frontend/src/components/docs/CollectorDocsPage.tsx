@@ -23,6 +23,8 @@ const LOCAL_COMMAND =
   "npx promty-collector init --profile dev";
 const PRODUCTION_COMMAND =
   "npx promty-collector init --profile prod";
+const MULTI_PROFILE_COMMAND =
+  "npx promty-collector init --profiles dev,prod";
 
 function currentSetupCommand() {
   const profile = window.location.hostname === "promty.org" || window.location.hostname === "www.promty.org"
@@ -218,22 +220,22 @@ function HumanCollectorGuide() {
           </DocsSection>
 
           <DocsSection id="switch-environment" kicker="05" title="Switch environments">
-            <Callout icon={<RefreshCw size={18} />} title="Choose one environment">
-              Do not run both commands as a normal installation sequence. The saved configuration
-              is updated by the last command, while an uploader that is already running keeps its
-              current API destination until restarted.
+            <Callout icon={<RefreshCw size={18} />} title="Choose explicit destinations">
+              Use one profile for a single destination, or initialize both profiles explicitly to
+              save the same captured event to independent development and production queues.
             </Callout>
             <div className="docs-command-pair">
               <CommandBlock command={LOCAL_COMMAND} label="Local development" />
               <CommandBlock command={PRODUCTION_COMMAND} label="Production" />
             </div>
+            <CommandBlock command={MULTI_PROFILE_COMMAND} label="Development and production" />
             <p>
-              To change an existing installation, stop the running uploader, run the command for
-              the new environment, and then start fresh Codex and Claude Code sessions.
+              Multi-profile mode creates an event once, keeps a separate retry queue for each
+              destination, and reports each backend and uploader independently through doctor.
             </p>
             <CommandBlock
-              command={'kill "$(cat ~/.prompthub/uploader.pid)"'}
-              label="Stop the current uploader before switching"
+              command="npx promty-collector doctor --profiles dev,prod --tool all"
+              label="Verify both profiles"
             />
           </DocsSection>
 
@@ -250,9 +252,18 @@ function HumanCollectorGuide() {
             <div className="docs-file-list">
               <FileItem path=".codex/hooks.json" text="Codex repository hooks" />
               <FileItem path=".claude/settings.local.json" text="Claude Code local hooks" />
-              <FileItem path="~/.prompthub/config.json" text="Local login and API configuration" />
-              <FileItem path="~/.prompthub/events/" text="Pending local event queue" />
-              <FileItem path="~/.prompthub/uploader.log" text="Background uploader log" />
+              <FileItem
+                path="~/.prompthub/profiles/&lt;profile&gt;/config.json"
+                text="Profile-specific login and API configuration"
+              />
+              <FileItem
+                path="~/.prompthub/profiles/&lt;profile&gt;/events"
+                text="Profile-specific pending event queue"
+              />
+              <FileItem
+                path="~/.prompthub/profiles/&lt;profile&gt;/uploader.log"
+                text="Profile-specific background uploader log"
+              />
             </div>
             <Callout icon={<ShieldCheck size={18} />} title="Keep credentials private">
               Never paste the Promty config, collector token, raw event queue, or private uploader

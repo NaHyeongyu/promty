@@ -13,7 +13,7 @@ Install the Promty collector in the user's intended Git repository, configure Co
 
 - Work from the repository the user placed in scope. Do not initialize hooks in a parent directory or a different checkout.
 - Preserve existing hook entries and unrelated working-tree changes.
-- Run exactly one `init` command for the selected environment.
+- Run exactly one `init` command with the environment or environments selected by the user.
 - Do not display, read aloud, commit, or paste collector tokens, `~/.prompthub/config.json`, raw event queues, or private uploader logs.
 - Do not claim completion while a diagnostic reports `needs-action`.
 - GitHub authorization, Codex repository trust, and any tool permission prompt require the user's review and confirmation.
@@ -31,7 +31,7 @@ Confirm these are available:
 
 If the repository has a GitHub `origin` remote, Promty uses it to associate captured activity with the repository.
 
-## Select one environment
+## Select environments
 
 Production:
 
@@ -47,11 +47,19 @@ npx promty-collector init --profile dev
 
 If the user supplied different app and API URLs, pass them together with a profile. Production and local profiles keep their credentials, queues, logs, and uploader processes separate.
 
+To save the same captured events to local development and production, use the explicit multi-profile form:
+
+```bash
+npx promty-collector init --profiles dev,prod
+```
+
+Multi-profile mode writes the same event ID to independent queues and runs an uploader for each destination. Do not combine `--profiles` with singular URL, path, or token overrides; configure each profile separately first.
+
 ## Installation procedure
 
 1. Confirm the current working directory belongs to the intended Git repository.
 2. Confirm the prerequisites without changing unrelated dependencies.
-3. Run the single selected `init` command.
+3. Run the selected single-profile or multi-profile `init` command.
 4. If `npx` asks to install `promty-collector`, accept the package installation.
 5. If browser-based GitHub authorization starts, ask the user to complete it. Continue only after authorization returns control to the terminal.
 6. Confirm the command exits with status `0` and prints `Promty init complete`.
@@ -64,6 +72,12 @@ If the user supplied different app and API URLs, pass them together with a profi
 
 ```bash
 npx promty-collector doctor --profile <dev-or-prod> --tool all
+```
+
+For multi-profile installations, run:
+
+```bash
+npx promty-collector doctor --profiles dev,prod --tool all
 ```
 
 11. Report the status of `config`, `login`, `hooks/codex-cli`, `hooks/claude-code`, `queue`, `backend`, and `uploader`.
@@ -89,15 +103,15 @@ Claude Code writes `.claude/settings.local.json` with:
 
 ## Environment switching
 
-Running `init` again updates saved configuration and hook files. However, an uploader that is already running keeps the API destination with which it started.
+Named `dev` and `prod` profiles use separate configuration, queue, PID, and log paths. Re-running `init --profile ...` updates the repository hooks to that single profile; `init --profiles dev,prod` updates them to write to both queues.
 
-Before switching environments, stop the current uploader:
+Custom unprofiled installations still use the legacy shared uploader path. Stop that uploader before changing its app or API URL:
 
 ```bash
 kill "$(cat ~/.prompthub/uploader.pid)"
 ```
 
-Then run exactly one `init` command with the new app and API URLs and restart Codex and Claude Code sessions.
+Then run the new `init` command and restart Codex and Claude Code sessions.
 
 ## Troubleshooting
 

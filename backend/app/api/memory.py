@@ -86,7 +86,7 @@ def complete_project_session(
     return response
 
 
-@router.post("/{project_id}/memory/generate")
+@router.post("/{project_id}/memory/generate", status_code=202)
 def generate_project_memory(
     project_id: UUID,
     payload: ProjectMemoryGenerateRequest,

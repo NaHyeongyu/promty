@@ -16,6 +16,8 @@ import {
 } from "./components/project-detail";
 import { API_URL } from "./config";
 import { formatRelativeTimestamp } from "./lib/formatters";
+import { githubFileUrl } from "./lib/github";
+import { useI18n } from "./i18n/I18nProvider";
 import { useAccountSettings } from "./hooks/useAccountSettings";
 import { useAdminOverview } from "./hooks/useAdminOverview";
 import { useProjectActions } from "./hooks/useProjectActions";
@@ -62,6 +64,7 @@ function githubRepositoryConnectUrl() {
 }
 
 export function AuthenticatedApp() {
+  const { t } = useI18n();
   const initialNavigationState = useInitialWorkspaceNavigationState();
   const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
@@ -196,12 +199,12 @@ export function AuthenticatedApp() {
   });
   const activeTitle =
     activeItem === "projects"
-      ? "Projects"
+      ? t("nav.projects")
       : activeItem === "admin"
-        ? "Admin"
+        ? t("nav.admin")
         : activeItem === "settings" || activeItem === "profile"
-          ? "Settings"
-          : "Profile";
+          ? t("settings.title")
+          : t("settings.account");
   const projectRouteKey = (project: Project | null | undefined) =>
     sanitizeProjectRouteKey(project?.slug) ?? project?.id ?? null;
   const projectMatchesRouteKey = (project: Project, routeKey: string) =>
@@ -382,25 +385,6 @@ export function AuthenticatedApp() {
       document.getElementById("project-tab-memory")?.focus();
     }, 0);
   };
-  const openProjectSourceSession = (projectId: string, sessionId: string) => {
-    closeRepositoryConnector();
-    setIsReviewQueueOpen(false);
-    navigateWorkspace({
-      activeDetailTab: "ai-activity",
-      activeItem: "projects",
-      activityNavigation: {
-        selectedPromptId: null,
-        selectedSessionId: sessionId,
-        selectedSessionPromptId: null,
-        view: "sessions",
-      },
-      repositoryFileContentPath: null,
-      selectedProjectId: projectId,
-    });
-    window.setTimeout(() => {
-      document.getElementById("project-tab-ai-activity")?.focus();
-    }, 0);
-  };
   const openFirstCapturedEvent = async (event: EventRecord) => {
     await Promise.all([loadEvents(), accountSettings.loadAccountOverview()]);
     closeRepositoryConnector();
@@ -486,16 +470,28 @@ export function AuthenticatedApp() {
     navigateWorkspace({
       activeDetailTab: tab,
       activeItem: "projects",
+      activityNavigation:
+        tab === "ai-activity"
+          ? {
+              selectedPromptId: null,
+              selectedSessionId: null,
+              selectedSessionPromptId: null,
+              view: "prompts",
+            }
+          : activityNavigation,
       repositoryFileContentPath:
         tab === "files" ? repositoryFileContentPath : null,
     });
   };
   const selectRepositoryFile = (path: string) => {
-    navigateWorkspace({
-      activeDetailTab: "files",
-      activeItem: "projects",
-      repositoryFileContentPath: path,
-    });
+    const url = githubFileUrl(
+      projectDetail?.project.repositoryUrl ?? selectedProject?.githubUrl,
+      projectDetail?.project.defaultBranch ?? selectedProject?.defaultBranch,
+      path,
+    );
+    if (url) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
   };
   const selectActivityNavigation = (nextActivityNavigation: ActivityNavigationState) => {
     navigateWorkspace({
@@ -589,6 +585,21 @@ export function AuthenticatedApp() {
   ).length;
   const latestProfileActivityLabel =
     projectCatalog[0]?.latestActivityLabel ?? "No project activity";
+  const memoryCount = projectCatalog.reduce(
+    (total, project) => total + project.memoryCount,
+    0,
+  );
+  const pendingMemoryCount = projectCatalog.reduce(
+    (total, project) => total + project.pendingMemoryCount,
+    0,
+  );
+  const latestMemoryAt = projectCatalog
+    .map((project) => project.latestMemoryAt)
+    .filter((value): value is string => Boolean(value))
+    .sort((first, second) => Date.parse(second) - Date.parse(first))[0];
+  const latestMemoryLabel = latestMemoryAt
+    ? formatRelativeTimestamp(latestMemoryAt) ?? "Recently"
+    : "No memory generated";
   const refreshWorkspaceAndAccount = () => {
     void Promise.all([loadEvents(), accountSettings.loadAccountOverview()]);
   };
@@ -663,7 +674,7 @@ export function AuthenticatedApp() {
         selectedProjectId={selectedProjectId}
       />
 
-      <main className="page">
+      <main className={`page${isShowingProjectDetail ? " page-project-detail" : ""}`}>
         {authorizationNotice ? (
           <div className="workspace-notice" role="status">
             <span>{authorizationNotice}</span>
@@ -825,22 +836,25 @@ export function AuthenticatedApp() {
             githubConnectUrl={githubRepositoryConnectUrl()}
             isEventsLoading={isEventsLoading}
             latestActivityLabel={latestProfileActivityLabel}
+            latestMemoryLabel={latestMemoryLabel}
+            memoryCount={memoryCount}
+            onOpenRepositoryConnector={() => openRepositoryConnectorOverlay(null)}
+            onOpenReviewQueue={(returnFocusElement) =>
+              openReviewQueue(returnFocusElement)
+            }
             onRefreshWorkspace={refreshWorkspaceAndAccount}
+            pendingMemoryCount={pendingMemoryCount}
             projectCount={projectCatalog.length}
           />
         )}
       </main>
       {isReviewQueueOpen ? (
         <ReviewQueueDrawer
-          activeProjectMemoryGenerationIds={activeProjectMemoryGenerationIds}
-          delayedProjectMemoryGenerationIds={delayedProjectMemoryGenerationIds}
           onClose={() => {
             setIsReviewQueueOpen(false);
             setReviewQueueProjectId(null);
           }}
-          onGenerateProjectMemory={generateProjectMemory}
           onOpenProjectMemory={openProjectMemory}
-          onOpenSourceSession={openProjectSourceSession}
           onProjectSummariesRefresh={replaceProjectSummaries}
           onUnauthorized={handleUnauthorized}
           projectFilterId={reviewQueueProjectId}

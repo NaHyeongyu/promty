@@ -1,7 +1,5 @@
 import {
-  ArrowRight,
   BookOpen,
-  CircleAlert,
   ExternalLink,
   FileText,
   Folder,
@@ -41,14 +39,10 @@ function PlainDescriptionContent({
 
 export function OverviewPanel({
   data,
-  onOpenActivity,
-  onOpenMemory,
   onSaveDescription,
   onSaveProjectMetadata,
 }: {
   data: ProjectDetailData;
-  onOpenActivity?: () => void;
-  onOpenMemory?: () => void;
   onSaveDescription?: (description: string) => Promise<void>;
   onSaveProjectMetadata?: (metadata: {
     slug?: string;
@@ -125,57 +119,9 @@ export function OverviewPanel({
       : lastActivityItem?.value ?? latestActivity?.lastActivity ?? "No activity";
   const canEditDescription = Boolean(onSaveDescription);
   const canEditProjectMetadata = Boolean(onSaveProjectMetadata);
-  const latestMemory = data.memory.recentArtifacts[0] ?? null;
-  const pendingMemoryCount = data.memory.pendingRanges.length;
-
   return (
     <div className="bh-overview-dashboard">
-      <section className="bh-project-home-focus" aria-labelledby="project-focus-title">
-        <div className="bh-project-home-lead">
-          <span>Continue work</span>
-          <h2 id="project-focus-title">
-            {latestActivity ? "Resume the latest session" : "Start the first captured session"}
-          </h2>
-          <p>
-            {latestActivity
-              ? `${latestActivity.model} · ${latestActivity.prompts} prompts · ${latestActivity.filesChanged} files changed · ${latestActivity.lastActivity}`
-              : "Captured AI work will appear here with its prompts, responses, and code changes."}
-          </p>
-          {onOpenActivity ? (
-            <button className="bh-project-home-primary" onClick={onOpenActivity} type="button">
-              <span>{latestActivity ? "Open latest session" : "Open sessions"}</span>
-              <ArrowRight aria-hidden="true" size={16} strokeWidth={1.5} />
-            </button>
-          ) : null}
-        </div>
-
-        <div className="bh-project-home-memory" data-attention={pendingMemoryCount > 0}>
-          <div>
-            {pendingMemoryCount > 0 ? (
-              <CircleAlert aria-hidden="true" size={18} strokeWidth={1.5} />
-            ) : (
-              <BookOpen aria-hidden="true" size={18} strokeWidth={1.5} />
-            )}
-            <span>{pendingMemoryCount > 0 ? "Needs review" : "Project memory"}</span>
-          </div>
-          <strong>
-            {pendingMemoryCount > 0
-              ? "Project memory ready"
-              : latestMemory?.title ?? "No memory yet"}
-          </strong>
-          <p>
-            {pendingMemoryCount > 0
-              ? "Captured work is ready for one project-wide memory update."
-              : latestMemory?.summary ?? "Memory will collect decisions and implementation context."}
-          </p>
-          {onOpenMemory ? (
-            <button className="text-action" onClick={onOpenMemory} type="button">
-              Open memory
-              <ArrowRight aria-hidden="true" size={15} strokeWidth={1.5} />
-            </button>
-          ) : null}
-        </div>
-      </section>
+      <OverviewStatistics data={data} />
 
       <div className="bh-overview-detail-grid">
         <section
@@ -354,8 +300,6 @@ export function OverviewPanel({
         </section>
 
       </div>
-
-      <OverviewStatistics data={data} overviewItems={overviewItems} />
 
       {isProjectMetadataDrawerVisible ? (
         <div

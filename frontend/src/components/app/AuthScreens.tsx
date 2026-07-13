@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { API_URL, BRAND_NAME } from "../../config";
+import { useI18n } from "../../i18n/I18nProvider";
 import { currentWorkspaceReturnUrl } from "../../workspace/navigation";
 import { BrandLogo, GitHubIcon } from "./Branding";
 
@@ -108,6 +109,7 @@ export function WebLoginPage({
   errorMessage: string | null;
   isError?: boolean;
 }) {
+  const { t } = useI18n();
   const authorizationError =
     new URLSearchParams(window.location.search).get("auth_error") ===
     "github_authorization_cancelled"
@@ -131,8 +133,8 @@ export function WebLoginPage({
         </div>
 
         <div className="cli-login-copy">
-          <h1 id="web-login-title">Sign in to {BRAND_NAME}</h1>
-          <p>Recover the decisions, responses, and code changes behind your AI work.</p>
+          <h1 id="web-login-title">{t("auth.signInTitle", { brand: BRAND_NAME })}</h1>
+          <p>{t("auth.signInDescription")}</p>
         </div>
 
         {displayedError ? (
@@ -141,33 +143,33 @@ export function WebLoginPage({
           </div>
         ) : null}
 
-        <div className="auth-role-list" aria-label="GitHub authorization details">
+        <div className="auth-role-list" aria-label={t("auth.authorizationDetails")}>
           <AuthRole
-            description="GitHub verifies your account and keeps the workspace tied to you."
+            description={t("auth.identityDescription")}
             icon={UserRoundCheck}
-            title="Account sign-in"
+            title={t("auth.identity")}
           />
           <AuthRole
-            description="Repository access is requested later, only when you connect source context."
+            description={t("auth.repositoryPermissionDescription")}
             icon={FolderGit2}
-            title="Repository permission"
+            title={t("auth.repositoryPermission")}
           />
           <AuthRole
-            description="Local prompts are collected only after you install a collector in a project."
+            description={t("auth.aiActivityDescription")}
             icon={Laptop}
-            title="AI activity"
+            title={t("auth.aiActivity")}
           />
         </div>
 
         <a className="github-login-button" href={loginUrl}>
           <GitHubIcon />
-          <span>Sign in with GitHub</span>
+          <span>{t("auth.signInGithub")}</span>
           <ArrowRight aria-hidden="true" size={17} strokeWidth={1.5} />
         </a>
 
         <div className="cli-login-footer">
           <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.5} />
-          <span>This sign-in requests identity and email access only.</span>
+          <span>{t("auth.signInScope")}</span>
         </div>
         <a
           className="auth-docs-link"
@@ -176,7 +178,7 @@ export function WebLoginPage({
           target="_blank"
         >
           <BookOpen aria-hidden="true" size={15} strokeWidth={1.5} />
-          Learn how to connect Codex and Claude Code
+          {t("auth.learnCollector")}
         </a>
       </section>
     </main>
@@ -184,6 +186,7 @@ export function WebLoginPage({
 }
 
 export function AuthLoadingPage() {
+  const { t } = useI18n();
   return (
     <main
       aria-busy="true"
@@ -201,8 +204,8 @@ export function AuthLoadingPage() {
         </div>
 
         <div className="cli-login-copy">
-          <h1 id="auth-loading-title">Checking your session</h1>
-          <p>This takes a moment.</p>
+          <h1 id="auth-loading-title">{t("auth.checkingSession")}</h1>
+          <p>{t("auth.moment")}</p>
         </div>
 
         <div className="auth-loading-indicator">
@@ -212,12 +215,12 @@ export function AuthLoadingPage() {
             size={18}
             strokeWidth={1.5}
           />
-          <span>Loading</span>
+          <span>{t("auth.loading")}</span>
         </div>
 
         <div className="cli-login-footer">
           <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.5} />
-          <span>Secure sign-in is handled by GitHub.</span>
+          <span>{t("auth.secureGithub")}</span>
         </div>
       </section>
     </main>

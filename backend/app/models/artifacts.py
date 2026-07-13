@@ -30,6 +30,41 @@ class Artifact(Base):
             unique=True,
             postgresql_where=text("type IN ('MemoryTask', 'MemoryDraft', 'ProjectMemory')"),
         ),
+        Index(
+            "ix_artifacts_pending_memory_project_session_created",
+            "project_id",
+            "session_id",
+            "created_at",
+            "id",
+            postgresql_where=text(
+                "type = 'MemoryDraft' "
+                "AND metadata ->> 'artifact_stage' = 'pending_draft' "
+                "AND metadata ->> 'review_state' = 'draft'"
+            ),
+        ),
+        Index(
+            "ix_artifacts_memory_slice_session_end",
+            "session_id",
+            text("((metadata ->> 'end_sequence')::integer)"),
+            postgresql_where=text(
+                "type = 'MemoryDraft' "
+                "AND metadata ->> 'artifact_stage' = 'pending_draft' "
+                "AND metadata ->> 'memory_strategy' = 'prompt_window_v1'"
+            ),
+        ),
+        Index(
+            "ix_artifacts_generated_memory_project_updated",
+            "project_id",
+            "updated_at",
+            "created_at",
+            "id",
+            postgresql_where=text(
+                "type = 'MemoryTask' "
+                "AND metadata ->> 'artifact_stage' IN "
+                "('generated_memory', 'verified_memory') "
+                "AND metadata ->> 'review_state' IN ('generated', 'verified')"
+            ),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)

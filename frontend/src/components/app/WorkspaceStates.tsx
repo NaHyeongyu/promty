@@ -56,7 +56,6 @@ function LoadingSidebar() {
         </nav>
 
         <div className="sidebar-spacer" />
-        <div className="sidebar-divider" />
 
         <div className="sidebar-footer">
           <div className="sidebar-loading-item is-profile">
@@ -155,7 +154,7 @@ export function ProjectListLoadingState({ delayMs = 500 }: { delayMs?: number })
   }
 
   return (
-    <div className="project-list-loading-state">
+    <div className="project-list-loading-state project-list-panel">
       <div className="project-loading-controls" aria-hidden="true">
         <div className="project-loading-search" />
         <div className="project-loading-sort" />

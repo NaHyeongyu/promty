@@ -46,6 +46,12 @@ PROMPTHUB_API_TOKEN
 PROMPTHUB_CORS_ORIGINS
 PROMPTHUB_API_PUBLIC_URL
 PROMPTHUB_APP_URL
+PROMPTHUB_DATABASE_POOL_SIZE
+PROMPTHUB_DATABASE_MAX_OVERFLOW
+PROMPTHUB_DATABASE_POOL_TIMEOUT_SECONDS
+PROMPTHUB_DATABASE_POOL_RECYCLE_SECONDS
+PROMPTHUB_DATABASE_STATEMENT_TIMEOUT_MS
+PROMPTHUB_DATABASE_LOCK_TIMEOUT_MS
 PROMPTHUB_GITHUB_CLIENT_ID
 PROMPTHUB_GITHUB_CLIENT_SECRET
 PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_KEY
@@ -54,6 +60,19 @@ PROMPTHUB_APP_ENCRYPTION_PREVIOUS_KEYS
 PROMPTHUB_APP_ENCRYPTION_KEY_ID
 PROMPTHUB_PROMPT_MAX_CHARS
 PROMPTHUB_RESPONSE_MAX_CHARS
+PROMPTHUB_EVENT_BATCH_MAX_BODY_BYTES
+PROMPTHUB_MEMORY_SLICE_EVENT_MAX_ROWS
+PROMPTHUB_MEMORY_SLICE_MAX_SLICES_PER_CALL
+PROMPTHUB_MEMORY_DRAFT_PROMPT_MAX_BYTES
+PROMPTHUB_MEMORY_DRAFT_EVIDENCE_MAX_BYTES
+PROMPTHUB_PROJECT_MEMORY_PROMPT_MAX_BYTES
+PROMPTHUB_MEMORY_PROVIDER_RESPONSE_MAX_BYTES
+PROMPTHUB_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS
+PROMPTHUB_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS
+PROMPTHUB_PROJECT_MEMORY_BATCH_MAX_DRAFTS
+PROMPTHUB_MEMORY_WORKER_POLL_SECONDS
+PROMPTHUB_MEMORY_WORKER_HEARTBEAT_SECONDS
+PROMPTHUB_MEMORY_WORKER_CHUNK_CONCURRENCY
 PROMTY_GEMINI_API_KEY
 PROMTY_GEMINI_MODEL
 PROMTY_GEMINI_TIMEOUT_SECONDS
@@ -67,6 +86,80 @@ PROMPTHUB_SESSION_COOKIE_NAME
 PROMPTHUB_SESSION_COOKIE_SECURE
 PROMPTHUB_SESSION_COOKIE_SAMESITE
 PROMPTHUB_OAUTH_STATE_COOKIE_NAME
+```
+
+PostgreSQL connections use a bounded SQLAlchemy queue pool. Defaults are a pool
+size of 5, maximum overflow of 2, a 5-second checkout timeout, and a 300-second
+connection recycle interval. Pool-only options are omitted for SQLite so
+in-memory tests keep their native pool behavior.
+
+`PROMPTHUB_DATABASE_STATEMENT_TIMEOUT_MS` and
+`PROMPTHUB_DATABASE_LOCK_TIMEOUT_MS` optionally set PostgreSQL session-level
+timeouts for application connections. Both default to `0` (PostgreSQL's
+disabled behavior) so deployments can introduce limits after measuring their
+slowest legitimate queries.
+
+Memory materialization reads at most 500 event rows per slice by default.
+Configure this with `PROMPTHUB_MEMORY_SLICE_EVENT_MAX_ROWS` (or its `PROMTY_`
+alias). Values below 2 are clamped to 2, and the effective prompt target is
+clamped to one less than this ceiling so the prompt look-ahead query is bounded
+by the same setting. Oversized prompt windows are persisted as deterministic,
+contiguous continuation slices; their logical end sequence is checkpointed so
+later transactions resume without skipping or duplicating event coverage.
+One materialization call persists at most four slices by default; configure
+this with `PROMPTHUB_MEMORY_SLICE_MAX_SLICES_PER_CALL` (or its `PROMTY_`
+alias). The worker detects unfinished groups from the persisted aggregate
+`max(materialization_end_sequence) > max(end_sequence)`. When the call ceiling
+lands exactly on a completed logical-window boundary, the last current
+artifact carries the operational `memory_resume_required` marker instead.
+The worker clears that marker inside the resume transaction and reapplies it
+only if the next call also reaches its ceiling, including for ended sessions.
+Continuation slices load one latest prompt as bounded, context-only guidance;
+that anchor is excluded from the slice event timeline, event count, and source
+prompt IDs so coverage remains non-overlapping.
+Every slice writer locks the session row before reading or advancing this
+monotonic cursor. Runtime state is projected from the latest indexed slice row,
+while the worker's cross-session scan retains the aggregate/marker recovery
+check. A failed artifact-generation job rolls back memory changes to a nested
+savepoint while preserving its failed job status.
+
+Each API or worker process owns a separate pool. The checked-in Compose and EC2
+configuration budgets at most 7 connections for the API process (`5 + 2`) and
+3 for the Project Memory worker (`2 + 1`), for a combined application maximum
+of 10 connections per deployment. Keep `max_connections` headroom for Alembic,
+backups, health checks, and operator sessions when changing these values.
+
+The Project Memory worker generates at most two draft chunks concurrently by
+default. Set `PROMPTHUB_MEMORY_WORKER_CHUNK_CONCURRENCY` (or its `PROMTY_`
+alias) to tune this independently of the database pool. Each successful chunk
+is durably checkpointed before final compilation, so a retry reuses completed
+provider results in deterministic snapshot order.
+
+Memory provider responses are capped at 1 MiB and generation requests ask for
+at most 8192 output tokens by default. The complete request/retry cycle has a
+120-second wall deadline, including bounded response reads and retry backoff.
+Configure these with `PROMPTHUB_MEMORY_PROVIDER_RESPONSE_MAX_BYTES`,
+`PROMPTHUB_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS`, and
+`PROMPTHUB_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS`; equivalent `PROMTY_`
+aliases are also supported.
+
+Each Project Memory batch claims at most 60 pending drafts by default, ordered
+deterministically by creation time and artifact ID. Configure this with
+`PROMPTHUB_PROJECT_MEMORY_BATCH_MAX_DRAFTS` (or its `PROMTY_` alias); values
+below 1 are clamped to 1. Excess drafts remain pending for a later batch. This
+also bounds each batch's queued chunk futures and durable chunk checkpoints.
+
+The worker polls every 2 seconds and heartbeats a running batch lease every 60
+seconds by default. Configure these with `PROMPTHUB_MEMORY_WORKER_POLL_SECONDS`
+and `PROMPTHUB_MEMORY_WORKER_HEARTBEAT_SECONDS`; keep the heartbeat comfortably
+below the 10-minute batch lease.
+
+Health endpoints have distinct operational meanings:
+
+```text
+GET /health        compatibility check; does not query PostgreSQL
+GET /health/live   process liveness; does not query PostgreSQL
+GET /health/ready  readiness; returns 503 when SELECT 1 fails
 ```
 
 Browser reads require GitHub login and a valid PromptHub JWT session cookie. The session cookie is HttpOnly; JavaScript does not read the token directly. Set `PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS=15552000` for 180-day web sessions.
@@ -217,6 +310,7 @@ ResponseReceived.payload.response is encrypted before persistence.
 Response text is capped by PROMPTHUB_RESPONSE_MAX_CHARS, default 50000 characters.
 Response truncation metadata is stored as response_truncated, response_original_length, and response_storage_limit.
 FilesChanged.payload.changes[].patch is encrypted before persistence.
+Event batch request bodies are capped by PROMPTHUB_EVENT_BATCH_MAX_BODY_BYTES, default 33554432 bytes.
 Queryable metadata such as project_id, session_id, event_type, timestamps, file paths, and line counts remains plaintext.
 ```
 

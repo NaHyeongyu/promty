@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
+from collections.abc import Callable
 from typing import Any
 from urllib import parse
+from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.encryption import decrypt_github_token
@@ -25,6 +28,8 @@ from app.services.github_repository_mappers import (
     repository_url,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def _connection_for_user(db: DBSession, user: User) -> GitHubConnection | None:
     return db.scalar(
@@ -35,14 +40,93 @@ def _connection_for_user(db: DBSession, user: User) -> GitHubConnection | None:
     )
 
 
+def _github_token_snapshot(db: DBSession, *, user: User) -> str | None:
+    """Copy the credential and release the read transaction before network I/O."""
+
+    connection = _connection_for_user(db, user)
+    if connection is None:
+        return None
+
+    encrypted_token = connection.access_token_encrypted
+    db.rollback()
+    return decrypt_github_token(encrypted_token)
+
+
+def _is_github_not_found(exc: HTTPException) -> bool:
+    return exc.status_code == status.HTTP_404_NOT_FOUND or (
+        exc.status_code == status.HTTP_502_BAD_GATEWAY and "HTTP 404" in str(exc.detail)
+    )
+
+
+def _persist_refreshed_default_branch(
+    db: DBSession,
+    *,
+    expected_branch: str,
+    project_id: UUID | None,
+    refreshed_branch: str,
+) -> None:
+    if project_id is None:
+        return
+
+    try:
+        db.execute(
+            update(Project)
+            .where(
+                Project.id == project_id,
+                Project.default_branch == expected_branch,
+            )
+            .values(default_branch=refreshed_branch)
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Could not persist refreshed GitHub default branch for project %s",
+            project_id,
+        )
+
+
+def _github_request_with_branch_refresh(
+    db: DBSession,
+    *,
+    branch: str,
+    expected_branch: str,
+    owner: str,
+    project_id: UUID | None,
+    repo: str,
+    request_path: Callable[[str], str],
+    token: str,
+) -> tuple[dict[str, Any], str]:
+    try:
+        return github_request(request_path(branch), token=token), branch
+    except HTTPException as exc:
+        if not _is_github_not_found(exc):
+            raise
+
+        repository = github_request(f"/repos/{owner}/{repo}", token=token)
+        default_branch = repository.get("default_branch")
+        refreshed_branch = default_branch.strip() if isinstance(default_branch, str) else ""
+        if not refreshed_branch or refreshed_branch == branch:
+            raise
+
+        payload = github_request(request_path(refreshed_branch), token=token)
+        _persist_refreshed_default_branch(
+            db,
+            expected_branch=expected_branch,
+            project_id=project_id,
+            refreshed_branch=refreshed_branch,
+        )
+        return payload, refreshed_branch
+
+
 def list_github_repositories(
     db: DBSession,
     *,
     user: User,
     query: str | None = None,
 ) -> dict[str, Any]:
-    connection = _connection_for_user(db, user)
-    if connection is None:
+    token = _github_token_snapshot(db, user=user)
+    if token is None:
         return {
             "available": False,
             "message": "Sign in again with GitHub repository access to choose repositories.",
@@ -50,7 +134,6 @@ def list_github_repositories(
             "status": "github_repository_access_required",
         }
 
-    token = decrypt_github_token(connection.access_token_encrypted)
     try:
         repositories = github_list_request(
             "/user/repos?type=all&sort=updated&per_page=100",
@@ -99,8 +182,8 @@ def repository_metadata_from_url(
         )
 
     owner, repo = parsed
-    connection = _connection_for_user(db, user)
-    if connection is None:
+    token = _github_token_snapshot(db, user=user)
+    if token is None:
         return {
             "default_branch": "main",
             "description": None,
@@ -111,7 +194,6 @@ def repository_metadata_from_url(
             "private": None,
         }
 
-    token = decrypt_github_token(connection.access_token_encrypted)
     repository = github_request(f"/repos/{owner}/{repo}", token=token)
     metadata = repository_option(repository)
     return {
@@ -125,17 +207,9 @@ def repository_metadata_from_url(
     }
 
 
-def _repository_branch(
-    *,
-    project: Project,
-    repository: dict[str, Any],
-) -> str:
-    default_branch = repository.get("default_branch")
-    return (
-        default_branch
-        if isinstance(default_branch, str) and default_branch
-        else project.default_branch
-    )
+def _repository_branch(*, default_branch: str) -> str:
+    branch = default_branch.strip()
+    return branch if branch else "main"
 
 
 def read_github_repository_tree(
@@ -144,7 +218,11 @@ def read_github_repository_tree(
     project: Project,
     user: User,
 ) -> dict[str, Any]:
-    parsed = parse_github_repository(project.git_remote)
+    project_id = project.id
+    remote_url = project.git_remote
+    expected_branch = project.default_branch
+    branch = _repository_branch(default_branch=expected_branch)
+    parsed = parse_github_repository(remote_url)
     if parsed is None:
         return {
             "available": False,
@@ -154,8 +232,8 @@ def read_github_repository_tree(
             "status": "repository_not_connected",
         }
 
-    connection = _connection_for_user(db, user)
-    if connection is None:
+    token = _github_token_snapshot(db, user=user)
+    if token is None:
         return {
             "available": False,
             "files": [],
@@ -164,12 +242,17 @@ def read_github_repository_tree(
             "status": "github_repository_access_required",
         }
 
-    token = decrypt_github_token(connection.access_token_encrypted)
     owner, repo = parsed
-    repository = github_request(f"/repos/{owner}/{repo}", token=token)
-    branch = _repository_branch(project=project, repository=repository)
-    tree_payload = github_request(
-        f"/repos/{owner}/{repo}/git/trees/{parse.quote(branch, safe='')}?recursive=1",
+    tree_payload, branch = _github_request_with_branch_refresh(
+        db,
+        branch=branch,
+        expected_branch=expected_branch,
+        owner=owner,
+        project_id=project_id,
+        repo=repo,
+        request_path=lambda value: (
+            f"/repos/{owner}/{repo}/git/trees/{parse.quote(value, safe='')}?recursive=1"
+        ),
         token=token,
     )
     tree = tree_payload.get("tree")
@@ -197,7 +280,11 @@ def read_github_repository_file_content(
     project: Project,
     user: User,
 ) -> dict[str, Any]:
-    parsed = parse_github_repository(project.git_remote)
+    project_id = project.id
+    remote_url = project.git_remote
+    expected_branch = project.default_branch
+    branch = _repository_branch(default_branch=expected_branch)
+    parsed = parse_github_repository(remote_url)
     if parsed is None:
         return {
             "available": False,
@@ -206,8 +293,8 @@ def read_github_repository_file_content(
             "status": "repository_not_connected",
         }
 
-    connection = _connection_for_user(db, user)
-    if connection is None:
+    token = _github_token_snapshot(db, user=user)
+    if token is None:
         return {
             "available": False,
             "content": None,
@@ -218,12 +305,17 @@ def read_github_repository_file_content(
 
     owner, repo = parsed
     cleaned_path = clean_repository_path(path)
-    token = decrypt_github_token(connection.access_token_encrypted)
-    repository = github_request(f"/repos/{owner}/{repo}", token=token)
-    branch = _repository_branch(project=project, repository=repository)
     encoded_path = parse.quote(cleaned_path, safe="/")
-    payload = github_request(
-        f"/repos/{owner}/{repo}/contents/{encoded_path}?ref={parse.quote(branch, safe='')}",
+    payload, branch = _github_request_with_branch_refresh(
+        db,
+        branch=branch,
+        expected_branch=expected_branch,
+        owner=owner,
+        project_id=project_id,
+        repo=repo,
+        request_path=lambda value: (
+            f"/repos/{owner}/{repo}/contents/{encoded_path}?ref={parse.quote(value, safe='')}"
+        ),
         token=token,
     )
     if payload.get("type") != "file":

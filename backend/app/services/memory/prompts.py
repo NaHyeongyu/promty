@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from app.core.config import settings
+from app.services.memory.errors import MemoryGenerationError
 from app.services.memory.text import truncate
 
 MAX_CHANGED_FILES = 60
@@ -10,6 +12,8 @@ MAX_EVENT_TIMELINE = 80
 MAX_MEMORY_DRAFTS = 3
 MAX_PROMPTS = 10
 MAX_RESPONSE_SAMPLES = 3
+MAX_PENDING_DRAFT_EVENTS = 20
+MAX_PENDING_DRAFT_FILES = 30
 
 
 def _compact_files(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -17,7 +21,7 @@ def _compact_files(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
         {
             "additions": file.get("additions"),
             "deletions": file.get("deletions"),
-            "path": file.get("path"),
+            "path": truncate(file.get("path"), 240),
             "status": file.get("status"),
         }
         for file in files[:MAX_CHANGED_FILES]
@@ -93,7 +97,7 @@ def _compact_event(event: dict[str, Any]) -> dict[str, Any]:
         compact_payload = {
             "change_detection_complete": payload.get("change_detection_complete") is True,
             "file_count": len(files),
-            "files": files[:8],
+            "files": [truncate(path, 240) for path in files[:8]],
             "no_changes": payload.get("no_changes") is True,
         }
     elif event_type == "CommitCreated":
@@ -108,6 +112,152 @@ def _compact_event(event: dict[str, Any]) -> dict[str, Any]:
         "sequence": event.get("sequence"),
         "timestamp": event.get("timestamp"),
     }
+
+
+def _edge_sample(values: list[Any], limit: int) -> list[Any]:
+    if limit <= 0:
+        return []
+    if len(values) <= limit:
+        return values
+    first_count = max(1, limit // 3)
+    return [*values[:first_count], *values[-(limit - first_count) :]]
+
+
+def _compact_pending_prompt(prompt: dict[str, Any]) -> dict[str, Any]:
+    ai_input = prompt.get("ai_input") if isinstance(prompt.get("ai_input"), dict) else {}
+    preview = ai_input.get("text")
+    if not isinstance(preview, str):
+        preview = prompt.get("original_input")
+    return {
+        "event_id": prompt.get("event_id"),
+        "input_preview": truncate(preview, 700),
+        "original_length": prompt.get("original_length") or ai_input.get("original_length"),
+        "paired_response_event_id": prompt.get("paired_response_event_id"),
+        "sequence": prompt.get("sequence"),
+        "truncated": (
+            ai_input.get("truncated_for_ai") is True or prompt.get("storage_truncated") is True
+        ),
+        "turn_id": prompt.get("turn_id"),
+    }
+
+
+def _compact_pending_response(response: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "event_id": response.get("event_id"),
+        "original_length": response.get("original_length"),
+        "output_preview": truncate(
+            response.get("output_preview") or response.get("original_output"),
+            320,
+        ),
+        "sequence": response.get("sequence"),
+        "truncated": response.get("storage_truncated") is True,
+        "turn_id": response.get("turn_id"),
+    }
+
+
+def _compact_pending_draft(draft: dict[str, Any]) -> dict[str, Any]:
+    evidence = draft.get("evidence") if isinstance(draft.get("evidence"), dict) else {}
+    prompts = evidence.get("prompts") if isinstance(evidence.get("prompts"), list) else []
+    responses = evidence.get("responses") if isinstance(evidence.get("responses"), list) else []
+    events = evidence.get("events") if isinstance(evidence.get("events"), list) else []
+    changed_files = (
+        evidence.get("changed_files") if isinstance(evidence.get("changed_files"), list) else []
+    )
+    commits = evidence.get("commits") if isinstance(evidence.get("commits"), list) else []
+    selected_prompts = [
+        _compact_pending_prompt(prompt)
+        for prompt in _edge_sample(
+            [prompt for prompt in prompts if isinstance(prompt, dict)],
+            MAX_PROMPTS,
+        )
+    ]
+    selected_responses = [
+        _compact_pending_response(response)
+        for response in _edge_sample(
+            [response for response in responses if isinstance(response, dict)],
+            MAX_RESPONSE_SAMPLES,
+        )
+    ]
+    selected_events = [
+        _compact_event(event)
+        for event in _edge_sample(
+            [event for event in events if isinstance(event, dict)],
+            MAX_PENDING_DRAFT_EVENTS,
+        )
+    ]
+    selected_files = _compact_files(
+        [file for file in changed_files if isinstance(file, dict)][:MAX_PENDING_DRAFT_FILES]
+    )
+    return {
+        "evidence": {
+            "changed_files": selected_files,
+            "commit_metadata": _compact_commits(
+                [commit for commit in commits if isinstance(commit, dict)]
+            ),
+            "event_timeline": selected_events,
+            "omitted": {
+                "changed_files": max(len(changed_files) - len(selected_files), 0),
+                "events": max(len(events) - len(selected_events), 0),
+                "prompts": max(len(prompts) - len(selected_prompts), 0),
+                "responses": max(len(responses) - len(selected_responses), 0),
+            },
+            "prompts": selected_prompts,
+            "response_samples": selected_responses,
+        },
+        "id": draft.get("id"),
+        "summary": truncate(draft.get("summary"), 500),
+        "title": truncate(draft.get("title"), 180),
+    }
+
+
+def _json_size(value: Any) -> int:
+    return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
+
+def _compact_pending_drafts(
+    drafts: list[dict[str, Any]],
+    *,
+    byte_budget: int,
+) -> list[dict[str, Any]]:
+    compacted = [_compact_pending_draft(draft) for draft in drafts]
+    if _json_size(compacted) <= byte_budget:
+        return compacted
+
+    for draft in compacted:
+        evidence = draft["evidence"]
+        evidence["event_timeline"] = _edge_sample(evidence["event_timeline"], 4)
+        evidence["changed_files"] = evidence["changed_files"][:12]
+        evidence["prompts"] = _edge_sample(evidence["prompts"], 6)
+        evidence["response_samples"] = _edge_sample(evidence["response_samples"], 2)
+    if _json_size(compacted) <= byte_budget:
+        return compacted
+
+    for draft in compacted:
+        evidence = draft["evidence"]
+        evidence["event_timeline"] = []
+        evidence["changed_files"] = []
+        evidence["commit_metadata"] = []
+        evidence["prompts"] = _edge_sample(evidence["prompts"], 2)
+        evidence["response_samples"] = _edge_sample(evidence["response_samples"], 1)
+        for prompt in evidence["prompts"]:
+            prompt["input_preview"] = truncate(prompt.get("input_preview"), 320)
+        for response in evidence["response_samples"]:
+            response["output_preview"] = truncate(response.get("output_preview"), 200)
+    if _json_size(compacted) <= byte_budget:
+        return compacted
+
+    minimal = [
+        {
+            "evidence": {"omitted_for_byte_budget": True},
+            "id": draft.get("id"),
+            "summary": truncate(draft.get("summary"), 160),
+            "title": truncate(draft.get("title"), 100),
+        }
+        for draft in compacted
+    ]
+    while minimal and _json_size(minimal) > byte_budget:
+        minimal.pop()
+    return minimal
 
 
 def _response_success_count(events: list[dict[str, Any]]) -> int:
@@ -148,16 +298,18 @@ def _evidence_bullets(context: dict[str, Any]) -> list[str]:
     return [bullet for bullet in bullets if bullet and not bullet.endswith("None")]
 
 
-def _compact_context(context: dict[str, Any]) -> dict[str, Any]:
+def _compact_context(
+    context: dict[str, Any],
+    *,
+    pending_draft_byte_budget: int,
+) -> dict[str, Any]:
     prompts = context["prompt_events"]
     changed_files = context["changed_files"]
     commits = context["commits"]
     responses = context["responses"]
     events = context["events"]
     pending_drafts = (
-        context.get("pending_drafts")
-        if isinstance(context.get("pending_drafts"), list)
-        else []
+        context.get("pending_drafts") if isinstance(context.get("pending_drafts"), list) else []
     )
 
     return {
@@ -181,7 +333,10 @@ def _compact_context(context: dict[str, Any]) -> dict[str, Any]:
             "prompts": max(len(prompts) - MAX_PROMPTS, 0),
             "responses": max(len(responses) - MAX_RESPONSE_SAMPLES, 0),
         },
-        "pending_drafts": pending_drafts,
+        "pending_drafts": _compact_pending_drafts(
+            [draft for draft in pending_drafts if isinstance(draft, dict)],
+            byte_budget=max(pending_draft_byte_budget, 0),
+        ),
         "prompts": _select_prompts(prompts),
         "response_count": context["response_count"],
         "response_samples": _compact_responses(responses),
@@ -195,12 +350,21 @@ def _compact_context(context: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_memory_draft_prompt(context: dict[str, Any]) -> str:
-    compact_context = _compact_context(context)
+def _render_memory_draft_prompt(
+    context: dict[str, Any],
+    *,
+    pending_draft_byte_budget: int,
+) -> str:
+    compact_context = _compact_context(
+        context,
+        pending_draft_byte_budget=pending_draft_byte_budget,
+    )
     pending_drafts = compact_context["pending_drafts"]
     source_draft_ids = [
         draft.get("id")
-        for draft in pending_drafts
+        for draft in (
+            context.get("pending_drafts") if isinstance(context.get("pending_drafts"), list) else []
+        )
         if isinstance(draft, dict) and isinstance(draft.get("id"), str)
     ]
     project_context = {
@@ -387,7 +551,150 @@ def build_memory_draft_prompt(context: dict[str, Any]) -> str:
     )
 
 
-def build_project_memory_prompt(context: dict[str, Any]) -> str:
+def build_memory_draft_prompt(context: dict[str, Any]) -> str:
+    prompt_limit = max(settings.memory_draft_prompt_max_bytes, 1)
+    evidence_budget = min(
+        max(settings.memory_draft_evidence_max_bytes, 0),
+        prompt_limit,
+    )
+    for _attempt in range(4):
+        prompt = _render_memory_draft_prompt(
+            context,
+            pending_draft_byte_budget=evidence_budget,
+        )
+        prompt_size = len(prompt.encode("utf-8"))
+        if prompt_size <= prompt_limit:
+            return prompt
+        overflow = prompt_size - prompt_limit
+        next_budget = max(evidence_budget - overflow - 1_024, 0)
+        if next_budget == evidence_budget:
+            break
+        evidence_budget = next_budget
+
+    raise MemoryGenerationError(
+        f"Memory draft prompt exceeds configured limit of {prompt_limit} bytes."
+    )
+
+
+def _compact_project_prompt_value(
+    value: Any,
+    *,
+    depth: int = 0,
+    list_limit: int = 16,
+    string_limit: int,
+) -> Any:
+    if isinstance(value, str):
+        return truncate(value, string_limit)
+    if value is None or isinstance(value, (bool, float, int)):
+        return value
+    if depth >= 4:
+        return None
+    if isinstance(value, (list, tuple)):
+        return [
+            _compact_project_prompt_value(
+                item,
+                depth=depth + 1,
+                list_limit=list_limit,
+                string_limit=string_limit,
+            )
+            for item in value[:list_limit]
+        ]
+    if isinstance(value, dict):
+        return {
+            str(key): _compact_project_prompt_value(
+                item,
+                depth=depth + 1,
+                list_limit=list_limit,
+                string_limit=string_limit,
+            )
+            for key, item in value.items()
+        }
+    return None
+
+
+def _compact_project_memory_source(
+    memory: dict[str, Any],
+    *,
+    string_limit: int,
+) -> dict[str, Any]:
+    keys = (
+        "changed_file_count",
+        "created_at",
+        "draft_details",
+        "draft_type",
+        "first_event_at",
+        "id",
+        "last_event_at",
+        "memory_batch_id",
+        "memory_scope",
+        "outcome",
+        "reason",
+        "sections",
+        "session_id",
+        "source_draft_id",
+        "source_draft_ids",
+        "source_draft_version_ids",
+        "source_session_ids",
+        "summary",
+        "tags",
+        "technologies",
+        "title",
+        "updated_at",
+    )
+    return {
+        key: _compact_project_prompt_value(
+            memory.get(key),
+            string_limit=string_limit,
+        )
+        for key in keys
+        if key in memory
+    }
+
+
+def _compact_project_prompt_context(
+    context: dict[str, Any],
+    *,
+    previous_body_limit: int,
+    source_limit: int,
+    string_limit: int,
+) -> dict[str, Any]:
+    source_memories = (
+        context.get("source_memories")
+        if isinstance(context.get("source_memories"), list)
+        else context.get("verified_memories")
+        if isinstance(context.get("verified_memories"), list)
+        else []
+    )
+    selected_sources = [
+        _compact_project_memory_source(memory, string_limit=string_limit)
+        for memory in source_memories[:source_limit]
+        if isinstance(memory, dict)
+    ]
+    previous_snapshot = context.get("previous_project_memory")
+    compact_previous = None
+    if isinstance(previous_snapshot, dict):
+        compact_previous = {
+            key: _compact_project_prompt_value(
+                value,
+                list_limit=12,
+                string_limit=(previous_body_limit if key == "body_markdown" else string_limit),
+            )
+            for key, value in previous_snapshot.items()
+            if key != "body_markdown" or previous_body_limit > 0
+        }
+    project_context = context.get("project_context")
+    return {
+        "previous_project_memory": compact_previous,
+        "project_context": _compact_project_prompt_value(
+            project_context,
+            string_limit=max(string_limit, 320),
+        ),
+        "source_memories": selected_sources,
+        "source_memory_omitted": max(len(source_memories) - len(selected_sources), 0),
+    }
+
+
+def _render_project_memory_prompt(context: dict[str, Any]) -> str:
     project_context = context.get("project_context")
     source_memories = (
         context.get("source_memories")
@@ -397,6 +704,7 @@ def build_project_memory_prompt(context: dict[str, Any]) -> str:
         else []
     )
     previous_snapshot = context.get("previous_project_memory")
+    source_memory_omitted = context.get("source_memory_omitted", 0)
     source_memory_ids = [
         memory.get("id")
         for memory in source_memories
@@ -455,6 +763,7 @@ def build_project_memory_prompt(context: dict[str, Any]) -> str:
             "",
             "Source memories:",
             json.dumps(source_memories, ensure_ascii=False),
+            f"Omitted older source memories due to the byte budget: {source_memory_omitted}",
             "",
             "Optional previous project memory snapshot:",
             json.dumps(previous_snapshot, ensure_ascii=False),
@@ -494,4 +803,30 @@ def build_project_memory_prompt(context: dict[str, Any]) -> str:
                 indent=2,
             ),
         ]
+    )
+
+
+def build_project_memory_prompt(context: dict[str, Any]) -> str:
+    prompt_limit = max(settings.project_memory_prompt_max_bytes, 1)
+    attempts = (
+        (50, 1_800, 24_000),
+        (30, 1_000, 12_000),
+        (15, 600, 4_000),
+        (6, 320, 1_000),
+        (0, 160, 0),
+    )
+    for source_limit, string_limit, previous_body_limit in attempts:
+        prompt = _render_project_memory_prompt(
+            _compact_project_prompt_context(
+                context,
+                previous_body_limit=previous_body_limit,
+                source_limit=source_limit,
+                string_limit=string_limit,
+            )
+        )
+        if len(prompt.encode("utf-8")) <= prompt_limit:
+            return prompt
+
+    raise MemoryGenerationError(
+        f"Project Memory prompt exceeds configured limit of {prompt_limit} bytes."
     )

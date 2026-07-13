@@ -66,10 +66,6 @@
     display: none;
   }
 
-  .sidebar-footer {
-    border-top: 1px solid var(--bh-color-border);
-  }
-
   .page {
     padding: var(--bh-space-4);
   }
@@ -205,9 +201,40 @@
   }
 
   .settings-secret-box,
-  .settings-token-row {
+  .settings-language-setting,
+  .settings-token-list-header,
+  .settings-token-row,
+  .settings-token-create {
     grid-template-columns: 1fr;
     align-items: start;
+  }
+
+  .settings-language-setting > div:last-child {
+    width: 100%;
+    justify-items: start;
+  }
+
+  .settings-stage-header {
+    grid-template-columns: 28px minmax(0, 1fr) 16px;
+    align-items: start;
+  }
+
+  .settings-stage-header > .settings-stage-status {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .settings-stage-chevron {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .settings-stage-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .settings-token-create .settings-inline-form {
+    width: 100%;
   }
 
 }

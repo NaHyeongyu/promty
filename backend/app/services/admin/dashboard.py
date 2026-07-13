@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import case, desc, func, nullslast, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import and_, case, desc, func, literal, nullslast, select, true, union_all
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.artifact_generation_jobs import ArtifactGenerationJob
@@ -28,48 +28,155 @@ def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
 
-def _count(db: Session, model: type[Any], *criteria: Any) -> int:
-    statement = select(func.count()).select_from(model)
-    if criteria:
-        statement = statement.where(*criteria)
-    return int(db.scalar(statement) or 0)
+def _pending_memory_draft_filter() -> Any:
+    return and_(
+        Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE,
+        Artifact.metadata_["artifact_stage"].astext == PENDING_DRAFT_STAGE,
+        Artifact.metadata_["review_state"].astext == REVIEW_STATE_DRAFT,
+    )
 
 
-def _breakdown(
+def _overview_metrics(
     db: Session,
-    column: Any,
-    model: type[Any],
     *,
-    limit: int = 12,
-) -> list[dict[str, Any]]:
-    rows = db.execute(
-        select(column, func.count())
+    since_24h: datetime,
+    since_7d: datetime,
+    stale_job_cutoff: datetime,
+) -> dict[str, int]:
+    """Load all overview counters in one database round-trip.
+
+    Every CTE returns exactly one row. Joining those aggregate rows avoids a
+    cross-product between the underlying tables while keeping the dashboard's
+    point-in-time counters in one statement.
+    """
+
+    user_stats = select(func.count(User.id).label("users")).cte("admin_user_stats")
+    project_stats = select(
+        func.count(Project.id).label("projects"),
+        func.count(Project.id).filter(Project.git_remote.is_(None)).label("projects_without_repo"),
+        func.count(Project.id)
+        .filter(~select(Event.id).where(Event.project_id == Project.id).exists())
+        .label("projects_without_activity"),
+    ).cte("admin_project_stats")
+    event_stats = select(
+        func.count(Event.id).label("events"),
+        func.count(Event.id).filter(Event.event_type == "PromptSubmitted").label("prompts"),
+        func.count(Event.id).filter(Event.event_type == "ResponseReceived").label("responses"),
+        func.count(Event.id).filter(Event.created_at >= since_24h).label("events_24h"),
+        func.count(Event.id).filter(Event.created_at >= since_7d).label("events_7d"),
+        func.count(Event.id)
+        .filter(Event.event_type == "PromptSubmitted", Event.created_at >= since_24h)
+        .label("prompts_24h"),
+        func.count(Event.id)
+        .filter(Event.event_type == "ResponseReceived", Event.created_at >= since_24h)
+        .label("responses_24h"),
+    ).cte("admin_event_stats")
+    session_stats = select(func.count(PromptSession.id).label("sessions")).cte(
+        "admin_session_stats"
+    )
+    file_stats = select(
+        func.count(ProjectFile.id).filter(ProjectFile.status != "deleted").label("tracked_files")
+    ).cte("admin_file_stats")
+    pending_draft_filter = _pending_memory_draft_filter()
+    artifact_stats = select(
+        func.count(Artifact.id)
+        .filter(Artifact.type == MEMORY_ARTIFACT_TYPE)
+        .label("memory_artifacts"),
+        func.count(Artifact.id)
+        .filter(
+            Artifact.type == MEMORY_ARTIFACT_TYPE,
+            Artifact.created_at >= since_24h,
+        )
+        .label("memory_artifacts_24h"),
+        func.count(Artifact.id).filter(pending_draft_filter).label("pending_memory_drafts"),
+        func.count(func.distinct(Artifact.project_id))
+        .filter(pending_draft_filter)
+        .label("pending_memory_projects"),
+    ).cte("admin_artifact_stats")
+    token_stats = select(
+        func.count(CollectorToken.id)
+        .filter(CollectorToken.revoked_at.is_(None))
+        .label("active_collector_tokens")
+    ).cte("admin_token_stats")
+    github_stats = select(
+        func.count(GitHubConnection.id)
+        .filter(GitHubConnection.revoked_at.is_(None))
+        .label("github_connections")
+    ).cte("admin_github_stats")
+    job_stats = select(
+        func.count(ArtifactGenerationJob.id)
+        .filter(ArtifactGenerationJob.status == "failed")
+        .label("failed_jobs"),
+        func.count(ArtifactGenerationJob.id)
+        .filter(ArtifactGenerationJob.status == "running")
+        .label("running_jobs"),
+        func.count(ArtifactGenerationJob.id)
+        .filter(ArtifactGenerationJob.status == "pending")
+        .label("pending_jobs"),
+        func.count(ArtifactGenerationJob.id)
+        .filter(
+            ArtifactGenerationJob.status.in_(["pending", "running"]),
+            ArtifactGenerationJob.updated_at < stale_job_cutoff,
+        )
+        .label("stale_jobs"),
+    ).cte("admin_job_stats")
+
+    statement = (
+        select(
+            *user_stats.c,
+            *project_stats.c,
+            *event_stats.c,
+            *session_stats.c,
+            *file_stats.c,
+            *artifact_stats.c,
+            *token_stats.c,
+            *github_stats.c,
+            *job_stats.c,
+        )
+        .select_from(user_stats)
+        .join(project_stats, true())
+        .join(event_stats, true())
+        .join(session_stats, true())
+        .join(file_stats, true())
+        .join(artifact_stats, true())
+        .join(token_stats, true())
+        .join(github_stats, true())
+        .join(job_stats, true())
+    )
+    row = db.execute(statement).mappings().one()
+    return {key: int(value or 0) for key, value in row.items()}
+
+
+def _breakdowns(db: Session, *, limit: int = 12) -> dict[str, list[dict[str, Any]]]:
+    dimensions = (
+        ("events_by_type", Event.event_type, Event),
+        ("events_by_tool", Event.tool, Event),
+        ("jobs_by_status", ArtifactGenerationJob.status, ArtifactGenerationJob),
+        ("projects_by_visibility", Project.visibility, Project),
+    )
+    statements = [
+        select(
+            literal(name).label("dimension"),
+            column.label("key"),
+            func.count().label("count"),
+        )
         .select_from(model)
         .group_by(column)
-        .order_by(desc(func.count()))
-        .limit(limit)
-    ).all()
-    return [
-        {
-            "count": int(count or 0),
-            "key": str(key) if key is not None else "unknown",
-        }
-        for key, count in rows
+        for name, column, model in dimensions
     ]
-
-
-def _pending_memory_draft_artifacts(db: Session) -> list[Artifact]:
-    return list(
-        db.execute(
-            select(Artifact)
-            .where(
-                Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE,
-                Artifact.metadata_["artifact_stage"].astext == PENDING_DRAFT_STAGE,
-                Artifact.metadata_["review_state"].astext == REVIEW_STATE_DRAFT,
-            )
-            .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
-        ).scalars()
-    )
+    rows = db.execute(union_all(*statements)).all()
+    grouped: dict[str, list[dict[str, Any]]] = {name: [] for name, _column, _model in dimensions}
+    for dimension, key, count in rows:
+        grouped[dimension].append(
+            {
+                "count": int(count or 0),
+                "key": str(key) if key is not None else "unknown",
+            }
+        )
+    for values in grouped.values():
+        values.sort(key=lambda item: item["count"], reverse=True)
+        del values[limit:]
+    return grouped
 
 
 def _action_item(
@@ -219,132 +326,143 @@ def _build_action_items(
 
 
 def _recent_users(db: Session) -> list[dict[str, Any]]:
-    project_count_sq = (
-        select(func.count(Project.id))
-        .where(Project.owner_id == User.id)
-        .correlate(User)
-        .scalar_subquery()
+    event_stats = (
+        select(
+            Event.project_id.label("project_id"),
+            func.count(Event.id).label("event_count"),
+            func.count(Event.id)
+            .filter(Event.event_type == "PromptSubmitted")
+            .label("prompt_count"),
+            func.max(Event.created_at).label("latest_activity_at"),
+        )
+        .group_by(Event.project_id)
+        .cte("admin_recent_user_event_stats")
     )
-    event_count_sq = (
-        select(func.count(Event.id))
-        .select_from(Event)
-        .join(Project, Project.id == Event.project_id)
-        .where(Project.owner_id == User.id)
-        .correlate(User)
-        .scalar_subquery()
+    session_stats = (
+        select(
+            PromptSession.project_id.label("project_id"),
+            func.count(PromptSession.id).label("session_count"),
+        )
+        .group_by(PromptSession.project_id)
+        .cte("admin_recent_user_session_stats")
     )
-    prompt_count_sq = (
-        select(func.count(Event.id))
-        .select_from(Event)
-        .join(Project, Project.id == Event.project_id)
-        .where(Project.owner_id == User.id, Event.event_type == "PromptSubmitted")
-        .correlate(User)
-        .scalar_subquery()
+    owner_stats = (
+        select(
+            Project.owner_id.label("owner_id"),
+            func.count(Project.id).label("project_count"),
+            func.coalesce(func.sum(event_stats.c.event_count), 0).label("event_count"),
+            func.coalesce(func.sum(event_stats.c.prompt_count), 0).label("prompt_count"),
+            func.coalesce(func.sum(session_stats.c.session_count), 0).label("session_count"),
+            func.max(event_stats.c.latest_activity_at).label("latest_activity_at"),
+        )
+        .outerjoin(event_stats, event_stats.c.project_id == Project.id)
+        .outerjoin(session_stats, session_stats.c.project_id == Project.id)
+        .group_by(Project.owner_id)
+        .cte("admin_recent_user_owner_stats")
     )
-    session_count_sq = (
-        select(func.count(PromptSession.id))
-        .select_from(PromptSession)
-        .join(Project, Project.id == PromptSession.project_id)
-        .where(Project.owner_id == User.id)
-        .correlate(User)
-        .scalar_subquery()
-    )
-    latest_activity_at_sq = (
-        select(func.max(Event.created_at))
-        .select_from(Event)
-        .join(Project, Project.id == Event.project_id)
-        .where(Project.owner_id == User.id)
-        .correlate(User)
-        .scalar_subquery()
-    )
+    rows = db.execute(
+        select(
+            User.id,
+            User.created_at,
+            User.email,
+            User.username,
+            func.coalesce(owner_stats.c.project_count, 0),
+            func.coalesce(owner_stats.c.event_count, 0),
+            func.coalesce(owner_stats.c.prompt_count, 0),
+            func.coalesce(owner_stats.c.session_count, 0),
+            owner_stats.c.latest_activity_at,
+            GitHubConnection.id.is_not(None).label("github_connected"),
+        )
+        .outerjoin(owner_stats, owner_stats.c.owner_id == User.id)
+        .outerjoin(
+            GitHubConnection,
+            and_(
+                GitHubConnection.user_id == User.id,
+                GitHubConnection.revoked_at.is_(None),
+            ),
+        )
+        .order_by(
+            nullslast(desc(owner_stats.c.latest_activity_at)),
+            desc(User.created_at),
+        )
+        .limit(10)
+    ).all()
     return [
         {
-            "created_at": _iso(user.created_at),
-            "email": user.email,
+            "created_at": _iso(created_at),
+            "email": email,
             "event_count": int(event_count or 0),
-            "github_connected": user.github_connection is not None
-            and user.github_connection.revoked_at is None,
-            "id": str(user.id),
+            "github_connected": bool(github_connected),
+            "id": str(user_id),
             "latest_activity_at": _iso(latest_activity_at),
             "prompt_count": int(prompt_count or 0),
             "project_count": int(project_count or 0),
             "session_count": int(session_count or 0),
-            "username": user.username,
+            "username": username,
         }
         for (
-            user,
+            user_id,
+            created_at,
+            email,
+            username,
             project_count,
             event_count,
             prompt_count,
             session_count,
             latest_activity_at,
-        ) in db.execute(
-            select(
-                User,
-                project_count_sq,
-                event_count_sq,
-                prompt_count_sq,
-                session_count_sq,
-                latest_activity_at_sq,
-            )
-            .options(selectinload(User.github_connection))
-            .order_by(nullslast(desc(latest_activity_at_sq)), desc(User.created_at))
-            .limit(10)
-        ).all()
+            github_connected,
+        ) in rows
     ]
 
 
 def _recent_projects(db: Session) -> list[dict[str, Any]]:
-    latest_event_at_sq = (
-        select(func.max(Event.created_at))
-        .where(Event.project_id == Project.id)
-        .correlate(Project)
-        .scalar_subquery()
-    )
-    event_count_sq = (
-        select(func.count(Event.id))
-        .where(Event.project_id == Project.id)
-        .correlate(Project)
-        .scalar_subquery()
-    )
-    prompt_count_sq = (
-        select(func.count(Event.id))
-        .where(Event.project_id == Project.id, Event.event_type == "PromptSubmitted")
-        .correlate(Project)
-        .scalar_subquery()
-    )
-    session_count_sq = (
-        select(func.count(PromptSession.id))
-        .where(PromptSession.project_id == Project.id)
-        .correlate(Project)
-        .scalar_subquery()
-    )
-    file_count_sq = (
-        select(func.count(ProjectFile.id))
-        .where(ProjectFile.project_id == Project.id, ProjectFile.status != "deleted")
-        .correlate(Project)
-        .scalar_subquery()
-    )
-    memory_count_sq = (
-        select(func.count(Artifact.id))
-        .where(Artifact.project_id == Project.id, Artifact.type == MEMORY_ARTIFACT_TYPE)
-        .correlate(Project)
-        .scalar_subquery()
-    )
-    latest_memory_at_sq = (
-        select(func.max(Artifact.updated_at))
-        .where(Artifact.project_id == Project.id, Artifact.type == MEMORY_ARTIFACT_TYPE)
-        .correlate(Project)
-        .scalar_subquery()
-    )
-    failed_job_count_sq = (
-        select(func.count(ArtifactGenerationJob.id))
-        .where(
-            ArtifactGenerationJob.project_id == Project.id,
-            ArtifactGenerationJob.status == "failed",
+    event_stats = (
+        select(
+            Event.project_id.label("project_id"),
+            func.max(Event.created_at).label("latest_event_at"),
+            func.count(Event.id).label("event_count"),
+            func.count(Event.id)
+            .filter(Event.event_type == "PromptSubmitted")
+            .label("prompt_count"),
         )
-        .correlate(Project)
-        .scalar_subquery()
+        .group_by(Event.project_id)
+        .cte("admin_recent_project_event_stats")
+    )
+    session_stats = (
+        select(
+            PromptSession.project_id.label("project_id"),
+            func.count(PromptSession.id).label("session_count"),
+        )
+        .group_by(PromptSession.project_id)
+        .cte("admin_recent_project_session_stats")
+    )
+    file_stats = (
+        select(
+            ProjectFile.project_id.label("project_id"),
+            func.count(ProjectFile.id).label("file_count"),
+        )
+        .where(ProjectFile.status != "deleted")
+        .group_by(ProjectFile.project_id)
+        .cte("admin_recent_project_file_stats")
+    )
+    memory_stats = (
+        select(
+            Artifact.project_id.label("project_id"),
+            func.count(Artifact.id).label("memory_count"),
+            func.max(Artifact.updated_at).label("latest_memory_at"),
+        )
+        .where(Artifact.type == MEMORY_ARTIFACT_TYPE)
+        .group_by(Artifact.project_id)
+        .cte("admin_recent_project_memory_stats")
+    )
+    failed_job_stats = (
+        select(
+            ArtifactGenerationJob.project_id.label("project_id"),
+            func.count(ArtifactGenerationJob.id).label("failed_job_count"),
+        )
+        .where(ArtifactGenerationJob.status == "failed")
+        .group_by(ArtifactGenerationJob.project_id)
+        .cte("admin_recent_project_failed_job_stats")
     )
     projects: list[dict[str, Any]] = []
     for (
@@ -362,17 +480,22 @@ def _recent_projects(db: Session) -> list[dict[str, Any]]:
         select(
             Project,
             User,
-            latest_event_at_sq,
-            event_count_sq,
-            prompt_count_sq,
-            session_count_sq,
-            file_count_sq,
-            memory_count_sq,
-            latest_memory_at_sq,
-            failed_job_count_sq,
+            event_stats.c.latest_event_at,
+            func.coalesce(event_stats.c.event_count, 0),
+            func.coalesce(event_stats.c.prompt_count, 0),
+            func.coalesce(session_stats.c.session_count, 0),
+            func.coalesce(file_stats.c.file_count, 0),
+            func.coalesce(memory_stats.c.memory_count, 0),
+            memory_stats.c.latest_memory_at,
+            func.coalesce(failed_job_stats.c.failed_job_count, 0),
         )
         .join(User, Project.owner_id == User.id)
-        .order_by(nullslast(desc(latest_event_at_sq)), desc(Project.updated_at))
+        .outerjoin(event_stats, event_stats.c.project_id == Project.id)
+        .outerjoin(session_stats, session_stats.c.project_id == Project.id)
+        .outerjoin(file_stats, file_stats.c.project_id == Project.id)
+        .outerjoin(memory_stats, memory_stats.c.project_id == Project.id)
+        .outerjoin(failed_job_stats, failed_job_stats.c.project_id == Project.id)
+        .order_by(nullslast(desc(event_stats.c.latest_event_at)), desc(Project.updated_at))
         .limit(12)
     ).all():
         projects.append(
@@ -406,19 +529,37 @@ def _recent_projects(db: Session) -> list[dict[str, Any]]:
 def _recent_memory_artifacts(db: Session) -> list[dict[str, Any]]:
     return [
         {
-            "changed_file_count": len(artifact.changed_files or []),
-            "created_at": _iso(artifact.created_at),
-            "id": str(artifact.id),
+            "changed_file_count": int(changed_file_count or 0),
+            "created_at": _iso(created_at),
+            "id": str(artifact_id),
             "project": {
-                "id": str(project.id),
-                "name": project.name,
+                "id": str(project_id),
+                "name": project_name,
             },
-            "summary": artifact.summary,
-            "title": artifact.title,
-            "updated_at": _iso(artifact.updated_at),
+            "summary": summary,
+            "title": title,
+            "updated_at": _iso(updated_at),
         }
-        for artifact, project in db.execute(
-            select(Artifact, Project)
+        for (
+            artifact_id,
+            project_id,
+            project_name,
+            summary,
+            title,
+            created_at,
+            updated_at,
+            changed_file_count,
+        ) in db.execute(
+            select(
+                Artifact.id,
+                Project.id,
+                Project.name,
+                Artifact.summary,
+                Artifact.title,
+                Artifact.created_at,
+                Artifact.updated_at,
+                func.jsonb_array_length(Artifact.changed_files),
+            )
             .join(Project, Project.id == Artifact.project_id)
             .where(Artifact.type == MEMORY_ARTIFACT_TYPE)
             .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
@@ -492,17 +633,27 @@ def _session_response_gaps(db: Session) -> list[dict[str, Any]]:
 def _recent_events(db: Session) -> list[dict[str, Any]]:
     return [
         {
-            "created_at": _iso(event.created_at),
-            "event_type": event.event_type,
-            "id": str(event.id),
-            "project_id": str(event.project_id),
-            "sequence": event.sequence,
-            "session_id": str(event.session_id) if event.session_id is not None else None,
-            "tool": event.tool,
+            "created_at": _iso(created_at),
+            "event_type": event_type,
+            "id": str(event_id),
+            "project_id": str(project_id),
+            "sequence": sequence,
+            "session_id": str(session_id) if session_id is not None else None,
+            "tool": tool,
         }
-        for event in db.execute(
-            select(Event).order_by(desc(Event.created_at), desc(Event.sequence)).limit(18)
-        ).scalars()
+        for event_id, project_id, session_id, sequence, tool, event_type, created_at in db.execute(
+            select(
+                Event.id,
+                Event.project_id,
+                Event.session_id,
+                Event.sequence,
+                Event.tool,
+                Event.event_type,
+                Event.created_at,
+            )
+            .order_by(desc(Event.created_at), desc(Event.sequence))
+            .limit(18)
+        ).all()
     ]
 
 
@@ -512,62 +663,43 @@ def admin_overview_response(db: Session) -> dict[str, Any]:
     since_7d = now - timedelta(days=7)
     stale_job_cutoff = now - timedelta(minutes=30)
 
-    total_users = _count(db, User)
-    total_projects = _count(db, Project)
-    total_events = _count(db, Event)
-    total_sessions = _count(db, PromptSession)
-    total_prompts = _count(db, Event, Event.event_type == "PromptSubmitted")
-    total_responses = _count(db, Event, Event.event_type == "ResponseReceived")
-    tracked_files = _count(db, ProjectFile, ProjectFile.status != "deleted")
-    memory_artifacts = _count(db, Artifact, Artifact.type == MEMORY_ARTIFACT_TYPE)
-    active_tokens = _count(db, CollectorToken, CollectorToken.revoked_at.is_(None))
-    github_connections = _count(db, GitHubConnection, GitHubConnection.revoked_at.is_(None))
-    failed_jobs = _count(db, ArtifactGenerationJob, ArtifactGenerationJob.status == "failed")
-    running_jobs = _count(db, ArtifactGenerationJob, ArtifactGenerationJob.status == "running")
-    pending_jobs = _count(db, ArtifactGenerationJob, ArtifactGenerationJob.status == "pending")
-    stale_jobs = _count(
+    metrics = _overview_metrics(
         db,
-        ArtifactGenerationJob,
-        ArtifactGenerationJob.status.in_(["pending", "running"]),
-        ArtifactGenerationJob.updated_at < stale_job_cutoff,
+        since_24h=since_24h,
+        since_7d=since_7d,
+        stale_job_cutoff=stale_job_cutoff,
     )
-    prompts_24h = _count(
-        db,
-        Event,
-        Event.event_type == "PromptSubmitted",
-        Event.created_at >= since_24h,
-    )
-    responses_24h = _count(
-        db,
-        Event,
-        Event.event_type == "ResponseReceived",
-        Event.created_at >= since_24h,
-    )
-    memory_artifacts_24h = _count(
-        db,
-        Artifact,
-        Artifact.type == MEMORY_ARTIFACT_TYPE,
-        Artifact.created_at >= since_24h,
-    )
-    pending_memory_drafts = _pending_memory_draft_artifacts(db)
-    pending_memory_project_ids = {
-        str(artifact.project_id) for artifact in pending_memory_drafts
-    }
-    projects_without_repo = _count(db, Project, Project.git_remote.is_(None))
-    projects_without_activity = _count(
-        db,
-        Project,
-        ~Project.id.in_(select(Event.project_id).distinct()),
-    )
+    total_users = metrics["users"]
+    total_projects = metrics["projects"]
+    total_events = metrics["events"]
+    total_sessions = metrics["sessions"]
+    total_prompts = metrics["prompts"]
+    total_responses = metrics["responses"]
+    tracked_files = metrics["tracked_files"]
+    memory_artifacts = metrics["memory_artifacts"]
+    active_tokens = metrics["active_collector_tokens"]
+    github_connections = metrics["github_connections"]
+    failed_jobs = metrics["failed_jobs"]
+    running_jobs = metrics["running_jobs"]
+    pending_jobs = metrics["pending_jobs"]
+    stale_jobs = metrics["stale_jobs"]
+    prompts_24h = metrics["prompts_24h"]
+    responses_24h = metrics["responses_24h"]
+    memory_artifacts_24h = metrics["memory_artifacts_24h"]
+    pending_memory_drafts = metrics["pending_memory_drafts"]
+    pending_memory_projects = metrics["pending_memory_projects"]
+    projects_without_repo = metrics["projects_without_repo"]
+    projects_without_activity = metrics["projects_without_activity"]
     response_gap = max(total_prompts - total_responses, 0)
     response_gap_24h = max(prompts_24h - responses_24h, 0)
     risks = _operational_risks()
+    breakdowns = _breakdowns(db)
 
     return {
         "generated_at": _iso(now),
         "action_items": _build_action_items(
             failed_jobs=failed_jobs,
-            pending_memory_drafts=len(pending_memory_drafts),
+            pending_memory_drafts=pending_memory_drafts,
             projects_without_activity=projects_without_activity,
             projects_without_repo=projects_without_repo,
             response_gap=response_gap,
@@ -583,14 +715,14 @@ def admin_overview_response(db: Session) -> dict[str, Any]:
         },
         "metrics": {
             "active_collector_tokens": active_tokens,
-            "events_24h": _count(db, Event, Event.created_at >= since_24h),
-            "events_7d": _count(db, Event, Event.created_at >= since_7d),
+            "events_24h": metrics["events_24h"],
+            "events_7d": metrics["events_7d"],
             "failed_jobs": failed_jobs,
             "github_connections": github_connections,
             "memory_artifacts": memory_artifacts,
             "memory_artifacts_24h": memory_artifacts_24h,
             "pending_jobs": pending_jobs,
-            "pending_memory_drafts": len(pending_memory_drafts),
+            "pending_memory_drafts": pending_memory_drafts,
             "projects": total_projects,
             "projects_without_activity": projects_without_activity,
             "projects_without_repo": projects_without_repo,
@@ -607,8 +739,8 @@ def admin_overview_response(db: Session) -> dict[str, Any]:
         },
         "memory_monitor": {
             "failed_jobs": failed_jobs,
-            "pending_drafts": len(pending_memory_drafts),
-            "pending_projects": len(pending_memory_project_ids),
+            "pending_drafts": pending_memory_drafts,
+            "pending_projects": pending_memory_projects,
             "recent_artifacts": _recent_memory_artifacts(db),
             "stale_jobs": stale_jobs,
             "summaries_24h": memory_artifacts_24h,
@@ -618,21 +750,14 @@ def admin_overview_response(db: Session) -> dict[str, Any]:
             "without_activity": projects_without_activity,
             "without_repo": projects_without_repo,
         },
-        "breakdowns": {
-            "events_by_type": _breakdown(db, Event.event_type, Event),
-            "events_by_tool": _breakdown(db, Event.tool, Event),
-            "jobs_by_status": _breakdown(db, ArtifactGenerationJob.status, ArtifactGenerationJob),
-            "projects_by_visibility": _breakdown(db, Project.visibility, Project),
-        },
+        "breakdowns": breakdowns,
         "recent_events": _recent_events(db),
         "recent_projects": _recent_projects(db),
         "recent_users": _recent_users(db),
         "risks": risks,
         "system": {
             "admin_configured": bool(
-                settings.admin_usernames
-                or settings.admin_emails
-                or settings.admin_github_ids
+                settings.admin_usernames or settings.admin_emails or settings.admin_github_ids
             ),
             "app_url": settings.app_url,
             "cors_origins": list(settings.cors_origins),

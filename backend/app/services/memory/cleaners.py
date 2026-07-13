@@ -3,9 +3,19 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from app.core.text_limits import (
+    PROJECT_MEMORY_BODY_MAX_BYTES,
+    truncate_utf8_bytes,
+)
 from app.services.memory.errors import MemoryGenerationError
 from app.services.memory.prompts import MAX_MEMORY_DRAFTS
 from app.services.memory.text import clean_text, truncate
+
+
+MAX_SEMANTIC_LIST_ITEMS = 32
+MAX_SOURCE_IDS = 128
+MAX_SOURCE_ID_CHARS = 200
+MAX_PROJECT_SECTION_TEXT_CHARS = 4_000
 
 
 def parse_json_text(
@@ -31,10 +41,7 @@ def _source_event_ids_from_context(context: dict[str, Any]) -> list[str]:
     ]
     if not ids and isinstance(context.get("first_event_id"), str):
         ids.append(context["first_event_id"])
-    if (
-        isinstance(context.get("last_event_id"), str)
-        and context["last_event_id"] not in ids
-    ):
+    if isinstance(context.get("last_event_id"), str) and context["last_event_id"] not in ids:
         ids.append(context["last_event_id"])
     return ids
 
@@ -46,17 +53,25 @@ def _clean_confidence(value: Any, fallback: float = 0.5) -> float:
 
 
 def _clean_source_ids(value: Any, fallback_ids: list[str]) -> list[str]:
-    if not isinstance(value, list):
-        return fallback_ids
-    ids = [item for item in value if isinstance(item, str) and item]
-    return ids or fallback_ids
+    def clean(values: Any) -> list[str]:
+        if not isinstance(values, list):
+            return []
+        return list(
+            dict.fromkeys(
+                item.strip()
+                for item in values
+                if isinstance(item, str)
+                and item.strip()
+                and len(item.strip()) <= MAX_SOURCE_ID_CHARS
+            )
+        )[:MAX_SOURCE_IDS]
+
+    return clean(value) or clean(fallback_ids)
 
 
 def _source_chunk_ids_from_context(context: dict[str, Any]) -> list[str]:
     pending_drafts = (
-        context.get("pending_drafts")
-        if isinstance(context.get("pending_drafts"), list)
-        else []
+        context.get("pending_drafts") if isinstance(context.get("pending_drafts"), list) else []
     )
     return [
         draft.get("id")
@@ -73,7 +88,10 @@ def _clean_string_list(
 ) -> list[str]:
     if not isinstance(value, list):
         return []
-    items = value if limit is None else value[:limit]
+    effective_limit = (
+        MAX_SEMANTIC_LIST_ITEMS if limit is None else min(max(limit, 0), MAX_SEMANTIC_LIST_ITEMS)
+    )
+    items = value[:effective_limit]
     return [
         cleaned
         for item in items
@@ -106,7 +124,9 @@ def _clean_based_on(value: Any) -> list[str]:
     }
     if not isinstance(value, list):
         return ["pending_draft"]
-    cleaned = [item for item in value if isinstance(item, str) and item in allowed]
+    cleaned = list(
+        dict.fromkeys(item for item in value if isinstance(item, str) and item in allowed)
+    )
     return cleaned or ["pending_draft"]
 
 
@@ -120,7 +140,7 @@ def _clean_draft_nested_items(
     if not isinstance(value, list):
         return []
     cleaned: list[dict[str, Any]] = []
-    for item in value:
+    for item in value[:MAX_SEMANTIC_LIST_ITEMS]:
         if not isinstance(item, dict):
             continue
         text = truncate(item.get(required_text_key), 1000)
@@ -149,7 +169,9 @@ def clean_memory_drafts_response(value: Any, context: dict[str, Any]) -> dict[st
     fallback_event_ids = _source_event_ids_from_context(context)
     fallback_chunk_ids = _source_chunk_ids_from_context(context)
     parsed = value if isinstance(value, dict) else {}
-    raw_drafts = parsed.get("memory_drafts") if isinstance(parsed.get("memory_drafts"), list) else []
+    raw_drafts = (
+        parsed.get("memory_drafts") if isinstance(parsed.get("memory_drafts"), list) else []
+    )
     memory_drafts: list[dict[str, Any]] = []
     for raw in raw_drafts[:MAX_MEMORY_DRAFTS]:
         if not isinstance(raw, dict):
@@ -269,7 +291,7 @@ def _clean_memory_id_items(
     if not isinstance(value, list):
         return []
     cleaned: list[dict[str, Any]] = []
-    for item in value:
+    for item in value[:MAX_SEMANTIC_LIST_ITEMS]:
         if not isinstance(item, dict):
             continue
         text = truncate(item.get(key), 1000)
@@ -295,7 +317,11 @@ def clean_project_memory_response(value: Any, context: dict[str, Any]) -> dict[s
     sections = parsed.get("sections") if isinstance(parsed.get("sections"), dict) else {}
     cleaned_sections = {
         "core_workflow": _clean_string_list(sections.get("core_workflow"), limit=None),
-        "current_direction": clean_text(sections.get("current_direction")),
+        "current_direction": truncate(
+            sections.get("current_direction"),
+            MAX_PROJECT_SECTION_TEXT_CHARS,
+        )
+        or "",
         "important_decisions": _clean_memory_id_items(
             sections.get("important_decisions"),
             fallback_ids=fallback_ids,
@@ -306,7 +332,11 @@ def clean_project_memory_response(value: Any, context: dict[str, Any]) -> dict[s
             limit=None,
         ),
         "open_questions": _clean_string_list(sections.get("open_questions"), limit=None),
-        "product_goal": clean_text(sections.get("product_goal")),
+        "product_goal": truncate(
+            sections.get("product_goal"),
+            MAX_PROJECT_SECTION_TEXT_CHARS,
+        )
+        or "",
         "rejected_directions": _clean_memory_id_items(
             sections.get("rejected_directions"),
             fallback_ids=fallback_ids,
@@ -328,6 +358,10 @@ def clean_project_memory_response(value: Any, context: dict[str, Any]) -> dict[s
             )
             if part.strip()
         )
+    body_markdown = truncate_utf8_bytes(
+        body_markdown,
+        max_bytes=PROJECT_MEMORY_BODY_MAX_BYTES,
+    )
     return {
         "body_markdown": body_markdown,
         "confidence": _clean_confidence(parsed.get("confidence"), fallback=0.45),

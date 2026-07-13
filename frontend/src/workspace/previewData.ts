@@ -100,6 +100,7 @@ export function mockGithubUnlinkedProjectDetail(project: Project): ProjectDetail
       recentArtifacts: [],
       totalArtifacts: 0,
     },
+    metricHistory: [],
     overview: [
       {
         description: "GitHub remote has not been added yet.",

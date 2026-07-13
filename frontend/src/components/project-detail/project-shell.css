@@ -1,7 +1,11 @@
 .bh-project-detail {
   display: grid;
+  width: 100%;
+  min-height: 0;
   min-width: 0;
-  gap: var(--bh-space-6);
+  flex: 1 1 auto;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: clamp(var(--bh-space-3), 1.5vw, var(--bh-space-5));
 }
 
 .bh-project-detail[data-active-tab="ai-activity"] {
@@ -371,6 +375,12 @@
   border-bottom: 1px solid var(--bh-color-border);
 }
 
+.bh-project-tab-list {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--bh-space-6);
+}
+
 .bh-project-tab {
   position: relative;
   display: inline-flex;
@@ -414,8 +424,21 @@
   background: var(--bh-color-text-primary);
 }
 
+.bh-project-tab-notification {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--bh-color-warning);
+}
+
 .bh-project-tab-external {
   color: var(--bh-color-text-secondary);
+}
+
+.bh-project-tab-external .brand-icon {
+  width: var(--bh-icon-size-sm);
+  height: var(--bh-icon-size-sm);
 }
 
 .bh-project-tab-brand-icon {
@@ -431,7 +454,12 @@
 }
 
 .bh-project-panel {
+  width: 100%;
+  min-height: 0;
   min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .bh-project-detail[data-active-tab="ai-activity"] .bh-project-panel,
@@ -441,4 +469,5 @@
 
 .bh-project-detail[data-active-tab="ai-activity"] .bh-project-panel {
   height: 100%;
+  overflow: hidden;
 }

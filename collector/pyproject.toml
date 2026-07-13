@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "promty-collector"
-version = "0.1.0"
+version = "0.1.3"
 description = "Local event collector for Promty"
 requires-python = ">=3.12"
 
@@ -25,6 +25,8 @@ py-modules = [
   "runtime_install",
   "sequence",
   "session_index",
+  "updater",
+  "version",
 ]
 
 [tool.setuptools.packages.find]

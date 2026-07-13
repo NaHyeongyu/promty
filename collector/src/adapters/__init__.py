@@ -6,6 +6,22 @@ from typing import Any
 from events import BaseEvent, EventType, normalize_tool
 
 
+def should_ignore_collector_event(
+    tool: str,
+    payload: Mapping[str, Any],
+    event_type: EventType | None = None,
+) -> bool:
+    normalized_tool = normalize_tool(tool)
+    if normalized_tool != "codex-cli":
+        return False
+    if event_type is not None and event_type != "PromptSubmitted":
+        return False
+
+    from adapters.codex.hook import is_internal_background_prompt
+
+    return is_internal_background_prompt(payload)
+
+
 def normalize_collector_event(
     tool: str,
     payload: Mapping[str, Any],

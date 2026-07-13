@@ -21,7 +21,7 @@ export const DEFAULT_URL_NAVIGATION_STATE: UrlNavigationState = {
     selectedPromptId: null,
     selectedSessionId: null,
     selectedSessionPromptId: null,
-    view: "sessions",
+    view: "prompts",
   },
   activeDetailTab: "overview",
   activeItem: "projects",

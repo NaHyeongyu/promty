@@ -72,6 +72,15 @@
   font-weight: var(--bh-font-weight-section);
 }
 
+.sidebar-item-action[data-active="true"] {
+  background: transparent;
+}
+
+.sidebar-item-action[data-active="true"] .sidebar-item-badge {
+  color: var(--bh-color-text-primary);
+  background: color-mix(in srgb, var(--bh-color-warning) 22%, transparent);
+}
+
 .sidebar-saved-section + .sidebar-item {
   margin-top: var(--bh-space-2);
 }
@@ -87,7 +96,7 @@
   align-items: center;
   gap: var(--bh-space-2);
   min-height: 48px;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--bh-radius-sm);
   padding: var(--bh-space-2);
   color: var(--bh-color-text-muted);
@@ -97,8 +106,13 @@
 }
 
 .sidebar-collector-status:hover {
-  border-color: var(--bh-color-border-hover);
   background: var(--bh-color-surface-hover);
+}
+
+.sidebar-collector-status:focus-visible,
+.sidebar-docs-link:focus-visible {
+  outline: 2px solid var(--bh-color-primary);
+  outline-offset: 2px;
 }
 
 .sidebar-collector-status > svg {
@@ -140,18 +154,17 @@
 .sidebar-docs-link {
   display: grid;
   min-width: 0;
-  min-height: 48px;
+  min-height: var(--bh-interactive-min-size);
   grid-template-columns: 20px minmax(0, 1fr);
   align-items: center;
   gap: var(--bh-space-2);
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--bh-radius-sm);
-  padding: var(--bh-space-2);
+  padding: 0 var(--bh-space-2);
   color: var(--bh-color-text-muted);
 }
 
 .sidebar-docs-link:hover {
-  border-color: var(--bh-color-border-hover);
   background: var(--bh-color-surface-hover);
 }
 
@@ -160,9 +173,8 @@
 }
 
 .sidebar-docs-link > span {
-  display: grid;
+  display: block;
   min-width: 0;
-  gap: 2px;
 }
 
 .sidebar-docs-link strong,
@@ -174,13 +186,12 @@
 
 .sidebar-docs-link strong {
   color: var(--bh-color-text-secondary);
-  font-size: var(--bh-font-size-caption);
+  font-size: var(--bh-font-size-small);
   font-weight: var(--bh-font-weight-label);
 }
 
 .sidebar-docs-link small {
-  color: var(--bh-color-text-muted);
-  font-size: var(--bh-font-size-caption);
+  display: none;
 }
 
 .sidebar-account {

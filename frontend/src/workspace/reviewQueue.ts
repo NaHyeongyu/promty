@@ -126,22 +126,21 @@ export function pendingReviewProjectCount(projects: Project[]) {
 export function reviewQueueProjectBatch(
   sessions: ReviewQueueSession[],
 ): ReviewQueueProjectBatch {
-  const readySessions = sessions.filter((session) => session.canCreateMemory);
   return {
-    changedFileCount: readySessions.reduce(
+    changedFileCount: sessions.reduce(
       (total, session) => total + session.changedFileCount,
       0,
     ),
-    promptCount: readySessions.reduce(
+    promptCount: sessions.reduce(
       (total, session) => total + session.promptCount,
       0,
     ),
-    rangeCount: readySessions.reduce(
+    rangeCount: sessions.reduce(
       (total, session) => total + session.draftCount,
       0,
     ),
     sessionIds: Array.from(
-      new Set(readySessions.map((session) => session.sessionId)),
+      new Set(sessions.map((session) => session.sessionId)),
     ),
   };
 }

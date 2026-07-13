@@ -22,7 +22,7 @@ Developer machine
   -> Backend Docker image
   -> ECR repository
   -> SSM command to EC2
-  -> EC2 Docker backend restart
+  -> EC2 Docker backend and Project Memory worker restart
   -> EC2 local PostgreSQL container
   -> S3 private asset and database backup bucket
 ```
@@ -33,7 +33,7 @@ Important production endpoints:
 Frontend: https://promty.org
 Frontend alias: https://www.promty.org
 API: https://api.promty.org
-API health: https://api.promty.org/health
+API readiness: https://api.promty.org/health/ready
 Repository: https://github.com/NaHyeongyu/BuildHub
 Production branch: master
 AWS region: ap-southeast-2
@@ -53,6 +53,7 @@ On EC2:
 
 - Caddy serves `api.promty.org` and manages the Let's Encrypt certificate.
 - The backend runs from the ECR image `promty/backend:latest`.
+- The Project Memory worker runs from the same image as a separate container.
 - PostgreSQL 18 runs locally in Docker.
 - Published-flow assets are stored in S3.
 - Database backups are dumped daily to S3 by `promty-db-backup.timer`.
@@ -204,7 +205,7 @@ Local URLs:
 
 ```text
 Frontend: http://127.0.0.1:5173
-API health: http://127.0.0.1:8011/health
+API readiness: http://127.0.0.1:8011/health/ready
 PostgreSQL: localhost:5432
 ```
 
@@ -216,6 +217,13 @@ docker compose up -d postgres
 ./.venv/bin/alembic -c backend/alembic.ini upgrade head
 cd backend
 ../.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8011
+```
+
+In another terminal, start the Project Memory worker:
+
+```bash
+cd backend
+../.venv/bin/python -m app.workers.project_memory
 ```
 
 In another terminal:
@@ -458,8 +466,9 @@ The deploy workflow:
 8. pushes the image to ECR with the commit SHA tag and `latest`
 9. sends an SSM command to EC2
 10. pulls the latest image on EC2
-11. replaces the `promty-backend` container
-12. checks backend health inside the `promty-backend` container
+11. replaces the `promty-backend` container with a 7-connection maximum pool budget
+12. checks database-backed readiness inside the `promty-backend` container
+13. starts `promty-memory-worker` with a separate 3-connection maximum pool budget
 
 GitHub repository secrets required by the workflow:
 
@@ -558,7 +567,7 @@ aws ssm send-command \
   --region ap-southeast-2 \
   --instance-ids i-066ab5e01b9685b6a \
   --document-name AWS-RunShellScript \
-  --parameters 'commands=["docker restart promty-backend","docker exec promty-backend python -c \"import urllib.request; print(urllib.request.urlopen('\''http://127.0.0.1:8011/health'\'', timeout=5).read().decode())\""]'
+  --parameters 'commands=["docker restart promty-backend","docker restart promty-memory-worker","docker exec promty-backend python -c \"import urllib.request; print(urllib.request.urlopen('\''http://127.0.0.1:8011/health/ready'\'', timeout=5).read().decode())\""]'
 ```
 
 ## Domain And DNS
@@ -598,7 +607,7 @@ Check HTTPS:
 ```bash
 curl -I https://promty.org
 curl -I https://www.promty.org
-curl -i https://api.promty.org/health
+curl -i https://api.promty.org/health/ready
 ```
 
 CloudFront certificate check:
@@ -733,10 +742,12 @@ aws ssm send-command \
   --parameters 'commands=[
     "aws ecr get-login-password --region ap-southeast-2 | docker login --username AWS --password-stdin 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com",
     "docker pull 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com/promty/backend:latest",
+    "docker rm -f promty-memory-worker || true",
     "docker rm -f promty-backend || true",
-    "docker run -d --name promty-backend --restart unless-stopped --network promty --env-file /opt/promty/backend.env 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com/promty/backend:latest",
+    "docker run -d --name promty-backend --restart unless-stopped --network promty --env-file /opt/promty/backend.env -e PROMPTHUB_DATABASE_POOL_SIZE=5 -e PROMPTHUB_DATABASE_MAX_OVERFLOW=2 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com/promty/backend:latest",
     "sleep 8",
-    "docker exec promty-backend python -c \"import urllib.request; print(urllib.request.urlopen('\''http://127.0.0.1:8011/health'\'', timeout=5).read().decode())\""
+    "docker exec promty-backend python -c \"import urllib.request; print(urllib.request.urlopen('\''http://127.0.0.1:8011/health/ready'\'', timeout=5).read().decode())\"",
+    "docker run -d --name promty-memory-worker --restart unless-stopped --network promty --env-file /opt/promty/backend.env -e PROMPTHUB_DATABASE_POOL_SIZE=2 -e PROMPTHUB_DATABASE_MAX_OVERFLOW=1 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com/promty/backend:latest python -m app.workers.project_memory"
   ]'
 ```
 
@@ -772,7 +783,7 @@ shape is:
 2. download the selected S3 dump
 3. restore into promty-postgres with pg_restore
 4. restart promty-backend
-5. verify /health and one user flow
+5. verify /health/ready and one user flow
 ```
 
 ## GitHub OAuth Configuration
@@ -846,7 +857,7 @@ npm publish --access public
 After every production deploy:
 
 ```bash
-curl -i https://api.promty.org/health
+curl -i https://api.promty.org/health/ready
 curl -I https://promty.org
 curl -I https://www.promty.org
 ```
@@ -861,7 +872,7 @@ Then check the app manually:
 6. If a collector token is needed, run the production collector install command.
 7. Confirm new events appear in the project.
 
-Deployment is not complete until the API health check, frontend, login, and one
+Deployment is not complete until API readiness, the memory worker, frontend, login, and one
 core user flow work.
 
 ## Common Troubleshooting

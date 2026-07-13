@@ -111,7 +111,7 @@ describe("review queue", () => {
     expect(totalPendingRangeCount(projects)).toBe(7);
   });
 
-  it("builds one project batch from every checkpointable session", () => {
+  it("builds one project batch from every captured memory chunk", () => {
     const sessions = reviewQueueSessionsFromRanges([
       pendingRange(),
       pendingRange({
@@ -130,18 +130,18 @@ describe("review queue", () => {
     ]);
 
     expect(reviewQueueProjectBatch(sessions)).toEqual({
-      changedFileCount: 5,
-      promptCount: 3,
-      rangeCount: 2,
-      sessionIds: ["session-1", "session-2"],
+      changedFileCount: 13,
+      promptCount: 7,
+      rangeCount: 3,
+      sessionIds: ["session-1", "session-2", "session-3"],
     });
   });
 
-  it("marks a project batch unavailable when no session can create memory", () => {
+  it("makes a project batch available from its first captured chunk", () => {
     const sessions = reviewQueueSessionsFromRanges([
       pendingRange({ can_checkpoint: false }),
     ]);
 
-    expect(reviewQueueProjectBatch(sessions).sessionIds).toEqual([]);
+    expect(reviewQueueProjectBatch(sessions).sessionIds).toEqual(["session-1"]);
   });
 });

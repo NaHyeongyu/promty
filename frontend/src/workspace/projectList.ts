@@ -85,6 +85,7 @@ export function projectsFromEvents(
     string,
     {
       createdTimestamp: string;
+      defaultBranch?: string;
       events: number;
       filesChanged: number;
       githubUrl: string | null;
@@ -110,6 +111,7 @@ export function projectsFromEvents(
   for (const summary of summaries) {
     grouped.set(summary.id, {
       createdTimestamp: summary.created_at,
+      defaultBranch: summary.default_branch,
       events: 0,
       filesChanged: 0,
       githubUrl: normalizeGithubUrl(summary.github_url ?? summary.git_remote),
@@ -177,6 +179,7 @@ export function projectsFromEvents(
 
   return Array.from(grouped, ([id, value]) => ({
     id,
+    defaultBranch: value.defaultBranch,
     name: value.name,
     createdTimestamp: value.createdTimestamp,
     slug: value.slug ?? id,
