@@ -117,6 +117,11 @@ only if the next call also reaches its ceiling, including for ended sessions.
 Continuation slices load one latest prompt as bounded, context-only guidance;
 that anchor is excluded from the slice event timeline, event count, and source
 prompt IDs so coverage remains non-overlapping.
+Every slice writer locks the session row before reading or advancing this
+monotonic cursor. Runtime state is projected from the latest indexed slice row,
+while the worker's cross-session scan retains the aggregate/marker recovery
+check. A failed artifact-generation job rolls back memory changes to a nested
+savepoint while preserving its failed job status.
 
 Each API or worker process owns a separate pool. The checked-in Compose and EC2
 configuration budgets at most 7 connections for the API process (`5 + 2`) and

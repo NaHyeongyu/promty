@@ -13,7 +13,8 @@ This plan treats performance changes as correctness-sensitive changes. Each phas
 - `(project_id, session_id, sequence)` remains unique, including duplicates inside one incoming batch.
 - Project ownership checks cannot be weakened by batching or caching.
 - Raw prompt, response, and patch encryption/storage policies remain unchanged. Derived pending-draft evidence is a bounded projection; encrypted raw events remain the source of truth.
-- Memory windows must not skip or duplicate event sequences.
+- For the supported monotonic collector sequence stream, memory windows must
+  not skip or duplicate event sequences.
 - Project Memory generation remains idempotent under retries and concurrent requests.
 - Existing frontend response contracts remain compatible until a versioned replacement is shipped.
 
@@ -60,7 +61,9 @@ This plan treats performance changes as correctness-sensitive changes. Each phas
 
 ### 2A. Incremental memory windows
 
-- Use indexed SQL aggregates for the latest materialized sequence and slice index instead of loading all historical draft artifacts.
+- Read the latest indexed slice projection for the materialized sequence,
+  slice index, continuation end, and resume marker instead of loading or
+  aggregating all historical draft artifacts.
 - Fetch at most `prompt_target + 1` prompt rows for a due-window decision.
 - Fetch and decrypt at most 500 event rows per materialization slice; persist
   the logical prompt-window end so oversized windows resume as contiguous
@@ -80,7 +83,7 @@ This plan treats performance changes as correctness-sensitive changes. Each phas
 ### Acceptance criteria
 
 - Repeated polling does not mutate or rescan every historical session.
-- Window generation covers each eligible sequence exactly once under retries.
+- Window generation covers each eligible monotonic sequence exactly once under retries.
 - Memory Draft and Project Memory provider inputs have deterministic hard byte ceilings.
 - Large prompts, responses, patches, and multi-draft batches have explicit truncation tests.
 
