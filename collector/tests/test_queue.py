@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from argparse import Namespace
 
+from cli import _push_captured_event
 from events import BaseEvent, PromptSubmittedPayload
 from uploader.queue import JSONLQueue
 
@@ -29,3 +31,26 @@ def test_queue_round_trip_and_acknowledgement(tmp_path: Path) -> None:
 
     queue.ack({batch[0]["id"]})
     assert [event["sequence"] for event in queue.read_batch(10)] == [2]
+
+
+def test_captured_event_is_mirrored_with_the_same_identity(tmp_path: Path) -> None:
+    primary_path = tmp_path / "dev-events.jsonl"
+    mirror_path = tmp_path / "prod-events.jsonl"
+    event = _event(1)
+
+    _push_captured_event(
+        Namespace(
+            queue_path=str(primary_path),
+            mirror_queue_paths=[str(mirror_path)],
+        ),
+        event,
+    )
+
+    primary = JSONLQueue(primary_path).read_batch(10)
+    mirror = JSONLQueue(mirror_path).read_batch(10)
+    assert primary == mirror
+    assert primary[0]["id"] == event.id
+
+    JSONLQueue(primary_path).ack({event.id})
+    assert JSONLQueue(primary_path).read_batch(10) == []
+    assert JSONLQueue(mirror_path).read_batch(10) == mirror

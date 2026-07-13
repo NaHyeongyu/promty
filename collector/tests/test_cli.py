@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,7 @@ from cli import (
     LOGIN_CALLBACK_HTML,
     build_parser,
     _apply_profile_defaults,
+    _parse_profiles,
     install_hooks,
     main,
 )
@@ -125,6 +127,88 @@ def test_profile_queue_path_is_written_into_hooks(
     command = config["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
     expected_queue = Path.home() / ".prompthub" / "profiles" / "dev" / "events"
     assert command == f"promty capture --tool codex-cli --queue-path {expected_queue}"
+
+
+def test_profiles_parse_comma_separated_values_without_duplicates() -> None:
+    assert _parse_profiles("dev,prod,dev") == ("dev", "prod")
+
+
+def test_profiles_write_primary_and_mirror_queues_into_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repository"
+    repo_root.mkdir()
+    monkeypatch.setattr(cli, "_git_root", lambda _: repo_root)
+    args = build_parser().parse_args(
+        [
+            "install-hooks",
+            "--tool",
+            "codex-cli",
+            "--hook-command",
+            "promty",
+            "--repo-root",
+            str(repo_root),
+            "--profiles",
+            "dev,prod",
+        ]
+    )
+
+    assert install_hooks(args) == 0
+
+    config = json.loads((repo_root / ".codex" / "hooks.json").read_text())
+    command = config["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
+    dev_queue = Path.home() / ".prompthub" / "profiles" / "dev" / "events"
+    prod_queue = Path.home() / ".prompthub" / "profiles" / "prod" / "events"
+    assert command == (
+        f"promty capture --tool codex-cli --queue-path {dev_queue} --mirror-queue-path {prod_queue}"
+    )
+    assert cli._hook_status(
+        repo_root,
+        "codex-cli",
+        expected_queue_paths=[str(dev_queue), str(prod_queue)],
+    )[0]
+
+
+def test_doctor_profiles_checks_each_profile_independently(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    checked_profiles: list[tuple[str, Path, Path]] = []
+
+    monkeypatch.setattr(
+        cli,
+        "_doctor_hook_checks",
+        lambda *_args, **_kwargs: [("hooks", True, "installed")],
+    )
+
+    def fake_runtime_checks(
+        args: argparse.Namespace,
+        *,
+        prefix: str = "",
+    ) -> list[tuple[str, bool, str]]:
+        checked_profiles.append((prefix, Path(args.queue_path), Path(args.pid_path)))
+        return [(f"{prefix}backend", True, "ok")]
+
+    monkeypatch.setattr(cli, "_doctor_runtime_checks", fake_runtime_checks)
+    args = build_parser().parse_args(["doctor", "--profiles", "dev,prod"])
+
+    assert args.func(args) == 0
+    assert checked_profiles == [
+        (
+            "dev/",
+            Path.home() / ".prompthub" / "profiles" / "dev" / "events",
+            Path.home() / ".prompthub" / "profiles" / "dev" / "uploader.pid",
+        ),
+        (
+            "prod/",
+            Path.home() / ".prompthub" / "profiles" / "prod" / "events",
+            Path.home() / ".prompthub" / "profiles" / "prod" / "uploader.pid",
+        ),
+    ]
+    output = capsys.readouterr().out
+    assert "dev/backend: ok" in output
+    assert "prod/backend: ok" in output
 
 
 def test_runtime_launcher_uses_a_durable_copy(
@@ -248,6 +332,39 @@ def test_init_installs_codex_and_claude_hooks_by_default(
             assert len(commands) == 1
             assert str(launcher_path) in commands[0]
             assert f"--tool {tool}" in commands[0]
+
+
+def test_init_profiles_install_one_mirrored_hook_and_start_two_uploaders(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    installed_hooks: list[argparse.Namespace] = []
+    started_uploaders: list[argparse.Namespace] = []
+
+    def fake_install_hooks(args: argparse.Namespace) -> int:
+        installed_hooks.append(args)
+        return 0
+
+    def fake_start_uploader(args: argparse.Namespace) -> int:
+        started_uploaders.append(args)
+        return 0
+
+    monkeypatch.setattr(cli, "install_hooks", fake_install_hooks)
+    monkeypatch.setattr(cli, "start_uploader", fake_start_uploader)
+    args = build_parser().parse_args(["init", "--profiles", "dev,prod", "--skip-login"])
+
+    assert args.func(args) == 0
+
+    assert len(installed_hooks) == 1
+    assert installed_hooks[0].profiles == ("dev", "prod")
+    assert installed_hooks[0].queue_path is None
+    assert [Path(item.queue_path) for item in started_uploaders] == [
+        Path.home() / ".prompthub" / "profiles" / "dev" / "events",
+        Path.home() / ".prompthub" / "profiles" / "prod" / "events",
+    ]
+    assert [Path(item.pid_path) for item in started_uploaders] == [
+        Path.home() / ".prompthub" / "profiles" / "dev" / "uploader.pid",
+        Path.home() / ".prompthub" / "profiles" / "prod" / "uploader.pid",
+    ]
 
 
 @pytest.mark.parametrize(

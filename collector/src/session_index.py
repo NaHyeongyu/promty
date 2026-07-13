@@ -25,6 +25,30 @@ class SessionIndex:
             record = self._read().get(self._key(tool, external_session_id))
         return record if isinstance(record, dict) else None
 
+    def is_ignored(self, tool: SupportedTool, external_session_id: str) -> bool:
+        record = self.lookup(tool, external_session_id)
+        return bool(record and record.get("ignored") is True)
+
+    def ignore(
+        self,
+        tool: SupportedTool,
+        external_session_id: str,
+        cwd: str | None = None,
+    ) -> None:
+        with self._locked():
+            records = self._read()
+            key = self._key(tool, external_session_id)
+            existing = records.get(key)
+            existing_cwd = existing.get("cwd") if isinstance(existing, dict) else None
+            records[key] = {
+                "tool": tool,
+                "external_session_id": external_session_id,
+                "cwd": cwd or existing_cwd,
+                "ignored": True,
+                "updated_at": utc_now_iso(),
+            }
+            self._write(records)
+
     def observe(
         self,
         tool: SupportedTool,
@@ -43,6 +67,7 @@ class SessionIndex:
                 "project_id": event.project_id,
                 "session_id": event.session_id,
                 "cwd": cwd or existing_cwd,
+                "ignored": False,
                 "updated_at": utc_now_iso(),
             }
             self._write(records)

@@ -15,7 +15,7 @@ from typing import Any, Literal
 from urllib import error, parse, request
 import webbrowser
 
-from adapters import normalize_collector_event
+from adapters import normalize_collector_event, should_ignore_collector_event
 from change_tracking import ChangeBaselineStore, detect_changes
 from config import (
     DEFAULT_UPLOADER_LOG_PATH,
@@ -63,6 +63,7 @@ PROFILE_URLS: dict[Profile, tuple[str, str]] = {
     "dev": ("http://127.0.0.1:5173", "http://127.0.0.1:8011"),
     "prod": ("https://promty.org", "https://api.promty.org"),
 }
+PROFILE_NAMES: tuple[Profile, ...] = tuple(PROFILE_URLS)
 AUTO_UPDATE_INTERVAL_SECONDS = 6 * 60 * 60
 CODEX_HOOKS: tuple[dict[str, Any], ...] = (
     {
@@ -213,6 +214,79 @@ def _apply_profile_defaults(args: argparse.Namespace) -> None:
             setattr(args, name, value)
 
 
+def _parse_profiles(value: str) -> tuple[Profile, ...]:
+    profiles: list[Profile] = []
+    for raw_profile in value.split(","):
+        profile = raw_profile.strip()
+        if not profile:
+            continue
+        if profile not in PROFILE_URLS:
+            choices = ", ".join(PROFILE_NAMES)
+            raise argparse.ArgumentTypeError(
+                f"unsupported profile '{profile}' (choose from {choices})"
+            )
+        if profile not in profiles:
+            profiles.append(profile)  # type: ignore[arg-type]
+    if not profiles:
+        raise argparse.ArgumentTypeError("at least one profile is required")
+    return tuple(profiles)
+
+
+def _selected_profiles(args: argparse.Namespace) -> tuple[Profile, ...]:
+    profiles = getattr(args, "profiles", None)
+    if profiles:
+        return tuple(profiles)
+    profile = getattr(args, "profile", None)
+    return (profile,) if profile else ()
+
+
+def _profile_args(args: argparse.Namespace, profile: Profile) -> argparse.Namespace:
+    profile_args = argparse.Namespace(**vars(args))
+    profile_args.profile = profile
+    profile_args.profiles = None
+    for name in (
+        "app_url",
+        "api_url",
+        "config_path",
+        "queue_path",
+        "pid_path",
+        "log_path",
+    ):
+        if hasattr(profile_args, name):
+            setattr(profile_args, name, None)
+    _apply_profile_defaults(profile_args)
+    return profile_args
+
+
+def _validate_multi_profile_options(args: argparse.Namespace) -> None:
+    conflicting = [
+        name.replace("_", "-")
+        for name in (
+            "app_url",
+            "api_url",
+            "config_path",
+            "queue_path",
+            "pid_path",
+            "log_path",
+            "token",
+        )
+        if getattr(args, name, None) is not None
+    ]
+    if conflicting:
+        options = ", ".join(f"--{name}" for name in conflicting)
+        raise ValueError(
+            f"{options} cannot be combined with --profiles; configure each profile separately first"
+        )
+
+
+def _queue_paths_for_profiles(profiles: Sequence[Profile]) -> list[str]:
+    paths: list[str] = []
+    for profile in profiles:
+        profile_args = _profile_args(argparse.Namespace(queue_path=None), profile)
+        paths.append(profile_args.queue_path)
+    return paths
+
+
 def _apply_known_session(
     *,
     index: SessionIndex,
@@ -253,13 +327,49 @@ def _remember_session(
     )
 
 
+def _capture_queue_paths(args: argparse.Namespace) -> list[str | Path | None]:
+    paths: list[str | Path | None] = [getattr(args, "queue_path", None)]
+    paths.extend(getattr(args, "mirror_queue_paths", None) or [])
+    unique_paths: list[str | Path | None] = []
+    resolved: set[str] = set()
+    for path in paths:
+        queue = JSONLQueue(path)
+        key = str(queue.path.resolve())
+        if key in resolved:
+            continue
+        resolved.add(key)
+        unique_paths.append(path)
+    return unique_paths
+
+
+def _push_captured_event(args: argparse.Namespace, event: BaseEvent) -> None:
+    errors: list[str] = []
+    for path in _capture_queue_paths(args):
+        queue = JSONLQueue(path)
+        try:
+            queue.push(event)
+        except Exception as exc:
+            errors.append(f"{queue.path}: {exc}")
+    if errors:
+        raise RuntimeError("Failed to persist one or more Promty queues: " + "; ".join(errors))
+
+
 def capture(args: argparse.Namespace) -> int:
     payload = _read_stdin_json()
     normalized_tool = _normalize_required_tool(args)
     event_type = normalize_event_type(args.event_type) if args.event_type else None
-    event = normalize_collector_event(normalized_tool, payload, event_type)
     session_index = SessionIndex(args.session_index_path)
     external_session_id = get_first_string(payload, SESSION_ID_KEYS)
+    if should_ignore_collector_event(normalized_tool, payload, event_type):
+        if external_session_id is not None:
+            session_index.ignore(
+                normalized_tool,
+                external_session_id,
+                cwd=get_first_string(payload, WORKSPACE_KEYS),
+            )
+        return 0
+
+    event = normalize_collector_event(normalized_tool, payload, event_type)
     _apply_known_session(
         index=session_index,
         tool=normalized_tool,
@@ -268,7 +378,7 @@ def capture(args: argparse.Namespace) -> int:
         raw_payload=payload,
     )
     SequenceStore(args.sequence_path).assign(event)
-    JSONLQueue(args.queue_path).push(event)
+    _push_captured_event(args, event)
     _remember_session(
         index=session_index,
         tool=normalized_tool,
@@ -293,8 +403,12 @@ def capture_changes(args: argparse.Namespace) -> int:
     external_session_id = get_first_string(payload, SESSION_ID_KEYS)
     cwd = get_first_string(payload, WORKSPACE_KEYS) or os.getcwd()
     session_index = SessionIndex(args.session_index_path)
+    if external_session_id and session_index.is_ignored(
+        normalized_tool,
+        external_session_id,
+    ):
+        return 0
     sequence_store = SequenceStore(args.sequence_path)
-    queue = JSONLQueue(args.queue_path)
 
     response_event = normalize_collector_event(
         normalized_tool,
@@ -309,7 +423,7 @@ def capture_changes(args: argparse.Namespace) -> int:
         raw_payload=payload,
     )
     sequence_store.assign(response_event)
-    queue.push(response_event)
+    _push_captured_event(args, response_event)
     _remember_session(
         index=session_index,
         tool=normalized_tool,
@@ -341,7 +455,7 @@ def capture_changes(args: argparse.Namespace) -> int:
         sequence=0,
     )
     sequence_store.assign(event)
-    queue.push(event)
+    _push_captured_event(args, event)
     return 0
 
 
@@ -372,11 +486,7 @@ def upload(args: argparse.Namespace) -> int:
         return 0
 
     interval = max(args.interval, 0.25)
-    print(
-        "Watching queue "
-        f"{JSONLQueue(args.queue_path).path} -> {api_url} "
-        f"every {interval:g}s"
-    )
+    print(f"Watching queue {JSONLQueue(args.queue_path).path} -> {api_url} every {interval:g}s")
     next_update_check = 0.0
     while True:
         try:
@@ -656,7 +766,7 @@ def _install_codex_hooks(
     command_prefix: str,
     normalized_tool: SupportedTool,
     repo_root: Path,
-    queue_path: str | None = None,
+    queue_paths: Sequence[str] = (),
 ) -> int:
     hooks_path = repo_root / ".codex" / "hooks.json"
     config = _read_hooks_config(hooks_path)
@@ -664,8 +774,12 @@ def _install_codex_hooks(
 
     for spec in CODEX_HOOKS:
         command = f"{command_prefix} {spec['subcommand']} --tool {normalized_tool}"
-        if queue_path:
-            command += f" --queue-path {shlex.quote(str(Path(queue_path).expanduser()))}"
+        if queue_paths:
+            command += " --queue-path " + shlex.quote(str(Path(queue_paths[0]).expanduser()))
+            for mirror_queue_path in queue_paths[1:]:
+                command += " --mirror-queue-path " + shlex.quote(
+                    str(Path(mirror_queue_path).expanduser())
+                )
         hook = {
             "type": "command",
             "command": command,
@@ -693,7 +807,7 @@ def _install_claude_hooks(
     command_prefix: str,
     normalized_tool: SupportedTool,
     repo_root: Path,
-    queue_path: str | None = None,
+    queue_paths: Sequence[str] = (),
 ) -> int:
     settings_path = repo_root / ".claude" / "settings.local.json"
     config = _read_hooks_config(settings_path)
@@ -701,8 +815,12 @@ def _install_claude_hooks(
 
     for spec in CLAUDE_HOOKS:
         command = f"{command_prefix} {spec['subcommand']} --tool {normalized_tool}"
-        if queue_path:
-            command += f" --queue-path {shlex.quote(str(Path(queue_path).expanduser()))}"
+        if queue_paths:
+            command += " --queue-path " + shlex.quote(str(Path(queue_paths[0]).expanduser()))
+            for mirror_queue_path in queue_paths[1:]:
+                command += " --mirror-queue-path " + shlex.quote(
+                    str(Path(mirror_queue_path).expanduser())
+                )
         hook = {
             "type": "command",
             "command": command,
@@ -734,7 +852,15 @@ def install_hooks(args: argparse.Namespace) -> int:
         command_prefix = quote_command_path(launcher_path)
         print(f"Promty runtime ready: {launcher_path}")
 
-    queue_path = getattr(args, "queue_path", None)
+    profiles = _selected_profiles(args)
+    if len(profiles) > 1:
+        _validate_multi_profile_options(args)
+        queue_paths = _queue_paths_for_profiles(profiles)
+    elif profiles and getattr(args, "queue_path", None) is None:
+        queue_paths = _queue_paths_for_profiles(profiles)
+    else:
+        queue_path = getattr(args, "queue_path", None)
+        queue_paths = [queue_path] if queue_path else []
 
     failures: list[tuple[SupportedTool, Exception]] = []
     for normalized_tool in _tools_for_install_target(target):
@@ -744,14 +870,14 @@ def install_hooks(args: argparse.Namespace) -> int:
                     command_prefix=command_prefix,
                     normalized_tool=normalized_tool,
                     repo_root=repo_root,
-                    queue_path=queue_path,
+                    queue_paths=queue_paths,
                 )
             elif normalized_tool == "claude-code":
                 _install_claude_hooks(
                     command_prefix=command_prefix,
                     normalized_tool=normalized_tool,
                     repo_root=repo_root,
-                    queue_path=queue_path,
+                    queue_paths=queue_paths,
                 )
             else:
                 raise AssertionError(f"Unexpected hook tool: {normalized_tool}")
@@ -839,7 +965,11 @@ def _health_status(api_url: str, timeout: float) -> tuple[bool, str]:
         return False, str(exc)
 
 
-def _hook_status(repo_root: Path, tool: SupportedTool) -> tuple[bool, str]:
+def _hook_status(
+    repo_root: Path,
+    tool: SupportedTool,
+    expected_queue_paths: Sequence[str] = (),
+) -> tuple[bool, str]:
     if tool == "codex-cli":
         hooks_path = repo_root / ".codex" / "hooks.json"
         specs = CODEX_HOOKS
@@ -861,7 +991,7 @@ def _hook_status(repo_root: Path, tool: SupportedTool) -> tuple[bool, str]:
     hooks_by_event = config.get("hooks", {})
     for spec in specs:
         groups = hooks_by_event.get(spec["event"], [])
-        found = False
+        found_command: str | None = None
         if isinstance(groups, list):
             for group in groups:
                 if not isinstance(group, dict):
@@ -871,12 +1001,16 @@ def _hook_status(repo_root: Path, tool: SupportedTool) -> tuple[bool, str]:
                         hook,
                         spec["subcommand"],
                     ):
-                        found = True
+                        found_command = str(hook.get("command", ""))
                         break
-                if found:
+                if found_command is not None:
                     break
-        if not found:
+        if found_command is None:
             return False, f"missing {spec['event']} {tool} hook"
+        for queue_path in expected_queue_paths:
+            expanded_path = str(Path(queue_path).expanduser())
+            if expanded_path not in found_command:
+                return False, f"{spec['event']} hook missing queue {expanded_path}"
     return True, success
 
 
@@ -890,41 +1024,93 @@ def _queue_status(queue_path: str | None) -> tuple[bool, str]:
     return True, f"{len(queue_files)} session queue files under {queue.path}"
 
 
-def doctor(args: argparse.Namespace) -> int:
-    api_url = resolve_api_url(args.api_url, args.config_path)
-    token = resolve_token(args.token, args.config_path)
-    config = read_config(args.config_path)
+def _doctor_hook_checks(
+    args: argparse.Namespace,
+    *,
+    expected_queue_paths: Sequence[str] = (),
+) -> list[tuple[str, bool, str]]:
     target = _normalize_install_target(args)
     target_tools = _tools_for_install_target(target)
     try:
         repo_root = _git_root(args.repo_root)
         hook_results = [
-            (tool, _hook_status(repo_root, tool))
+            (
+                tool,
+                _hook_status(
+                    repo_root,
+                    tool,
+                    expected_queue_paths=expected_queue_paths,
+                ),
+            )
             for tool in target_tools
         ]
     except Exception as exc:
-        hook_results = [
-            (tool, (False, f"git root error: {exc}"))
-            for tool in target_tools
-        ]
+        hook_results = [(tool, (False, f"git root error: {exc}")) for tool in target_tools]
 
     checks: list[tuple[str, bool, str]] = []
-    checks.append(("config", bool(config), str(args.config_path or "~/.prompthub/config.json")))
-    checks.append(("login", token is not None, "token saved" if token else "not logged in"))
     for tool, hooks_status in hook_results:
         check_name = "hooks" if target != "all" else f"hooks/{tool}"
         checks.append((check_name, *hooks_status))
-    checks.append(("queue", *_queue_status(args.queue_path)))
-    checks.append(("backend", *_health_status(api_url, args.timeout)))
+    return checks
+
+
+def _doctor_runtime_checks(
+    args: argparse.Namespace,
+    *,
+    prefix: str = "",
+) -> list[tuple[str, bool, str]]:
+    api_url = resolve_api_url(args.api_url, args.config_path)
+    token = resolve_token(args.token, args.config_path)
+    config = read_config(args.config_path)
+    checks: list[tuple[str, bool, str]] = []
+    checks.append(
+        (
+            f"{prefix}config",
+            bool(config),
+            str(args.config_path or "~/.prompthub/config.json"),
+        )
+    )
+    checks.append(
+        (
+            f"{prefix}login",
+            token is not None,
+            "token saved" if token else "not logged in",
+        )
+    )
+    checks.append((f"{prefix}queue", *_queue_status(args.queue_path)))
+    checks.append((f"{prefix}backend", *_health_status(api_url, args.timeout)))
     pid_path = Path(args.pid_path).expanduser() if args.pid_path else DEFAULT_UPLOADER_PID_PATH
     pid = _read_pid(pid_path)
     checks.append(
         (
-            "uploader",
+            f"{prefix}uploader",
             pid is not None and _pid_is_running(pid),
             f"pid {pid}" if pid is not None and _pid_is_running(pid) else "not running",
         )
     )
+    return checks
+
+
+def doctor(args: argparse.Namespace) -> int:
+    profiles = _selected_profiles(args)
+    if getattr(args, "profiles", None):
+        _validate_multi_profile_options(args)
+        expected_queue_paths = _queue_paths_for_profiles(profiles)
+        checks = _doctor_hook_checks(
+            args,
+            expected_queue_paths=expected_queue_paths,
+        )
+        for profile in profiles:
+            profile_args = _profile_args(args, profile)
+            checks.extend(_doctor_runtime_checks(profile_args, prefix=f"{profile}/"))
+    else:
+        _apply_profile_defaults(args)
+        expected_queue_paths = [args.queue_path] if args.queue_path else []
+        checks = _doctor_hook_checks(
+            args,
+            expected_queue_paths=expected_queue_paths,
+        )
+        checks.extend(_doctor_runtime_checks(args))
 
     failed = False
     for name, ok, message in checks:
@@ -934,7 +1120,7 @@ def doctor(args: argparse.Namespace) -> int:
     return 1 if failed else 0
 
 
-def init(args: argparse.Namespace) -> int:
+def _login_for_init(args: argparse.Namespace) -> None:
     if not args.skip_login and not resolve_token(args.token, args.config_path):
         login_args = argparse.Namespace(
             app_url=args.app_url,
@@ -960,27 +1146,46 @@ def init(args: argparse.Namespace) -> int:
         )
         login(login_args)
 
+
+def _start_uploader_for_init(args: argparse.Namespace) -> None:
+    uploader_args = argparse.Namespace(
+        api_url=args.api_url,
+        config_path=args.config_path,
+        interval=args.upload_interval,
+        log_path=args.log_path,
+        pid_path=args.pid_path,
+        queue_path=args.queue_path,
+        no_auto_update=args.no_auto_update,
+        token=args.token,
+    )
+    start_uploader(uploader_args)
+
+
+def _install_hooks_for_init(
+    args: argparse.Namespace,
+    *,
+    profiles: Sequence[Profile] = (),
+) -> int:
     install_args = argparse.Namespace(
         tool=args.tool,
         source=None,
         repo_root=args.repo_root,
         hook_command=args.hook_command,
-        queue_path=args.queue_path,
+        profile=None,
+        profiles=tuple(profiles) or None,
+        queue_path=None if profiles else args.queue_path,
     )
-    hooks_result = install_hooks(install_args)
+    return install_hooks(install_args)
+
+
+def _init_single_profile(args: argparse.Namespace) -> int:
+    _apply_profile_defaults(args)
+    _login_for_init(args)
+
+    hooks_result = _install_hooks_for_init(args)
 
     if not args.skip_uploader:
-        uploader_args = argparse.Namespace(
-            api_url=args.api_url,
-            config_path=args.config_path,
-            interval=args.upload_interval,
-            log_path=args.log_path,
-            pid_path=args.pid_path,
-            queue_path=args.queue_path,
-            no_auto_update=args.no_auto_update,
-            token=args.token,
-        )
-        start_uploader(uploader_args)
+        _start_uploader_for_init(args)
 
     if hooks_result != 0:
         print(
@@ -991,6 +1196,46 @@ def init(args: argparse.Namespace) -> int:
 
     print("Promty init complete")
     return 0
+
+
+def _init_multiple_profiles(
+    args: argparse.Namespace,
+    profiles: Sequence[Profile],
+) -> int:
+    _validate_multi_profile_options(args)
+    per_profile_args = [_profile_args(args, profile) for profile in profiles]
+
+    for profile, profile_args in zip(profiles, per_profile_args, strict=True):
+        print(f"Preparing Promty profile: {profile}")
+        _login_for_init(profile_args)
+
+    hooks_result = _install_hooks_for_init(args, profiles=profiles)
+
+    if not args.skip_uploader:
+        for profile, profile_args in zip(profiles, per_profile_args, strict=True):
+            print(f"Starting Promty uploader: {profile}")
+            _start_uploader_for_init(profile_args)
+
+    if hooks_result != 0:
+        print(
+            "Promty multi-profile init incomplete; fix the hook error and run this command again.",
+            file=sys.stderr,
+        )
+        return 1
+
+    profile_list = ", ".join(profiles)
+    print(f"Promty multi-profile init complete: {profile_list}")
+    return 0
+
+
+def init(args: argparse.Namespace) -> int:
+    profiles = _selected_profiles(args)
+    if getattr(args, "profiles", None):
+        if len(profiles) == 1:
+            _validate_multi_profile_options(args)
+            return _init_single_profile(_profile_args(args, profiles[0]))
+        return _init_multiple_profiles(args, profiles)
+    return _init_single_profile(args)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1017,6 +1262,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Promty event type. Defaults to payload event_type or PromptSubmitted.",
     )
     capture_parser.add_argument("--queue-path")
+    capture_parser.add_argument(
+        "--mirror-queue-path",
+        dest="mirror_queue_paths",
+        action="append",
+        default=[],
+        help="Also persist the same event to this independent queue (repeatable).",
+    )
     capture_parser.add_argument("--sequence-path")
     capture_parser.add_argument("--session-index-path")
     capture_parser.add_argument("--change-baseline-path")
@@ -1034,6 +1286,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Deprecated alias for --tool",
     )
     capture_changes_parser.add_argument("--queue-path")
+    capture_changes_parser.add_argument(
+        "--mirror-queue-path",
+        dest="mirror_queue_paths",
+        action="append",
+        default=[],
+        help="Also persist the same event to this independent queue (repeatable).",
+    )
     capture_changes_parser.add_argument("--sequence-path")
     capture_changes_parser.add_argument("--session-index-path")
     capture_changes_parser.add_argument("--change-baseline-path")
@@ -1097,7 +1356,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Deprecated alias for --tool",
     )
     install_hooks_parser.add_argument("--repo-root")
-    install_hooks_parser.add_argument("--profile", choices=sorted(PROFILE_URLS))
+    install_hooks_profiles = install_hooks_parser.add_mutually_exclusive_group()
+    install_hooks_profiles.add_argument("--profile", choices=PROFILE_NAMES)
+    install_hooks_profiles.add_argument(
+        "--profiles",
+        type=_parse_profiles,
+        metavar="PROFILE[,PROFILE...]",
+        help="Install hooks that persist each event to every listed profile queue.",
+    )
     install_hooks_parser.add_argument("--queue-path")
     install_hooks_parser.add_argument(
         "--hook-command",
@@ -1125,7 +1391,14 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument("--repo-root")
     doctor_parser.add_argument("--timeout", type=float, default=3)
     doctor_parser.add_argument("--token")
-    doctor_parser.add_argument("--profile", choices=sorted(PROFILE_URLS))
+    doctor_profiles = doctor_parser.add_mutually_exclusive_group()
+    doctor_profiles.add_argument("--profile", choices=PROFILE_NAMES)
+    doctor_profiles.add_argument(
+        "--profiles",
+        type=_parse_profiles,
+        metavar="PROFILE[,PROFILE...]",
+        help="Check hooks and runtime state for every listed profile.",
+    )
     doctor_parser.add_argument(
         "--tool",
         choices=sorted(INSTALL_TOOL_ALIASES),
@@ -1143,7 +1416,14 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--log-path")
     init_parser.add_argument("--no-browser", action="store_true")
     init_parser.add_argument("--pid-path")
-    init_parser.add_argument("--profile", choices=sorted(PROFILE_URLS))
+    init_profiles = init_parser.add_mutually_exclusive_group()
+    init_profiles.add_argument("--profile", choices=PROFILE_NAMES)
+    init_profiles.add_argument(
+        "--profiles",
+        type=_parse_profiles,
+        metavar="PROFILE[,PROFILE...]",
+        help="Persist every captured event to each listed profile independently.",
+    )
     init_parser.add_argument("--queue-path")
     init_parser.add_argument("--no-auto-update", action="store_true")
     init_parser.add_argument("--repo-root")

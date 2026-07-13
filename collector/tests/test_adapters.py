@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from adapters import normalize_collector_event
+from adapters import normalize_collector_event, should_ignore_collector_event
 
 
 @pytest.mark.parametrize(
@@ -33,3 +33,28 @@ def test_supported_adapters_normalize_prompt_events(tool: str, expected_tool: st
 def test_unknown_adapter_is_rejected() -> None:
     with pytest.raises(ValueError, match="Unsupported tool"):
         normalize_collector_event("unknown", {}, "PromptSubmitted")
+
+
+def test_codex_background_prompt_without_transcript_is_ignored() -> None:
+    assert should_ignore_collector_event(
+        "codex-cli",
+        {
+            "hook_event_name": "UserPromptSubmit",
+            "permission_mode": "bypassPermissions",
+            "prompt": "# Overview\n\nGenerate suggestions",
+            "session_id": "background-session",
+        },
+    )
+
+
+def test_interactive_codex_prompt_is_not_ignored() -> None:
+    assert not should_ignore_collector_event(
+        "codex-cli",
+        {
+            "hook_event_name": "UserPromptSubmit",
+            "permission_mode": "default",
+            "prompt": "Implement the requested change",
+            "session_id": "interactive-session",
+            "transcript_path": "/tmp/rollout.jsonl",
+        },
+    )
