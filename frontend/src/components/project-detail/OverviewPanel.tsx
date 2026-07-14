@@ -45,7 +45,7 @@ export function OverviewPanel({
   data: ProjectDetailData;
   onSaveDescription?: (description: string) => Promise<void>;
   onSaveProjectMetadata?: (metadata: {
-    slug?: string;
+    projectUrl?: string;
     tags?: string[];
     visibility?: "private" | "public";
   }) => Promise<void>;
@@ -66,13 +66,13 @@ export function OverviewPanel({
     openProjectMetadataEditor,
     overviewEditDrawerRef,
     projectMetadataError,
-    projectSlugDraft,
+    projectUrlDraft,
     projectTagsDraft,
     projectVisibilityDraft,
     saveDescription,
     saveProjectMetadata,
     setDescriptionDraft,
-    setProjectSlugDraft,
+    setProjectUrlDraft,
     setProjectTagsDraft,
     setProjectVisibilityDraft,
   } = useOverviewEditors({
@@ -148,7 +148,7 @@ export function OverviewPanel({
             <div className="bh-project-context-links" aria-label="Project links">
               <div className="bh-project-context-link-field">
                 <span className="bh-project-context-link-label">Project URL</span>
-                {projectUrlItem ? (
+                {projectUrlItem?.value ? (
                   <a
                     className="bh-project-context-link"
                     href={projectUrlItem.href ?? projectUrlItem.value}
@@ -168,7 +168,7 @@ export function OverviewPanel({
                     <span className="bh-project-context-link-icon">
                       <Link2 aria-hidden="true" size={16} strokeWidth={1.5} />
                     </span>
-                    <span className="bh-project-context-link-value">Not available</span>
+                    <span className="bh-project-context-link-value">Not provided</span>
                   </span>
                 )}
               </div>
@@ -342,10 +342,12 @@ export function OverviewPanel({
               <label>
                 <span>Project URL</span>
                 <input
-                  maxLength={255}
-                  onChange={(event) => setProjectSlugDraft(event.target.value)}
-                  placeholder="project-url"
-                  value={projectSlugDraft}
+                  inputMode="url"
+                  maxLength={2048}
+                  onChange={(event) => setProjectUrlDraft(event.target.value)}
+                  placeholder=""
+                  type="text"
+                  value={projectUrlDraft}
                 />
               </label>
               {repositoryUrlItem?.href ? (

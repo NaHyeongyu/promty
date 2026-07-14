@@ -261,6 +261,7 @@ export function useProjectActions({
         selectedProject
           ? {
               ...selectedProject,
+              projectUrl: updatedProject.project_url ?? undefined,
               slug: updatedProject.slug,
               tags: updatedProject.tags ?? [],
               visibility: updatedProject.visibility,

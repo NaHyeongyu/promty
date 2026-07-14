@@ -7,7 +7,6 @@ import type {
   ProjectMemoryScope,
   RepositoryFileContent,
 } from "../components/project-detail";
-import { BRAND_NAME } from "../config";
 import {
   formatCompactNumber,
   formatDate,
@@ -16,7 +15,7 @@ import {
   formatRelativeTimestamp,
   formatSinceYesterdayDelta,
 } from "../lib/formatters";
-import { projectDetailUrl } from "./projectUrls";
+import { externalProjectHref } from "./projectUrls";
 import type {
   Project,
   ProjectDetailApiResponse,
@@ -60,6 +59,7 @@ export function emptyProjectDetailData(project: Project | null): ProjectDetailDa
         ? "Repository connected"
         : "Repository not connected",
       repositoryUrl: project?.githubUrl,
+      projectUrl: project?.projectUrl,
       slug: project?.slug,
       tags: project?.tags ?? [],
       visibility: project?.visibility ?? "private",
@@ -237,9 +237,7 @@ export function projectDetailDataFromApi(
     payload.metrics.total_prompts ?? payload.prompt_activities?.length ?? 0;
   const projectDescription = payload.project.description?.trim() ?? "";
   const repositoryUrl = payload.project.repository_url ?? fallbackProject?.githubUrl;
-  const projectUrl = projectDetailUrl(
-    payload.project.slug ?? payload.project.id ?? fallbackProject?.id ?? "",
-  );
+  const projectUrl = payload.project.project_url ?? fallbackProject?.projectUrl ?? "";
 
   return {
     activities: payload.activities.map((activity) => ({
@@ -306,8 +304,8 @@ export function projectDetailDataFromApi(
       {
         title: "Project URL",
         value: projectUrl,
-        description: `${BRAND_NAME} project detail page`,
-        href: projectUrl,
+        description: projectUrl ? "External project page" : "No project URL provided.",
+        href: externalProjectHref(projectUrl),
       },
       {
         title: "Description",
@@ -370,6 +368,7 @@ export function projectDetailDataFromApi(
       name: payload.project.name || fallbackProject?.name || "Project",
       repositoryStatus: payload.project.repository_status,
       repositoryUrl,
+      projectUrl: projectUrl || undefined,
       slug: payload.project.slug ?? fallbackProject?.slug,
       tags: payload.project.tags ?? fallbackProject?.tags ?? [],
       visibility:

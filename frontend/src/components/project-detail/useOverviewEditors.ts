@@ -16,7 +16,7 @@ type UseOverviewEditorsOptions = {
   rawDescriptionValue: string;
   onSaveDescription?: (description: string) => Promise<void>;
   onSaveProjectMetadata?: (metadata: {
-    slug?: string;
+    projectUrl?: string;
     tags?: string[];
     visibility?: ProjectVisibility;
   }) => Promise<void>;
@@ -37,9 +37,7 @@ export function useOverviewEditors({
   const [isProjectMetadataEditing, setIsProjectMetadataEditing] = useState(false);
   const [isProjectMetadataSaving, setIsProjectMetadataSaving] = useState(false);
   const [projectMetadataError, setProjectMetadataError] = useState<string | null>(null);
-  const [projectSlugDraft, setProjectSlugDraft] = useState(
-    data.project.slug ?? data.project.id,
-  );
+  const [projectUrlDraft, setProjectUrlDraft] = useState(data.project.projectUrl ?? "");
   const [projectTagsDraft, setProjectTagsDraft] = useState(
     data.project.tags.join(", "),
   );
@@ -62,7 +60,7 @@ export function useOverviewEditors({
   };
 
   const resetProjectMetadataDraft = () => {
-    setProjectSlugDraft(data.project.slug ?? data.project.id);
+    setProjectUrlDraft(data.project.projectUrl ?? "");
     setProjectTagsDraft(data.project.tags.join(", "));
     setProjectVisibilityDraft(projectVisibilityFromValue(data.project.visibility));
     setProjectMetadataError(null);
@@ -147,7 +145,7 @@ export function useOverviewEditors({
     setIsProjectMetadataSaving(true);
     try {
       await onSaveProjectMetadata({
-        slug: projectSlugDraft,
+        projectUrl: projectUrlDraft,
         tags: projectTagsFromInput(tagInput),
         visibility: projectVisibilityDraft,
       });
@@ -214,11 +212,11 @@ export function useOverviewEditors({
   }, [data.project.description, data.project.id]);
 
   useEffect(() => {
-    setProjectSlugDraft(data.project.slug ?? data.project.id);
+    setProjectUrlDraft(data.project.projectUrl ?? "");
     setProjectTagsDraft(data.project.tags.join(", "));
     setProjectVisibilityDraft(projectVisibilityFromValue(data.project.visibility));
     setProjectMetadataError(null);
-  }, [data.project.id, data.project.slug, data.project.tags, data.project.visibility]);
+  }, [data.project.id, data.project.projectUrl, data.project.tags, data.project.visibility]);
 
   useEffect(() => {
     clearOverviewEditCloseTimer();
@@ -274,13 +272,13 @@ export function useOverviewEditors({
     openProjectMetadataEditor,
     overviewEditDrawerRef,
     projectMetadataError,
-    projectSlugDraft,
+    projectUrlDraft,
     projectTagsDraft,
     projectVisibilityDraft,
     saveDescription,
     saveProjectMetadata,
     setDescriptionDraft,
-    setProjectSlugDraft,
+    setProjectUrlDraft,
     setProjectTagsDraft,
     setProjectVisibilityDraft,
   };

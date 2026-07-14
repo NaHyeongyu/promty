@@ -101,6 +101,7 @@ export function projectsFromEvents(
       summaryTrackedFiles?: number;
       prompts: number;
       pendingMemoryCount: number;
+      projectUrl?: string;
       sessions: Set<string>;
       slug?: string;
       tags: string[];
@@ -127,6 +128,7 @@ export function projectsFromEvents(
       summaryTrackedFiles: summary.tracked_files,
       prompts: 0,
       pendingMemoryCount: summary.pending_memory_count ?? 0,
+      projectUrl: summary.project_url ?? undefined,
       sessions: new Set<string>(),
       slug: summary.slug,
       tags: summary.tags ?? [],
@@ -198,6 +200,7 @@ export function projectsFromEvents(
     latestMemoryAt: value.latestMemoryAt,
     memoryCount: value.memoryCount,
     pendingMemoryCount: value.pendingMemoryCount,
+    projectUrl: value.projectUrl,
     tags: value.tags,
     visibility: value.visibility,
   })).sort(

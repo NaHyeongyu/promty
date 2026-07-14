@@ -49,6 +49,7 @@ class ProjectDescriptionUpdateRequest(BaseModel):
 
 class ProjectMetadataUpdateRequest(BaseModel):
     slug: str | None = Field(default=None, min_length=1, max_length=255)
+    project_url: str | None = Field(default=None, max_length=2048)
     tags: list[str] | None = None
     visibility: str | None = Field(default=None)
 
@@ -63,6 +64,15 @@ class ProjectMetadataUpdateRequest(BaseModel):
         if not slug:
             raise ValueError("Project URL is required.")
         return slug
+
+    @field_validator("project_url", mode="before")
+    @classmethod
+    def normalize_project_url(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
 
     @field_validator("tags", mode="before")
     @classmethod
@@ -122,6 +132,7 @@ class ProjectSummaryResponse(BaseModel):
     name: str
     prompts: int
     pending_memory_count: int
+    project_url: str | None
     sessions: int
     slug: str
     tags: list[str]

@@ -6,7 +6,6 @@ import {
   formatRelativeTimestamp,
   formatTimestamp,
 } from "../lib/formatters";
-import { projectDetailUrl } from "./projectUrls";
 import type { Project } from "./types";
 
 export const MOCK_GITHUB_UNLINKED_PROJECT_ID = "mock-github-unlinked-project";
@@ -108,10 +107,9 @@ export function mockGithubUnlinkedProjectDetail(project: Project): ProjectDetail
         value: "Not connected",
       },
       {
-        description: "Promty project detail page",
-        href: projectDetailUrl(project.slug ?? project.id),
+        description: "No project URL provided.",
         title: "Project URL",
-        value: projectDetailUrl(project.slug ?? project.id),
+        value: "",
       },
       {
         title: "Description",
@@ -172,6 +170,7 @@ export function mockGithubUnlinkedProjectDetail(project: Project): ProjectDetail
       name: project.name,
       repositoryStatus: "Repository not connected",
       repositoryUrl: undefined,
+      projectUrl: undefined,
       slug: project.slug,
       tags: project.tags,
       visibility: project.visibility,

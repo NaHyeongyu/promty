@@ -43,6 +43,7 @@ export type ProjectDetailProject = ProjectHeaderProps & {
   description: string;
   id: string;
   isBookmarked: boolean;
+  projectUrl?: string;
   slug?: string;
   tags: string[];
   visibility?: "private" | "public";

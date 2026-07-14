@@ -36,6 +36,7 @@ export function useProjectDetail({ onUnauthorized }: UseProjectDetailOptions) {
             project: {
               ...currentDetail.project,
               isBookmarked: updatedProject.is_bookmarked === true,
+              projectUrl: updatedProject.project_url ?? undefined,
               slug: updatedProject.slug ?? currentDetail.project.slug,
               tags: updatedProject.tags ?? currentDetail.project.tags,
               visibility: updatedProject.visibility,

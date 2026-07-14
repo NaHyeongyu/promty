@@ -28,6 +28,7 @@ export type Project = {
   latestMemoryAt?: string;
   memoryCount: number;
   pendingMemoryCount: number;
+  projectUrl?: string;
 };
 
 export type AuthUser = {
@@ -101,6 +102,7 @@ export type ProjectSummary = {
   latest_memory_at: string | null;
   memory_count: number;
   pending_memory_count: number;
+  project_url: string | null;
   updated_at: string;
   visibility: "private" | "public";
 };
@@ -280,6 +282,7 @@ export type ProjectDetailApiResponse = {
     id: string;
     is_bookmarked?: boolean;
     name: string;
+    project_url: string | null;
     repository_status: string;
     repository_url: string | null;
     slug?: string;

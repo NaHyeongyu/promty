@@ -48,6 +48,7 @@ def project_summary(
         "id": str(project.id),
         "slug": project.slug,
         "name": project.name,
+        "project_url": project.project_url,
         "git_remote": project.git_remote,
         "github_url": normalize_github_url(project.git_remote),
         "default_branch": project.default_branch,
@@ -395,6 +396,8 @@ def update_project_metadata_summary(
     db: Session,
     *,
     project_id: UUID,
+    project_url: str | None,
+    project_url_is_set: bool,
     slug: str | None,
     tags: list[str] | None,
     user: User,
@@ -417,6 +420,8 @@ def update_project_metadata_summary(
         project.slug = slug
     if tags is not None:
         project.tags = tags
+    if project_url_is_set:
+        project.project_url = project_url
     if visibility is not None:
         project.visibility = visibility
 
