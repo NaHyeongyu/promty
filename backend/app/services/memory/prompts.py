@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from app.core.config import settings
+from app.core.locales import ai_output_language_instruction
 from app.services.memory.errors import MemoryGenerationError
 from app.services.memory.text import truncate
 
@@ -369,6 +370,7 @@ def _render_memory_draft_prompt(
     ]
     project_context = {
         "model": context.get("model"),
+        "output_locale": context.get("output_locale", "en"),
         "project_id": context.get("project_id"),
         "project_name": context.get("project_name"),
         "session_id": context.get("session_id"),
@@ -423,8 +425,13 @@ def _render_memory_draft_prompt(
             "Each generated memory must be structured around Summary, Tasks, Decisions, and Follow-ups.",
             "Tasks record what was done.",
             "Decisions record what was chosen, why it was chosen, and what communication led to it.",
+            "Outcome records only the final state: what is now complete, the resulting decision, and any remaining blocker.",
             "",
             "Important:",
+            ai_output_language_instruction(context.get("output_locale")),
+            "Apply that language requirement to titles, summaries, reasons, tasks, decisions, follow-ups, open questions, and uncertainties.",
+            "Do not translate JSON property names or enum values.",
+            "",
             "Optimize for the memory UX: a Pending Memory batch should usually become one generated memory item.",
             f"Return 1 memory_draft by default. Return at most {MAX_MEMORY_DRAFTS} memory_drafts.",
             "Only split into multiple memory_drafts when the batch contains clearly separate work streams that would be confusing to review as one draft.",
@@ -458,7 +465,10 @@ def _render_memory_draft_prompt(
             "14. Do not create fallback-style generic drafts such as counts of prompts and AI responses.",
             "15. The best output for a normal batch is exactly one memory_drafts item with detailed sections.",
             "16. Do not omit meaningful tasks or decisions just to keep section arrays short.",
-            "17. Return JSON only. Do not include markdown. Do not include explanations outside the JSON.",
+            '17. Write "outcome" as 2-4 concise sentences and no more than 600 characters.',
+            '18. In "outcome", do not narrate the conversation or repeat the event timeline. Do not include event types, event IDs, UUIDs, quoted prompts, quoted AI responses, or phrases such as "the user said" and "the AI replied".',
+            '19. In "outcome", prefer durable result language such as implemented, fixed, decided, blocked, or remaining. Put detailed work items in Tasks and decisions in Decisions instead of repeating them.',
+            "20. Return JSON only. Do not include markdown. Do not include explanations outside the JSON.",
             "",
             "Project context:",
             json.dumps(project_context, ensure_ascii=False),
@@ -490,6 +500,7 @@ def _render_memory_draft_prompt(
                             "type": "work_log",
                             "title": "string",
                             "summary": "string",
+                            "outcome": "2-4 concise sentences describing the final result and remaining blocker",
                             "why_it_matters": "string",
                             "details": {
                                 "summary": "string",
@@ -728,6 +739,14 @@ def _render_project_memory_prompt(context: dict[str, Any]) -> str:
             "→ user may edit generated memories and the final Project Memory snapshot later",
             "",
             "This is the final Project Memory compilation step.",
+            "",
+            ai_output_language_instruction(
+                project_context.get("output_locale")
+                if isinstance(project_context, dict)
+                else "en"
+            ),
+            "Apply that language requirement to the markdown body and every human-readable value in sections and warnings.",
+            "Do not translate JSON property names or identifiers.",
             "",
             "Use generated and user-edited source memories by default.",
             "Do not use pending draft evidence directly.",

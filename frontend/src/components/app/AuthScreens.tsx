@@ -15,6 +15,7 @@ import { currentWorkspaceReturnUrl } from "../../workspace/navigation";
 import { BrandLogo, GitHubIcon } from "./Branding";
 
 export function CliLoginPage() {
+  const { t } = useI18n();
   const params = new URLSearchParams(window.location.search);
   const redirectUri = params.get("redirect_uri") ?? "";
   const state = params.get("state") ?? "";
@@ -43,28 +44,25 @@ export function CliLoginPage() {
         </div>
 
         <div className="cli-login-copy">
-          <h1 id="cli-login-title">Authorize this collector</h1>
-          <p>
-            Use your GitHub identity to send this machine's AI activity to the correct {" "}
-            {BRAND_NAME} workspace.
-          </p>
+          <h1 id="cli-login-title">{t("auth.authorizeCollectorTitle")}</h1>
+          <p>{t("auth.cliDescription", { brand: BRAND_NAME })}</p>
         </div>
 
-        <div className="auth-role-list" aria-label="Collector authorization details">
+        <div className="auth-role-list" aria-label={t("auth.collectorAuthorizationDetails")}>
           <AuthRole
-            description="GitHub verifies your account using profile and email access."
+            description={t("auth.identityAccessDescription")}
             icon={UserRoundCheck}
-            title="Account identity"
+            title={t("auth.identity")}
           />
           <AuthRole
-            description={`A revocable ${BRAND_NAME} collector token is returned only to this machine.`}
+            description={t("auth.deviceTokenDescription", { brand: BRAND_NAME })}
             icon={KeyRound}
-            title="Device token"
+            title={t("auth.deviceToken")}
           />
           <AuthRole
-            description="This step does not request GitHub repository access."
+            description={t("auth.noRepositoryAccess")}
             icon={FolderGit2}
-            title="Repository access"
+            title={t("auth.repositoryPermission")}
           />
         </div>
 
@@ -80,13 +78,13 @@ export function CliLoginPage() {
           }}
         >
           <GitHubIcon />
-          <span>Authorize collector</span>
+          <span>{t("auth.authorizeCollector")}</span>
           <ArrowRight aria-hidden="true" size={17} strokeWidth={1.5} />
         </a>
 
         <div className="cli-login-footer">
           <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.5} />
-          <span>Return to your terminal after GitHub approval.</span>
+          <span>{t("auth.returnTerminal")}</span>
         </div>
         <a
           className="auth-docs-link"
@@ -95,7 +93,7 @@ export function CliLoginPage() {
           target="_blank"
         >
           <BookOpen aria-hidden="true" size={15} strokeWidth={1.5} />
-          Collector setup guide
+          {t("auth.collectorGuide")}
         </a>
       </section>
     </main>
@@ -113,7 +111,7 @@ export function WebLoginPage({
   const authorizationError =
     new URLSearchParams(window.location.search).get("auth_error") ===
     "github_authorization_cancelled"
-      ? "GitHub authorization was cancelled. No permissions were changed."
+      ? t("auth.authorizationCancelled")
       : null;
   const displayedError = errorMessage ?? authorizationError;
   const returnTo = currentWorkspaceReturnUrl();

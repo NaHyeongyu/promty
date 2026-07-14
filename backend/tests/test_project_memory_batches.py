@@ -371,6 +371,37 @@ def test_batch_chunks_all_sessions_into_one_project_update(monkeypatch) -> None:
     assert memory.storage_key.endswith(f"/batch/{prepared.batch_id}/memory")
 
 
+def test_batch_outcome_keeps_only_recent_concise_results() -> None:
+    project_id = uuid4()
+    snapshots = [_snapshot()]
+    chunks = [
+        batches.GeneratedChunkPayload(
+            first_event_at=None,
+            last_event_at=None,
+            metadata={},
+            payload={"outcome": f"Result {index}. " + ("detail " * 80)},
+            source_draft_ids=[str(snapshots[0].id)],
+            source_draft_version_ids=[str(snapshots[0].version_id)],
+            source_session_id=str(uuid4()),
+        )
+        for index in range(5)
+    ]
+    prepared = batches.BatchAttemptSnapshot(
+        batch_id=uuid4(),
+        chunk_generations=[],
+        project_id=project_id,
+        project_name="Promty",
+        snapshot_manifest=[],
+        source_session_ids=[],
+    )
+
+    memory = batches._prepare_project_batch_memory(batch=prepared, chunks=chunks)
+
+    assert "Result 0." not in memory.payload["outcome"]
+    assert "Result 2." in memory.payload["outcome"]
+    assert len(memory.payload["outcome"]) <= batches.PROJECT_MEMORY_BATCH_OUTCOME_MAX_CHARS
+
+
 def test_generation_failure_does_not_consume_any_snapshot_draft(monkeypatch) -> None:
     project_id, rows = _batch_rows(first_session_count=7)
     call_count = 0

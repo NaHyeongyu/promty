@@ -5,9 +5,18 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { ArrowRight, ChevronRight, Sparkles, X } from "lucide-react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Sparkles,
+  X,
+} from "lucide-react";
 import type { ProjectMemoryGenerationResponse } from "../../api/projects";
+import { useI18n } from "../../i18n/I18nProvider";
 import { MarkdownContent } from "../MarkdownContent";
+import { displayMemoryOutcome } from "./memoryOutcome";
 import type {
   ProjectDetailData,
   ProjectMemoryArtifact,
@@ -180,19 +189,29 @@ function MemoryArtifactCard({
 
 function MemoryArtifactDetailDrawer({
   artifact,
+  artifactCount,
+  artifactPosition,
   onClose,
+  onNext,
   onOpenSession,
+  onPrevious,
 }: {
   artifact: ProjectMemoryArtifact;
+  artifactCount: number;
+  artifactPosition: number;
   onClose: () => void;
+  onNext?: () => void;
   onOpenSession?: (sessionId: string) => void;
+  onPrevious?: () => void;
 }) {
+  const { t } = useI18n();
   const drawerRef = useRef<HTMLElement | null>(null);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  const [areAllFilesVisible, setAreAllFilesVisible] = useState(false);
   const sections = (artifact.sections ?? []).filter(
     (section) => section.title?.trim() && section.summary?.trim(),
   );
-  const outcome =
-    artifact.outcome && artifact.outcome !== artifact.summary ? artifact.outcome : null;
+  const outcome = displayMemoryOutcome(artifact.outcome, artifact.summary);
   const dateRange = formatMemoryDateRange(artifact.firstEventAt, artifact.lastEventAt);
   const statusLabel = memoryArtifactStatusLabel(artifact);
   const changedFiles = (artifact.changedFiles ?? []).filter((file) => file.path?.trim());
@@ -204,21 +223,28 @@ function MemoryArtifactDetailDrawer({
       ),
     ),
   );
-  const metadataRows = [
-    { label: "Covered dates", value: dateRange },
+  const metricRows = [
     {
-      label: "Sources",
-      value:
-        sourceSessionIds.length > 0
-          ? `${sourceSessionIds.length} ${
-              sourceSessionIds.length === 1 ? "session" : "sessions"
-            }`
-          : null,
+      label: sourceSessionIds.length === 1 ? "Session" : "Sessions",
+      value: sourceSessionIds.length > 0 ? sourceSessionIds.length.toString() : null,
     },
-    { label: "Prompts", value: artifact.promptCount ? artifact.promptCount.toString() : null },
-    { label: "Files changed", value: changedFileCount > 0 ? changedFileCount.toString() : null },
+    {
+      label: artifact.promptCount === 1 ? "Prompt" : "Prompts",
+      value: artifact.promptCount ? artifact.promptCount.toString() : null,
+    },
+    {
+      label: changedFileCount === 1 ? "File" : "Files",
+      value: changedFileCount > 0 ? changedFileCount.toString() : null,
+    },
+  ].filter((row) => row.value);
+  const provenanceRows = [
+    { label: "Covered dates", value: dateRange },
+    { label: "Created", value: formatMemoryDate(artifact.createdAt) },
+    { label: "Last updated", value: formatMemoryDate(artifact.updatedAt) },
     { label: "Status", value: statusLabel },
   ].filter((row) => row.value);
+  const visibleFiles = areAllFilesVisible ? changedFiles : changedFiles.slice(0, 5);
+  const hiddenFileCount = Math.max(changedFiles.length - visibleFiles.length, 0);
 
   useEffect(() => {
     const previousActiveElement = document.activeElement;
@@ -229,6 +255,11 @@ function MemoryArtifactDetailDrawer({
       }
     };
   }, []);
+
+  useEffect(() => {
+    setAreAllFilesVisible(false);
+    bodyRef.current?.scrollTo({ top: 0 });
+  }, [artifact.id]);
 
   const keepFocusInsideDrawer = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key !== "Tab") {
@@ -242,6 +273,7 @@ function MemoryArtifactDetailDrawer({
           "textarea:not([disabled])",
           "input:not([disabled])",
           "select:not([disabled])",
+          "summary",
           "[tabindex]:not([tabindex='-1'])",
         ].join(","),
       ) ?? [],
@@ -288,45 +320,59 @@ function MemoryArtifactDetailDrawer({
         role="dialog"
         tabIndex={-1}
       >
-        <div className="bh-memory-detail-header">
-          <div>
-            <span>{dateRange ?? "Project memory"}</span>
+        <header className="bh-memory-detail-header">
+          <div className="bh-memory-detail-topbar">
+            <div
+              aria-label={t("memory.historyNavigation")}
+              className="bh-memory-detail-navigation"
+              role="group"
+            >
+              <button
+                aria-label={t("memory.viewNewer")}
+                className="bh-memory-detail-navigation-button"
+                disabled={!onPrevious}
+                onClick={onPrevious}
+                title={t("memory.newer")}
+                type="button"
+              >
+                <ChevronLeft aria-hidden="true" size={16} strokeWidth={1.5} />
+              </button>
+              <span>
+                {artifactPosition} of {artifactCount}
+              </span>
+              <button
+                aria-label={t("memory.viewOlder")}
+                className="bh-memory-detail-navigation-button"
+                disabled={!onNext}
+                onClick={onNext}
+                title={t("memory.older")}
+                type="button"
+              >
+                <ChevronRight aria-hidden="true" size={16} strokeWidth={1.5} />
+              </button>
+            </div>
+            <button
+              aria-label={t("memory.closeDetails")}
+              className="bh-icon-button"
+              onClick={onClose}
+              type="button"
+            >
+              <X aria-hidden="true" size={16} strokeWidth={1.5} />
+            </button>
+          </div>
+          <div className="bh-memory-detail-heading">
+            <div className="bh-memory-detail-eyebrow">
+              <span>{dateRange ?? t("memory.projectMemory")}</span>
+              {statusLabel ? (
+                <span className="bh-memory-detail-status">{statusLabel}</span>
+              ) : null}
+            </div>
             <h2 id="memory-detail-title">{artifact.title}</h2>
           </div>
-          <button
-            aria-label="Close memory details"
-            className="bh-icon-button"
-            onClick={onClose}
-            type="button"
-          >
-            <X aria-hidden="true" size={16} strokeWidth={1.5} />
-          </button>
-        </div>
 
-        <div className="bh-memory-detail-body">
-          {sourceSessionIds.length > 0 && onOpenSession ? (
-            <div className="bh-memory-source-actions">
-              {sourceSessionIds.map((sessionId, index) => (
-                <button
-                  className="bh-memory-source-action"
-                  key={sessionId}
-                  onClick={() => onOpenSession(sessionId)}
-                  type="button"
-                >
-                  <span>
-                    {sourceSessionIds.length === 1
-                      ? "Open source session"
-                      : `Open source session ${index + 1}`}
-                  </span>
-                  <ArrowRight aria-hidden="true" size={15} strokeWidth={1.5} />
-                </button>
-              ))}
-            </div>
-          ) : null}
-
-          {metadataRows.length > 0 ? (
-            <dl className="bh-memory-detail-meta">
-              {metadataRows.map((row) => (
+          {metricRows.length > 0 ? (
+            <dl className="bh-memory-detail-metrics">
+              {metricRows.map((row) => (
                 <div key={row.label}>
                   <dt>{row.label}</dt>
                   <dd>{row.value}</dd>
@@ -334,50 +380,152 @@ function MemoryArtifactDetailDrawer({
               ))}
             </dl>
           ) : null}
+        </header>
 
-          <article className="bh-memory-detail-section">
-            <span className="bh-memory-step-kicker">Summary</span>
-            <p>{artifact.summary || "No summary is available for this memory."}</p>
+        <div className="bh-memory-detail-body" ref={bodyRef}>
+          <article className="bh-memory-detail-summary">
+            <span className="bh-memory-step-kicker">{t("memory.summary")}</span>
+            <p>{artifact.summary || t("memory.noSummary")}</p>
           </article>
 
           {outcome ? (
-            <article className="bh-memory-detail-section">
-              <span className="bh-memory-step-kicker">Outcome</span>
-              <p>{outcome}</p>
-            </article>
-          ) : null}
-
-          {sections.length > 0 ? (
-            <article className="bh-memory-detail-section">
-              <span className="bh-memory-step-kicker">Key Notes</span>
-              <div className="bh-memory-detail-section-list">
-                {sections.map((section) => (
-                  <section key={`${artifact.id}-${section.title}`}>
-                    <h3>{section.title}</h3>
-                    <p>{section.summary}</p>
-                  </section>
-                ))}
+            <article className="bh-memory-detail-outcome">
+              <CheckCircle2 aria-hidden="true" size={18} strokeWidth={1.5} />
+              <div>
+                <span className="bh-memory-step-kicker">{t("memory.outcome")}</span>
+                <p>{outcome}</p>
               </div>
             </article>
           ) : null}
 
-          {changedFiles.length > 0 ? (
-            <article className="bh-memory-detail-section">
-              <span className="bh-memory-step-kicker">Changed Files</span>
-              <ul className="bh-memory-detail-file-list">
-                {changedFiles.slice(0, 12).map((file) => (
-                  <li key={`${artifact.id}-${file.path}`}>
-                    <span>{file.path}</span>
-                    {file.status ? <small>{file.status}</small> : null}
+          {sections.length > 0 ? (
+            <section
+              aria-labelledby="memory-detail-notes-title"
+              className="bh-memory-detail-content-section"
+            >
+              <div className="bh-memory-detail-section-heading">
+                <h3 id="memory-detail-notes-title">{t("memory.keyNotes")}</h3>
+                <span>{sections.length}</span>
+              </div>
+              <ol className="bh-memory-detail-note-list">
+                {sections.map((section, index) => (
+                  <li key={`${artifact.id}-${section.title}`}>
+                    <span aria-hidden="true" className="bh-memory-detail-note-number">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <div>
+                      <h4>{section.title}</h4>
+                      <p>{section.summary}</p>
+                    </div>
                   </li>
                 ))}
+              </ol>
+            </section>
+          ) : null}
+
+          {changedFiles.length > 0 ? (
+            <section
+              aria-labelledby="memory-detail-files-title"
+              className="bh-memory-detail-content-section"
+            >
+              <div className="bh-memory-detail-section-heading">
+                <h3 id="memory-detail-files-title">{t("memory.changedFiles")}</h3>
+                <span>{changedFileCount}</span>
+              </div>
+              <ul className="bh-memory-detail-file-list" id="memory-detail-files-list">
+                {visibleFiles.map((file) => {
+                  const pathSegments = file.path.split("/");
+                  const fileName = pathSegments.pop() ?? file.path;
+                  const directory = pathSegments.join("/");
+                  return (
+                    <li key={`${artifact.id}-${file.path}`}>
+                      <span
+                        aria-label={file.status ? `${file.status} file` : "Changed file"}
+                        className="bh-memory-detail-file-status"
+                        data-status={file.status}
+                      >
+                        {file.status?.trim().charAt(0).toUpperCase() || "•"}
+                      </span>
+                      <span className="bh-memory-detail-file-copy">
+                        <strong>{fileName}</strong>
+                        {directory ? <small>{directory}</small> : null}
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
-              {changedFiles.length > 12 ? (
+              {changedFiles.length > 5 ? (
+                <button
+                  aria-controls="memory-detail-files-list"
+                  aria-expanded={areAllFilesVisible}
+                  className="bh-memory-detail-expand-button"
+                  onClick={() => setAreAllFilesVisible((isVisible) => !isVisible)}
+                  type="button"
+                >
+                  {areAllFilesVisible
+                    ? "Show fewer files"
+                    : `Show ${hiddenFileCount} more ${hiddenFileCount === 1 ? "file" : "files"}`}
+                </button>
+              ) : null}
+              {changedFileCount > changedFiles.length ? (
                 <small className="bh-memory-detail-muted">
-                  {changedFiles.length - 12} more files not shown.
+                  {changedFileCount - changedFiles.length} additional changed{" "}
+                  {changedFileCount - changedFiles.length === 1
+                    ? "file is"
+                    : "files are"}{" "}
+                  not listed.
                 </small>
               ) : null}
-            </article>
+            </section>
+          ) : null}
+
+          {provenanceRows.length > 0 || sourceSessionIds.length > 0 ? (
+            <details className="bh-memory-detail-provenance">
+              <summary>
+                <span>
+                  <strong>{t("memory.sourcesDetails")}</strong>
+                  <small>
+                    {sourceSessionIds.length > 0
+                      ? `${sourceSessionIds.length} source ${
+                          sourceSessionIds.length === 1 ? "session" : "sessions"
+                        }`
+                      : t("memory.metadata")}
+                  </small>
+                </span>
+                <ChevronRight aria-hidden="true" size={16} strokeWidth={1.5} />
+              </summary>
+              <div className="bh-memory-detail-provenance-body">
+                {provenanceRows.length > 0 ? (
+                  <dl className="bh-memory-detail-meta">
+                    {provenanceRows.map((row) => (
+                      <div key={row.label}>
+                        <dt>{row.label}</dt>
+                        <dd>{row.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : null}
+                {sourceSessionIds.length > 0 && onOpenSession ? (
+                  <div className="bh-memory-source-actions">
+                    {sourceSessionIds.map((sessionId, index) => (
+                      <button
+                        className="bh-memory-source-action"
+                        key={sessionId}
+                        onClick={() => onOpenSession(sessionId)}
+                        type="button"
+                      >
+                        <span>
+                          {sourceSessionIds.length === 1
+                            ? "Open source session"
+                            : `Open source session ${index + 1}`}
+                        </span>
+                        <ArrowRight aria-hidden="true" size={15} strokeWidth={1.5} />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </details>
           ) : null}
         </div>
       </section>
@@ -400,6 +548,7 @@ export function MemoryPanel({
   onLoadMemoryArtifacts?: (limit: number) => Promise<ProjectMemoryArtifact[]>;
   onOpenSession?: (sessionId: string) => void;
 }) {
+  const { t } = useI18n();
   const [loadedArtifacts, setLoadedArtifacts] = useState<ProjectMemoryArtifact[] | null>(null);
   const displayedArtifacts = loadedArtifacts ?? data.memory.recentArtifacts;
   const projectMemoryArtifact = data.memory.recentArtifacts.find(
@@ -460,6 +609,9 @@ export function MemoryPanel({
     isProjectMemoryGenerationActive;
   const selectedArtifact =
     generatedArtifacts.find((artifact) => artifact.id === selectedArtifactId) ?? null;
+  const selectedArtifactIndex = selectedArtifact
+    ? generatedArtifacts.findIndex((artifact) => artifact.id === selectedArtifact.id)
+    : -1;
 
   useEffect(() => {
     setLoadedArtifacts(null);
@@ -560,7 +712,7 @@ export function MemoryPanel({
         return;
       }
       setGenerationError(
-        error instanceof Error ? error.message : "Memory creation failed.",
+        error instanceof Error ? error.message : t("memory.failed"),
       );
     } finally {
       if (
@@ -583,7 +735,7 @@ export function MemoryPanel({
       setLoadedArtifacts(await onLoadMemoryArtifacts(nextArtifactLoadLimit));
     } catch (error) {
       setArtifactHistoryError(
-        error instanceof Error ? error.message : "Memory history could not be loaded.",
+        error instanceof Error ? error.message : t("memory.historyLoadFailed"),
       );
     } finally {
       setIsArtifactHistoryLoading(false);
@@ -591,11 +743,11 @@ export function MemoryPanel({
   };
 
   return (
-    <section className="bh-memory-workspace" aria-label="Memory">
+    <section className="bh-memory-workspace" aria-label={t("project.memory")}>
       <header className="bh-memory-toolbar">
         <div>
-          <h2>Project Memory</h2>
-          <p>Verify captured work and keep long-term project context current.</p>
+          <h2>{t("memory.projectMemory")}</h2>
+          <p>{t("memory.description")}</p>
         </div>
       </header>
 
@@ -607,7 +759,7 @@ export function MemoryPanel({
       <div className="bh-memory-documentation">
         <section
           className="bh-memory-document-section"
-          aria-label="Memory generation"
+          aria-label={t("memory.generation")}
         >
           {hasPendingDocumentation ? (
             <article
@@ -616,7 +768,7 @@ export function MemoryPanel({
               data-generating={isGenerationActive ? "true" : "false"}
             >
               <div className="bh-memory-document-row-main">
-                <h3>Ready to generate</h3>
+                <h3>{t("memory.ready")}</h3>
                 <div className="bh-memory-request-metrics">
                   <span>
                     <strong>{pendingPromptCount.toLocaleString()}</strong>
@@ -628,7 +780,7 @@ export function MemoryPanel({
                   </span>
                 </div>
                 <p>
-                  {pendingDateRange ?? "Captured work is ready to compile."}
+                  {pendingDateRange ?? t("memory.readyDescription")}
                 </p>
               </div>
               <button
@@ -645,14 +797,14 @@ export function MemoryPanel({
                 <Sparkles aria-hidden="true" size={16} strokeWidth={1.7} />
                 <span>
                   {isGenerationActive
-                    ? "Updating project memory"
+                    ? t("memory.updating")
                     : isProjectMemoryGenerationDelayed
-                      ? "Check update status"
+                      ? t("memory.updateStatus")
                     : generationError
                       ? generationRetryable
-                        ? "Retry update"
-                        : "Retry with latest work"
-                      : "Create project memory"}
+                        ? t("memory.retryUpdate")
+                        : t("memory.retryLatest")
+                      : t("memory.create")}
                 </span>
               </button>
               {isGenerationActive ? (
@@ -663,14 +815,14 @@ export function MemoryPanel({
                 >
                   <div className="bh-memory-generation-progress" aria-hidden="true" />
                   <div className="bh-memory-generation-status-copy">
-                    <strong>Creating project memory</strong>
-                    <span>Memory will refresh when the source work has been processed.</span>
+                    <strong>{t("memory.creating")}</strong>
+                    <span>{t("memory.creatingDescription")}</span>
                   </div>
                 </div>
               ) : generationError ? (
                 <div className="bh-memory-generation-status" data-error="true" role="alert">
                   <div>
-                    <strong>Generation failed.</strong>
+                    <strong>{t("memory.failed")}</strong>
                     <span>{generationError}</span>
                   </div>
                 </div>
@@ -680,8 +832,8 @@ export function MemoryPanel({
             <div className="bh-memory-document-idle" role="status">
               <span>
                 {projectMemoryArtifact
-                  ? "No work waiting for review."
-                  : "No project memory yet."}
+                  ? t("memory.noWaiting")
+                  : t("memory.noCurrent")}
               </span>
             </div>
           )}
@@ -694,12 +846,12 @@ export function MemoryPanel({
           >
             <div className="bh-memory-section-header">
               <div>
-                <span className="bh-memory-step-kicker">Current document</span>
-                <h3 id="project-memory-document-title">Current Project Memory</h3>
+                <span className="bh-memory-step-kicker">{t("memory.currentDocument")}</span>
+                <h3 id="project-memory-document-title">{t("memory.currentProjectMemory")}</h3>
                 <p>
                   {projectMemoryArtifact.updatedAt
                     ? `Updated ${projectMemoryArtifact.updatedAt}`
-                    : "Compiled project memory"}
+                    : t("memory.compiledDocument")}
                 </p>
               </div>
               <span>
@@ -709,12 +861,12 @@ export function MemoryPanel({
                         ? "session"
                         : "sessions"
                     }`
-                  : "Compiled"}
+                  : t("memory.compiled")}
               </span>
             </div>
             <MarkdownContent
               className="bh-markdown-preview bh-memory-project-document"
-              emptyLabel="No compiled content available."
+              emptyLabel={t("memory.noCompiled")}
               value={
                 projectMemoryArtifact.outcome ?? projectMemoryArtifact.summary ?? ""
               }
@@ -729,8 +881,8 @@ export function MemoryPanel({
           >
             <div className="bh-memory-section-header">
               <div>
-                <span className="bh-memory-step-kicker">Long-term context</span>
-                <h3 id="memory-history-title">Memory history</h3>
+                <span className="bh-memory-step-kicker">{t("memory.longTerm")}</span>
+                <h3 id="memory-history-title">{t("memory.history")}</h3>
                 <p>{resultDateRange}</p>
               </div>
               <span>{generatedSummaryCountLabel}</span>
@@ -752,13 +904,13 @@ export function MemoryPanel({
                   onClick={() => void loadMoreArtifacts()}
                   type="button"
                 >
-                  {isArtifactHistoryLoading ? "Loading" : "Load more memory"}
+                  {isArtifactHistoryLoading ? t("activity.loading") : t("memory.loadMore")}
                 </button>
               ) : null}
               {artifactHistoryError ? (
                 <div className="bh-memory-generation-status" data-error="true" role="alert">
                   <div>
-                    <strong>History could not be loaded.</strong>
+                    <strong>{t("memory.historyLoadFailedTitle")}</strong>
                     <span>{artifactHistoryError}</span>
                   </div>
                 </div>
@@ -770,11 +922,23 @@ export function MemoryPanel({
       {selectedArtifact ? (
         <MemoryArtifactDetailDrawer
           artifact={selectedArtifact}
+          artifactCount={generatedArtifacts.length}
+          artifactPosition={selectedArtifactIndex + 1}
           onClose={() => setSelectedArtifactId(null)}
+          onNext={
+            selectedArtifactIndex < generatedArtifacts.length - 1
+              ? () => setSelectedArtifactId(generatedArtifacts[selectedArtifactIndex + 1].id)
+              : undefined
+          }
           onOpenSession={(sessionId) => {
             setSelectedArtifactId(null);
             onOpenSession?.(sessionId);
           }}
+          onPrevious={
+            selectedArtifactIndex > 0
+              ? () => setSelectedArtifactId(generatedArtifacts[selectedArtifactIndex - 1].id)
+              : undefined
+          }
         />
       ) : null}
     </section>

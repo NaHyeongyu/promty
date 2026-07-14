@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.models.projects import Project
-from app.schemas.projects import ProjectSummaryResponse
+from app.schemas.projects import ProjectMetadataUpdateRequest, ProjectSummaryResponse
 from app.services.projects.management import project_summary
 
 
@@ -20,6 +20,7 @@ def test_project_summary_exposes_memory_review_status() -> None:
         is_bookmarked=True,
         name="Example",
         owner_id=uuid4(),
+        project_url="www.google.com",
         slug="example",
         tags=["backend"],
         updated_at=latest_memory_at,
@@ -43,3 +44,18 @@ def test_project_summary_exposes_memory_review_status() -> None:
     assert response.latest_memory_at == latest_memory_at.isoformat()
     assert response.memory_count == 4
     assert response.pending_memory_count == 2
+    assert response.project_url == "www.google.com"
+
+
+def test_project_metadata_preserves_external_url_without_adding_a_host() -> None:
+    payload = ProjectMetadataUpdateRequest(project_url="  www.google.com  ")
+
+    assert payload.project_url == "www.google.com"
+    assert "project_url" in payload.model_fields_set
+
+
+def test_project_metadata_allows_clearing_external_url() -> None:
+    payload = ProjectMetadataUpdateRequest(project_url="   ")
+
+    assert payload.project_url is None
+    assert "project_url" in payload.model_fields_set

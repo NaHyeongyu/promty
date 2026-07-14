@@ -112,6 +112,23 @@ def test_memory_draft_prompt_removes_raw_duplicate_evidence_and_patch() -> None:
     assert all(draft["id"] in prompt for draft in context["pending_drafts"])
 
 
+def test_memory_draft_prompt_requests_the_configured_output_language() -> None:
+    context = {**_context(draft_count=1), "output_locale": "ko"}
+
+    prompt = prompts.build_memory_draft_prompt(context)
+
+    assert "Write every user-facing string in Korean (한국어)" in prompt
+    assert "Do not translate JSON property names" in prompt
+
+
+def test_memory_draft_prompt_requests_a_result_instead_of_an_event_log() -> None:
+    prompt = prompts.build_memory_draft_prompt(_context(draft_count=1))
+
+    assert 'Write "outcome" as 2-4 concise sentences' in prompt
+    assert "do not narrate the conversation or repeat the event timeline" in prompt
+    assert '"outcome": "2-4 concise sentences' in prompt
+
+
 def test_memory_draft_prompt_has_a_deterministic_hard_byte_limit(monkeypatch) -> None:
     monkeypatch.setattr(
         prompts,

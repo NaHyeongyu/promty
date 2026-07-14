@@ -127,6 +127,7 @@ function ProjectPanel({
   onSaveDescription?: (description: string) => Promise<void>;
   onTabChange: (tabId: ProjectDetailTabId) => void;
 }) {
+  const { t } = useI18n();
   if (isLoading) {
     return <ProjectDetailLoadingSkeleton activeTab={activeTab} />;
   }
@@ -136,11 +137,11 @@ function ProjectPanel({
       <EmptyState
         description={errorMessage}
         icon={BookOpen}
-        title="Project detail could not be loaded"
+        title={t("project.detailLoadFailed")}
       >
         {onRetry ? (
           <button className="bh-empty-state-button" onClick={onRetry} type="button">
-            Retry
+            {t("common.retry")}
           </button>
         ) : null}
       </EmptyState>
@@ -197,9 +198,9 @@ function ProjectPanel({
 
   return (
     <EmptyState
-      description="This project section is available as a UI placeholder."
+      description={t("project.sectionPendingDescription")}
       icon={BookOpen}
-      title="Section pending"
+      title={t("project.sectionPending")}
     />
   );
 }

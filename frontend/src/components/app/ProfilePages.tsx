@@ -15,7 +15,11 @@ import {
   User,
 } from "lucide-react";
 import { formatOptionalTimestamp } from "../../lib/formatters";
-import { APP_LANGUAGES, useI18n } from "../../i18n/I18nProvider";
+import {
+  APP_LANGUAGES,
+  type AppLocale,
+  useI18n,
+} from "../../i18n/I18nProvider";
 import type {
   AccountCollectorToken,
   AccountCollectorTokenCreateResponse,
@@ -287,7 +291,7 @@ function TokenRow({
         <div className="settings-token-identity">
           {isEditing ? (
             <input
-              aria-label="Collector token name"
+              aria-label={t("settings.token.nameLabel")}
               autoFocus
               className="settings-control settings-token-name"
               disabled={disabled}
@@ -380,6 +384,7 @@ export function UserSettingsPage({
   onRefreshWorkspace,
   onRenameCollectorToken,
   onRevokeCollectorToken,
+  onUpdatePreferredLocale,
   pendingMemoryCount,
   projectCount,
 }: {
@@ -405,13 +410,14 @@ export function UserSettingsPage({
   onRefreshWorkspace: () => void;
   onRenameCollectorToken: (tokenId: string, name: string) => Promise<void>;
   onRevokeCollectorToken: (tokenId: string) => Promise<void>;
+  onUpdatePreferredLocale: (locale: AppLocale) => Promise<void>;
   pendingMemoryCount: number;
   projectCount: number;
 }) {
   const { locale, setLocale, t } = useI18n();
   const [collectorTokenName, setCollectorTokenName] = useState("");
   const [isTokenCopied, setIsTokenCopied] = useState(false);
-  const roleLabel = currentUser?.is_admin ? "Admin" : "Member";
+  const roleLabel = currentUser?.is_admin ? t("common.admin") : t("common.member");
   const githubConnection = accountOverview?.github_connection;
   const collectorTokens = accountOverview?.collector_tokens ?? [];
   const activeCollectorTokens = collectorTokens.filter(
@@ -452,7 +458,7 @@ export function UserSettingsPage({
   const repositoryCoverage =
     projectCount > 0
       ? `${connectedRepositoryCount.toLocaleString()} / ${projectCount.toLocaleString()}`
-      : "No projects";
+      : t("settings.noProjects");
   const hasConnectedRepository = connectedRepositoryCount > 0;
   const isCollectorRecent =
     latestCollectorUseAge !== null && latestCollectorUseAge <= 24 * 60 * 60 * 1000;
@@ -509,7 +515,7 @@ export function UserSettingsPage({
   };
 
   return (
-    <section className="settings-page" aria-label="Service setup">
+    <section className="settings-page" aria-label={t("settings.serviceSetup")}>
       <AccountStatus error={accountError} isLoading={isAccountLoading} />
       <section className="settings-hero" aria-labelledby="settings-title">
         <div className="settings-hero-copy">
@@ -548,10 +554,10 @@ export function UserSettingsPage({
           </summary>
           <div className="settings-stage-content">
             <dl className="settings-stage-metrics">
-              <div><dt>Account</dt><dd>{currentUser?.username ?? "Signed in"}</dd></div>
-              <div><dt>Email</dt><dd>{currentUser?.email ?? "GitHub authenticated"}</dd></div>
-              <div><dt>Role</dt><dd>{roleLabel}</dd></div>
-              <div><dt>Access</dt><dd>{canUseAdmin ? "Admin console" : "Standard member"}</dd></div>
+              <div><dt>{t("settings.accountLabel")}</dt><dd>{currentUser?.username ?? t("common.signedIn")}</dd></div>
+              <div><dt>{t("settings.email")}</dt><dd>{currentUser?.email ?? t("settings.githubAuthenticated")}</dd></div>
+              <div><dt>{t("settings.role")}</dt><dd>{roleLabel}</dd></div>
+              <div><dt>{t("settings.access")}</dt><dd>{canUseAdmin ? t("settings.adminConsole") : t("settings.standardMember")}</dd></div>
             </dl>
             <div className="settings-language-setting">
               <div>
@@ -562,14 +568,22 @@ export function UserSettingsPage({
                 <select
                   className="settings-control"
                   id="settings-language"
-                  onChange={(event) => setLocale(event.target.value as typeof locale)}
+                  disabled={isSaving}
+                  onChange={(event) => {
+                    const nextLocale = event.target.value as AppLocale;
+                    const previousLocale = locale;
+                    setLocale(nextLocale);
+                    void onUpdatePreferredLocale(nextLocale).catch(() => {
+                      setLocale(previousLocale);
+                    });
+                  }}
                   value={locale}
                 >
                   {APP_LANGUAGES.map((language) => (
                     <option key={language.locale} value={language.locale}>{language.label}</option>
                   ))}
                 </select>
-                <small>{t("language.savedLocally")}</small>
+                <small>{t("language.savedToAccount")}</small>
               </div>
             </div>
           </div>
@@ -595,35 +609,35 @@ export function UserSettingsPage({
           </summary>
           <div className="settings-stage-content">
             <dl className="settings-stage-metrics">
-              <div><dt>Repositories</dt><dd>{repositoryCoverage}</dd></div>
-              <div><dt>GitHub access</dt><dd>{githubConnection?.connected ? "Authorized" : "Not authorized"}</dd></div>
-              <div><dt>Scopes</dt><dd>{githubConnection?.scopes.join(", ") || "Not available"}</dd></div>
-              <div><dt>Updated</dt><dd>{formatOptionalTimestamp(githubConnection?.updated_at, "Never")}</dd></div>
+              <div><dt>{t("settings.repositories")}</dt><dd>{repositoryCoverage}</dd></div>
+              <div><dt>{t("settings.githubAccess")}</dt><dd>{githubConnection?.connected ? t("common.authorized") : t("common.notAuthorized")}</dd></div>
+              <div><dt>{t("settings.scopes")}</dt><dd>{githubConnection?.scopes.join(", ") || t("common.notAvailable")}</dd></div>
+              <div><dt>{t("settings.updated")}</dt><dd>{formatOptionalTimestamp(githubConnection?.updated_at, t("common.never"))}</dd></div>
             </dl>
             <div className="settings-stage-actions">
               <button className="toolbar-button" onClick={onOpenRepositoryConnector} type="button">
                 <Folder aria-hidden="true" size={15} strokeWidth={1.5} />
-                <span>Manage repositories</span>
+                <span>{t("settings.manageRepositories")}</span>
               </button>
               <button
                 className="toolbar-button"
                 onClick={() => { window.location.href = githubConnectUrl; }}
                 type="button"
               >
-                {githubConnection?.connected ? "Refresh GitHub access" : "Connect GitHub"}
+                {githubConnection?.connected ? t("settings.refreshGithub") : t("settings.statusConnectGithub")}
               </button>
               {githubConnection?.connected ? (
                 <button
                   className="toolbar-button settings-danger-action"
                   disabled={isSaving}
                   onClick={() => {
-                    if (window.confirm("Disconnect GitHub from this account?")) {
+                    if (window.confirm(t("settings.disconnectGithubConfirm"))) {
                       void onDisconnectGithub();
                     }
                   }}
                   type="button"
                 >
-                  Disconnect
+                  {t("settings.disconnect")}
                 </button>
               ) : null}
             </div>
@@ -650,10 +664,10 @@ export function UserSettingsPage({
           </summary>
           <div className="settings-stage-content">
             <dl className="settings-stage-metrics">
-              <div><dt>API endpoint</dt><dd><code>{apiUrl}</code></dd></div>
-              <div><dt>Ingestion</dt><dd><span className="settings-value-chip" data-tone={collectorIngestion.tone}>{collectorIngestion.label}</span></dd></div>
-              <div><dt>Latest version</dt><dd>{accountOverview?.latest_collector_version ?? "Checking"}</dd></div>
-              <div><dt>Last token use</dt><dd>{tokenDateLabel(latestCollectorUse)}</dd></div>
+              <div><dt>{t("settings.apiEndpoint")}</dt><dd><code>{apiUrl}</code></dd></div>
+              <div><dt>{t("settings.ingestion")}</dt><dd><span className="settings-value-chip" data-tone={collectorIngestion.tone}>{collectorIngestion.label}</span></dd></div>
+              <div><dt>{t("settings.latestVersion")}</dt><dd>{accountOverview?.latest_collector_version ?? t("settings.checking")}</dd></div>
+              <div><dt>{t("settings.lastTokenUse")}</dt><dd>{tokenDateLabel(latestCollectorUse, t("common.never"))}</dd></div>
             </dl>
             <form
               className="settings-token-create"
@@ -716,9 +730,9 @@ export function UserSettingsPage({
                   onRename={(tokenId, name) => { void onRenameCollectorToken(tokenId, name); }}
                   onRevoke={(tokenId) => {
                     const usageNote = token.last_used_at
-                      ? `It was last used ${tokenDateLabel(token.last_used_at)}.`
-                      : "It has never been used.";
-                    if (window.confirm(`Revoke “${token.name}”? ${usageNote} The connected Collector will stop sending activity.`)) {
+                      ? t("settings.token.lastUsedSentence", { date: tokenDateLabel(token.last_used_at, t("common.never")) })
+                      : t("settings.token.neverUsedSentence");
+                    if (window.confirm(t("settings.token.revokeConfirm", { name: token.name, usage: usageNote }))) {
                       void onRevokeCollectorToken(tokenId);
                     }
                   }}
@@ -765,16 +779,16 @@ export function UserSettingsPage({
           </summary>
           <div className="settings-stage-content">
             <dl className="settings-stage-metrics">
-              <div><dt>Collector sync</dt><dd>{tokenDateLabel(latestCollectorUse)}</dd></div>
-              <div><dt>Project activity</dt><dd>{latestActivityLabel}</dd></div>
-              <div><dt>Projects detected</dt><dd>{projectCount.toLocaleString()}</dd></div>
-              <div><dt>Connection health</dt><dd>{collectorIngestion.label}</dd></div>
+              <div><dt>{t("settings.collectorSync")}</dt><dd>{tokenDateLabel(latestCollectorUse, t("common.never"))}</dd></div>
+              <div><dt>{t("settings.projectActivity")}</dt><dd>{latestActivityLabel}</dd></div>
+              <div><dt>{t("settings.projectsDetected")}</dt><dd>{projectCount.toLocaleString()}</dd></div>
+              <div><dt>{t("settings.connectionHealth")}</dt><dd>{collectorIngestion.label}</dd></div>
             </dl>
             {!isCollectorRecent ? (
               <p className="settings-stage-guidance">
                 {activeCollectorTokens.length > 0
-                  ? "Run the Collector in a connected repository to send activity."
-                  : "Complete the Collector step before activity can be received."}
+                  ? t("settings.runCollectorGuidance")
+                  : t("settings.completeCollectorGuidance")}
               </p>
             ) : null}
           </div>
@@ -800,10 +814,10 @@ export function UserSettingsPage({
           </summary>
           <div className="settings-stage-content">
             <dl className="settings-stage-metrics">
-              <div><dt>Generated memories</dt><dd>{memoryCount.toLocaleString()}</dd></div>
-              <div><dt>Ready for review</dt><dd>{pendingMemoryCount.toLocaleString()}</dd></div>
-              <div><dt>Latest memory</dt><dd>{latestMemoryLabel}</dd></div>
-              <div><dt>Workspace projects</dt><dd>{projectCount.toLocaleString()}</dd></div>
+              <div><dt>{t("settings.generatedMemories")}</dt><dd>{memoryCount.toLocaleString()}</dd></div>
+              <div><dt>{t("settings.readyForReview")}</dt><dd>{pendingMemoryCount.toLocaleString()}</dd></div>
+              <div><dt>{t("settings.latestMemory")}</dt><dd>{latestMemoryLabel}</dd></div>
+              <div><dt>{t("settings.workspaceProjects")}</dt><dd>{projectCount.toLocaleString()}</dd></div>
             </dl>
             {pendingMemoryCount > 0 ? (
               <div className="settings-stage-actions">
@@ -812,7 +826,7 @@ export function UserSettingsPage({
                   onClick={(event) => onOpenReviewQueue(event.currentTarget)}
                   type="button"
                 >
-                  Open review queue
+                  {t("settings.openReviewQueue")}
                 </button>
               </div>
             ) : null}

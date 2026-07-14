@@ -14,6 +14,14 @@ export function projectDetailUrl(projectKey: string) {
   return `${window.location.origin}/?${params.toString()}`;
 }
 
+export function externalProjectHref(projectUrl: string) {
+  const value = projectUrl.trim();
+  if (!value) {
+    return undefined;
+  }
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+}
+
 export function buildProjectShareUrl(
   project: Project,
   selectedProjectRouteKey: string | null,

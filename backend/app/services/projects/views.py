@@ -788,6 +788,7 @@ def read_project_detail_response(
             "id": str(project.id),
             "slug": project.slug,
             "name": project.name,
+            "project_url": project.project_url,
             "description": project.description,
             "created_at": iso(project.created_at),
             "is_bookmarked": bool(project.is_bookmarked),

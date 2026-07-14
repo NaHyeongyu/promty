@@ -68,6 +68,7 @@ export function AccountWorkspaceRoute({
           onRefreshWorkspace={onRefreshWorkspace}
           onRenameCollectorToken={account.renameCollectorToken}
           onRevokeCollectorToken={account.revokeCollectorToken}
+          onUpdatePreferredLocale={account.updatePreferredLocale}
           pendingMemoryCount={pendingMemoryCount}
           projectCount={projectCount}
         />

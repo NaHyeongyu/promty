@@ -11,6 +11,7 @@ import {
   CollectorEventWaiter,
   CollectorSetupFlow,
 } from "./CollectorOnboarding";
+import { useI18n } from "../../i18n/I18nProvider";
 
 export function RepositoryConnector({
   existingProjectIds = [],
@@ -33,6 +34,7 @@ export function RepositoryConnector({
   targetProjectId?: string;
   targetProjectName?: string;
 }) {
+  const { t } = useI18n();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const [manualRepositoryUrl, setManualRepositoryUrl] = useState("");
@@ -46,14 +48,14 @@ export function RepositoryConnector({
   );
   const connectorTitle = onManualConnect
     ? isExistingProjectConnection
-      ? `Add context to ${targetProjectName}`
-      : "Add a project"
-    : `Set up ${targetProjectName ?? "this project"}`;
+      ? t("collector.addContext", { name: targetProjectName ?? t("collector.thisProject") })
+      : t("collector.addProject")
+    : t("collector.setupProject", { name: targetProjectName ?? t("collector.thisProject") });
   const connectorDescription = onManualConnect
-    ? "Local AI collection and GitHub repository access are separate connections. Choose what you want to add."
-    : "Install the local collector to capture prompts, responses, and code changes.";
-  const manualSubmitLabel = isExistingProjectConnection ? "Connect" : "Create";
-  const manualSavingLabel = isExistingProjectConnection ? "Connecting" : "Creating";
+    ? t("collector.separateConnections")
+    : t("collector.localDescription");
+  const manualSubmitLabel = isExistingProjectConnection ? t("collector.connect") : t("common.create");
+  const manualSavingLabel = isExistingProjectConnection ? t("collector.connecting") : t("collector.creating");
   const canSubmitManualRepository =
     Boolean(onManualConnect) && manualRepositoryUrl.trim().length > 0;
 
@@ -117,7 +119,7 @@ export function RepositoryConnector({
       onClose();
     } catch (error) {
       setManualRepositoryError(
-        error instanceof Error ? error.message : "Repository could not be connected.",
+        error instanceof Error ? error.message : t("project.metadataSaveFailed"),
       );
     } finally {
       setIsManualRepositorySaving(false);
@@ -149,7 +151,7 @@ export function RepositoryConnector({
             <p>{connectorDescription}</p>
           </div>
           <button
-            aria-label="Close repository connector"
+            aria-label={t("collector.closeConnector")}
             className="repository-connector-close"
             onClick={onClose}
             ref={closeButtonRef}
@@ -160,7 +162,7 @@ export function RepositoryConnector({
         </div>
 
         {onManualConnect ? (
-          <div className="repository-connector-modes" aria-label="Connection type" role="group">
+          <div className="repository-connector-modes" aria-label={t("collector.connectionType")} role="group">
             <button
               aria-pressed={connectionMode === "collector"}
               data-active={connectionMode === "collector"}
@@ -168,7 +170,7 @@ export function RepositoryConnector({
               type="button"
             >
               <Laptop aria-hidden="true" size={16} strokeWidth={1.5} />
-              <span>Capture AI work</span>
+              <span>{t("collector.captureAi")}</span>
             </button>
             <button
               aria-pressed={connectionMode === "repository"}
@@ -177,7 +179,7 @@ export function RepositoryConnector({
               type="button"
             >
               <FolderGit2 aria-hidden="true" size={16} strokeWidth={1.5} />
-              <span>Repository only</span>
+              <span>{t("collector.repositoryOnly")}</span>
             </button>
           </div>
         ) : null}
@@ -205,15 +207,12 @@ export function RepositoryConnector({
           <div className="repository-access-gate">
             <FolderGit2 aria-hidden="true" size={20} strokeWidth={1.5} />
             <div>
-              <strong>Connect GitHub repository access</strong>
-              <p>
-                Authorize repository access before adding source context. This permission is
-                separate from account sign-in and local AI collection.
-              </p>
+              <strong>{t("collector.connectGithubAccess")}</strong>
+              <p>{t("collector.authRepoDescription")}</p>
             </div>
             {repositoryConnectUrl ? (
               <a className="toolbar-button" href={repositoryConnectUrl}>
-                Connect GitHub
+                {t("files.connectGithub")}
               </a>
             ) : null}
           </div>
@@ -231,8 +230,8 @@ export function RepositoryConnector({
               <div>
                 <strong>
                   {isExistingProjectConnection
-                    ? "Attach repository context"
-                    : "Create from a repository"}
+                    ? t("collector.attachRepo")
+                    : t("collector.createFromRepo")}
                 </strong>
                 <p>
                   This adds source-file context to {targetProjectName ?? "the project"}. It does
@@ -240,7 +239,7 @@ export function RepositoryConnector({
                 </p>
               </div>
             </div>
-            <label htmlFor="repository-url">GitHub repository URL</label>
+            <label htmlFor="repository-url">{t("collector.githubRepoUrl")}</label>
             <div className="repository-url-row">
               <input
                 autoComplete="off"

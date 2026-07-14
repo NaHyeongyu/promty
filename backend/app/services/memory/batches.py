@@ -57,6 +57,7 @@ PROJECT_MEMORY_BATCH_CHUNK_SIZE = 6
 PROJECT_MEMORY_BATCH_GENERATOR = "project-memory-batch-v1"
 PROJECT_MEMORY_BATCH_LEASE = timedelta(minutes=10)
 PROJECT_MEMORY_BATCH_TRIGGER = "project_batch"
+PROJECT_MEMORY_BATCH_OUTCOME_MAX_CHARS = 600
 HTTP_STATUS_PATTERN = re.compile(r"\bHTTP(?: status)?\s+([1-5][0-9]{2})\b")
 
 
@@ -1117,7 +1118,10 @@ def _prepare_project_batch_memory(
         "generator": PROJECT_MEMORY_BATCH_GENERATOR,
         "last_event_id": last_event_ids[-1] if last_event_ids else None,
         "model": models[0] if len(models) == 1 else "multiple" if models else None,
-        "outcome": truncate(" ".join(outcomes), 2400),
+        "outcome": truncate(
+            " ".join(outcomes[-3:]),
+            PROJECT_MEMORY_BATCH_OUTCOME_MAX_CHARS,
+        ),
         "prompt_event_ids": prompt_event_ids,
         "reason": "Created from the captured work in this project update.",
         "sections": _consolidated_sections(chunks),

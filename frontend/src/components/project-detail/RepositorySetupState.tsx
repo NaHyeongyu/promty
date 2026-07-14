@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Copy, GitBranch } from "lucide-react";
+import { useI18n } from "../../i18n/I18nProvider";
 
 const githubRemoteCommand = "git remote add origin https://github.com/OWNER/REPO.git";
 
 export function GitHubRepositorySetupState() {
+  const { t } = useI18n();
   const resetCopyTimerRef = useRef<number | null>(null);
   const [hasCopiedCommand, setHasCopiedCommand] = useState(false);
 
@@ -36,19 +38,16 @@ export function GitHubRepositorySetupState() {
       <div className="bh-repository-setup-copy">
         <GitBranch aria-hidden="true" size={20} strokeWidth={1.5} />
         <div>
-          <h3 id="github-setup-title">GitHub repository not linked</h3>
-          <p>
-            Add the GitHub remote in this project, then run repository setup again
-            to attach source context.
-          </p>
+          <h3 id="github-setup-title">{t("files.githubNotLinked")}</h3>
+          <p>{t("files.githubNotLinkedDescription")}</p>
         </div>
       </div>
-      <div className="bh-repository-command" aria-label="GitHub remote command">
+      <div className="bh-repository-command" aria-label={t("files.githubRemoteCommand")}>
         <code>{githubRemoteCommand}</code>
         <button
-          aria-label={hasCopiedCommand ? "Copied command" : "Copy command"}
+          aria-label={hasCopiedCommand ? t("common.copiedCommand") : t("common.copyCommand")}
           onClick={copyCommand}
-          title={hasCopiedCommand ? "Copied" : "Copy command"}
+          title={hasCopiedCommand ? t("common.copied") : t("common.copyCommand")}
           type="button"
         >
           {hasCopiedCommand ? (

@@ -20,6 +20,7 @@ import type {
   PromptActivityItem,
 } from "./types";
 import { WorkTypeFilterControl } from "./WorkTypeFilterControl";
+import { useI18n } from "../../i18n/I18nProvider";
 
 const PROMPT_ACTIVITY_PAGE_LIMIT = 50;
 
@@ -127,6 +128,7 @@ export function ActivityPanel({
   data: ProjectDetailData;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
 }) {
+  const { t } = useI18n();
   const [localActivityNavigation, setLocalActivityNavigation] =
     useState<ActivityNavigationState>(defaultActivityNavigation);
   const [activitySearchInput, setActivitySearchInput] = useState("");
@@ -482,9 +484,9 @@ export function ActivityPanel({
   ) {
     return (
       <EmptyState
-        description="AI interactions will appear after collector events are synced."
+        description={t("activity.noActivityDescription")}
         icon={Activity}
-        title="No activity yet"
+        title={t("activity.noActivity")}
       />
     );
   }
@@ -496,7 +498,7 @@ export function ActivityPanel({
 
   return (
     <div className="bh-activity-layout" data-view={view}>
-      <div className="bh-activity-view-tabs" role="group" aria-label="Activity filters">
+      <div className="bh-activity-view-tabs" role="group" aria-label={t("activity.filters")}>
         {activityViewOptions.map((activityView) => (
           <button
             aria-pressed={view === activityView}
@@ -506,7 +508,7 @@ export function ActivityPanel({
             onClick={() => updateActivityView(activityView)}
             type="button"
           >
-            {activityView === "prompts" ? "By prompt" : "By session"}
+            {activityView === "prompts" ? t("activity.byPrompt") : t("activity.bySession")}
           </button>
         ))}
       </div>
@@ -519,9 +521,9 @@ export function ActivityPanel({
           <label className="bh-prompt-search">
             <Search aria-hidden="true" size={15} strokeWidth={1.7} />
             <input
-              aria-label="Search activity by text, model, or date"
+              aria-label={t("activity.searchFull")}
               onChange={(event) => setActivitySearchInput(event.target.value)}
-              placeholder="Search activity"
+              placeholder={t("activity.search")}
               type="search"
               value={activitySearchInput}
             />
@@ -539,7 +541,7 @@ export function ActivityPanel({
             {view === "prompts" &&
             isPromptActivityLoading &&
             promptActivities.length === 0 ? (
-              <div className="bh-prompt-search-empty">Loading prompt activity.</div>
+              <div className="bh-prompt-search-empty">{t("activity.loadingPrompts")}</div>
             ) : filteredActivityFeedItems.length > 0 ? (
               <div className="bh-prompt-list">
                 {filteredActivityFeedItems.map((item) => {
@@ -579,7 +581,7 @@ export function ActivityPanel({
               </div>
             ) : (
               <div className="bh-prompt-search-empty">
-                {promptActivityError ?? "No activity matches this filter."}
+                {promptActivityError ?? t("activity.noFilterMatches")}
               </div>
             )}
             {view === "prompts" && promptActivityHasMore && promptActivityNextCursor ? (
@@ -591,7 +593,7 @@ export function ActivityPanel({
                 }}
                 type="button"
               >
-                {isPromptActivityLoadingMore ? "Loading" : "Load more"}
+                {isPromptActivityLoadingMore ? t("activity.loading") : t("activity.loadMore")}
               </button>
             ) : null}
             {view === "prompts" && promptActivityTotal !== null ? (
@@ -605,7 +607,7 @@ export function ActivityPanel({
         {selectedFeedItem?.kind === "session" ? (
           <>
             <section
-              aria-label="Session conversations"
+              aria-label={t("activity.sessionConversations")}
               className="bh-session-conversation-panel"
             >
               {selectedSession ? (
@@ -613,11 +615,11 @@ export function ActivityPanel({
                   <label className="bh-prompt-search">
                     <Search aria-hidden="true" size={15} strokeWidth={1.7} />
                     <input
-                      aria-label="Search conversations by text or date"
+                      aria-label={t("activity.searchConversations")}
                       onChange={(event) =>
                         setSessionConversationSearchInput(event.target.value)
                       }
-                      placeholder="Search conversations"
+                      placeholder={t("activity.searchConversations")}
                       type="search"
                       value={sessionConversationSearchInput}
                     />
@@ -626,7 +628,7 @@ export function ActivityPanel({
                   <div className="bh-session-prompt-list">
                     {isSessionPromptLoading && selectedSessionPrompts.length === 0 ? (
                       <div className="bh-prompt-search-empty">
-                        Loading conversations.
+                        {t("activity.loadingConversations")}
                       </div>
                     ) : selectedSessionPrompts.length > 0 ? (
                       filteredSessionPrompts.length > 0 ? (
@@ -644,7 +646,7 @@ export function ActivityPanel({
                                     selectedSessionPromptId: activity.id,
                                   });
                                 }}
-                                promptLabel={`Prompt ${activity.sequence}`}
+                                promptLabel={t("activity.promptLabel", { sequence: activity.sequence })}
                               />
                             ))}
                           </div>
@@ -657,7 +659,7 @@ export function ActivityPanel({
                               }}
                               type="button"
                             >
-                              {isSessionPromptLoadingMore ? "Loading" : "Load more"}
+                              {isSessionPromptLoadingMore ? t("activity.loading") : t("activity.loadMore")}
                             </button>
                           ) : null}
                           {sessionPromptTotal !== null ? (
@@ -668,19 +670,19 @@ export function ActivityPanel({
                         </>
                       ) : (
                         <div className="bh-prompt-search-empty">
-                          {sessionPromptError ?? "No conversations match this search."}
+                          {sessionPromptError ?? t("activity.noConversationsMatch")}
                         </div>
                       )
                     ) : (
                       <div className="bh-prompt-search-empty">
-                        {sessionPromptError ?? "No prompts were captured in this session."}
+                        {sessionPromptError ?? t("activity.noSessionPrompts")}
                       </div>
                     )}
                   </div>
                 </>
               ) : (
                 <div className="bh-prompt-search-empty">
-                  Select a session to inspect its conversations.
+                  {t("activity.selectSession")}
                 </div>
               )}
             </section>

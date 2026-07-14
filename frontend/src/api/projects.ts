@@ -383,6 +383,7 @@ export function updateProjectDescription(
 }
 
 export type ProjectMetadataPatch = {
+  projectUrl?: string;
   slug?: string;
   tags?: string[];
   visibility?: "private" | "public";
@@ -396,6 +397,7 @@ export function updateProjectMetadata(
     `/api/projects/${encodeURIComponent(projectId)}/metadata`,
     "PATCH",
     {
+      ...(metadata.projectUrl !== undefined ? { project_url: metadata.projectUrl } : {}),
       ...(metadata.slug !== undefined ? { slug: metadata.slug } : {}),
       ...(metadata.tags !== undefined ? { tags: metadata.tags } : {}),
       ...(metadata.visibility !== undefined ? { visibility: metadata.visibility } : {}),

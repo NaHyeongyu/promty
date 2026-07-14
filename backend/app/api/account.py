@@ -12,6 +12,8 @@ from app.db.session import get_db
 from app.models.users import User
 from app.schemas.account import (
     AccountOverviewResponse,
+    AccountPreferencesResponse,
+    AccountPreferencesUpdateRequest,
     CollectorTokenCreateRequest,
     CollectorTokenCreateResponse,
     CollectorTokenResponse,
@@ -24,9 +26,25 @@ from app.services.account_settings import (
     disconnect_github_response,
     revoke_collector_token_response,
     update_collector_token_response,
+    update_account_preferences_response,
 )
 
 router = APIRouter(prefix="/api/account", tags=["account"])
+
+
+@router.patch("/preferences", response_model=AccountPreferencesResponse)
+def update_account_preferences(
+    payload: AccountPreferencesUpdateRequest,
+    current_user: User = Depends(require_web_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    response = update_account_preferences_response(
+        db,
+        preferred_locale=payload.preferred_locale,
+        user=current_user,
+    )
+    _commit_or_conflict(db, detail="Account preferences could not be updated.")
+    return response
 
 
 @router.get("/overview", response_model=AccountOverviewResponse)

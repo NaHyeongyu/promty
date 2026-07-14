@@ -285,6 +285,7 @@ def read_current_user(user: User = Depends(require_web_user)) -> dict[str, Any]:
         "github_repository_access": user.github_connection is not None
         and user.github_connection.revoked_at is None,
         "is_admin": is_admin_user(user),
+        "preferred_locale": user.preferred_locale,
     }
 
 

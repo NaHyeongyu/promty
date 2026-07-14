@@ -16,6 +16,7 @@ MAX_SEMANTIC_LIST_ITEMS = 32
 MAX_SOURCE_IDS = 128
 MAX_SOURCE_ID_CHARS = 200
 MAX_PROJECT_SECTION_TEXT_CHARS = 4_000
+MAX_MEMORY_OUTCOME_CHARS = 600
 
 
 def parse_json_text(
@@ -178,6 +179,7 @@ def clean_memory_drafts_response(value: Any, context: dict[str, Any]) -> dict[st
             continue
         title = truncate(raw.get("title"), 180)
         summary = truncate(raw.get("summary"), 1000)
+        outcome = truncate(raw.get("outcome"), MAX_MEMORY_OUTCOME_CHARS)
         why_it_matters = truncate(raw.get("why_it_matters"), 1000)
         if not title or not summary or not why_it_matters:
             continue
@@ -236,6 +238,7 @@ def clean_memory_drafts_response(value: Any, context: dict[str, Any]) -> dict[st
                     "source_event_ids": draft_event_ids,
                 },
                 "needs_user_verification": needs_verification,
+                "outcome": outcome or summary,
                 "suggested_user_action": _clean_suggested_action(
                     raw.get("suggested_user_action"),
                     confidence=confidence,
