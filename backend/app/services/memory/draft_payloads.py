@@ -145,13 +145,6 @@ def _payload_from_memory_draft(
     *,
     generator: str,
 ) -> dict[str, Any]:
-    details = draft.get("details") if isinstance(draft.get("details"), dict) else {}
-    what_happened = (
-        details.get("what_happened") if isinstance(details.get("what_happened"), list) else []
-    )
-    outcome = " ".join(
-        truncate(item, 220) for item in what_happened if isinstance(item, str) and item.strip()
-    )
     changed_files = context["changed_files"]
     draft_type = string_or_none(draft.get("type")) or "thinking_note"
     suggested_action = string_or_none(draft.get("suggested_user_action")) or "edit"
@@ -163,7 +156,7 @@ def _payload_from_memory_draft(
         "generator": generator,
         "last_event_id": context["last_event_id"],
         "model": context["model"],
-        "outcome": outcome or draft["summary"],
+        "outcome": truncate(draft.get("outcome"), 600) or draft["summary"],
         "prompt_event_ids": draft["evidence"]["source_event_ids"],
         "reason": draft["why_it_matters"],
         "sections": _sections_from_memory_draft(draft),

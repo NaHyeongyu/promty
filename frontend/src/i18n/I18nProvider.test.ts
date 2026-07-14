@@ -8,6 +8,8 @@ describe("i18n", () => {
   it("uses English as the default locale", () => {
     expect(normalizeAppLocale(undefined)).toBe("en");
     expect(normalizeAppLocale("fr")).toBe("en");
+    expect(translateMessage(undefined, "nav.projects")).toBe("Projects");
+    expect(translateMessage("fr", "nav.projects")).toBe("Projects");
   });
 
   it("supports Korean and Japanese locale values", () => {

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from app.core.text_limits import PROJECT_MEMORY_BODY_MAX_BYTES
 from app.services.memory import draft_payloads
 from app.services.memory.cleaners import (
+    MAX_MEMORY_OUTCOME_CHARS,
     MAX_PROJECT_SECTION_TEXT_CHARS,
     MAX_SEMANTIC_LIST_ITEMS,
     MAX_SOURCE_ID_CHARS,
@@ -63,6 +64,18 @@ def test_draft_cleaner_hard_caps_semantic_lists_and_source_ids() -> None:
     assert all(len(value) <= MAX_SOURCE_ID_CHARS for value in draft["evidence"]["source_event_ids"])
 
 
+def test_draft_cleaner_caps_outcome_separately_from_task_history() -> None:
+    raw_draft = _draft_with_large_semantic_lists()
+    raw_draft["outcome"] = "Implemented the final direction. " + "detail " * 500
+
+    cleaned = clean_memory_drafts_response(
+        {"memory_drafts": [raw_draft]},
+        {"pending_drafts": [], "prompt_events": []},
+    )
+
+    assert len(cleaned["memory_drafts"][0]["outcome"]) <= MAX_MEMORY_OUTCOME_CHARS
+
+
 def test_project_cleaner_caps_utf8_body_sections_and_source_ids() -> None:
     items = [f"Item {index}" for index in range(MAX_SEMANTIC_LIST_ITEMS + 20)]
     ids = [f"memory-{index}" for index in range(MAX_SOURCE_IDS + 20)]
@@ -112,6 +125,10 @@ def test_draft_payload_metadata_stores_generation_summary_not_full_response(
         "source_event_ids": ["event-1", "event-2"],
         "summary_level": 2,
     }
+    response["memory_drafts"][0]["outcome"] = "Implemented the approved final result."
+    response["memory_drafts"][0]["details"]["what_happened"] = [
+        "PromptSubmitted event with raw conversation history."
+    ]
     monkeypatch.setattr(
         draft_payloads,
         "settings",
@@ -150,6 +167,7 @@ def test_draft_payload_metadata_stores_generation_summary_not_full_response(
     assert summary["draft_count"] == 1
     assert summary["overall_uncertainty_count"] == 7
     assert len(payloads) == 1
+    assert payloads[0][0]["outcome"] == "Implemented the approved final result."
     draft_metadata = payloads[0][1]
     assert "overall_uncertainties" not in draft_metadata
     assert draft_metadata["overall_uncertainty_count"] == 7

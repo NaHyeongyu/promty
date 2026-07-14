@@ -16,6 +16,7 @@ import {
 import type { ProjectMemoryGenerationResponse } from "../../api/projects";
 import { useI18n } from "../../i18n/I18nProvider";
 import { MarkdownContent } from "../MarkdownContent";
+import { displayMemoryOutcome } from "./memoryOutcome";
 import type {
   ProjectDetailData,
   ProjectMemoryArtifact,
@@ -210,8 +211,7 @@ function MemoryArtifactDetailDrawer({
   const sections = (artifact.sections ?? []).filter(
     (section) => section.title?.trim() && section.summary?.trim(),
   );
-  const outcome =
-    artifact.outcome && artifact.outcome !== artifact.summary ? artifact.outcome : null;
+  const outcome = displayMemoryOutcome(artifact.outcome, artifact.summary);
   const dateRange = formatMemoryDateRange(artifact.firstEventAt, artifact.lastEventAt);
   const statusLabel = memoryArtifactStatusLabel(artifact);
   const changedFiles = (artifact.changedFiles ?? []).filter((file) => file.path?.trim());

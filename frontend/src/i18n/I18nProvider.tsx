@@ -1260,11 +1260,12 @@ function interpolate(template: string, values?: Record<string, string | number>)
 }
 
 export function translateMessage(
-  locale: AppLocale,
+  locale: AppLocale | string | null | undefined,
   key: TranslationKey,
   values?: Record<string, string | number>,
 ) {
-  return interpolate(dictionaries[locale][key] ?? en[key], values);
+  const normalizedLocale = normalizeAppLocale(locale);
+  return interpolate(dictionaries[normalizedLocale][key] ?? en[key], values);
 }
 
 type I18nContextValue = {
@@ -1277,7 +1278,7 @@ type I18nContextValue = {
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocale] = useState<AppLocale>(() =>
+  const [locale, setLocaleState] = useState<AppLocale>(() =>
     normalizeAppLocale(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)),
   );
 
@@ -1290,7 +1291,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     () => ({
       locale,
       localeTag: localeTags[locale],
-      setLocale,
+      setLocale: (nextLocale) => setLocaleState(normalizeAppLocale(nextLocale)),
       t: (key, values) => translateMessage(locale, key, values),
     }),
     [locale],
