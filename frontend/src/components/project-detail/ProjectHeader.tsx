@@ -11,6 +11,7 @@ import {
   Share2,
 } from "lucide-react";
 import { AiModelBadge } from "./AiModelBadge";
+import { useI18n } from "../../i18n/I18nProvider";
 import type { ProjectHeaderProps } from "./types";
 
 export function ProjectHeader({
@@ -30,6 +31,7 @@ export function ProjectHeader({
   repositoryUrl,
   selectedProjectId,
 }: ProjectHeaderProps) {
+  const { t } = useI18n();
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const [projectSearchQuery, setProjectSearchQuery] = useState("");
   const switcherRef = useRef<HTMLDivElement | null>(null);
@@ -49,7 +51,7 @@ export function ProjectHeader({
   const hiddenModelCount = Math.max(0, modelNames.length - visibleModelNames.length);
   const hasHeaderMeta =
     !isLoading && (visibleModelNames.length > 0 || Boolean(lastActivityLabel));
-  const projectTitle = isLoading ? "Loading project" : name;
+  const projectTitle = isLoading ? t("project.loadingOne") : name;
   const closeProjectMenu = () => {
     setIsProjectMenuOpen(false);
     setProjectSearchQuery("");
@@ -104,7 +106,7 @@ export function ProjectHeader({
                 <button
                   aria-expanded={isProjectMenuOpen}
                   aria-haspopup="dialog"
-                  aria-label={`Switch project from ${projectTitle}`}
+                  aria-label={t("project.switchFrom", { name: projectTitle })}
                   className="bh-project-switcher-trigger"
                   onClick={() => setIsProjectMenuOpen((isOpen) => !isOpen)}
                   type="button"
@@ -114,7 +116,7 @@ export function ProjectHeader({
 
                 {isProjectMenuOpen ? (
                   <div
-                    aria-label="Switch project"
+                    aria-label={t("project.switch")}
                     className="bh-project-switcher-menu"
                     role="dialog"
                   >
@@ -128,17 +130,17 @@ export function ProjectHeader({
                         type="button"
                       >
                         <Folder aria-hidden="true" size={15} strokeWidth={1.6} />
-                        <span>All projects</span>
+                        <span>{t("project.allProjects")}</span>
                       </button>
                     ) : null}
 
                     <label className="bh-project-switcher-search">
                       <Search aria-hidden="true" size={14} strokeWidth={1.7} />
                       <input
-                        aria-label="Search projects"
+                        aria-label={t("project.search")}
                         autoFocus
                         onChange={(event) => setProjectSearchQuery(event.target.value)}
-                        placeholder="Search projects"
+                        placeholder={t("project.search")}
                         type="search"
                         value={projectSearchQuery}
                       />
@@ -167,7 +169,7 @@ export function ProjectHeader({
                         ))
                       ) : (
                         <div className="bh-project-switcher-empty">
-                          No projects found.
+                          {t("project.noProjectsFoundPeriod")}
                         </div>
                       )}
                     </div>
@@ -178,7 +180,7 @@ export function ProjectHeader({
           </div>
         </div>
         {hasHeaderMeta ? (
-          <div className="bh-project-header-meta" aria-label="Project activity summary">
+          <div className="bh-project-header-meta" aria-label={t("project.activity")}>
             {visibleModelNames.map((modelName) => (
               <AiModelBadge
                 className="is-header"
@@ -202,13 +204,13 @@ export function ProjectHeader({
       <div className="bh-project-header-actions">
         {onToggleBookmark && !isLoading ? (
           <button
-            aria-label={isBookmarked ? "Remove saved project" : "Save project"}
+            aria-label={isBookmarked ? t("project.removeSaved") : t("project.saveProject")}
             aria-pressed={isBookmarked}
             className="bh-icon-button"
             data-active={isBookmarked ? "true" : undefined}
             disabled={isBookmarkUpdating}
             onClick={onToggleBookmark}
-            title={isBookmarked ? "Remove saved project" : "Save project"}
+            title={isBookmarked ? t("project.removeSaved") : t("project.saveProject")}
             type="button"
           >
             <Bookmark
@@ -221,11 +223,11 @@ export function ProjectHeader({
         ) : null}
         {onShareProject && !isLoading ? (
           <button
-            aria-label={isShareCopied ? "Workspace link copied" : "Copy workspace link"}
+            aria-label={isShareCopied ? t("project.workspaceLinkCopied") : t("project.copyWorkspaceLink")}
             className="bh-icon-button"
             data-active={isShareCopied ? "true" : undefined}
             onClick={onShareProject}
-            title={isShareCopied ? "Workspace link copied" : "Copy workspace link"}
+            title={isShareCopied ? t("project.workspaceLinkCopied") : t("project.copyWorkspaceLink")}
             type="button"
           >
             {isShareCopied ? (
@@ -237,12 +239,12 @@ export function ProjectHeader({
         ) : null}
         {repositoryUrl ? (
           <a
-            aria-label="Open repository"
+            aria-label={t("project.openRepository")}
             className="bh-icon-button"
             href={repositoryUrl}
             rel="noreferrer"
             target="_blank"
-            title="Open repository"
+            title={t("project.openRepository")}
           >
             <ExternalLink aria-hidden="true" size={17} strokeWidth={1.5} />
           </a>
@@ -253,7 +255,7 @@ export function ProjectHeader({
             type="button"
           >
             <Link aria-hidden="true" size={16} strokeWidth={1.5} />
-            <span>Connect Repository</span>
+            <span>{t("project.connectRepository")}</span>
           </button>
         ) : null}
       </div>

@@ -575,6 +575,11 @@ def _pending_draft_generation_context(
         )
 
     project = session.project or db.get(Project, session.project_id)
+    output_locale = (
+        project.owner.preferred_locale
+        if project is not None and project.owner is not None
+        else "en"
+    )
     return {
         "changed_files": _dedupe_files(changed_files),
         "commits": commits,
@@ -584,6 +589,7 @@ def _pending_draft_generation_context(
         "first_event_id": first_event_id,
         "last_event_id": last_event_id,
         "model": session.model,
+        "output_locale": output_locale,
         "pending_drafts": pending_drafts,
         "project_id": str(session.project_id),
         "project_name": project.name if project else str(session.project_id),

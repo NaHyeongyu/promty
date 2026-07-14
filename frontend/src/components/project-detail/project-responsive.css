@@ -225,6 +225,28 @@
     width: 100vw;
   }
 
+  .bh-memory-detail-drawer {
+    border-radius: 0;
+  }
+
+  .bh-memory-detail-header {
+    padding: var(--bh-space-4);
+  }
+
+  .bh-memory-detail-body {
+    gap: var(--bh-space-6);
+    padding: var(--bh-space-5) var(--bh-space-4) var(--bh-space-8);
+    scrollbar-gutter: auto;
+  }
+
+  .bh-memory-detail-summary {
+    padding: var(--bh-space-4);
+  }
+
+  .bh-memory-detail-content-section {
+    padding-top: var(--bh-space-5);
+  }
+
   .bh-share-form-row,
   .bh-share-range-guide,
   .bh-share-selection-content,

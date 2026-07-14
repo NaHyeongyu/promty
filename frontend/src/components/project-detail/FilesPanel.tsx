@@ -3,6 +3,7 @@ import { EmptyState } from "./EmptyState";
 import { FileTree } from "./FileTree";
 import { GitHubRepositorySetupState } from "./RepositorySetupState";
 import type { ProjectDetailData } from "./types";
+import { useI18n } from "../../i18n/I18nProvider";
 
 export function FilesPanel({
   data,
@@ -11,6 +12,7 @@ export function FilesPanel({
   data: ProjectDetailData;
   onRepositoryFileSelect?: (path: string) => void;
 }) {
+  const { t } = useI18n();
   const isRepositoryLinked = Boolean(data.project.repositoryUrl);
   const openGitHubFile = isRepositoryLinked ? onRepositoryFileSelect : undefined;
 
@@ -18,17 +20,17 @@ export function FilesPanel({
     <div className="bh-files-layout">
       <section className="bh-files-section" aria-labelledby="tracked-files-title">
         <div className="bh-files-section-header">
-          <h2 id="tracked-files-title">Tracked changes</h2>
+          <h2 id="tracked-files-title">{t("files.trackedChanges")}</h2>
           <p>
             {data.filesTotal !== null && data.filesTotal !== undefined
-              ? `${data.filesTotal} files captured from Promty collector events.`
-              : "Files captured from Promty collector events."}
+              ? t("files.capturedCount", { count: data.filesTotal })
+              : t("files.captured")}
           </p>
         </div>
         {data.filesLoading && data.files.length === 0 ? (
           <div
             aria-busy="true"
-            aria-label="Loading tracked files"
+            aria-label={t("files.loadingTracked")}
             aria-live="polite"
             className="bh-detail-skeleton-tree"
             role="status"
@@ -48,17 +50,17 @@ export function FilesPanel({
           <EmptyState
             description={data.filesError}
             icon={BookOpen}
-            title="Tracked files could not be loaded"
+            title={t("files.trackedLoadFailed")}
           />
         ) : data.files.length > 0 ? (
           <>
             {data.filesTruncated ? (
               <div className="bh-files-inline-status" role="status">
-                Showing the first {data.files.length} tracked files.
+                {t("files.showingFirst", { count: data.files.length })}
               </div>
             ) : null}
             <FileTree
-              label="Tracked project files"
+              label={t("files.trackedProjectFiles")}
               nodes={data.files}
               onFileSelect={openGitHubFile}
               opensExternal={Boolean(openGitHubFile)}
@@ -66,20 +68,20 @@ export function FilesPanel({
           </>
         ) : (
           <EmptyState
-            description="The tracked file tree will appear after file change events are stored."
+            description={t("files.noTrackedDescription")}
             icon={BookOpen}
-            title="No tracked files yet"
+            title={t("files.noTracked")}
           />
         )}
       </section>
 
       <section className="bh-files-section" aria-labelledby="repository-files-title">
         <div className="bh-files-section-header">
-          <h2 id="repository-files-title">GitHub repository</h2>
+          <h2 id="repository-files-title">{t("project.githubRepo")}</h2>
           <p>
             {data.repositoryFilesRepository
-              ? `${data.repositoryFilesRepository}${data.repositoryFilesTruncated ? " · truncated" : ""}`
-              : "Repository tree from GitHub OAuth access."}
+              ? `${data.repositoryFilesRepository}${data.repositoryFilesTruncated ? ` · ${t("files.truncated")}` : ""}`
+              : t("files.repositoryDescription")}
           </p>
         </div>
         {!isRepositoryLinked ? (
@@ -87,7 +89,7 @@ export function FilesPanel({
         ) : data.repositoryFilesLoading && data.repositoryFiles.length === 0 ? (
           <div
             aria-busy="true"
-            aria-label="Loading GitHub repository files"
+            aria-label={t("files.loadingGithub")}
             aria-live="polite"
             className="bh-repository-browser bh-repository-browser-skeleton"
             role="status"
@@ -114,7 +116,7 @@ export function FilesPanel({
         ) : data.repositoryFiles.length > 0 ? (
           <div className="bh-repository-browser bh-repository-browser-external">
             <FileTree
-              label="GitHub repository files"
+              label={t("files.githubFiles")}
               nodes={data.repositoryFiles}
               onFileSelect={openGitHubFile}
               opensExternal={Boolean(openGitHubFile)}
@@ -124,15 +126,15 @@ export function FilesPanel({
           <EmptyState
             description={
               data.repositoryFilesMessage ??
-              "Sign in with GitHub repository access to browse repository files."
+              t("files.repositorySignIn")
             }
             icon={BookOpen}
-            title="No GitHub repository files"
+            title={t("files.noGithubFiles")}
           >
             {data.repositoryFilesConnectUrl &&
             data.repositoryFilesStatus === "github_repository_access_required" ? (
               <a className="bh-empty-state-button" href={data.repositoryFilesConnectUrl}>
-                Connect GitHub
+                {t("files.connectGithub")}
               </a>
             ) : null}
           </EmptyState>

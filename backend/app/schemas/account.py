@@ -34,7 +34,16 @@ class AccountUserResponse(BaseModel):
     github_repository_access: bool
     id: str
     is_admin: bool
+    preferred_locale: Literal["en", "ja", "ko"]
     username: str
+
+
+class AccountPreferencesUpdateRequest(BaseModel):
+    preferred_locale: Literal["en", "ja", "ko"]
+
+
+class AccountPreferencesResponse(BaseModel):
+    preferred_locale: Literal["en", "ja", "ko"]
 
 
 class GitHubConnectionResponse(BaseModel):

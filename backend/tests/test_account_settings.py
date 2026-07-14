@@ -6,6 +6,7 @@ from app.models.users import User
 from app.services.account_settings import (
     account_overview_response,
     create_collector_token_response,
+    update_account_preferences_response,
 )
 
 
@@ -96,5 +97,20 @@ def test_account_overview_response_includes_connection_and_tokens() -> None:
     response = account_overview_response(db, user=user)
 
     assert response["user"]["id"] == str(user.id)
+    assert response["user"]["preferred_locale"] == "en"
     assert response["github_connection"]["connected"] is False
     assert response["collector_tokens"][0]["name"] == "Local laptop"
+
+
+def test_account_language_preference_is_saved() -> None:
+    user = _user()
+    db = FakeSession()
+
+    response = update_account_preferences_response(
+        db,
+        preferred_locale="ko",
+        user=user,
+    )
+
+    assert response == {"preferred_locale": "ko"}
+    assert user.preferred_locale == "ko"

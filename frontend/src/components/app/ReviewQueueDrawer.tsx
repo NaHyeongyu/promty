@@ -30,6 +30,7 @@ import type {
   ProjectMemoryPendingRangeApiResponse,
   ProjectSummary,
 } from "../../workspace/types";
+import { useI18n } from "../../i18n/I18nProvider";
 
 type QueueProjectState = {
   errorMessage: string | null;
@@ -37,22 +38,27 @@ type QueueProjectState = {
   status: "error" | "loaded" | "loading";
 };
 
-function formatCapturedRange(firstEventAt: string | null, lastEventAt: string | null) {
+function formatCapturedRange(
+  firstEventAt: string | null,
+  lastEventAt: string | null,
+  locale: string,
+  unavailable: string,
+) {
   const firstDate = firstEventAt ? new Date(firstEventAt) : null;
   const lastDate = lastEventAt ? new Date(lastEventAt) : null;
   const validFirst = firstDate && !Number.isNaN(firstDate.getTime()) ? firstDate : null;
   const validLast = lastDate && !Number.isNaN(lastDate.getTime()) ? lastDate : null;
 
   if (!validFirst && !validLast) {
-    return "Capture time unavailable";
+    return unavailable;
   }
 
-  const dateFormatter = new Intl.DateTimeFormat("en", {
+  const dateFormatter = new Intl.DateTimeFormat(locale, {
     day: "numeric",
     month: "short",
     year: "numeric",
   });
-  const timeFormatter = new Intl.DateTimeFormat("en", {
+  const timeFormatter = new Intl.DateTimeFormat(locale, {
     hour: "numeric",
     minute: "2-digit",
   });
@@ -70,11 +76,11 @@ function formatCapturedRange(firstEventAt: string | null, lastEventAt: string | 
   return `${dateFormatter.format(validFirst)}–${dateFormatter.format(validLast)}`;
 }
 
-function metricLabel(count: number, singular: string) {
-  return `${count} ${count === 1 ? singular : `${singular}s`}`;
-}
-
-function projectCapturedRange(ranges: ProjectMemoryPendingRangeApiResponse[]) {
+function projectCapturedRange(
+  ranges: ProjectMemoryPendingRangeApiResponse[],
+  locale: string,
+  unavailable: string,
+) {
   const timestamps = ranges.flatMap((range) =>
     [range.first_event_at, range.last_event_at].filter(
       (value): value is string =>
@@ -82,10 +88,15 @@ function projectCapturedRange(ranges: ProjectMemoryPendingRangeApiResponse[]) {
     ),
   );
   if (timestamps.length === 0) {
-    return formatCapturedRange(null, null);
+    return formatCapturedRange(null, null, locale, unavailable);
   }
   timestamps.sort((left, right) => Date.parse(left) - Date.parse(right));
-  return formatCapturedRange(timestamps.at(0) ?? null, timestamps.at(-1) ?? null);
+  return formatCapturedRange(
+    timestamps.at(0) ?? null,
+    timestamps.at(-1) ?? null,
+    locale,
+    unavailable,
+  );
 }
 
 function oldestCapturedTimestamp(ranges: ProjectMemoryPendingRangeApiResponse[]) {
@@ -114,6 +125,7 @@ export function ReviewQueueDrawer({
   returnFocusElement?: HTMLElement | null;
   workspaceReady: boolean;
 }) {
+  const { localeTag, t } = useI18n();
   const reviewProjects = useMemo(() => {
     const pendingProjects = pendingReviewProjects(projects);
     return projectFilterId
@@ -206,7 +218,7 @@ export function ReviewQueueDrawer({
           ...current,
           [projectId]: {
             errorMessage:
-              error instanceof Error ? error.message : "Review queue could not be loaded.",
+              error instanceof Error ? error.message : t("review.loadFailed"),
             ranges: current[projectId]?.ranges ?? [],
             status: "error",
           },
@@ -257,9 +269,7 @@ export function ReviewQueueDrawer({
       );
       if (snapshotErrors.length > 0) {
         setQueueRefreshWarning(
-          `${snapshotErrors.length} ${
-            snapshotErrors.length === 1 ? "project" : "projects"
-          } could not be checked.`,
+          t("review.projectsUnchecked", { count: snapshotErrors.length }),
         );
       }
       onProjectSummariesRefresh(snapshot.project_summaries);
@@ -273,7 +283,7 @@ export function ReviewQueueDrawer({
         return null;
       }
       setQueueRefreshError(
-        error instanceof Error ? error.message : "Review queue could not be refreshed.",
+        error instanceof Error ? error.message : t("review.refreshFailed"),
       );
       return null;
     } finally {
@@ -403,14 +413,12 @@ export function ReviewQueueDrawer({
       >
         <header className="review-queue-header">
           <div>
-            <h2 id="review-queue-title">Memory queue</h2>
-            <p>
-              {pendingProjectCount} {pendingProjectCount === 1 ? "project" : "projects"} ready
-            </p>
+            <h2 id="review-queue-title">{t("review.memoryQueue")}</h2>
+            <p>{t("review.projectCountReady", { count: pendingProjectCount })}</p>
           </div>
           <div className="review-queue-header-actions">
             <button
-              aria-label="Close review queue"
+              aria-label={t("review.close")}
               className="review-queue-icon-button"
               onClick={onClose}
               ref={closeButtonRef}
@@ -427,10 +435,10 @@ export function ReviewQueueDrawer({
               <CircleAlert aria-hidden="true" size={16} strokeWidth={1.5} />
               <span>{queueRefreshError}</span>
               <button
-                aria-label="Retry review queue refresh"
+                aria-label={t("review.retryRefresh")}
                 className="review-queue-icon-button"
                 onClick={() => void refreshQueueSnapshot()}
-                title="Retry"
+                title={t("common.retry")}
                 type="button"
               >
                 <RefreshCw aria-hidden="true" size={16} strokeWidth={1.5} />
@@ -442,10 +450,10 @@ export function ReviewQueueDrawer({
               <CircleAlert aria-hidden="true" size={16} strokeWidth={1.5} />
               <span>{queueRefreshWarning}</span>
               <button
-                aria-label="Retry incomplete review queue refresh"
+                aria-label={t("review.retryIncomplete")}
                 className="review-queue-icon-button"
                 onClick={() => void refreshQueueSnapshot()}
-                title="Retry"
+                title={t("common.retry")}
                 type="button"
               >
                 <RefreshCw aria-hidden="true" size={16} strokeWidth={1.5} />
@@ -458,23 +466,23 @@ export function ReviewQueueDrawer({
               <label className="review-queue-search">
                 <Search aria-hidden="true" size={15} strokeWidth={1.5} />
                 <input
-                  aria-label="Search projects"
+                  aria-label={t("project.search")}
                   onChange={(event) => setProjectSearchQuery(event.target.value)}
-                  placeholder="Search projects"
+                  placeholder={t("project.search")}
                   type="search"
                   value={projectSearchQuery}
                 />
               </label>
               <label className="review-queue-sort">
                 <select
-                  aria-label="Sort projects"
+                  aria-label={t("project.sort")}
                   onChange={(event) =>
                     setProjectSortMode(event.target.value as "oldest" | "largest")
                   }
                   value={projectSortMode}
                 >
-                  <option value="oldest">Oldest waiting</option>
-                  <option value="largest">Most accumulated</option>
+                  <option value="oldest">{t("review.oldestWaiting")}</option>
+                  <option value="largest">{t("review.mostAccumulated")}</option>
                 </select>
               </label>
             </div>
@@ -484,15 +492,15 @@ export function ReviewQueueDrawer({
             <div className="review-queue-global-state" role="status">
               <LoaderCircle aria-hidden="true" size={20} strokeWidth={1.5} />
               <div>
-                <strong>Refreshing review queue</strong>
-                <span>Checking captured work across projects.</span>
+                <strong>{t("review.refreshing")}</strong>
+                <span>{t("review.checkingProjects")}</span>
               </div>
             </div>
           ) : queueRefreshError && reviewProjects.length === 0 ? (
             <div className="review-queue-global-state" data-error="true" role="alert">
               <CircleAlert aria-hidden="true" size={20} strokeWidth={1.5} />
               <div>
-                <strong>Review queue could not be refreshed</strong>
+                <strong>{t("review.refreshFailedTitle")}</strong>
                 <span>{queueRefreshError}</span>
               </div>
               <button
@@ -501,7 +509,7 @@ export function ReviewQueueDrawer({
                 type="button"
               >
                 <RefreshCw aria-hidden="true" size={15} strokeWidth={1.5} />
-                <span>Retry</span>
+                <span>{t("common.retry")}</span>
               </button>
             </div>
           ) : reviewProjects.length > 0 ? (
@@ -522,7 +530,7 @@ export function ReviewQueueDrawer({
                     (isQueueRefreshing && !projectState) ? (
                       <div className="review-queue-loading" role="status">
                         <LoaderCircle aria-hidden="true" size={18} strokeWidth={1.5} />
-                        <span>Loading {project.name}</span>
+                        <span>{t("review.loadingProject", { name: project.name })}</span>
                       </div>
                     ) : projectState?.status === "error" ? (
                       <div className="review-queue-error" role="alert">
@@ -532,10 +540,10 @@ export function ReviewQueueDrawer({
                           <span>{projectState.errorMessage}</span>
                         </div>
                         <button
-                          aria-label={`Retry ${project.name} review queue`}
+                          aria-label={t("review.retryProject", { name: project.name })}
                           className="review-queue-icon-button"
                           onClick={() => void loadProjectRanges(project.id)}
-                          title="Retry"
+                          title={t("common.retry")}
                           type="button"
                         >
                           <RefreshCw aria-hidden="true" size={16} strokeWidth={1.5} />
@@ -546,30 +554,30 @@ export function ReviewQueueDrawer({
                         <div className="review-queue-project-copy">
                           <div className="review-queue-project-heading">
                             <strong>{project.name}</strong>
-                            <span>Ready</span>
+                            <span>{t("review.ready")}</span>
                           </div>
                           <p className="review-queue-project-meta">
-                            <span>{metricLabel(chunkCount, "chunk")}</span>
-                            <span>{metricLabel(projectBatch.promptCount, "prompt")}</span>
-                            <span>{projectCapturedRange(projectState?.ranges ?? [])}</span>
+                            <span>{t("review.chunkCount", { count: chunkCount })}</span>
+                            <span>{t("review.promptCount", { count: projectBatch.promptCount })}</span>
+                            <span>{projectCapturedRange(projectState?.ranges ?? [], localeTag, t("review.captureUnavailable"))}</span>
                           </p>
                         </div>
                         <button
-                          aria-label={`Review and generate memory for ${project.name}`}
+                          aria-label={t("review.reviewGenerateFor", { name: project.name })}
                           className="review-queue-primary-action review-queue-project-action"
                           onClick={() =>
                             navigateFromQueue(() => onOpenProjectMemory(project.id))
                           }
                           type="button"
                         >
-                          <span>Review &amp; generate</span>
+                          <span>{t("review.reviewGenerate")}</span>
                           <ArrowRight aria-hidden="true" size={15} strokeWidth={1.5} />
                         </button>
                       </div>
                     ) : projectState?.status === "loaded" ? (
                       <div className="review-queue-project-empty">
                         <CheckCircle2 aria-hidden="true" size={18} strokeWidth={1.5} />
-                        <span>No captured work remains in {project.name}.</span>
+                        <span>{t("review.noRemaining", { name: project.name })}</span>
                       </div>
                     ) : null}
                   </section>
@@ -577,8 +585,8 @@ export function ReviewQueueDrawer({
               })}
               {visibleReviewProjects.length === 0 ? (
                 <div className="review-queue-search-empty">
-                  <strong>No matching projects</strong>
-                  <span>Try a different project name.</span>
+                  <strong>{t("review.noMatching")}</strong>
+                  <span>{t("review.tryDifferent")}</span>
                 </div>
               ) : null}
             </div>
@@ -594,12 +602,12 @@ export function ReviewQueueDrawer({
               )}
               <div>
                 <strong>
-                  {queueRefreshWarning ? "Review status incomplete" : "Review queue clear"}
+                  {queueRefreshWarning ? t("review.incomplete") : t("review.clear")}
                 </strong>
                 <span>
                   {queueRefreshWarning
-                    ? "No reviewable work is currently available."
-                    : "No captured work is waiting for memory."}
+                    ? t("review.noReviewable")
+                    : t("review.noCapturedWaiting")}
                 </span>
               </div>
             </div>

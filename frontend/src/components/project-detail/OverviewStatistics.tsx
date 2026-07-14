@@ -1,7 +1,8 @@
 import type { ProjectDetailData } from "./types";
+import { useI18n } from "../../i18n/I18nProvider";
 
-function overviewCompactNumber(value: number) {
-  return Intl.NumberFormat("en", {
+function overviewCompactNumber(value: number, locale: string) {
+  return Intl.NumberFormat(locale, {
     maximumFractionDigits: 1,
     notation: "compact",
   }).format(value);
@@ -74,6 +75,7 @@ export function OverviewStatistics({
 }: {
   data: ProjectDetailData;
 }) {
+  const { localeTag, t } = useI18n();
   const history = data.metricHistory.slice(-14);
   const pointsFor = (
     key: "filesChanged" | "memories" | "prompts" | "sessions",
@@ -84,28 +86,28 @@ export function OverviewStatistics({
   const statisticItems = [
     {
       chart: "line" as const,
-      label: "Sessions",
+      label: t("project.sessions"),
       metricKey: "sessions" as const,
       points: pointsFor("sessions"),
       tone: "sessions",
     },
     {
       chart: "line" as const,
-      label: "Prompts",
+      label: t("project.prompts"),
       metricKey: "prompts" as const,
       points: pointsFor("prompts"),
       tone: "prompts",
     },
     {
       chart: "line" as const,
-      label: "Files changed",
+      label: t("project.filesChanged"),
       metricKey: "filesChanged" as const,
       points: pointsFor("filesChanged"),
       tone: "files",
     },
     {
       chart: "line" as const,
-      label: "Memories",
+      label: t("project.memory"),
       metricKey: "memories" as const,
       points: pointsFor("memories"),
       tone: "memory",
@@ -115,13 +117,14 @@ export function OverviewStatistics({
     ...item,
     value: overviewCompactNumber(
       item.points.reduce((total, point) => total + point, 0),
+      localeTag,
     ),
   }));
 
   return (
     <section
       className="bh-overview-statistics"
-      aria-label="Project statistics for the last 14 days"
+      aria-label={t("project.statistics14Days")}
     >
       <dl>
         {renderedStatisticItems.map((item) => (
@@ -134,16 +137,22 @@ export function OverviewStatistics({
               <dt>{item.label}</dt>
               <dd>{item.value}</dd>
               <span className="bh-overview-statistics-change">
-                <small>Last 14 days</small>
+                <small>{t("project.last14Days")}</small>
               </span>
             </div>
             <SparklineChart
               label={
                 history.length > 0
-                  ? `${item.label} per day for the last 14 days: ${history
-                      .map((day) => `${day.date}: ${day[item.metricKey]}`)
-                      .join(", ")}`
-                  : `${item.label} per day for the last 14 days: no recorded activity`
+                  ? t("project.metricPerDay", {
+                      label: item.label,
+                      details: history
+                        .map((day) => `${day.date}: ${day[item.metricKey]}`)
+                        .join(", "),
+                    })
+                  : t("project.metricPerDay", {
+                      label: item.label,
+                      details: t("project.noRecordedActivity"),
+                    })
               }
               points={item.points}
               type={item.chart}

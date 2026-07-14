@@ -11,6 +11,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import settings
+from app.core.locales import normalize_app_locale
 from app.core.text_limits import (
     PROJECT_MEMORY_BODY_MAX_BYTES,
     PROJECT_MEMORY_WARNING_MAX_ITEMS,
@@ -149,12 +150,14 @@ def _latest_project_memory_snapshot(db: DBSession, project_id: UUID) -> Artifact
 
 
 def _project_context(project: Project) -> dict[str, Any]:
+    owner = getattr(project, "owner", None)
     return {
         "default_branch": project.default_branch,
         "description": project.description,
         "git_remote": project.git_remote,
         "id": str(project.id),
         "name": project.name,
+        "output_locale": getattr(owner, "preferred_locale", "en"),
         "slug": project.slug,
         "tags": project.tags or [],
         "visibility": project.visibility,
@@ -231,6 +234,55 @@ def _local_project_memory_snapshot_from_context(
     requested_provider: str,
     source_memory_contexts: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    locale = normalize_app_locale(
+        project_context.get("output_locale")
+        if isinstance(project_context.get("output_locale"), str)
+        else None
+    )
+    localized = {
+        "en": {
+            "title": "Project Memory",
+            "product_goal": "Product Goal",
+            "current_direction": "Current Direction",
+            "workflow": "Core Workflow",
+            "decisions": "Important Decisions",
+            "assumptions": "Technical Assumptions",
+            "instructions": "Instructions For Future AI Agents",
+            "no_direction": "No generated memory has established a detailed current direction yet.",
+            "no_decisions": "No generated decisions yet.",
+            "untitled": "Untitled memory",
+            "warning": "Local fallback compiler was used.",
+            "default_goal": "Promty captures generated AI coding memory for future project context.",
+        },
+        "ko": {
+            "title": "프로젝트 메모리",
+            "product_goal": "제품 목표",
+            "current_direction": "현재 방향",
+            "workflow": "핵심 워크플로",
+            "decisions": "주요 결정",
+            "assumptions": "기술적 전제",
+            "instructions": "향후 AI 에이전트 지침",
+            "no_direction": "아직 상세한 현재 방향을 정한 생성 메모리가 없습니다.",
+            "no_decisions": "아직 생성된 결정이 없습니다.",
+            "untitled": "제목 없는 메모리",
+            "warning": "로컬 대체 컴파일러를 사용했습니다.",
+            "default_goal": "Promty는 향후 프로젝트 컨텍스트를 위해 AI 코딩 메모리를 생성하고 저장합니다.",
+        },
+        "ja": {
+            "title": "プロジェクトメモリ",
+            "product_goal": "プロダクト目標",
+            "current_direction": "現在の方向性",
+            "workflow": "コアワークフロー",
+            "decisions": "重要な決定",
+            "assumptions": "技術的前提",
+            "instructions": "今後のAIエージェントへの指示",
+            "no_direction": "詳細な現在の方向性を定めた生成メモリはまだありません。",
+            "no_decisions": "生成済みの決定はまだありません。",
+            "untitled": "無題のメモリ",
+            "warning": "ローカルフォールバックコンパイラを使用しました。",
+            "default_goal": "Promtyは将来のプロジェクトコンテキスト向けにAIコーディングメモリを生成して保存します。",
+        },
+    }[locale]
     source_memory_ids = [
         memory_id
         for memory in source_memory_contexts
@@ -238,12 +290,12 @@ def _local_project_memory_snapshot_from_context(
     ]
     product_goal = (
         project_context.get("description")
-        or "Promty captures generated AI coding memory for future project context."
+        or localized["default_goal"]
     )
     current_direction = (
         source_memory_contexts[0].get("summary")
         if source_memory_contexts and source_memory_contexts[0].get("summary")
-        else "No generated memory has established a detailed current direction yet."
+        else localized["no_direction"]
     )
     workflow = [
         "Raw Events are stored for every captured event.",
@@ -254,9 +306,29 @@ def _local_project_memory_snapshot_from_context(
         "Generated memories are saved to History and Project Memory is recompiled immediately.",
         "Users can edit generated memories and the final Project Memory snapshot after generation.",
     ]
+    if locale == "ko":
+        workflow = [
+            "수집된 모든 이벤트를 원시 이벤트로 저장합니다.",
+            "프롬프트 20개, 세션 종료 또는 1시간 유휴 후 대기 메모리 초안을 만듭니다.",
+            "수집 작업을 AI 응답과 파일 변경 근거가 포함된 사용자용 메모리로 변환합니다.",
+            "사용자는 한 번의 작업으로 모든 대기 초안을 컨텍스트 메모리로 생성합니다.",
+            "생성 메모리는 요약, 작업, 결정 및 후속 작업 구조를 사용합니다.",
+            "생성 메모리를 기록에 저장하고 프로젝트 메모리를 즉시 다시 컴파일합니다.",
+            "생성 후 생성 메모리와 최종 프로젝트 메모리를 편집할 수 있습니다.",
+        ]
+    elif locale == "ja":
+        workflow = [
+            "取得したすべてのイベントをRaw Eventsとして保存します。",
+            "20プロンプト、セッション終了、または1時間のアイドル後に保留メモリ下書きを作成します。",
+            "取得作業をAI応答とファイル変更の根拠を含むユーザー向けメモリに変換します。",
+            "ユーザーは1回の操作ですべての保留下書きをコンテキストメモリに生成します。",
+            "生成メモリは要約、タスク、決定、フォローアップの構造を使用します。",
+            "生成メモリを履歴に保存し、プロジェクトメモリをすぐに再コンパイルします。",
+            "生成後に生成メモリと最終プロジェクトメモリを編集できます。",
+        ]
     important_decisions = [
         {
-            "decision": memory.get("title") or "Untitled memory",
+            "decision": memory.get("title") or localized["untitled"],
             "reason": memory.get("reason") or memory.get("summary") or "",
             "source_memory_ids": [memory["id"]],
         }
@@ -272,27 +344,56 @@ def _local_project_memory_snapshot_from_context(
         "Commit messages are metadata only and are not summary triggers.",
         "LLM failure fallback must not be exposed as user-facing memory.",
     ]
+    future_instructions = [
+        "Use generated and user-edited memory as the source of truth.",
+        "Do not rely on pending drafts or ignored memories.",
+        "Preserve existing memory workflow thresholds unless the user changes them.",
+    ]
+    if locale == "ko":
+        technical_assumptions = [
+            "프로젝트 메모리는 기본적으로 생성 메모리와 사용자 편집 메모리를 사용합니다.",
+            "대기 초안과 무시한 메모리는 기준 정보가 아닙니다.",
+            "프롬프트 청크 크기는 PromptSubmitted 이벤트 20개입니다.",
+            "큰 입력은 생성 전에 요약하며 원문 프롬프트로 표시하지 않습니다.",
+            "원인 분석은 생성 요약과 연결된 AI 응답 근거를 우선 사용합니다.",
+            "커밋 메시지는 메타데이터일 뿐 요약 트리거가 아닙니다.",
+            "LLM 실패 대체 처리를 사용자용 메모리로 노출하지 않습니다.",
+        ]
+        future_instructions = [
+            "생성 메모리와 사용자 편집 메모리를 기준 정보로 사용하세요.",
+            "대기 초안이나 무시한 메모리에 의존하지 마세요.",
+            "사용자가 변경하지 않는 한 기존 메모리 워크플로 임계값을 유지하세요.",
+        ]
+    elif locale == "ja":
+        technical_assumptions = [
+            "プロジェクトメモリは生成メモリとユーザー編集メモリを既定で使用します。",
+            "保留下書きと無視したメモリは信頼できる情報源ではありません。",
+            "プロンプトチャンクサイズは20件のPromptSubmittedイベントです。",
+            "大きな入力は生成前に要約し、生のプロンプトとして表示しません。",
+            "原因分析は生成要約と対応するAI応答の根拠を優先します。",
+            "コミットメッセージはメタデータであり要約トリガーではありません。",
+            "LLM失敗時のフォールバックをユーザー向けメモリとして公開しません。",
+        ]
+        future_instructions = [
+            "生成メモリとユーザー編集メモリを信頼できる情報源として使用してください。",
+            "保留下書きや無視したメモリに依存しないでください。",
+            "ユーザーが変更しない限り既存のメモリワークフロー閾値を維持してください。",
+        ]
     body_markdown = "\n\n".join(
         [
-            "# Project Memory",
-            f"## Product Goal\n{product_goal}",
-            f"## Current Direction\n{current_direction}",
-            "## Core Workflow\n" + "\n".join(f"- {item}" for item in workflow),
-            "## Important Decisions\n"
+            f"# {localized['title']}",
+            f"## {localized['product_goal']}\n{product_goal}",
+            f"## {localized['current_direction']}\n{current_direction}",
+            f"## {localized['workflow']}\n" + "\n".join(f"- {item}" for item in workflow),
+            f"## {localized['decisions']}\n"
             + (
                 "\n".join(f"- {item['decision']}: {item['reason']}" for item in important_decisions)
                 if important_decisions
-                else "- No generated decisions yet."
+                else f"- {localized['no_decisions']}"
             ),
-            "## Technical Assumptions\n" + "\n".join(f"- {item}" for item in technical_assumptions),
-            "## Instructions For Future AI Agents\n"
-            + "\n".join(
-                [
-                    "- Use generated and user-edited memory as the source of truth.",
-                    "- Do not rely on pending drafts or ignored memories.",
-                    "- Preserve existing memory workflow thresholds unless the user changes them.",
-                ]
-            ),
+            f"## {localized['assumptions']}\n" + "\n".join(f"- {item}" for item in technical_assumptions),
+            f"## {localized['instructions']}\n"
+            + "\n".join(f"- {item}" for item in future_instructions),
         ]
     )
     return ProjectMemorySnapshot.model_validate(
@@ -303,11 +404,7 @@ def _local_project_memory_snapshot_from_context(
                 "core_workflow": workflow,
                 "current_direction": current_direction,
                 "important_decisions": important_decisions,
-                "instructions_for_future_ai_agents": [
-                    "Use generated and user-edited memory as the source of truth.",
-                    "Do not rely on pending drafts or ignored memories.",
-                    "Preserve existing memory workflow thresholds unless the user changes them.",
-                ],
+                "instructions_for_future_ai_agents": future_instructions,
                 "open_questions": [],
                 "product_goal": product_goal,
                 "rejected_directions": [],
@@ -315,7 +412,7 @@ def _local_project_memory_snapshot_from_context(
             },
             "snapshot_type": "project_memory",
             "source_memory_ids": source_memory_ids,
-            "warnings": ["Local fallback compiler was used."]
+            "warnings": [localized["warning"]]
             if requested_provider in {"gemini", "openai"}
             else [],
         }

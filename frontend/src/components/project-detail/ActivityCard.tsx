@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { AiModelBadge } from "./AiModelBadge";
 import type { ActivityItem, PromptActivityItem } from "./types";
+import { useI18n } from "../../i18n/I18nProvider";
 
 const PROMPT_PREVIEW_LINES = 10;
 
@@ -11,6 +12,7 @@ function PromptText({
   expandable?: boolean;
   text: string;
 }) {
+  const { t } = useI18n();
   const [isExpanded, setIsExpanded] = useState(false);
   const { isLong, preview } = useMemo(() => {
     const lines = text.split(/\r?\n/);
@@ -38,7 +40,7 @@ function PromptText({
           }}
           type="button"
         >
-          {isExpanded ? "Show less" : "Show more"}
+          {isExpanded ? t("activity.showLess") : t("activity.showMore")}
         </button>
       ) : null}
     </div>
@@ -82,6 +84,7 @@ export function ActivityCard({
   isSelected = false,
   onOpen,
 }: ActivityCardProps) {
+  const { t } = useI18n();
   return (
     <article
       className="bh-session-row"
@@ -101,11 +104,11 @@ export function ActivityCard({
       <div className="bh-session-row-main">
         <div className="bh-session-row-header">
           <strong>{activity.model}</strong>
-          <span>{activity.prompts} prompts</span>
+          <span>{t("activity.promptsCount", { count: activity.prompts })}</span>
         </div>
-        <span>Session {activity.id.slice(0, 8)}</span>
+        <span>{t("activity.session", { id: activity.id.slice(0, 8) })}</span>
         <span>
-          {activity.prompts} prompts · {activity.filesChanged} files ·{" "}
+          {t("activity.promptsCount", { count: activity.prompts })} · {t("activity.fileCount", { count: activity.filesChanged })} ·{" "}
           {activity.lastActivity}
         </span>
       </div>
@@ -126,6 +129,7 @@ export function PromptActivityCard({
   onOpen,
   promptLabel,
 }: PromptActivityCardProps) {
+  const { t } = useI18n();
   const truncatedLabel = promptTruncatedLabel(activity);
   const responseLimitLabel = responseTruncatedLabel(activity);
 
@@ -147,13 +151,13 @@ export function PromptActivityCard({
     >
       <div className="bh-prompt-row-main">
         <PromptText expandable={false} text={activity.prompt} />
-        <div className="bh-prompt-row-meta" aria-label="Prompt metadata">
+        <div className="bh-prompt-row-meta" aria-label={t("activity.prompt")}>
           <AiModelBadge className="is-compact" model={activity.model} />
           <span className="bh-prompt-row-chip">{activity.submittedAt}</span>
           {promptLabel ? (
             <span className="bh-prompt-row-chip">{promptLabel}</span>
           ) : null}
-          <span className="bh-prompt-row-chip">{activity.filesChanged} files</span>
+          <span className="bh-prompt-row-chip">{t("activity.fileCount", { count: activity.filesChanged })}</span>
           {truncatedLabel ? (
             <span className="bh-prompt-row-chip">{truncatedLabel}</span>
           ) : null}
@@ -224,6 +228,7 @@ export function PromptChangeDetail({
   activity,
   onSharePrompt,
 }: PromptChangeDetailProps) {
+  const { t } = useI18n();
   if (!activity) {
     return (
       <section
@@ -232,8 +237,8 @@ export function PromptChangeDetail({
         aria-labelledby="activity-detail-placeholder-title"
       >
         <div>
-          <h2 id="activity-detail-placeholder-title">Prompt detail</h2>
-          <p>Open a prompt to inspect its request, response, and file changes.</p>
+          <h2 id="activity-detail-placeholder-title">{t("activity.promptDetail")}</h2>
+          <p>{t("activity.openPrompt")}</p>
         </div>
       </section>
     );
@@ -247,8 +252,8 @@ export function PromptChangeDetail({
     >
       <div className="bh-prompt-change-header">
         <div>
-          <span>Selected prompt</span>
-          <h2 id="activity-detail-placeholder-title">Prompt detail</h2>
+          <span>{t("activity.selectedPrompt")}</span>
+          <h2 id="activity-detail-placeholder-title">{t("activity.promptDetail")}</h2>
         </div>
         <div className="bh-prompt-change-header-actions">
           {/* Community sharing is paused for now.
@@ -263,12 +268,12 @@ export function PromptChangeDetail({
             </button>
           ) : null}
           */}
-          <strong>{activity.filesChanged} files</strong>
+          <strong>{t("activity.fileCount", { count: activity.filesChanged })}</strong>
         </div>
       </div>
 
       <div className="bh-prompt-change-summary">
-        <span className="bh-prompt-detail-section-label">Prompt</span>
+        <span className="bh-prompt-detail-section-label">{t("activity.prompt")}</span>
         <PromptText text={activity.prompt} />
         {activity.promptTruncated ? (
           <div className="bh-prompt-storage-note">
@@ -280,7 +285,7 @@ export function PromptChangeDetail({
       {activity.response ? (
         <div className="bh-ai-response-summary">
           <div className="bh-ai-response-label">
-            <span>AI response</span>
+            <span>{t("activity.aiResponse")}</span>
             {activity.responseReceivedAt ? (
               <strong>{activity.responseReceivedAt}</strong>
             ) : null}
@@ -297,7 +302,7 @@ export function PromptChangeDetail({
       {activity.fileChanges.length > 0 ? (
         <div className="bh-prompt-change-list" aria-label="Prompt file changes">
           <div className="bh-prompt-detail-section-header">
-            <span>File changes</span>
+            <span>{t("activity.fileChanges")}</span>
             <strong>{activity.fileChanges.length}</strong>
           </div>
           {activity.fileChanges.map((change) => (
@@ -337,7 +342,7 @@ export function PromptChangeDetail({
         </div>
       ) : (
         <div className="bh-prompt-change-empty">
-          No file changes were linked to this prompt.
+          {t("activity.noPromptFiles")}
         </div>
       )}
     </section>
@@ -350,6 +355,7 @@ type SessionDetailProps = {
 };
 
 export function SessionDetail({ activity, prompts }: SessionDetailProps) {
+  const { t } = useI18n();
   if (!activity) {
     return (
       <section
@@ -358,8 +364,8 @@ export function SessionDetail({ activity, prompts }: SessionDetailProps) {
         aria-labelledby="activity-detail-placeholder-title"
       >
         <div>
-          <h2 id="activity-detail-placeholder-title">Session detail</h2>
-          <p>Open a session to inspect its activity summary.</p>
+          <h2 id="activity-detail-placeholder-title">{t("activity.sessionDetail")}</h2>
+          <p>{t("activity.openSession")}</p>
         </div>
       </section>
     );
@@ -373,41 +379,41 @@ export function SessionDetail({ activity, prompts }: SessionDetailProps) {
     >
       <div className="bh-prompt-change-header">
         <div>
-          <span>Selected session</span>
+          <span>{t("activity.selectedSession")}</span>
           <h2 id="activity-detail-placeholder-title">{activity.model}</h2>
         </div>
-        <strong>{activity.events} events</strong>
+        <strong>{t("activity.events", { count: activity.events })}</strong>
       </div>
 
       <dl className="bh-session-detail-meta">
         <div>
-          <dt>Started</dt>
+          <dt>{t("activity.started")}</dt>
           <dd>{activity.startedAt}</dd>
         </div>
         <div>
-          <dt>Last activity</dt>
+          <dt>{t("activity.lastActivity")}</dt>
           <dd>{activity.lastActivity}</dd>
         </div>
       </dl>
 
       <dl className="bh-session-detail-stats">
         <div>
-          <dt>Prompts</dt>
+          <dt>{t("project.prompts")}</dt>
           <dd>{activity.prompts}</dd>
         </div>
         <div>
-          <dt>Responses</dt>
+          <dt>{t("activity.responses")}</dt>
           <dd>{activity.responses}</dd>
         </div>
         <div>
-          <dt>Files</dt>
+          <dt>{t("project.files")}</dt>
           <dd>{activity.filesChanged}</dd>
         </div>
       </dl>
 
       <div className="bh-session-conversations">
         <div className="bh-session-conversations-header">
-          <span>Conversations in this session</span>
+          <span>{t("activity.conversations")}</span>
           <strong>{prompts.length}</strong>
         </div>
 
@@ -417,24 +423,24 @@ export function SessionDetail({ activity, prompts }: SessionDetailProps) {
               <article className="bh-session-conversation-row" key={prompt.id}>
                 <div>
                   <div className="bh-session-conversation-meta">
-                    <span>Prompt {prompt.sequence}</span>
+                    <span>{t("activity.promptLabel", { sequence: prompt.sequence })}</span>
                     <time>{prompt.submittedAt}</time>
                   </div>
                   <PromptText text={prompt.prompt} />
                   {prompt.response ? (
                     <div className="bh-session-response-preview">
-                      <span>AI response</span>
+                      <span>{t("activity.aiResponse")}</span>
                       <PromptText text={prompt.response} />
                     </div>
                   ) : null}
                 </div>
-                <strong>{prompt.filesChanged} files</strong>
+                <strong>{t("activity.fileCount", { count: prompt.filesChanged })}</strong>
               </article>
             ))}
           </div>
         ) : (
           <div className="bh-prompt-change-empty">
-            No prompts were captured in this session.
+            {t("activity.noSessionPrompts")}
           </div>
         )}
       </div>

@@ -5,6 +5,7 @@ import {
   projectVisibilityFromValue,
 } from "./overviewPanelUtils";
 import type { ProjectDetailData } from "./types";
+import { useI18n } from "../../i18n/I18nProvider";
 
 type ProjectVisibility = "private" | "public";
 type OverviewEditorKind = "project" | "description";
@@ -28,6 +29,7 @@ export function useOverviewEditors({
   onSaveDescription,
   onSaveProjectMetadata,
 }: UseOverviewEditorsOptions) {
+  const { t } = useI18n();
   const overviewEditDrawerRef = useRef<HTMLElement | null>(null);
   const overviewEditCloseTimerRef = useRef<number | null>(null);
   const [descriptionDraft, setDescriptionDraft] = useState(data.project.description);
@@ -129,7 +131,7 @@ export function useOverviewEditors({
       closeDescriptionEditor();
     } catch (error) {
       setDescriptionError(
-        error instanceof Error ? error.message : "Description could not be saved",
+        error instanceof Error ? error.message : t("project.descriptionSaveFailed"),
       );
     } finally {
       setIsDescriptionSaving(false);
@@ -152,7 +154,7 @@ export function useOverviewEditors({
       closeProjectMetadataEditor();
     } catch (error) {
       setProjectMetadataError(
-        error instanceof Error ? error.message : "Project metadata could not be saved",
+        error instanceof Error ? error.message : t("project.metadataSaveFailed"),
       );
     } finally {
       setIsProjectMetadataSaving(false);

@@ -131,6 +131,8 @@
 
 .bh-activity-session-layout {
   display: grid;
+  width: 100%;
+  min-width: 0;
   grid-template-columns:
     minmax(200px, 260px) minmax(280px, 400px)
     minmax(0, 1fr);
@@ -197,9 +199,14 @@
 .bh-activity-layout[data-view="sessions"] .bh-activity-session-layout > .bh-prompt-change-detail,
 .bh-activity-layout[data-view="sessions"] .bh-activity-session-layout > .bh-activity-detail-placeholder {
   position: static;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   min-height: 0;
   height: auto;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
@@ -504,6 +511,7 @@
 
 .bh-prompt-text {
   display: grid;
+  min-width: 0;
   gap: var(--bh-space-1);
 }
 
@@ -512,6 +520,7 @@
   color: var(--bh-color-text-primary);
   font-size: var(--bh-font-size-body);
   line-height: var(--bh-line-height-body);
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 
@@ -757,6 +766,9 @@
 .bh-ai-response-summary,
 .bh-prompt-change-summary {
   display: grid;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   align-content: start;
   gap: var(--bh-space-2);
   border: 1px solid var(--bh-color-border);
@@ -813,6 +825,8 @@
 
 .bh-prompt-change-list {
   display: grid;
+  min-width: 0;
+  max-width: 100%;
   align-content: start;
   gap: var(--bh-space-3);
 }
@@ -839,6 +853,8 @@
 }
 
 .bh-diff-file {
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
 }
 
@@ -914,7 +930,11 @@
 
 .bh-diff-viewer {
   display: grid;
-  overflow: auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
   background: var(--bh-card-bg);
 }
 

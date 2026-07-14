@@ -5,7 +5,9 @@ import {
   fetchAccountOverview,
   renameAccountCollectorToken,
   revokeAccountCollectorToken,
+  updateAccountPreferences,
 } from "../api/account";
+import type { AppLocale } from "../i18n/I18nProvider";
 import { UnauthorizedError } from "../api/client";
 import type {
   AccountCollectorTokenCreateResponse,
@@ -145,6 +147,30 @@ export function useAccountSettings({ onUnauthorized }: UseAccountSettingsOptions
     }
   };
 
+  const updatePreferredLocale = async (preferredLocale: AppLocale) => {
+    setIsAccountSaving(true);
+    setAccountError(null);
+    try {
+      const preferences = await updateAccountPreferences(preferredLocale);
+      setAccountOverview((current) =>
+        current
+          ? {
+              ...current,
+              user: {
+                ...current.user,
+                preferred_locale: preferences.preferred_locale,
+              },
+            }
+          : current,
+      );
+    } catch (error) {
+      handleAccountError(error, "Account language update failed");
+      throw error;
+    } finally {
+      setIsAccountSaving(false);
+    }
+  };
+
   return {
     accountError,
     accountOverview,
@@ -158,6 +184,7 @@ export function useAccountSettings({ onUnauthorized }: UseAccountSettingsOptions
     renameCollectorToken,
     revokeCollectorToken,
     setCreatedCollectorToken,
+    updatePreferredLocale,
   };
 }
 

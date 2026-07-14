@@ -3,6 +3,7 @@ import type {
   AccountCollectorTokenCreateResponse,
   AccountOverview,
 } from "../workspace/types";
+import type { AppLocale } from "../i18n/I18nProvider";
 import { requestJson, requestJsonBody } from "./client";
 
 export function fetchAccountOverview(signal?: AbortSignal): Promise<AccountOverview> {
@@ -12,6 +13,20 @@ export function fetchAccountOverview(signal?: AbortSignal): Promise<AccountOverv
     {
       errorMessage: "Account settings request failed",
       unauthorizedMessage: "Sign in again before opening account settings.",
+    },
+  );
+}
+
+export function updateAccountPreferences(
+  preferredLocale: AppLocale,
+): Promise<{ preferred_locale: AppLocale }> {
+  return requestJsonBody<{ preferred_locale: AppLocale }>(
+    "/api/account/preferences",
+    "PATCH",
+    { preferred_locale: preferredLocale },
+    {
+      errorMessage: "Account language update failed",
+      unauthorizedMessage: "Sign in again before changing your language.",
     },
   );
 }

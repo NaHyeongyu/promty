@@ -64,14 +64,14 @@ function githubRepositoryConnectUrl() {
 }
 
 export function AuthenticatedApp() {
-  const { t } = useI18n();
+  const { setLocale, t } = useI18n();
   const initialNavigationState = useInitialWorkspaceNavigationState();
   const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [authorizationNotice, setAuthorizationNotice] = useState<string | null>(() =>
     new URLSearchParams(window.location.search).get("auth_error") ===
     "github_authorization_cancelled"
-      ? "GitHub authorization was cancelled. No permissions were changed."
+      ? t("auth.authorizationCancelled")
       : null,
   );
   const [isReviewQueueOpen, setIsReviewQueueOpen] = useState(
@@ -291,7 +291,9 @@ export function AuthenticatedApp() {
     accountSettings.clearAccountSettings();
     setErrorMessage(null);
     try {
-      setCurrentUser(await fetchCurrentUser());
+      const user = await fetchCurrentUser();
+      setCurrentUser(user);
+      setLocale(user.preferred_locale);
       setAuthStatus("authenticated");
       await Promise.all([loadEvents(), accountSettings.loadAccountOverview()]);
     } catch (error) {
@@ -300,7 +302,7 @@ export function AuthenticatedApp() {
         clearWorkspaceData();
         return;
       }
-      setErrorMessage(error instanceof Error ? error.message : "Session request failed");
+      setErrorMessage(error instanceof Error ? error.message : t("auth.sessionRequestFailed"));
       setAuthStatus("error");
     }
   };
@@ -536,12 +538,12 @@ export function AuthenticatedApp() {
           repositoryFilesConnectUrl: githubRepositoryConnectUrl(),
           repositoryFilesLoading: isProjectGithubFilesLoading,
           repositoryFilesMessage: isProjectGithubFilesLoading
-            ? "Loading GitHub repository files."
+            ? t("files.repositoryLoadingPeriod")
             : projectGithubFilesError ??
               projectGithubFiles?.message ??
               (projectDetailBase.project.repositoryUrl
-                ? "Sign in again with GitHub repository access to browse repository files."
-                : "This project does not have a GitHub repository remote."),
+                ? t("files.repositoryAccessRequired")
+                : t("files.noRemote")),
           repositoryFilesRepository: projectGithubFiles?.repository,
           repositoryFilesStatus: projectGithubFiles?.status,
           repositoryFilesTruncated: projectGithubFiles?.truncated,
@@ -584,7 +586,7 @@ export function AuthenticatedApp() {
     Boolean(project.githubUrl),
   ).length;
   const latestProfileActivityLabel =
-    projectCatalog[0]?.latestActivityLabel ?? "No project activity";
+    projectCatalog[0]?.latestActivityLabel ?? t("project.noProjectActivity");
   const memoryCount = projectCatalog.reduce(
     (total, project) => total + project.memoryCount,
     0,
@@ -598,8 +600,8 @@ export function AuthenticatedApp() {
     .filter((value): value is string => Boolean(value))
     .sort((first, second) => Date.parse(second) - Date.parse(first))[0];
   const latestMemoryLabel = latestMemoryAt
-    ? formatRelativeTimestamp(latestMemoryAt) ?? "Recently"
-    : "No memory generated";
+    ? formatRelativeTimestamp(latestMemoryAt) ?? t("common.recently")
+    : t("project.noMemoryGenerated");
   const refreshWorkspaceAndAccount = () => {
     void Promise.all([loadEvents(), accountSettings.loadAccountOverview()]);
   };
@@ -636,20 +638,20 @@ export function AuthenticatedApp() {
         accountSettings.accountOverview?.latest_collector_version,
   );
   const collectorStatus = !accountSettings.accountOverview
-    ? { detail: "Checking status", tone: "muted" as const }
+    ? { detail: t("collector.checkingStatus"), tone: "muted" as const }
     : activeCollectorTokens.length === 0
-      ? { detail: "Not set up", tone: "attention" as const }
+      ? { detail: t("collector.notSetUp"), tone: "attention" as const }
       : collectorNeedsUpdate
         ? {
-            detail: `Update to ${accountSettings.accountOverview.latest_collector_version}`,
+            detail: t("collector.updateTo", { version: accountSettings.accountOverview.latest_collector_version }),
             tone: "attention" as const,
           }
       : latestCollectorUsedAt === null
-        ? { detail: "Waiting for first sync", tone: "attention" as const }
+        ? { detail: t("settings.statusWaitingSync"), tone: "attention" as const }
         : {
-            detail: `Synced ${
-              formatRelativeTimestamp(latestCollectorUsedAt) ?? "recently"
-            }`,
+            detail: t("collector.synced", {
+              time: formatRelativeTimestamp(latestCollectorUsedAt) ?? t("common.recently"),
+            }),
             tone:
               latestCollectorAge !== null && latestCollectorAge <= 24 * 60 * 60 * 1000
                 ? ("connected" as const)
@@ -679,7 +681,7 @@ export function AuthenticatedApp() {
           <div className="workspace-notice" role="status">
             <span>{authorizationNotice}</span>
             <button
-              aria-label="Dismiss authorization notice"
+              aria-label={t("auth.dismissNotice")}
               onClick={() => {
                 setAuthorizationNotice(null);
                 const url = new URL(window.location.href);
@@ -811,7 +813,7 @@ export function AuthenticatedApp() {
                 <h1>{activeTitle}</h1>
               </div>
               <div className="page-actions">
-                <span className="status-pill">Admin only</span>
+                <span className="status-pill">{t("admin.only")}</span>
               </div>
             </header>
 

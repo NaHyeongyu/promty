@@ -12,6 +12,7 @@ from app.core.time import utc_now
 from app.models.github_connections import GitHubConnection
 from app.models.tokens import CollectorToken
 from app.models.users import User
+from app.core.locales import normalize_app_locale
 
 def _iso(value: Any) -> str | None:
     return value.isoformat() if value is not None else None
@@ -40,8 +41,20 @@ def serialize_user(user: User) -> dict[str, Any]:
         "email": user.email,
         "id": str(user.id),
         "is_admin": is_admin_user(user),
+        "preferred_locale": normalize_app_locale(user.preferred_locale),
         "username": user.username,
     }
+
+
+def update_account_preferences_response(
+    db: Session,
+    *,
+    preferred_locale: str,
+    user: User,
+) -> dict[str, str]:
+    user.preferred_locale = preferred_locale
+    db.flush()
+    return {"preferred_locale": user.preferred_locale}
 
 
 def serialize_github_connection(

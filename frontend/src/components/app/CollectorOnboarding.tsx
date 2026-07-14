@@ -7,12 +7,14 @@ import {
 } from "../../hooks/useFirstEventPolling";
 import type { EventRecord } from "../../workspace/types";
 import { setupCommandText, SetupCommandBlock } from "./SetupCommandBlock";
+import { useI18n } from "../../i18n/I18nProvider";
 
 export function CollectorSetupFlow({
   projectName,
 }: {
   projectName?: string;
 }) {
+  const { t } = useI18n();
   return (
     <div className="collector-setup-flow">
       <span className="collector-directory-hint">
@@ -42,11 +44,12 @@ export function FirstRunOnboarding({
   pollingEnabled?: boolean;
   pollingIntervalMs?: number;
 }) {
+  const { t } = useI18n();
   return (
     <div className="first-run-onboarding">
       <header className="first-run-header">
-        <h2 id="empty-projects-title">Add your first project</h2>
-        <p>Run one command in the repository you want to remember.</p>
+        <h2 id="empty-projects-title">{t("collector.firstProject")}</h2>
+        <p>{t("collector.firstProjectDescription")}</p>
       </header>
 
       <CollectorSetupFlow />
@@ -113,23 +116,24 @@ function FirstEventWaiter({
   onCheckNow: () => void;
   status: FirstEventPollingStatus;
 }) {
+  const { t } = useI18n();
   const displayStatus = isChecking ? "checking" : status;
   const content = {
     checking: {
-      description: "Looking for collector activity.",
-      title: "Checking connection",
+      description: t("collector.lookingActivity"),
+      title: t("collector.checkingConnection"),
     },
     connected: {
-      description: "Opening your project.",
-      title: "Collector connected",
+      description: t("collector.openingProject"),
+      title: t("collector.connected"),
     },
     retrying: {
-      description: "Automatic checks will continue.",
-      title: "API unavailable",
+      description: t("collector.willContinue"),
+      title: t("collector.apiUnavailable"),
     },
     waiting: {
-      description: "Start one AI prompt after running the command.",
-      title: "Waiting for the first event",
+      description: t("collector.waitingDescription"),
+      title: t("collector.waitingEvent"),
     },
   }[displayStatus];
   return (
@@ -145,11 +149,11 @@ function FirstEventWaiter({
       </div>
       {status !== "connected" ? (
         <button
-          aria-label={isChecking ? "Checking connection" : "Check connection now"}
+          aria-label={isChecking ? t("collector.checkingConnection") : t("collector.checkNow")}
           className="first-event-refresh"
           disabled={isChecking}
           onClick={onCheckNow}
-          title={isChecking ? "Checking connection" : "Check connection now"}
+          title={isChecking ? t("collector.checkingConnection") : t("collector.checkNow")}
           type="button"
         >
           <RefreshCw aria-hidden="true" size={15} strokeWidth={1.5} />
