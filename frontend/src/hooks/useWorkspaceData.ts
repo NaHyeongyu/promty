@@ -42,6 +42,15 @@ export function useWorkspaceData({
     });
   };
 
+  const removeProject = (projectId: string) => {
+    setProjectSummaries((currentProjects) =>
+      currentProjects.filter((project) => project.id !== projectId),
+    );
+    setEvents((currentEvents) =>
+      currentEvents.filter((event) => event.project_id !== projectId),
+    );
+  };
+
   const replaceProjectSummaries = (updatedProjects: ProjectSummary[]) => {
     setProjectSummaries(updatedProjects);
   };
@@ -78,6 +87,7 @@ export function useWorkspaceData({
     loadEvents,
     mergeProjectSummary,
     projects,
+    removeProject,
     replaceProjectSummaries,
     setErrorMessage,
   };

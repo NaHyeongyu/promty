@@ -8,6 +8,7 @@ import {
   LockKeyhole,
   X,
 } from "lucide-react";
+import { useState } from "react";
 import { siGithub } from "simple-icons";
 import { AiModelBadge } from "./AiModelBadge";
 import { EmptyState } from "./EmptyState";
@@ -40,10 +41,12 @@ function PlainDescriptionContent({
 
 export function OverviewPanel({
   data,
+  onDeleteProject,
   onSaveDescription,
   onSaveProjectMetadata,
 }: {
   data: ProjectDetailData;
+  onDeleteProject?: () => Promise<void>;
   onSaveDescription?: (description: string) => Promise<void>;
   onSaveProjectMetadata?: (metadata: {
     projectUrl?: string;
@@ -52,6 +55,8 @@ export function OverviewPanel({
   }) => Promise<void>;
 }) {
   const { t } = useI18n();
+  const [isProjectDeleting, setIsProjectDeleting] = useState(false);
+  const [projectDeleteError, setProjectDeleteError] = useState<string | null>(null);
   const rawDescriptionValue = data.project.description.trim();
   const {
     closingOverviewEditor,
@@ -121,6 +126,25 @@ export function OverviewPanel({
       : lastActivityItem?.value ?? latestActivity?.lastActivity ?? t("common.noActivity");
   const canEditDescription = Boolean(onSaveDescription);
   const canEditProjectMetadata = Boolean(onSaveProjectMetadata);
+  const deleteCurrentProject = async () => {
+    if (!onDeleteProject || isProjectDeleting || isProjectMetadataSaving) {
+      return;
+    }
+    if (!window.confirm(t("project.deleteConfirm", { name: data.project.name }))) {
+      return;
+    }
+
+    setProjectDeleteError(null);
+    setIsProjectDeleting(true);
+    try {
+      await onDeleteProject();
+    } catch (error) {
+      setProjectDeleteError(
+        error instanceof Error ? error.message : t("project.deleteFailed"),
+      );
+      setIsProjectDeleting(false);
+    }
+  };
   return (
     <div className="bh-overview-dashboard">
       <OverviewStatistics data={data} />
@@ -327,7 +351,7 @@ export function OverviewPanel({
               <button
                 aria-label={t("project.closeEditor")}
                 className="bh-icon-button"
-                disabled={isProjectMetadataSaving}
+                disabled={isProjectDeleting || isProjectMetadataSaving}
                 onClick={closeProjectMetadataEditor}
                 type="button"
               >
@@ -413,16 +437,35 @@ export function OverviewPanel({
               {projectMetadataError ? (
                 <p className="bh-description-editor-error">{projectMetadataError}</p>
               ) : null}
+              {projectDeleteError ? (
+                <p className="bh-description-editor-error">{projectDeleteError}</p>
+              ) : null}
               <div className="bh-overview-edit-actions">
+                {onDeleteProject ? (
+                  <button
+                    className="bh-overview-delete-action"
+                    disabled={isProjectDeleting || isProjectMetadataSaving}
+                    onClick={() => {
+                      void deleteCurrentProject();
+                    }}
+                    type="button"
+                  >
+                    {isProjectDeleting ? t("project.deleting") : t("project.delete")}
+                  </button>
+                ) : null}
                 <button
-                  disabled={isProjectMetadataSaving}
+                  disabled={isProjectDeleting || isProjectMetadataSaving}
                   type="button"
                   onClick={closeProjectMetadataEditor}
                 >
                   Cancel
                 </button>
                 <button
-                  disabled={isProjectMetadataSaving || projectTagsDraft.trim().length === 0}
+                  disabled={
+                    isProjectDeleting ||
+                    isProjectMetadataSaving ||
+                    projectTagsDraft.trim().length === 0
+                  }
                   type="button"
                   onClick={() => {
                     setProjectTagsDraft("");
@@ -431,7 +474,10 @@ export function OverviewPanel({
                 >
                   Clear tags
                 </button>
-                <button disabled={isProjectMetadataSaving} type="submit">
+                <button
+                  disabled={isProjectDeleting || isProjectMetadataSaving}
+                  type="submit"
+                >
                   {isProjectMetadataSaving ? t("common.saving") : t("common.save")}
                 </button>
               </div>

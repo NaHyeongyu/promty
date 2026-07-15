@@ -123,6 +123,17 @@ export function createProject(
   );
 }
 
+export function deleteProject(projectId: string): Promise<void> {
+  return requestVoid(
+    `/api/projects/${encodeURIComponent(projectId)}`,
+    { method: "DELETE" },
+    {
+      errorMessage: "Project deletion failed",
+      unauthorizedMessage: "Sign in again before deleting this project.",
+    },
+  );
+}
+
 export function updateProjectBookmark(
   projectId: string,
   isBookmarked: boolean,

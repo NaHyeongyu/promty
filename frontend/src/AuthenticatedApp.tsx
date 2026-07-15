@@ -93,6 +93,7 @@ export function AuthenticatedApp() {
     loadEvents,
     mergeProjectSummary: mergeWorkspaceProjectSummary,
     projects,
+    removeProject,
     replaceProjectSummaries,
     setErrorMessage,
   } = useWorkspaceData({
@@ -213,6 +214,7 @@ export function AuthenticatedApp() {
     activeProjectMemoryGenerationIds,
     bookmarkUpdatingProjectId,
     createProjectFromRepository,
+    deleteSelectedProject,
     delayedProjectMemoryGenerationIds,
     generateProjectMemory,
     saveProjectDescription,
@@ -225,6 +227,7 @@ export function AuthenticatedApp() {
     loadProjectDetail,
     loadProjectGithubFiles,
     mergeProjectSummary: mergeWorkspaceProjectSummary,
+    onProjectDeleted: closeProjectDetail,
     onProjectSlugChange: (slug) => {
       const nextState = normalizeUrlNavigationState({
         ...currentNavigationState,
@@ -234,6 +237,7 @@ export function AuthenticatedApp() {
       writeUrlNavigationState(nextState, "replace");
     },
     onUnauthorized: handleUnauthorized,
+    removeProject,
     selectedProject,
     selectedProjectId,
     setErrorMessage,
@@ -422,7 +426,7 @@ export function AuthenticatedApp() {
       selectedProjectId: projectId,
     });
   };
-  const closeProjectDetail = () => {
+  function closeProjectDetail() {
     closeRepositoryConnector();
     setIsReviewQueueOpen(false);
     navigateWorkspace({
@@ -434,7 +438,7 @@ export function AuthenticatedApp() {
     clearProjectDetail();
     clearProjectFiles();
     clearRepositoryFiles();
-  };
+  }
   const selectSidebarItem = (item: SidebarItemId) => {
     if (item === "admin" && !currentUser?.is_admin) {
       return;
@@ -737,6 +741,7 @@ export function AuthenticatedApp() {
                   ? () => openRepositoryConnectorOverlay(selectedProject.id)
                   : undefined
               }
+              onDeleteProject={selectedProject ? deleteSelectedProject : undefined}
               onLoadMemoryArtifacts={
                 activeProjectId
                   ? (limit) => loadProjectMemoryArtifacts(activeProjectId, limit)

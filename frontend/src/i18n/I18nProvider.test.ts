@@ -25,5 +25,8 @@ describe("i18n", () => {
     expect(
       translateMessage("ko", "review.reviewGenerateFor", { name: "Promty" }),
     ).toBe("Promty 메모리 리뷰 및 생성");
+    expect(
+      translateMessage("ko", "project.deleteConfirm", { name: "PromptHub" }),
+    ).toContain("PromptHub");
   });
 });

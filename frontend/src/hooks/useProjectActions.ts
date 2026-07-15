@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { UnauthorizedError } from "../api/client";
 import {
   createProject,
+  deleteProject,
   fetchProjectSummaries,
   generateProjectMemory as requestProjectMemoryGeneration,
   updateProjectBookmark,
@@ -28,7 +29,9 @@ type UseProjectActionsOptions = {
   loadProjectGithubFiles: (projectId: string, signal?: AbortSignal) => Promise<void>;
   mergeProjectSummary: (updatedProject: ProjectSummary) => void;
   onProjectSlugChange: (slug: string) => void;
+  onProjectDeleted: () => void;
   onUnauthorized: () => void;
+  removeProject: (projectId: string) => void;
   selectedProject: Project | null;
   selectedProjectId: string | null;
   setErrorMessage: (message: string | null) => void;
@@ -41,7 +44,9 @@ export function useProjectActions({
   loadProjectGithubFiles,
   mergeProjectSummary,
   onProjectSlugChange,
+  onProjectDeleted,
   onUnauthorized,
+  removeProject,
   selectedProject,
   selectedProjectId,
   setErrorMessage,
@@ -78,6 +83,20 @@ export function useProjectActions({
       const project = await createProject({ github_url: githubUrl });
       mergeProjectState(project);
       return project;
+    } catch (error) {
+      return rethrowAfterUnauthorized(error);
+    }
+  };
+
+  const deleteSelectedProject = async () => {
+    if (!selectedProjectId) {
+      throw new Error("Select a project before deleting it.");
+    }
+
+    try {
+      await deleteProject(selectedProjectId);
+      removeProject(selectedProjectId);
+      onProjectDeleted();
     } catch (error) {
       return rethrowAfterUnauthorized(error);
     }
@@ -277,6 +296,7 @@ export function useProjectActions({
     activeProjectMemoryGenerationIds,
     bookmarkUpdatingProjectId,
     createProjectFromRepository,
+    deleteSelectedProject,
     delayedProjectMemoryGenerationIds,
     generateProjectMemory,
     saveProjectDescription,
