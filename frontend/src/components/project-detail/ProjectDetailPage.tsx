@@ -36,6 +36,7 @@ type ProjectDetailPageProps = {
   isShareCopied?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onConnectRepository?: () => void;
+  onDeleteProject?: () => Promise<void>;
   onLoadMemoryArtifacts?: (limit: number) => Promise<ProjectMemoryArtifact[]>;
   onOpenAllProjects?: () => void;
   onProjectSelect?: (projectId: string) => void;
@@ -101,6 +102,7 @@ function ProjectPanel({
   onActivityNavigationChange,
   onGenerateProjectMemory,
   onLoadMemoryArtifacts,
+  onDeleteProject,
   onSaveProjectMetadata,
   onSaveDescription,
   onRepositoryFileSelect,
@@ -117,6 +119,7 @@ function ProjectPanel({
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onGenerateProjectMemory?: () => Promise<MemoryGenerationResult>;
   onLoadMemoryArtifacts?: (limit: number) => Promise<ProjectMemoryArtifact[]>;
+  onDeleteProject?: () => Promise<void>;
   onRepositoryFileSelect?: (path: string) => void;
   onRetry?: () => void;
   onSaveProjectMetadata?: (metadata: {
@@ -152,6 +155,7 @@ function ProjectPanel({
     return (
       <OverviewPanel
         data={data}
+        onDeleteProject={onDeleteProject}
         onSaveProjectMetadata={onSaveProjectMetadata}
         onSaveDescription={onSaveDescription}
       />
@@ -220,6 +224,7 @@ export function ProjectDetailPage({
   onActivityNavigationChange,
   onGenerateProjectMemory,
   onConnectRepository,
+  onDeleteProject,
   onOpenAllProjects,
   onLoadMemoryArtifacts,
   onProjectSelect,
@@ -296,6 +301,7 @@ export function ProjectDetailPage({
           onActivityNavigationChange={onActivityNavigationChange}
           onGenerateProjectMemory={onGenerateProjectMemory}
           onLoadMemoryArtifacts={onLoadMemoryArtifacts}
+          onDeleteProject={onDeleteProject}
           onSaveProjectMetadata={onSaveProjectMetadata}
           onSaveDescription={onSaveDescription}
           onRepositoryFileSelect={onRepositoryFileSelect}

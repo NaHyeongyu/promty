@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.transactions import commit_or_conflict as _commit_or_conflict
@@ -25,6 +25,7 @@ from app.services.github_repositories import (
 )
 from app.services.projects.management import (
     create_project_summary,
+    delete_project as delete_project_for_user,
     list_project_summaries,
     update_project_bookmark_summary,
     update_project_description_summary,
@@ -68,6 +69,17 @@ def create_project(
         detail="Project could not be created because it conflicts with an existing project.",
     )
     return response
+
+
+@router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_project(
+    project_id: UUID,
+    current_user: User = Depends(require_web_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    delete_project_for_user(db, project_id=project_id, user=current_user)
+    _commit_or_conflict(db, detail="Project could not be deleted.")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/github/repositories")

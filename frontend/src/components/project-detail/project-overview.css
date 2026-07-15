@@ -933,6 +933,18 @@
   background: var(--bh-color-surface-hover);
 }
 
+.bh-overview-edit-actions .bh-overview-delete-action {
+  margin-right: auto;
+  border-color: var(--bh-color-danger);
+  color: var(--bh-color-danger);
+}
+
+.bh-overview-edit-actions .bh-overview-delete-action:hover:not(:disabled) {
+  border-color: var(--bh-color-danger);
+  color: var(--bh-color-surface);
+  background: var(--bh-color-danger);
+}
+
 .bh-overview-edit-actions button[type="submit"] {
   border-color: var(--bh-color-text-primary);
   color: var(--bh-color-surface);

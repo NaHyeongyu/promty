@@ -440,3 +440,14 @@ def update_project_bookmark_summary(
     project.is_bookmarked = is_bookmarked
     db.flush()
     return project_summary_with_counts(db, project)
+
+
+def delete_project(
+    db: Session,
+    *,
+    project_id: UUID,
+    user: User,
+) -> None:
+    project = project_for_user(db, project_id, user)
+    db.delete(project)
+    db.flush()
