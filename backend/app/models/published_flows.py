@@ -3,7 +3,17 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -25,6 +35,9 @@ class PublishedFlow(Base):
         ),
         CheckConstraint("prompt_count >= 0", name="ck_published_flows_prompt_count"),
         CheckConstraint("file_count >= 0", name="ck_published_flows_file_count"),
+        UniqueConstraint("slug", name="uq_published_flows_slug"),
+        Index("ix_published_flows_published_at", "published_at"),
+        Index("ix_published_flows_status_visibility", "status", "visibility"),
     )
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -52,7 +65,7 @@ class PublishedFlow(Base):
         index=True,
     )
     title: Mapped[str] = mapped_column(String(255))
-    slug: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    slug: Mapped[str] = mapped_column(String(255))
     summary: Mapped[str | None] = mapped_column(Text)
     context_summary: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
@@ -119,13 +132,18 @@ class PublishedFlowItem(Base):
             "files_changed >= 0",
             name="ck_published_flow_items_files_changed",
         ),
+        UniqueConstraint(
+            "published_flow_id",
+            "item_order",
+            name="uq_published_flow_items_order",
+        ),
+        Index("ix_published_flow_items_flow_id", "published_flow_id"),
     )
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     published_flow_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("published_flows.id", ondelete="CASCADE"),
-        index=True,
     )
     source_event_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
@@ -150,12 +168,12 @@ class PublishedFlowItem(Base):
 
 class PublishedFlowFile(Base):
     __tablename__ = "published_flow_files"
+    __table_args__ = (Index("ix_published_flow_files_flow_id", "published_flow_id"),)
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     published_flow_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("published_flows.id", ondelete="CASCADE"),
-        index=True,
     )
     source_event_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
@@ -177,9 +195,7 @@ class PublishedFlowFile(Base):
 
 class PublishedFlowAsset(Base):
     __tablename__ = "published_flow_assets"
-    __table_args__ = (
-        CheckConstraint("byte_size > 0", name="ck_published_flow_assets_byte_size"),
-    )
+    __table_args__ = (CheckConstraint("byte_size > 0", name="ck_published_flow_assets_byte_size"),)
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     published_flow_id: Mapped[UUID] = mapped_column(
@@ -206,12 +222,12 @@ class PublishedFlowAsset(Base):
 
 class PublishedFlowComment(Base):
     __tablename__ = "published_flow_comments"
+    __table_args__ = (Index("ix_published_flow_comments_flow_id", "published_flow_id"),)
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     published_flow_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("published_flows.id", ondelete="CASCADE"),
-        index=True,
     )
     author_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
@@ -232,12 +248,20 @@ class PublishedFlowComment(Base):
 
 class PublishedFlowReaction(Base):
     __tablename__ = "published_flow_reactions"
+    __table_args__ = (
+        UniqueConstraint(
+            "published_flow_id",
+            "author_id",
+            "reaction_type",
+            name="uq_published_flow_reactions_flow_author_type",
+        ),
+        Index("ix_published_flow_reactions_flow_id", "published_flow_id"),
+    )
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     published_flow_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("published_flows.id", ondelete="CASCADE"),
-        index=True,
     )
     author_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),

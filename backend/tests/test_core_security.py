@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -11,6 +12,7 @@ from app.core.security import (
     JWTError,
     issue_web_access_token,
     require_ingest_token,
+    require_web_user,
     verify_web_access_token,
 )
 
@@ -18,6 +20,26 @@ from app.core.security import (
 class UserStub:
     def __init__(self) -> None:
         self.id = uuid4()
+        self.suspended_at = None
+
+
+class CollectorTokenStub:
+    def __init__(self, user: UserStub) -> None:
+        self.collector_version = None
+        self.last_used_at = None
+        self.user = user
+
+
+class DatabaseStub:
+    def __init__(self, collector_token: CollectorTokenStub) -> None:
+        self.collector_token = collector_token
+        self.flushed = False
+
+    def scalar(self, _statement: object) -> CollectorTokenStub:
+        return self.collector_token
+
+    def flush(self) -> None:
+        self.flushed = True
 
 
 def test_web_access_token_round_trip() -> None:
@@ -63,3 +85,25 @@ def test_ingest_can_explicitly_allow_anonymous_for_local_dev(
     )
 
     assert require_ingest_token(authorization=None, db=None) is None  # type: ignore[arg-type]
+
+
+def test_suspended_user_is_blocked_from_web_and_collector_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = UserStub()
+    user.suspended_at = datetime.now(timezone.utc)
+    db = DatabaseStub(CollectorTokenStub(user))
+    monkeypatch.setattr(
+        security,
+        "settings",
+        replace(security.settings, api_token=None, allow_anonymous_ingest=False),
+    )
+
+    with pytest.raises(HTTPException) as web_error:
+        require_web_user(user)  # type: ignore[arg-type]
+    with pytest.raises(HTTPException) as ingest_error:
+        require_ingest_token(authorization="Bearer collector-secret", db=db)  # type: ignore[arg-type]
+
+    assert web_error.value.status_code == 403
+    assert ingest_error.value.status_code == 403
+    assert db.flushed is False

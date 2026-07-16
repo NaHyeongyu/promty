@@ -3,6 +3,7 @@ import type {
   ActivityViewId,
   ProjectDetailTabId,
 } from "../components/project-detail";
+import { PUBLISHED_FLOWS_ENABLED } from "../config";
 import type { SidebarItemId } from "./types";
 
 export type UrlNavigationWriteMode = "push" | "replace";
@@ -14,6 +15,8 @@ export type UrlNavigationState = {
   repositoryFileContentPath: string | null;
   selectedProjectId: string | null;
   selectedProjectRouteKey: string | null;
+  selectedPublicProjectId: string | null;
+  selectedCommunityFlowKey: string | null;
 };
 
 export const DEFAULT_URL_NAVIGATION_STATE: UrlNavigationState = {
@@ -28,6 +31,8 @@ export const DEFAULT_URL_NAVIGATION_STATE: UrlNavigationState = {
   repositoryFileContentPath: null,
   selectedProjectId: null,
   selectedProjectRouteKey: null,
+  selectedPublicProjectId: null,
+  selectedCommunityFlowKey: null,
 };
 
 const ACTIVITY_VIEW_IDS = new Set<ActivityViewId>(["prompts", "sessions"]);
@@ -39,6 +44,8 @@ const PROJECT_DETAIL_TAB_IDS = new Set<ProjectDetailTabId>([
 ]);
 const SIDEBAR_ITEM_IDS = new Set<SidebarItemId>([
   "admin",
+  ...(PUBLISHED_FLOWS_ENABLED ? (["community"] as const) : []),
+  "explore",
   "projects",
   "settings",
   "profile",
@@ -182,7 +189,11 @@ function parseActivityViewId(value: string | null): ActivityViewId {
 export function normalizeUrlNavigationState(
   state: Partial<UrlNavigationState>,
 ): UrlNavigationState {
-  const activeItem = state.activeItem ?? DEFAULT_URL_NAVIGATION_STATE.activeItem;
+  const requestedActiveItem =
+    state.activeItem ?? DEFAULT_URL_NAVIGATION_STATE.activeItem;
+  const activeItem = SIDEBAR_ITEM_IDS.has(requestedActiveItem)
+    ? requestedActiveItem
+    : DEFAULT_URL_NAVIGATION_STATE.activeItem;
   const selectedProjectId =
     activeItem === "projects" ? sanitizeProjectId(state.selectedProjectId) : null;
   const selectedProjectRouteKey =
@@ -190,6 +201,12 @@ export function normalizeUrlNavigationState(
       ? sanitizeProjectRouteKey(
           state.selectedProjectRouteKey ?? state.selectedProjectId,
         )
+      : null;
+  const selectedPublicProjectId =
+    activeItem === "explore" ? sanitizeProjectId(state.selectedPublicProjectId) : null;
+  const selectedCommunityFlowKey =
+    activeItem === "community"
+      ? sanitizeProjectRouteKey(state.selectedCommunityFlowKey)
       : null;
   const hasSelectedProject = Boolean(selectedProjectId || selectedProjectRouteKey);
   const activeDetailTab = hasSelectedProject
@@ -236,6 +253,8 @@ export function normalizeUrlNavigationState(
     repositoryFileContentPath,
     selectedProjectId,
     selectedProjectRouteKey,
+    selectedPublicProjectId,
+    selectedCommunityFlowKey,
   };
 }
 
@@ -254,6 +273,8 @@ export function readUrlNavigationState(): UrlNavigationState {
     repositoryFileContentPath: params.get("file"),
     selectedProjectId: projectRouteKey,
     selectedProjectRouteKey: projectRouteKey,
+    selectedPublicProjectId: params.get("public_project"),
+    selectedCommunityFlowKey: params.get("flow"),
   });
 }
 
@@ -271,6 +292,12 @@ export function buildUrlNavigationSearch(state: UrlNavigationState) {
 
   if (state.activeItem !== "projects") {
     params.set("view", state.activeItem);
+    if (state.activeItem === "explore" && state.selectedPublicProjectId) {
+      params.set("public_project", state.selectedPublicProjectId);
+    }
+    if (state.activeItem === "community" && state.selectedCommunityFlowKey) {
+      params.set("flow", state.selectedCommunityFlowKey);
+    }
   } else if (state.selectedProjectRouteKey ?? state.selectedProjectId) {
     params.set("project", state.selectedProjectRouteKey ?? state.selectedProjectId ?? "");
     params.set("tab", state.activeDetailTab);

@@ -36,6 +36,12 @@ export function useWorkspaceNavigationState({
   const [selectedProjectRouteKey, setSelectedProjectRouteKey] = useState<string | null>(
     initialNavigationState.selectedProjectRouteKey,
   );
+  const [selectedPublicProjectId, setSelectedPublicProjectId] = useState<string | null>(
+    initialNavigationState.selectedPublicProjectId,
+  );
+  const [selectedCommunityFlowKey, setSelectedCommunityFlowKey] = useState<string | null>(
+    initialNavigationState.selectedCommunityFlowKey,
+  );
   const [activeDetailTab, setActiveDetailTab] =
     useState<ProjectDetailTabId>(initialNavigationState.activeDetailTab);
   const [activityNavigation, setActivityNavigation] =
@@ -49,6 +55,8 @@ export function useWorkspaceNavigationState({
       repositoryFileContentPath,
       selectedProjectId,
       selectedProjectRouteKey,
+      selectedPublicProjectId,
+      selectedCommunityFlowKey,
     }),
     [
       activityNavigation,
@@ -57,6 +65,8 @@ export function useWorkspaceNavigationState({
       repositoryFileContentPath,
       selectedProjectId,
       selectedProjectRouteKey,
+      selectedPublicProjectId,
+      selectedCommunityFlowKey,
     ],
   );
 
@@ -65,6 +75,8 @@ export function useWorkspaceNavigationState({
       setActiveItem(nextState.activeItem);
       setSelectedProjectId(nextState.selectedProjectId);
       setSelectedProjectRouteKey(nextState.selectedProjectRouteKey);
+      setSelectedPublicProjectId(nextState.selectedPublicProjectId);
+      setSelectedCommunityFlowKey(nextState.selectedCommunityFlowKey);
       setActiveDetailTab(nextState.activeDetailTab);
       setActivityNavigation(nextState.activityNavigation);
       setRepositoryFileContentPath(nextState.repositoryFileContentPath);
@@ -94,5 +106,7 @@ export function useWorkspaceNavigationState({
     currentNavigationState,
     selectedProjectId,
     selectedProjectRouteKey,
+    selectedPublicProjectId,
+    selectedCommunityFlowKey,
   };
 }

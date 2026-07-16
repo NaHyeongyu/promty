@@ -43,7 +43,6 @@ from app.services.memory_pipeline import compile_project_memory_snapshot
 class ProjectMemoryCompilationInput:
     base_guard: str
     existing_artifact_id: UUID | None
-    force_regenerate: bool
     previous_snapshot: Mapping[str, Any] | None
     project_context: Mapping[str, Any]
     project_id: UUID
@@ -556,8 +555,6 @@ def prepare_project_memory_compilation(
     db: DBSession,
     project_id: UUID,
     required_source_memory_contexts: list[dict[str, Any]] | None = None,
-    *,
-    force_regenerate: bool = False,
 ) -> ProjectMemoryCompilationInput:
     """Capture all DB-backed compiler inputs as detached, immutable values."""
 
@@ -619,14 +616,12 @@ def prepare_project_memory_compilation(
     return ProjectMemoryCompilationInput(
         base_guard=base_state.base_guard,
         existing_artifact_id=base_state.existing_artifact_id,
-        force_regenerate=force_regenerate,
         previous_snapshot=base_state.previous_snapshot,
         project_context=base_state.project_context,
         project_id=project_id,
         provider=provider_name(settings.project_memory_generator),
         reuse_existing=(
             base_state.existing_artifact_id is not None
-            and not force_regenerate
             and base_state.existing_source_memory_ids == source_memory_ids
         ),
         source_memory_contexts=tuple(_freeze_json(context) for context in source_memory_contexts),
@@ -752,7 +747,6 @@ def write_project_memory_compilation(
 def compile_project_memory(
     db: DBSession,
     *,
-    force_regenerate: bool = False,
     project_id: UUID,
     required_source_memories: list[Artifact] | None = None,
 ) -> Artifact:
@@ -760,7 +754,6 @@ def compile_project_memory(
         db,
         project_id,
         [_source_memory_context(memory) for memory in (required_source_memories or [])],
-        force_regenerate=force_regenerate,
     )
     prepared = generate_project_memory_compilation(compilation_input)
     if project_memory_compilation_guard(db, project_id) != prepared.base_guard:

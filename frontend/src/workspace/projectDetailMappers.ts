@@ -111,6 +111,7 @@ function projectMemoryReviewStateFromApi(
   if (
     value === "draft" ||
     value === "edited" ||
+    value === "generation_failed" ||
     value === "generated" ||
     value === "ignored" ||
     value === "saved" ||

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, Text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -18,6 +18,11 @@ class ArtifactGenerationJob(Base):
         CheckConstraint(
             "status in ('pending', 'running', 'succeeded', 'failed')",
             name="ck_artifact_generation_jobs_status",
+        ),
+        Index(
+            "ix_artifact_generation_jobs_status_created_at",
+            "status",
+            "created_at",
         ),
     )
 

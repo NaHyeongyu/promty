@@ -97,7 +97,7 @@ export async function requestJson<T>(
 
 export async function requestJsonBody<T>(
   path: string,
-  method: "PATCH" | "POST" | "PUT",
+  method: "DELETE" | "PATCH" | "POST" | "PUT",
   body: unknown,
   messages: ApiErrorMessages = {},
 ): Promise<T> {

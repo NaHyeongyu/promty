@@ -1,4 +1,5 @@
 import { useMemo, type ReactNode } from "react";
+import { API_URL } from "../config";
 
 type MarkdownContentProps = {
   className?: string;
@@ -9,7 +10,12 @@ type MarkdownContentProps = {
 function safeImageSrc(value: string) {
   try {
     const parsed = new URL(value, window.location.origin);
-    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+    const apiOrigin = new URL(API_URL || window.location.origin, window.location.origin)
+      .origin;
+    if (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      (parsed.origin === window.location.origin || parsed.origin === apiOrigin)
+    ) {
       return parsed.href;
     }
   } catch {

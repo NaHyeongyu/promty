@@ -10,7 +10,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session as DBSession
 
-from app.core.encryption import decrypt_github_token
+from app.core.encryption import decrypt_github_token_with_rotation, encrypt_github_token
 from app.models.github_connections import GitHubConnection
 from app.models.projects import Project
 from app.models.users import User
@@ -47,9 +47,13 @@ def _github_token_snapshot(db: DBSession, *, user: User) -> str | None:
     if connection is None:
         return None
 
-    encrypted_token = connection.access_token_encrypted
-    db.rollback()
-    return decrypt_github_token(encrypted_token)
+    token, needs_rotation = decrypt_github_token_with_rotation(connection.access_token_encrypted)
+    if needs_rotation:
+        connection.access_token_encrypted = encrypt_github_token(token)
+        db.commit()
+    else:
+        db.rollback()
+    return token
 
 
 def _is_github_not_found(exc: HTTPException) -> bool:

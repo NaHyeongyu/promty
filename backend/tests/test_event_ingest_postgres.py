@@ -14,12 +14,14 @@ from app.db.session import SessionLocal, engine
 from app.models.code_change_patches import CodeChangePatch
 from app.models.events import Event
 from app.models.project_files import ProjectFile
+from app.models.project_stats import ProjectStats
 from app.models.prompt_search_documents import PromptSearchDocument
 from app.models.sessions import Session as PromptSession
 from app.models.users import User
 from app.schemas.events import EventCreate
 from app.services import events as events_service
 from app.services.events import EventIngestConflict, add_events
+from app.services.projects.management import list_project_summaries
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("PROMPTHUB_RUN_POSTGRES_TESTS") != "1",
@@ -104,6 +106,15 @@ def test_same_session_batch_has_bounded_sql_and_flush_counts(db: Session) -> Non
     assert any(
         "FROM sessions" in statement and "FOR UPDATE" in statement for statement in statements
     )
+    prompt_session = db.get(PromptSession, session_id)
+    assert prompt_session is not None
+    assert prompt_session.last_activity_at == events[-1].timestamp
+    stats = db.get(ProjectStats, project_id)
+    assert stats is not None
+    assert stats.session_count == 1
+    assert stats.event_count == 100
+    assert stats.prompt_count == 100
+    assert stats.latest_event_at == events[-1].timestamp
 
 
 def test_many_session_prompt_batch_does_not_run_memory_queries_per_session(
@@ -328,6 +339,11 @@ def test_database_replay_updates_no_duplicate_rows(db: Session) -> None:
         )
         == 1
     )
+    stats = db.get(ProjectStats, project_id)
+    assert stats is not None
+    assert stats.event_count == 1
+    assert stats.prompt_count == 1
+    assert stats.session_count == 1
 
 
 def test_files_changed_batch_keeps_last_file_state_and_all_patches(db: Session) -> None:
@@ -370,12 +386,63 @@ def test_files_changed_batch_keeps_last_file_state_and_all_patches(db: Session) 
     assert project_file is not None
     assert project_file.status == "deleted"
     assert project_file.last_event_id == second.id
+    stats = db.get(ProjectStats, project_id)
+    assert stats is not None
+    assert stats.tracked_files == 0
     assert (
         db.scalar(
             select(func.count(CodeChangePatch.id)).where(CodeChangePatch.project_id == project_id)
         )
         == 2
     )
+
+
+def test_project_list_reads_incremental_activity_rollup(db: Session) -> None:
+    marker = str(uuid4())
+    owner = User(
+        github_id=f"rollup-{marker}",
+        email=f"rollup-{marker}@example.com",
+        username=f"rollup-{marker}",
+    )
+    db.add(owner)
+    db.flush()
+    project_id = uuid4()
+    session_id = uuid4()
+    events = [
+        _event(project_id=project_id, session_id=session_id, sequence=1),
+        _event(
+            event_type="ResponseReceived",
+            project_id=project_id,
+            session_id=session_id,
+            sequence=2,
+        ),
+    ]
+    add_events(db, events, owner=owner)
+    db.flush()
+    statements: list[str] = []
+
+    def capture_statement(
+        _connection: Any,
+        _cursor: Any,
+        statement: str,
+        *_args: Any,
+    ) -> None:
+        statements.append(statement)
+
+    sqlalchemy_event.listen(engine, "before_cursor_execute", capture_statement)
+    try:
+        summaries = list_project_summaries(db, current_user=owner)
+    finally:
+        sqlalchemy_event.remove(engine, "before_cursor_execute", capture_statement)
+
+    assert len(summaries) == 1
+    assert summaries[0]["events"] == 2
+    assert summaries[0]["prompts"] == 1
+    assert summaries[0]["sessions"] == 1
+    assert len(statements) == 2
+    assert "project_stats" in statements[0]
+    assert "FROM events" not in statements[0]
+    assert "project_files" not in statements[0]
 
 
 def test_session_project_and_owner_checks_are_preserved(db: Session) -> None:

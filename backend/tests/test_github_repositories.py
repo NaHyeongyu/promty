@@ -49,8 +49,10 @@ def _install_connection(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(
         github_repositories,
-        "decrypt_github_token",
-        lambda encrypted: "decrypted-token" if encrypted == "encrypted-token" else "",
+        "decrypt_github_token_with_rotation",
+        lambda encrypted: (
+            ("decrypted-token", False) if encrypted == "encrypted-token" else ("", False)
+        ),
     )
 
 

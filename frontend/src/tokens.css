@@ -6,7 +6,7 @@
   --bh-font-code:
     "Geist Mono", ui-monospace, SFMono-Regular, "SF Mono", Consolas,
     "Liberation Mono", Menlo, monospace;
-  --bh-font-brand: "Commit Mono", "JetBrains Mono", var(--bh-font-code);
+  --bh-font-brand: "Commit Mono", "SFMono-Regular", Consolas, var(--bh-font-code);
 
   --bh-font-weight-light: 300;
   --bh-font-weight-regular: 400;

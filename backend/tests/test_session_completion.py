@@ -6,30 +6,26 @@ from uuid import uuid4
 
 from app.services import events as event_service
 from app.services.memory import session_completion
-from app.services.memory.constants import SESSION_IDLE_COMPLETE_AFTER
 
 
-class ScalarQueueDB:
-    def __init__(self, *values) -> None:
-        self.values = list(values)
-
+class NoQueryDB:
     def scalar(self, _statement):
-        return self.values.pop(0)
+        raise AssertionError("persisted session activity should avoid an event aggregate")
 
 
 def test_trailing_response_activity_prevents_early_idle_completion(monkeypatch) -> None:
     now = datetime(2026, 7, 13, 12, tzinfo=UTC)
-    latest_prompt_at = now - SESSION_IDLE_COMPLETE_AFTER - timedelta(minutes=5)
     latest_event_at = now - timedelta(minutes=5)
     session = SimpleNamespace(
         ended_at=None,
         id=uuid4(),
+        last_activity_at=latest_event_at,
         project_id=uuid4(),
     )
     monkeypatch.setattr(session_completion, "utc_now", lambda: now)
 
     state = session_completion.session_completion_state(
-        ScalarQueueDB(latest_event_at, latest_prompt_at),
+        NoQueryDB(),
         session,
     )
 

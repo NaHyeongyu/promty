@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response, status
@@ -18,6 +18,16 @@ from app.schemas.projects import (
     ProjectRepositoryUpdateRequest,
     ProjectSummaryResponse,
 )
+from app.schemas.project_responses import (
+    GithubRepositoriesResponse,
+    ProjectDetailResponse,
+    ProjectFilesResponse,
+    ProjectGithubFileContentResponse,
+    ProjectGithubFilesResponse,
+    ProjectPromptActivitiesResponse,
+    PublicProjectDetailResponse,
+    PublicProjectListResponse,
+)
 from app.services.github_repositories import (
     list_github_repositories,
     read_github_repository_file_content,
@@ -31,6 +41,10 @@ from app.services.projects.management import (
     update_project_description_summary,
     update_project_metadata_summary,
     update_project_repository_summary,
+)
+from app.services.projects.public import (
+    list_public_project_summaries,
+    read_public_project_detail_response,
 )
 from app.services.projects.views import (
     project_for_user as _project_for_user,
@@ -71,6 +85,38 @@ def create_project(
     return response
 
 
+@router.get("/public", response_model=PublicProjectListResponse)
+def list_public_projects(
+    query: str | None = Query(default=None, max_length=120),
+    sort: Literal["newest", "recent"] = Query(default="recent"),
+    limit: int = Query(default=24, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    current_user: User = Depends(require_web_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return list_public_project_summaries(
+        db,
+        current_user=current_user,
+        limit=limit,
+        offset=offset,
+        query=query,
+        sort=sort,
+    )
+
+
+@router.get("/public/{project_id}", response_model=PublicProjectDetailResponse)
+def read_public_project(
+    project_id: UUID,
+    current_user: User = Depends(require_web_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return read_public_project_detail_response(
+        db,
+        current_user=current_user,
+        project_id=project_id,
+    )
+
+
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_project(
     project_id: UUID,
@@ -82,7 +128,7 @@ def delete_project(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/github/repositories")
+@router.get("/github/repositories", response_model=GithubRepositoriesResponse)
 def read_project_github_repositories(
     search: str | None = Query(default=None, max_length=120),
     current_user: User = Depends(require_web_user),
@@ -91,7 +137,7 @@ def read_project_github_repositories(
     return list_github_repositories(db, user=current_user, query=search)
 
 
-@router.get("/{project_id}/detail")
+@router.get("/{project_id}/detail", response_model=ProjectDetailResponse)
 def read_project_detail(
     project_id: UUID,
     current_user: User = Depends(require_web_user),
@@ -100,7 +146,10 @@ def read_project_detail(
     return read_project_detail_response(project_id, current_user, db)
 
 
-@router.get("/{project_id}/prompt-activities")
+@router.get(
+    "/{project_id}/prompt-activities",
+    response_model=ProjectPromptActivitiesResponse,
+)
 def read_project_prompt_activities(
     project_id: UUID,
     limit: int = Query(default=50, ge=1, le=100),
@@ -121,7 +170,7 @@ def read_project_prompt_activities(
     )
 
 
-@router.get("/{project_id}/files")
+@router.get("/{project_id}/files", response_model=ProjectFilesResponse)
 def read_project_files(
     project_id: UUID,
     limit: int = Query(default=2000, ge=1, le=5000),
@@ -209,7 +258,7 @@ def update_project_bookmark(
     return response
 
 
-@router.get("/{project_id}/github/files")
+@router.get("/{project_id}/github/files", response_model=ProjectGithubFilesResponse)
 def read_project_github_files(
     project_id: UUID,
     current_user: User = Depends(require_web_user),
@@ -219,7 +268,10 @@ def read_project_github_files(
     return read_github_repository_tree(db, project=project, user=current_user)
 
 
-@router.get("/{project_id}/github/files/content")
+@router.get(
+    "/{project_id}/github/files/content",
+    response_model=ProjectGithubFileContentResponse,
+)
 def read_project_github_file_content(
     project_id: UUID,
     path: str = Query(..., min_length=1, max_length=2048),

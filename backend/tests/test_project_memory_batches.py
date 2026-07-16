@@ -293,14 +293,17 @@ def test_prepare_batch_claims_deterministic_cap_and_leaves_excess_pending(
     )
     assert "ORDER BY artifacts.created_at, artifacts.id" in compiled
     assert "LIMIT 3 FOR UPDATE" in compiled
+    assert "sent_to_ai_at" in compiled
+    assert "IS NULL" in compiled
 
 
-def test_only_one_request_claims_a_running_batch_lease() -> None:
+@pytest.mark.parametrize("status", ["running", "failed", "succeeded", "superseded"])
+def test_only_pending_batch_can_be_claimed(status: str) -> None:
     now = datetime.now(UTC)
     batch = SimpleNamespace(
         attempt_count=4,
-        lease_expires_at=now + timedelta(minutes=5),
-        status="running",
+        lease_expires_at=now - timedelta(minutes=5),
+        status=status,
     )
     db = FakeClaimDB(batch)
 
@@ -491,7 +494,6 @@ def test_generate_request_enqueues_without_running_provider(monkeypatch) -> None
     monkeypatch.setattr(batches, "lock_project_memory", lambda *_a, **_k: None)
     monkeypatch.setattr(batches, "_batch_by_idempotency_key", lambda *_a, **_k: None)
     monkeypatch.setattr(batches, "_active_batch", lambda *_a, **_k: None)
-    monkeypatch.setattr(batches, "_failed_batch_for_retry", lambda *_a, **_k: None)
     monkeypatch.setattr(batches, "_prepare_batch", lambda *_a, **_k: batch)
     monkeypatch.setattr(
         batches,
@@ -519,7 +521,69 @@ def test_generate_request_enqueues_without_running_provider(monkeypatch) -> None
     assert response["batch_id"] == str(batch.id)
 
 
-def test_failed_batch_is_requeued_without_losing_attempt_fence() -> None:
+def test_generation_preview_matches_batch_chunking_and_configured_costs(
+    monkeypatch,
+) -> None:
+    project_id = uuid4()
+    session_id = uuid4()
+    drafts = [SimpleNamespace(id=uuid4(), session_id=session_id) for _ in range(7)]
+
+    class PreviewDB:
+        def scalar(self, _statement):
+            return 9
+
+        def execute(self, _statement):
+            return FakeScalarResult(drafts)
+
+    monkeypatch.setattr(
+        batches,
+        "settings",
+        SimpleNamespace(
+            memory_draft_generator="openai",
+            memory_draft_prompt_max_bytes=300,
+            memory_provider_output_max_tokens=10,
+            openai_api_key="test-key",
+            openai_input_usd_per_million_tokens=0.25,
+            openai_model="gpt-test",
+            openai_output_usd_per_million_tokens=2.0,
+            project_memory_batch_max_drafts=60,
+            project_memory_generator="openai",
+            project_memory_prompt_max_bytes=600,
+        ),
+    )
+    monkeypatch.setattr(
+        batches,
+        "_pending_draft_range",
+        lambda draft: {
+            "draft_id": str(draft.id),
+            "event_count": 3,
+            "file_change_event_count": 1,
+            "prompt_count": 2,
+            "session_id": str(draft.session_id),
+        },
+    )
+
+    preview = batches.preview_project_memory_batch(
+        PreviewDB(),  # type: ignore[arg-type]
+        project_id=project_id,
+    )
+
+    assert preview["can_generate"] is True
+    assert preview["draft_count"] == 7
+    assert preview["session_count"] == 1
+    assert preview["estimated_provider_calls"] == 3
+    assert preview["estimated_input_tokens"] == 400
+    assert preview["estimated_output_tokens"] == 30
+    assert preview["estimated_cost_microusd"] == 160
+    assert preview["overflow_draft_count"] == 2
+    assert preview["prompt_count"] == 14
+    assert preview["event_count"] == 21
+    assert preview["file_change_event_count"] == 7
+    assert preview["one_time_generation"] is True
+    assert preview["retryable"] is False
+
+
+def test_failed_batch_response_does_not_requeue_it(monkeypatch) -> None:
     attempt_count = 4
     batch = SimpleNamespace(
         attempt_count=attempt_count,
@@ -532,14 +596,25 @@ def test_failed_batch_is_requeued_without_losing_attempt_fence() -> None:
         updated_at=datetime.now(UTC),
     )
 
-    batches._requeue_failed_batch(batch)
+    monkeypatch.setattr(
+        batches,
+        "serialize_project_memory_batch",
+        lambda _db, value, *, replayed: {
+            "batch_status": value.status,
+            "replayed": replayed,
+        },
+    )
+    response = batches._queued_batch_response(
+        FakeDB(),  # type: ignore[arg-type]
+        batch,
+        replayed=True,
+    )
 
-    assert batch.status == "pending"
+    assert response == {"batch_status": "failed", "replayed": True}
+    assert batch.status == "failed"
     assert batch.attempt_count == attempt_count
-    assert batch.lease_expires_at is None
-    assert batch.completed_at is None
-    assert batch.error_code is None
-    assert batch.error_message is None
+    assert batch.error_code == "generation_failed"
+    assert batch.error_message == "provider unavailable"
 
 
 def test_batch_failure_message_persists_http_status_without_secret_detail() -> None:

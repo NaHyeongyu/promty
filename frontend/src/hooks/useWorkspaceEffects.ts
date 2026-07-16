@@ -77,6 +77,7 @@ export function useWorkspaceProjectRouteEffect({
   activeItem,
   hasLoadedWorkspaceData,
   navigateWorkspace,
+  onProjectRouteNotFound,
   projectCatalog,
   projectMatchesRouteKey,
   projectRouteKey,
@@ -87,6 +88,7 @@ export function useWorkspaceProjectRouteEffect({
   activeItem: SidebarItemId;
   hasLoadedWorkspaceData: boolean;
   navigateWorkspace: NavigateWorkspace;
+  onProjectRouteNotFound?: (routeKey: string | null) => void;
   projectCatalog: Project[];
   projectMatchesRouteKey: (project: Project, routeKey: string) => boolean;
   projectRouteKey: (project: Project | null | undefined) => string | null;
@@ -94,11 +96,13 @@ export function useWorkspaceProjectRouteEffect({
   selectedProjectRouteKey: string | null;
 }) {
   const navigateWorkspaceRef = useLatestRef(navigateWorkspace);
+  const onProjectRouteNotFoundRef = useLatestRef(onProjectRouteNotFound);
   const projectMatchesRouteKeyRef = useLatestRef(projectMatchesRouteKey);
   const projectRouteKeyRef = useLatestRef(projectRouteKey);
 
   useEffect(() => {
     if (!hasLoadedWorkspaceData || activeItem !== "projects") {
+      onProjectRouteNotFoundRef.current?.(null);
       return;
     }
 
@@ -108,6 +112,7 @@ export function useWorkspaceProjectRouteEffect({
       );
 
       if (resolvedProject) {
+        onProjectRouteNotFoundRef.current?.(null);
         navigateWorkspaceRef.current(
           {
             selectedProjectId: resolvedProject.id,
@@ -118,20 +123,12 @@ export function useWorkspaceProjectRouteEffect({
         return;
       }
 
-      navigateWorkspaceRef.current(
-        {
-          activeDetailTab: "overview",
-          activeItem: "projects",
-          repositoryFileContentPath: null,
-          selectedProjectId: null,
-          selectedProjectRouteKey: null,
-        },
-        "replace",
-      );
+      onProjectRouteNotFoundRef.current?.(selectedProjectRouteKey);
       return;
     }
 
     if (!selectedProjectId) {
+      onProjectRouteNotFoundRef.current?.(null);
       return;
     }
 
@@ -144,20 +141,16 @@ export function useWorkspaceProjectRouteEffect({
         : null);
     if (!resolvedProject) {
       if (allowUnlistedProject) {
+        onProjectRouteNotFoundRef.current?.(null);
         return;
       }
-      navigateWorkspaceRef.current(
-        {
-          activeDetailTab: "overview",
-          activeItem: "projects",
-          repositoryFileContentPath: null,
-          selectedProjectId: null,
-          selectedProjectRouteKey: null,
-        },
-        "replace",
+      onProjectRouteNotFoundRef.current?.(
+        selectedProjectRouteKey ?? selectedProjectId,
       );
       return;
     }
+
+    onProjectRouteNotFoundRef.current?.(null);
 
     const resolvedProjectRouteKey = projectRouteKeyRef.current(resolvedProject);
     if (
@@ -178,6 +171,7 @@ export function useWorkspaceProjectRouteEffect({
     activeItem,
     hasLoadedWorkspaceData,
     navigateWorkspaceRef,
+    onProjectRouteNotFoundRef,
     projectCatalog,
     projectMatchesRouteKeyRef,
     projectRouteKeyRef,

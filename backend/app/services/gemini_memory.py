@@ -28,19 +28,10 @@ from app.services.memory.provider_limits import (
     ProviderWallDeadline,
     ProviderWallDeadlineExceededError,
     read_limited_response,
-    read_response_prefix,
-    sleep_before_retry_with_deadline,
-)
-from app.services.memory.retry import (
-    bounded_retry_delay,
-    retry_after_header_delay,
-    retry_delay_from_text,
-    sleep_before_retry,
 )
 
 GEMINI_MEMORY_DRAFT_GENERATOR = "gemini-memory-draft-v1"
 GEMINI_PROJECT_MEMORY_GENERATOR = "gemini-project-memory-v1"
-RETRYABLE_HTTP_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
 class GeminiMemoryGenerationError(MemoryGenerationError):
@@ -104,9 +95,9 @@ def _request_gemini_json(
         },
     }
     request_payload = json.dumps(body).encode("utf-8")
-    max_retries = max(settings.gemini_max_retries, 0)
-    last_error: GeminiMemoryGenerationError | None = None
-    for attempt in range(max_retries + 1):
+    # Provider calls are intentionally at-most-once. A failed response is
+    # surfaced to the batch instead of spending again on the same prompt.
+    for attempt in range(1):
         metrics = ProviderRequestAttempt(
             provider="gemini",
             model=model,
@@ -154,43 +145,14 @@ def _request_gemini_json(
                 "Gemini request exceeded the configured time limit."
             ) from None
         except error.HTTPError as exc:
-            try:
-                detail = read_response_prefix(
-                    exc,
-                    deadline=deadline,
-                    max_bytes=16_384,
-                ).decode("utf-8", errors="replace")
-            except ProviderWallDeadlineExceededError:
-                metrics.finish(outcome="failure", status="deadline_exceeded")
-                raise GeminiMemoryGenerationError(
-                    "Gemini request exceeded the configured time limit."
-                ) from None
-            except Exception:
-                detail = ""
-            last_error = GeminiMemoryGenerationError(
+            provider_error = GeminiMemoryGenerationError(
                 f"Gemini request failed with HTTP status {exc.code}."
             )
-            should_retry = exc.code in RETRYABLE_HTTP_STATUS_CODES and attempt < max_retries
-            if should_retry:
-                delay = _gemini_retry_delay(exc, detail, attempt)
-                try:
-                    sleep_before_retry_with_deadline(
-                        deadline,
-                        delay,
-                        sleep_before_retry,
-                    )
-                except ProviderWallDeadlineExceededError:
-                    metrics.finish(outcome="failure", status="deadline_exceeded")
-                    raise GeminiMemoryGenerationError(
-                        "Gemini request exceeded the configured time limit."
-                    ) from None
-                metrics.finish(outcome="retry", status=f"http_{exc.code}")
-                continue
             metrics.finish(
                 outcome="failure",
                 status=f"http_{exc.code}",
             )
-            raise last_error from None
+            raise provider_error from None
         except (error.URLError, TimeoutError):
             try:
                 deadline.remaining_seconds()
@@ -199,53 +161,22 @@ def _request_gemini_json(
                 raise GeminiMemoryGenerationError(
                     "Gemini request exceeded the configured time limit."
                 ) from None
-            last_error = GeminiMemoryGenerationError(
+            provider_error = GeminiMemoryGenerationError(
                 "Gemini request failed before receiving an HTTP response."
             )
-            should_retry = attempt < max_retries
-            if should_retry:
-                delay = _gemini_retry_delay(None, "", attempt)
-                try:
-                    sleep_before_retry_with_deadline(
-                        deadline,
-                        delay,
-                        sleep_before_retry,
-                    )
-                except ProviderWallDeadlineExceededError:
-                    metrics.finish(outcome="failure", status="deadline_exceeded")
-                    raise GeminiMemoryGenerationError(
-                        "Gemini request exceeded the configured time limit."
-                    ) from None
-                metrics.finish(outcome="retry", status="transport_error")
-                continue
             metrics.finish(
                 outcome="failure",
                 status="transport_error",
             )
-            raise last_error from None
+            raise provider_error from None
         except json.JSONDecodeError:
-            last_error = GeminiMemoryGenerationError("Gemini returned an invalid JSON response.")
-            should_retry = attempt < max_retries
-            if should_retry:
-                delay = _gemini_retry_delay(None, "", attempt)
-                try:
-                    sleep_before_retry_with_deadline(
-                        deadline,
-                        delay,
-                        sleep_before_retry,
-                    )
-                except ProviderWallDeadlineExceededError:
-                    metrics.finish(outcome="failure", status="deadline_exceeded")
-                    raise GeminiMemoryGenerationError(
-                        "Gemini request exceeded the configured time limit."
-                    ) from None
-                metrics.finish(outcome="retry", status="invalid_json")
-                continue
             metrics.finish(
                 outcome="failure",
                 status="invalid_json",
             )
-            raise last_error from None
+            raise GeminiMemoryGenerationError(
+                "Gemini returned an invalid JSON response."
+            ) from None
         except GeminiMemoryGenerationError:
             metrics.finish(outcome="failure", status="invalid_response")
             raise GeminiMemoryGenerationError("Gemini returned an invalid response.") from None
@@ -255,23 +186,7 @@ def _request_gemini_json(
                 "Gemini request failed before a valid response was produced."
             ) from None
 
-    if last_error is not None:
-        raise last_error
     raise GeminiMemoryGenerationError("Gemini request failed.")
-
-
-def _gemini_retry_delay(
-    exc: error.HTTPError | None,
-    detail: str,
-    attempt: int,
-) -> float:
-    return bounded_retry_delay(
-        attempt=attempt,
-        base_seconds=settings.gemini_retry_base_seconds,
-        body_delay=retry_delay_from_text(detail),
-        header_delay=retry_after_header_delay(exc.headers) if exc is not None else None,
-        max_sleep_seconds=settings.gemini_retry_max_sleep_seconds,
-    )
 
 
 def generate_gemini_memory_drafts(context: dict[str, Any]) -> dict[str, Any]:

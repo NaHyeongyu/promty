@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
@@ -13,7 +12,10 @@ from app.core.security import require_web_user
 from app.db.session import get_db
 from app.models.users import User
 from app.schemas.published_flows import (
+    PublishedFlowAssetResponse,
     PublishedFlowCreateRequest,
+    PublishedFlowDetailResponse,
+    PublishedFlowSummaryResponse,
     PublishedFlowUpdateRequest,
 )
 from app.services.published_flow_assets import (
@@ -31,22 +33,22 @@ from app.services.published_flows import (
 router = APIRouter(prefix="/api/published-flows", tags=["published-flows"])
 
 
-@router.get("")
+@router.get("", response_model=list[PublishedFlowSummaryResponse])
 def read_published_flows(
     limit: int = Query(default=50, ge=1, le=100),
     q: str | None = Query(default=None, max_length=120),
     current_user: User = Depends(require_web_user),
     db: Session = Depends(get_db),
-) -> list[dict[str, Any]]:
+) -> list[PublishedFlowSummaryResponse]:
     return list_published_flows(db, current_user=current_user, limit=limit, query=q)
 
 
-@router.post("")
+@router.post("", response_model=PublishedFlowDetailResponse, status_code=201)
 def publish_flow(
     payload: PublishedFlowCreateRequest,
     current_user: User = Depends(require_web_user),
     db: Session = Depends(get_db),
-) -> dict[str, Any]:
+) -> PublishedFlowDetailResponse:
     response = create_published_flow(
         db,
         context_summary=payload.context_summary,
@@ -70,28 +72,30 @@ def publish_flow(
     return response
 
 
-@router.get("/{flow_key}")
+@router.get("/{flow_key}", response_model=PublishedFlowDetailResponse)
 def read_published_flow(
     flow_key: str,
     current_user: User = Depends(require_web_user),
     db: Session = Depends(get_db),
-) -> dict[str, Any]:
+) -> PublishedFlowDetailResponse:
     return get_published_flow(db, current_user=current_user, flow_key=flow_key)
 
 
-@router.patch("/{flow_key}")
+@router.patch("/{flow_key}", response_model=PublishedFlowDetailResponse)
 def update_flow(
     flow_key: str,
     payload: PublishedFlowUpdateRequest,
     current_user: User = Depends(require_web_user),
     db: Session = Depends(get_db),
-) -> dict[str, Any]:
+) -> PublishedFlowDetailResponse:
     response = update_published_flow(
         db,
         context_summary=payload.context_summary,
         current_user=current_user,
         fields=payload.model_fields_set,
         flow_key=flow_key,
+        included_file_ids=payload.included_file_ids,
+        included_item_ids=payload.included_item_ids,
         notes=payload.notes,
         status_value=payload.status,
         summary=payload.summary,
@@ -106,12 +110,12 @@ def update_flow(
     return response
 
 
-@router.post("/{flow_key}/archive")
+@router.post("/{flow_key}/archive", response_model=PublishedFlowDetailResponse)
 def archive_flow(
     flow_key: str,
     current_user: User = Depends(require_web_user),
     db: Session = Depends(get_db),
-) -> dict[str, Any]:
+) -> PublishedFlowDetailResponse:
     response = archive_published_flow(db, current_user=current_user, flow_key=flow_key)
     _commit_or_conflict(
         db,
@@ -120,14 +124,14 @@ def archive_flow(
     return response
 
 
-@router.post("/{flow_key}/assets")
+@router.post("/{flow_key}/assets", response_model=PublishedFlowAssetResponse)
 async def upload_flow_asset(
     flow_key: str,
     alt_text: str | None = Form(default=None, max_length=255),
     file: UploadFile = File(...),
     current_user: User = Depends(require_web_user),
     db: Session = Depends(get_db),
-) -> dict[str, Any]:
+) -> PublishedFlowAssetResponse:
     max_bytes = max(settings.published_flow_asset_max_bytes, 1)
     content = await file.read(max_bytes + 1)
     return create_published_flow_asset(
@@ -141,7 +145,7 @@ async def upload_flow_asset(
     )
 
 
-@router.get("/{flow_key}/assets/{asset_id}")
+@router.get("/{flow_key}/assets/{asset_id}", response_model=None)
 def read_flow_asset(
     flow_key: str,
     asset_id: UUID,

@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 import hashlib
 import logging
+from math import ceil
 import re
 from threading import Event as ThreadEvent, Thread
 from typing import Any
@@ -30,6 +31,7 @@ from app.models.project_memory_batches import (
 from app.models.projects import Project
 from app.models.sessions import Session
 from app.services.memory.artifacts import (
+    _pending_draft_range,
     _pending_draft_generation_context,
 )
 from app.services.memory.context import dedupe_files, truncate
@@ -38,6 +40,7 @@ from app.services.memory.constants import (
     MEMORY_DRAFT_ARTIFACT_TYPE,
     PENDING_DRAFT_STAGE,
     REVIEW_STATE_DRAFT,
+    REVIEW_STATE_GENERATION_FAILED,
     REVIEW_STATE_GENERATED,
     REVIEW_STATE_IGNORED,
 )
@@ -48,6 +51,7 @@ from app.services.memory.project_memory import (
     project_memory_compilation_guard,
     write_project_memory_compilation,
 )
+from app.services.memory.providers import provider_name
 from app.services.memory.repository import write_memory_artifact_payload
 
 
@@ -188,6 +192,7 @@ def _pending_draft_filters(project_id: UUID) -> tuple[Any, ...]:
         Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE,
         Artifact.metadata_["artifact_stage"].astext == PENDING_DRAFT_STAGE,
         Artifact.metadata_["review_state"].astext == REVIEW_STATE_DRAFT,
+        Artifact.metadata_["sent_to_ai_at"].astext.is_(None),
     )
 
 
@@ -361,23 +366,6 @@ def _visible_active_batch(
     ).scalar_one_or_none()
 
 
-def _failed_batch_for_retry(
-    db: DBSession,
-    *,
-    project_id: UUID,
-) -> ProjectMemoryBatch | None:
-    return db.execute(
-        select(ProjectMemoryBatch)
-        .where(
-            ProjectMemoryBatch.project_id == project_id,
-            ProjectMemoryBatch.status == "failed",
-        )
-        .order_by(desc(ProjectMemoryBatch.updated_at))
-        .limit(1)
-        .with_for_update()
-    ).scalar_one_or_none()
-
-
 def _latest_versions_by_artifact(
     db: DBSession,
     draft_ids: list[UUID],
@@ -491,6 +479,124 @@ def _remaining_pending_count(db: DBSession, project_id: UUID) -> int:
     )
 
 
+def _provider_generation_estimate(
+    *,
+    calls: int,
+    prompt_max_bytes: int,
+    provider: str,
+    stage: str,
+) -> dict[str, Any]:
+    configured = (
+        provider == "openai" and bool(settings.openai_api_key)
+    ) or (
+        provider == "gemini" and bool(settings.gemini_api_key)
+    )
+    billed_calls = calls if configured else 0
+    estimated_input_tokens = billed_calls * ceil(max(prompt_max_bytes, 0) / 3)
+    estimated_output_tokens = billed_calls * max(
+        settings.memory_provider_output_max_tokens,
+        0,
+    )
+    if provider == "openai":
+        model = settings.openai_model
+        input_rate = max(settings.openai_input_usd_per_million_tokens, 0)
+        output_rate = max(settings.openai_output_usd_per_million_tokens, 0)
+    elif provider == "gemini":
+        model = settings.gemini_model
+        input_rate = max(settings.gemini_input_usd_per_million_tokens, 0)
+        output_rate = max(settings.gemini_output_usd_per_million_tokens, 0)
+    else:
+        model = "local"
+        input_rate = 0
+        output_rate = 0
+    estimated_cost_microusd = round(
+        estimated_input_tokens * input_rate
+        + estimated_output_tokens * output_rate
+    )
+    return {
+        "calls": billed_calls,
+        "configured": configured,
+        "estimated_cost_microusd": estimated_cost_microusd,
+        "estimated_input_tokens": estimated_input_tokens,
+        "estimated_output_tokens": estimated_output_tokens,
+        "model": model,
+        "provider": provider,
+        "requested_calls": calls,
+        "stage": stage,
+    }
+
+
+def preview_project_memory_batch(
+    db: DBSession,
+    *,
+    project_id: UUID,
+) -> dict[str, Any]:
+    claimed_drafts = select(ProjectMemoryBatchItem.draft_id)
+    available_filters = (
+        *_pending_draft_filters(project_id),
+        Artifact.id.not_in(claimed_drafts),
+    )
+    available_count = (
+        db.scalar(select(func.count(Artifact.id)).where(*available_filters)) or 0
+    )
+    selected_drafts = list(
+        db.execute(
+            select(Artifact)
+            .where(*available_filters)
+            .order_by(Artifact.created_at, Artifact.id)
+            .limit(settings.project_memory_batch_max_drafts)
+        ).scalars()
+    )
+    session_draft_counts: dict[str, int] = defaultdict(int)
+    for draft in selected_drafts:
+        session_key = str(draft.session_id or draft.id)
+        session_draft_counts[session_key] += 1
+    draft_calls = sum(
+        ceil(count / PROJECT_MEMORY_BATCH_CHUNK_SIZE)
+        for count in session_draft_counts.values()
+    )
+    ranges = [_pending_draft_range(draft) for draft in selected_drafts]
+    draft_estimate = _provider_generation_estimate(
+        calls=draft_calls,
+        prompt_max_bytes=settings.memory_draft_prompt_max_bytes,
+        provider=provider_name(settings.memory_draft_generator),
+        stage="memory_draft_generation",
+    )
+    project_estimate = _provider_generation_estimate(
+        calls=1 if selected_drafts and draft_estimate["configured"] else 0,
+        prompt_max_bytes=settings.project_memory_prompt_max_bytes,
+        provider=provider_name(settings.project_memory_generator),
+        stage="project_memory_generation",
+    )
+    estimates = [draft_estimate, project_estimate]
+    return {
+        "can_generate": bool(selected_drafts) and bool(draft_estimate["configured"]),
+        "currency": "USD",
+        "draft_count": len(selected_drafts),
+        "estimated_cost_microusd": sum(
+            estimate["estimated_cost_microusd"] for estimate in estimates
+        ),
+        "estimated_input_tokens": sum(
+            estimate["estimated_input_tokens"] for estimate in estimates
+        ),
+        "estimated_output_tokens": sum(
+            estimate["estimated_output_tokens"] for estimate in estimates
+        ),
+        "estimated_provider_calls": sum(estimate["calls"] for estimate in estimates),
+        "event_count": sum(item["event_count"] for item in ranges),
+        "file_change_event_count": sum(
+            item["file_change_event_count"] for item in ranges
+        ),
+        "one_time_generation": True,
+        "overflow_draft_count": max(available_count - len(selected_drafts), 0),
+        "prompt_count": sum(item["prompt_count"] for item in ranges),
+        "providers": estimates,
+        "ranges": ranges,
+        "retryable": False,
+        "session_count": len(session_draft_counts),
+    }
+
+
 def serialize_project_memory_batch(
     db: DBSession,
     batch: ProjectMemoryBatch,
@@ -502,10 +608,10 @@ def serialize_project_memory_batch(
         result_status = "generation_in_progress"
     elif batch.status in {"failed", "superseded"}:
         result_status = "generation_failed"
-    retryable = batch.status == "failed" and batch.error_code != "snapshot_invalid"
+    retryable = False
     messages = {
         "generation_failed": (
-            "Project Memory was not updated. Your captured work is safe and can be retried."
+            "Project Memory was not updated. This captured work will not be sent to AI again."
         ),
         "generation_in_progress": "Project Memory is being updated.",
         "memory_generated": "Project Memory was updated from the captured project work.",
@@ -572,11 +678,7 @@ def _claim_batch_run(
         select(ProjectMemoryBatch).where(ProjectMemoryBatch.id == batch_id).with_for_update()
     ).scalar_one()
     now = utc_now()
-    if batch.status == "succeeded" or (
-        batch.status == "running"
-        and batch.lease_expires_at is not None
-        and batch.lease_expires_at > now
-    ):
+    if batch.status != "pending":
         attempt_count = batch.attempt_count
         db.commit()
         return batch, False, attempt_count
@@ -877,6 +979,15 @@ def _prepare_batch_attempt(
         return None
 
     rows = _load_batch_snapshots(db, batch)
+    sent_to_ai_at = utc_now().isoformat()
+    for _item, draft, _snapshot, _session in rows:
+        metadata = draft.metadata_ if isinstance(draft.metadata_, dict) else {}
+        draft.metadata_ = {
+            **metadata,
+            "sent_to_ai_at": metadata.get("sent_to_ai_at") or sent_to_ai_at,
+        }
+        draft.updated_at = utc_now()
+    db.flush()
     grouped: dict[UUID, list[tuple[Artifact, PendingDraftSnapshot, Session]]] = defaultdict(list)
     for _item, draft, snapshot, session in rows:
         grouped[session.id].append((draft, snapshot, session))
@@ -1326,18 +1437,38 @@ def _record_batch_failure(
         db.commit()
         return batch
     now = utc_now()
-    is_terminal = isinstance(error, ProjectMemoryBatchInvariantError)
-    batch.status = "superseded" if is_terminal else "failed"
+    is_invariant_failure = isinstance(error, ProjectMemoryBatchInvariantError)
+    batch.status = "superseded" if is_invariant_failure else "failed"
     batch.result_status = "generation_failed"
     batch.error_code = _batch_failure_code(error)
     batch.error_message = _safe_batch_failure_message(error)
     batch.lease_expires_at = None
     batch.completed_at = now
     batch.updated_at = now
-    if is_terminal:
-        batch.chunk_results = {}
+    batch.chunk_results = {}
+    if is_invariant_failure:
         db.execute(
             delete(ProjectMemoryBatchItem).where(ProjectMemoryBatchItem.batch_id == batch.id)
+        )
+    else:
+        draft_ids = select(ProjectMemoryBatchItem.draft_id).where(
+            ProjectMemoryBatchItem.batch_id == batch.id
+        )
+        db.execute(
+            update(Artifact)
+            .where(Artifact.id.in_(draft_ids))
+            .values(
+                metadata_=Artifact.metadata_.op("||")(
+                    cast(
+                        {
+                            "review_state": REVIEW_STATE_GENERATION_FAILED,
+                            "sent_to_ai_at": now.isoformat(),
+                        },
+                        JSONB,
+                    )
+                ),
+                updated_at=now,
+            )
         )
     db.flush()
     db.commit()
@@ -1439,18 +1570,52 @@ def run_project_memory_batch(
 
 def next_project_memory_batch_id(db: DBSession) -> UUID | None:
     now = utc_now()
+    expired_batch_ids = select(ProjectMemoryBatch.id).where(
+        ProjectMemoryBatch.status == "running",
+        ProjectMemoryBatch.lease_expires_at.is_not(None),
+        ProjectMemoryBatch.lease_expires_at <= now,
+    )
+    expired_draft_ids = (
+        select(ProjectMemoryBatchItem.draft_id)
+        .join(
+            ProjectMemoryBatch,
+            ProjectMemoryBatch.id == ProjectMemoryBatchItem.batch_id,
+        )
+        .where(ProjectMemoryBatch.id.in_(expired_batch_ids))
+    )
+    db.execute(
+        update(Artifact)
+        .where(Artifact.id.in_(expired_draft_ids))
+        .values(
+            metadata_=Artifact.metadata_.op("||")(
+                cast(
+                    {
+                        "review_state": REVIEW_STATE_GENERATION_FAILED,
+                        "sent_to_ai_at": now.isoformat(),
+                    },
+                    JSONB,
+                )
+            ),
+            updated_at=now,
+        )
+    )
+    db.execute(
+        update(ProjectMemoryBatch)
+        .where(ProjectMemoryBatch.id.in_(expired_batch_ids))
+        .values(
+            chunk_results={},
+            completed_at=now,
+            error_code="generation_interrupted",
+            error_message="Project Memory generation was interrupted and will not be retried.",
+            lease_expires_at=None,
+            result_status="generation_failed",
+            status="failed",
+            updated_at=now,
+        )
+    )
     return db.scalar(
         select(ProjectMemoryBatch.id)
-        .where(
-            or_(
-                ProjectMemoryBatch.status == "pending",
-                (
-                    (ProjectMemoryBatch.status == "running")
-                    & (ProjectMemoryBatch.lease_expires_at.is_not(None))
-                    & (ProjectMemoryBatch.lease_expires_at <= now)
-                ),
-            )
-        )
+        .where(ProjectMemoryBatch.status == "pending")
         .order_by(ProjectMemoryBatch.created_at, ProjectMemoryBatch.id)
         .limit(1)
         .with_for_update(skip_locked=True)
@@ -1466,26 +1631,12 @@ def run_next_project_memory_batch(db: DBSession) -> bool:
     return True
 
 
-def _requeue_failed_batch(batch: ProjectMemoryBatch) -> None:
-    if batch.status != "failed":
-        return
-    now = utc_now()
-    batch.status = "pending"
-    batch.result_status = None
-    batch.error_code = None
-    batch.error_message = None
-    batch.lease_expires_at = None
-    batch.completed_at = None
-    batch.updated_at = now
-
-
 def _queued_batch_response(
     db: DBSession,
     batch: ProjectMemoryBatch,
     *,
     replayed: bool,
 ) -> dict[str, Any]:
-    _requeue_failed_batch(batch)
     response = serialize_project_memory_batch(db, batch, replayed=replayed)
     db.commit()
     return response
@@ -1536,11 +1687,6 @@ def generate_project_memory_batch(
     if active is not None:
         active = _attach_idempotency_key(db, active, idempotency_key)
         return _queued_batch_response(db, active, replayed=True)
-
-    failed = _failed_batch_for_retry(db, project_id=project_id)
-    if failed is not None:
-        failed = _attach_idempotency_key(db, failed, idempotency_key)
-        return _queued_batch_response(db, failed, replayed=True)
 
     batch = _prepare_batch(
         db,

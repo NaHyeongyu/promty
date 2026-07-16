@@ -30,34 +30,55 @@ class EncryptionDecryptionError(EncryptionError):
     pass
 
 
-def _github_token_secret() -> str:
-    secret = (
-        settings.github_token_encryption_key
-        or settings.jwt_secret
-        or settings.oauth_state_secret
-        or settings.api_token
+def _github_token_secrets() -> list[str]:
+    values = (
+        settings.github_token_encryption_key,
+        *settings.github_token_encryption_previous_keys,
+        settings.jwt_secret,
+        settings.oauth_state_secret,
+        settings.api_token,
     )
+    secrets: list[str] = []
+    for value in values:
+        if value and value not in secrets:
+            secrets.append(value)
+    return secrets
+
+
+def _github_token_secret() -> str:
+    secrets = _github_token_secrets()
+    secret = secrets[0] if secrets else None
     if not secret:
         raise EncryptionConfigurationError("GitHub token encryption key is not configured")
     return secret
 
 
-def _fernet() -> Fernet:
-    digest = hashlib.sha256(_github_token_secret().encode("utf-8")).digest()
+def _fernet_for_secret(secret: str) -> Fernet:
+    digest = hashlib.sha256(secret.encode("utf-8")).digest()
     return Fernet(base64.urlsafe_b64encode(digest))
 
 
 def encrypt_github_token(token: str) -> str:
-    return _fernet().encrypt(token.encode("utf-8")).decode("ascii")
+    return _fernet_for_secret(_github_token_secret()).encrypt(token.encode("utf-8")).decode("ascii")
 
 
 def decrypt_github_token(value: str) -> str:
-    try:
-        return _fernet().decrypt(value.encode("ascii")).decode("utf-8")
-    except InvalidToken as exc:
-        raise EncryptionDecryptionError(
-            "GitHub token encryption key cannot decrypt stored token"
-        ) from exc
+    token, _needs_rotation = decrypt_github_token_with_rotation(value)
+    return token
+
+
+def decrypt_github_token_with_rotation(value: str) -> tuple[str, bool]:
+    last_error: InvalidToken | None = None
+    for index, secret in enumerate(_github_token_secrets()):
+        try:
+            token = _fernet_for_secret(secret).decrypt(value.encode("ascii")).decode("utf-8")
+            return token, index > 0
+        except InvalidToken as exc:
+            last_error = exc
+
+    raise EncryptionDecryptionError(
+        "GitHub token encryption key cannot decrypt stored token"
+    ) from last_error
 
 
 def _app_encryption_secret() -> str:
@@ -96,9 +117,7 @@ def _aad(purpose: str) -> bytes:
 
 
 def _encryption_error() -> EncryptionDecryptionError:
-    return EncryptionDecryptionError(
-        "Application encryption key cannot decrypt stored data"
-    )
+    return EncryptionDecryptionError("Application encryption key cannot decrypt stored data")
 
 
 def encrypt_app_text(value: str, *, purpose: str) -> dict[str, Any]:

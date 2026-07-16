@@ -27,6 +27,7 @@ import type {
   AuthUser,
 } from "../../workspace/types";
 import { GitHubIcon } from "./Branding";
+import { EmptyState } from "./WorkspaceStates";
 
 function accountDisplayName(currentUser: AuthUser | null) {
   return currentUser?.username ?? "Signed in";
@@ -51,6 +52,7 @@ function AccountStatus({
   error?: string | null;
   isLoading?: boolean;
 }) {
+  const { t } = useI18n();
   if (!error && !isLoading) {
     return null;
   }
@@ -61,7 +63,7 @@ function AccountStatus({
       data-error={error ? "true" : undefined}
       role={error ? "alert" : "status"}
     >
-      {error ?? "Loading account settings"}
+      {error ?? t("settings.loadingAccount")}
     </div>
   );
 }
@@ -513,6 +515,39 @@ export function UserSettingsPage({
     await navigator.clipboard?.writeText(createdCollectorToken.token);
     setIsTokenCopied(true);
   };
+
+  if (accountError && !accountOverview && !isAccountLoading) {
+    return (
+      <section className="settings-page" aria-label={t("settings.serviceSetup")}>
+        <EmptyState
+          description={accountError}
+          icon={RefreshCw}
+          title={t("settings.loadFailed")}
+        >
+          <button
+            className="empty-state-button"
+            onClick={onRefreshWorkspace}
+            type="button"
+          >
+            <RefreshCw aria-hidden="true" size={16} strokeWidth={1.5} />
+            <span>{t("common.retry")}</span>
+          </button>
+        </EmptyState>
+      </section>
+    );
+  }
+
+  if (!accountOverview) {
+    return (
+      <section className="settings-page" aria-label={t("settings.serviceSetup")}>
+        <EmptyState
+          description={t("auth.moment")}
+          icon={RefreshCw}
+          title={t("settings.loadingAccount")}
+        />
+      </section>
+    );
+  }
 
   return (
     <section className="settings-page" aria-label={t("settings.serviceSetup")}>

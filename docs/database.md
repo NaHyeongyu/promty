@@ -55,9 +55,16 @@ PROMPTHUB_DATABASE_LOCK_TIMEOUT_MS
 PROMPTHUB_GITHUB_CLIENT_ID
 PROMPTHUB_GITHUB_CLIENT_SECRET
 PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_KEY
+PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_PREVIOUS_KEYS
 PROMPTHUB_APP_ENCRYPTION_KEY
 PROMPTHUB_APP_ENCRYPTION_PREVIOUS_KEYS
 PROMPTHUB_APP_ENCRYPTION_KEY_ID
+PROMPTHUB_ADMIN_GITHUB_IDS
+PROMPTHUB_AUTH_RATE_LIMIT_REQUESTS
+PROMPTHUB_AUTH_RATE_LIMIT_WINDOW_SECONDS
+PROMPTHUB_ADMIN_RATE_LIMIT_REQUESTS
+PROMPTHUB_ADMIN_RATE_LIMIT_WINDOW_SECONDS
+PROMPTHUB_ADMIN_AUDIT_RETENTION_DAYS
 PROMPTHUB_PROMPT_MAX_CHARS
 PROMPTHUB_RESPONSE_MAX_CHARS
 PROMPTHUB_EVENT_BATCH_MAX_BODY_BYTES
@@ -71,6 +78,7 @@ PROMPTHUB_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS
 PROMPTHUB_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS
 PROMPTHUB_PROJECT_MEMORY_BATCH_MAX_DRAFTS
 PROMPTHUB_MEMORY_WORKER_POLL_SECONDS
+PROMPTHUB_MEMORY_WORKER_MAX_POLL_SECONDS
 PROMPTHUB_MEMORY_WORKER_HEARTBEAT_SECONDS
 PROMPTHUB_MEMORY_WORKER_CHUNK_CONCURRENCY
 PROMTY_GEMINI_API_KEY
@@ -119,9 +127,11 @@ that anchor is excluded from the slice event timeline, event count, and source
 prompt IDs so coverage remains non-overlapping.
 Every slice writer locks the session row before reading or advancing this
 monotonic cursor. Runtime state is projected from the latest indexed slice row,
-while the worker's cross-session scan retains the aggregate/marker recovery
-check. A failed artifact-generation job rolls back memory changes to a nested
-savepoint while preserving its failed job status.
+while unfinished slice groups retain the aggregate/marker recovery check. Idle
+session selection reads the collector-maintained `sessions.last_activity_at`
+column through a partial index instead of grouping the complete events table on
+every scan. A failed artifact-generation job rolls back memory changes to a
+nested savepoint while preserving its failed job status.
 
 Each API or worker process owns a separate pool. The checked-in Compose and EC2
 configuration budgets at most 7 connections for the API process (`5 + 2`) and
@@ -131,17 +141,22 @@ backups, health checks, and operator sessions when changing these values.
 
 The Project Memory worker generates at most two draft chunks concurrently by
 default. Set `PROMPTHUB_MEMORY_WORKER_CHUNK_CONCURRENCY` (or its `PROMTY_`
-alias) to tune this independently of the database pool. Each successful chunk
-is durably checkpointed before final compilation, so a retry reuses completed
-provider results in deterministic snapshot order.
+alias) to tune this independently of the database pool. Each source draft is
+marked `sent_to_ai_at` before provider work starts. Provider calls, failed
+batches, and interrupted worker leases are never retried; a new batch can only
+claim draft sources that have never been sent to AI.
 
 Memory provider responses are capped at 1 MiB and generation requests ask for
-at most 8192 output tokens by default. The complete request/retry cycle has a
-120-second wall deadline, including bounded response reads and retry backoff.
+at most 8192 output tokens by default. The single provider attempt has a
+120-second wall deadline, including bounded response reads.
 Configure these with `PROMPTHUB_MEMORY_PROVIDER_RESPONSE_MAX_BYTES`,
 `PROMPTHUB_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS`, and
 `PROMPTHUB_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS`; equivalent `PROMTY_`
 aliases are also supported.
+The generation preview estimates provider cost from the configured prompt and
+output ceilings. Keep the `*_INPUT_USD_PER_MILLION_TOKENS` and
+`*_OUTPUT_USD_PER_MILLION_TOKENS` OpenAI/Gemini rate settings aligned with the
+provider price sheet; these values affect only the preview and never billing.
 
 Each Project Memory batch claims at most 60 pending drafts by default, ordered
 deterministically by creation time and artifact ID. Configure this with
@@ -149,10 +164,27 @@ deterministically by creation time and artifact ID. Configure this with
 below 1 are clamped to 1. Excess drafts remain pending for a later batch. This
 also bounds each batch's queued chunk futures and durable chunk checkpoints.
 
-The worker polls every 2 seconds and heartbeats a running batch lease every 60
-seconds by default. Configure these with `PROMPTHUB_MEMORY_WORKER_POLL_SECONDS`
-and `PROMPTHUB_MEMORY_WORKER_HEARTBEAT_SECONDS`; keep the heartbeat comfortably
+The worker starts with a 2-second poll interval and exponentially backs off to
+10 seconds while no work is available. It resets to the base interval as soon
+as work is processed and heartbeats a running batch lease every 60 seconds.
+Configure these with `PROMPTHUB_MEMORY_WORKER_POLL_SECONDS`,
+`PROMPTHUB_MEMORY_WORKER_MAX_POLL_SECONDS`, and
+`PROMPTHUB_MEMORY_WORKER_HEARTBEAT_SECONDS`; keep the heartbeat comfortably
 below the 10-minute batch lease.
+
+The worker also updates a process heartbeat file used by the Compose and AWS
+container health checks. Configure its path and maximum age with
+`PROMPTHUB_MEMORY_WORKER_HEALTH_FILE` and
+`PROMPTHUB_MEMORY_WORKER_HEALTH_TIMEOUT_SECONDS`.
+
+Project list counters are incrementally maintained in `project_stats`. Check for
+drift or repair the rollup after an operational incident with:
+
+```bash
+cd backend
+../.venv/bin/python -m scripts.reconcile_project_stats --check
+../.venv/bin/python -m scripts.reconcile_project_stats
+```
 
 Health endpoints have distinct operational meanings:
 
@@ -271,6 +303,24 @@ visibility in ('public', 'private')
 unique(owner_id, slug)
 ```
 
+### project_stats
+
+```text
+project_id UUID PK/FK -> projects.id on delete cascade
+session_count int
+event_count int
+prompt_count int
+tracked_files int
+latest_event_at timestamptz nullable
+updated_at timestamptz
+```
+
+The collector updates this activity rollup once per affected project and event
+batch. Project list reads join it instead of regrouping the complete sessions,
+events, and project-files tables. Migration backfill initializes existing
+projects; memory and pending-draft counts continue to use their bounded artifact
+indexes.
+
 ### sessions
 
 ```text
@@ -283,8 +333,13 @@ model string nullable
 cwd string nullable
 branch string nullable
 started_at timestamptz
+last_activity_at timestamptz nullable
 ended_at timestamptz nullable
 ```
+
+`last_activity_at` is updated transactionally with event ingestion and is
+backfilled from `max(events.created_at)` during migration. Open-session worker
+scans use the partial `(last_activity_at, started_at, id)` index.
 
 ### events
 
@@ -466,3 +521,15 @@ Future authentication and device registration work should replace the system use
 `0003_collector_tokens` adds hashed per-user collector tokens for CLI login and upload authentication.
 
 `0011_promty_memory_artifacts` extends artifacts for generated project memory and adds artifact generation jobs.
+
+`0027_admin_audit_logs` adds a durable, retention-managed record of administrator console
+requests and cross-owner project access. Audit rows contain actor and request metadata but
+never session tokens, emails, prompt text, response text, or diff content.
+
+`0028_at_most_once_memory` adds lease and attempt fencing for Project Memory batches so an
+administrator can invalidate an in-flight attempt without allowing its late provider result
+to write to PostgreSQL.
+
+`0029_admin_user_lifecycle` adds `users.suspended_at` and `users.suspension_reason`.
+Suspended users are rejected by both browser-session and collector-token authentication;
+the sole configured administrator cannot suspend or delete their own account.

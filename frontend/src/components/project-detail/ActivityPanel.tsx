@@ -123,10 +123,12 @@ export function ActivityPanel({
   activityNavigation,
   data,
   onActivityNavigationChange,
+  onSharePrompt,
 }: {
   activityNavigation?: ActivityNavigationState;
   data: ProjectDetailData;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
+  onSharePrompt?: (activity: PromptActivityItem) => void;
 }) {
   const { t } = useI18n();
   const [localActivityNavigation, setLocalActivityNavigation] =
@@ -144,6 +146,7 @@ export function ActivityPanel({
   const [isPromptActivityLoading, setIsPromptActivityLoading] = useState(false);
   const [isPromptActivityLoadingMore, setIsPromptActivityLoadingMore] = useState(false);
   const [promptActivityError, setPromptActivityError] = useState<string | null>(null);
+  const [promptActivityRequestVersion, setPromptActivityRequestVersion] = useState(0);
   const [activityWorkTypeFilter, setActivityWorkTypeFilter] =
     useState<WorkTypeFilter>("all");
   const [sessionConversationSearchInput, setSessionConversationSearchInput] =
@@ -160,6 +163,7 @@ export function ActivityPanel({
   const [isSessionPromptLoading, setIsSessionPromptLoading] = useState(false);
   const [isSessionPromptLoadingMore, setIsSessionPromptLoadingMore] = useState(false);
   const [sessionPromptError, setSessionPromptError] = useState<string | null>(null);
+  const [sessionPromptRequestVersion, setSessionPromptRequestVersion] = useState(0);
   const currentActivityNavigation =
     activityNavigation ?? localActivityNavigation;
   const updateActivityNavigation = (state: Partial<ActivityNavigationState>) => {
@@ -315,7 +319,7 @@ export function ActivityPanel({
       });
 
     return () => controller.abort();
-  }, [data.project.id, promptSearchQuery, view]);
+  }, [data.project.id, promptActivityRequestVersion, promptSearchQuery, view]);
 
   useEffect(() => {
     if (view !== "sessions" || !data.project.id || !selectedSessionIdForFetch) {
@@ -367,6 +371,7 @@ export function ActivityPanel({
     data.project.id,
     selectedSessionIdForFetch,
     sessionConversationSearchQuery,
+    sessionPromptRequestVersion,
     view,
   ]);
 
@@ -477,6 +482,30 @@ export function ActivityPanel({
     null;
 
   if (
+    promptActivityError &&
+    !hasPromptActivity &&
+    !hasSessionActivity &&
+    hasLoadedPromptActivityPage &&
+    !isPromptActivityLoading
+  ) {
+    return (
+      <EmptyState
+        description={promptActivityError}
+        icon={Activity}
+        title={t("activity.loadFailed")}
+      >
+        <button
+          className="bh-empty-state-button"
+          onClick={() => setPromptActivityRequestVersion((version) => version + 1)}
+          type="button"
+        >
+          {t("common.retry")}
+        </button>
+      </EmptyState>
+    );
+  }
+
+  if (
     !hasPromptActivity &&
     !hasSessionActivity &&
     hasLoadedPromptActivityPage &&
@@ -538,6 +567,19 @@ export function ActivityPanel({
           ) : null}
 
           <div className="bh-latest-prompt-list">
+            {view === "prompts" && promptActivityError ? (
+              <div className="bh-inline-request-error" role="alert">
+                <span>{promptActivityError}</span>
+                <button
+                  onClick={() =>
+                    setPromptActivityRequestVersion((version) => version + 1)
+                  }
+                  type="button"
+                >
+                  {t("common.retry")}
+                </button>
+              </div>
+            ) : null}
             {view === "prompts" &&
             isPromptActivityLoading &&
             promptActivities.length === 0 ? (
@@ -579,11 +621,11 @@ export function ActivityPanel({
                   );
                 })}
               </div>
-            ) : (
+            ) : !promptActivityError ? (
               <div className="bh-prompt-search-empty">
-                {promptActivityError ?? t("activity.noFilterMatches")}
+                {t("activity.noFilterMatches")}
               </div>
-            )}
+            ) : null}
             {view === "prompts" && promptActivityHasMore && promptActivityNextCursor ? (
               <button
                 className="bh-prompt-page-action"
@@ -626,6 +668,19 @@ export function ActivityPanel({
                   </label>
 
                   <div className="bh-session-prompt-list">
+                    {sessionPromptError ? (
+                      <div className="bh-inline-request-error" role="alert">
+                        <span>{sessionPromptError}</span>
+                        <button
+                          onClick={() =>
+                            setSessionPromptRequestVersion((version) => version + 1)
+                          }
+                          type="button"
+                        >
+                          {t("common.retry")}
+                        </button>
+                      </div>
+                    ) : null}
                     {isSessionPromptLoading && selectedSessionPrompts.length === 0 ? (
                       <div className="bh-prompt-search-empty">
                         {t("activity.loadingConversations")}
@@ -669,14 +724,18 @@ export function ActivityPanel({
                           ) : null}
                         </>
                       ) : (
-                        <div className="bh-prompt-search-empty">
-                          {sessionPromptError ?? t("activity.noConversationsMatch")}
-                        </div>
+                        !sessionPromptError ? (
+                          <div className="bh-prompt-search-empty">
+                            {t("activity.noConversationsMatch")}
+                          </div>
+                        ) : null
                       )
                     ) : (
-                      <div className="bh-prompt-search-empty">
-                        {sessionPromptError ?? t("activity.noSessionPrompts")}
-                      </div>
+                      !sessionPromptError ? (
+                        <div className="bh-prompt-search-empty">
+                          {t("activity.noSessionPrompts")}
+                        </div>
+                      ) : null
                     )}
                   </div>
                 </>
@@ -687,11 +746,11 @@ export function ActivityPanel({
               )}
             </section>
 
-            <PromptChangeDetail activity={selectedSessionPrompt} />
+            <PromptChangeDetail activity={selectedSessionPrompt} onSharePrompt={onSharePrompt} />
           </>
         ) : (
           <>
-            <PromptChangeDetail activity={selectedPrompt} />
+            <PromptChangeDetail activity={selectedPrompt} onSharePrompt={onSharePrompt} />
           </>
         )}
       </div>

@@ -29,15 +29,10 @@ from app.services.memory.artifacts import (
     list_project_memory_pending_ranges,
     update_project_memory_snapshot,
 )
-from app.services.memory.project_memory import (
-    generate_project_memory_compilation,
-    prepare_project_memory_compilation,
-    project_memory_compilation_guard,
-    write_project_memory_compilation,
-)
 from app.services.memory.batches import (
     generate_project_memory_batch,
     lock_project_memory,
+    preview_project_memory_batch,
     read_project_memory_batch,
     serialize_project_memory_batch,
 )
@@ -90,10 +85,10 @@ def memory_generator_status() -> dict[str, Any]:
     return {
         "fallback_generator": LOCAL_MEMORY_GENERATOR,
         "gemini_configured": bool(settings.gemini_api_key),
-        "gemini_max_retries": settings.gemini_max_retries,
+        "gemini_max_retries": 0,
         "gemini_model": settings.gemini_model,
         "openai_configured": bool(settings.openai_api_key),
-        "openai_max_retries": settings.openai_max_retries,
+        "openai_max_retries": 0,
         "openai_model": settings.openai_model,
         "generators": {
             "draft": configured_generator_for_provider(
@@ -251,6 +246,16 @@ def generate_project_memory_response(
     )
 
 
+def preview_project_memory_generation_response(
+    db: DBSession,
+    *,
+    project_id: UUID,
+    user: User,
+) -> dict[str, Any]:
+    project = project_for_user(db, project_id, user)
+    return preview_project_memory_batch(db, project_id=project.id)
+
+
 def read_project_memory_batch_response(
     db: DBSession,
     *,
@@ -270,39 +275,6 @@ def read_project_memory_batch_response(
             detail="Project Memory batch not found",
         )
     return serialize_project_memory_batch(db, batch, replayed=True)
-
-
-def compile_project_memory_response(
-    db: DBSession,
-    *,
-    project_id: UUID,
-    regenerate: bool,
-    user: User,
-) -> dict[str, Any]:
-    project = project_for_user(db, project_id, user)
-    authorized_project_id = project.id
-    for _attempt in range(2):
-        compilation_input = prepare_project_memory_compilation(
-            db,
-            authorized_project_id,
-            force_regenerate=regenerate,
-        )
-        db.commit()
-        prepared = generate_project_memory_compilation(compilation_input)
-
-        lock_project_memory(db, authorized_project_id)
-        if project_memory_compilation_guard(db, authorized_project_id) != prepared.base_guard:
-            db.rollback()
-            continue
-        artifact = write_project_memory_compilation(db, prepared)
-        return serialize_project_memory_snapshot(artifact) or {
-            "artifact": None,
-            "snapshot": None,
-        }
-    raise HTTPException(
-        status_code=status.HTTP_409_CONFLICT,
-        detail="Project Memory changed during compilation. Try again.",
-    )
 
 
 def read_project_memory_response(

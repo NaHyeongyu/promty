@@ -140,12 +140,13 @@ def _upsert_project_file(
     path: str,
     status: str,
     metadata: dict[str, Any],
-) -> None:
+) -> int:
     key = (event.project_id, path)
     project_file = project_files_by_key.get(key)
+    was_active = project_file is not None and project_file.status != "deleted"
     if project_file is None:
         if status == "deleted":
-            return
+            return 0
         project_file = ProjectFile(
             project_id=event.project_id,
             path=path,
@@ -158,6 +159,8 @@ def _upsert_project_file(
     project_file.status = "deleted" if status == "deleted" else "active"
     project_file.metadata_ = metadata
     project_file.changed_at = event.created_at
+    is_active = project_file.status != "deleted"
+    return int(is_active) - int(was_active)
 
 
 def _normalized_changes(payload: dict[str, Any]) -> list[NormalizedChange]:
@@ -181,7 +184,7 @@ def _chunks(values: list[Any], size: int) -> Iterable[list[Any]]:
 def sync_project_resources_from_events(
     db: DBSession,
     event_payloads: Iterable[tuple[Event, dict[str, Any]]],
-) -> None:
+) -> dict[UUID, int]:
     prepared: list[tuple[Event, list[NormalizedChange]]] = []
     project_path_keys: set[tuple[UUID, str]] = set()
     for event, payload in event_payloads:
@@ -197,7 +200,7 @@ def sync_project_resources_from_events(
         )
 
     if not prepared:
-        return
+        return {}
 
     project_files_by_key: dict[tuple[UUID, str], ProjectFile] = {}
     sorted_keys = sorted(project_path_keys, key=lambda item: (str(item[0]), item[1]))
@@ -209,15 +212,19 @@ def sync_project_resources_from_events(
         ):
             project_files_by_key[(project_file.project_id, project_file.path)] = project_file
 
+    tracked_file_deltas: dict[UUID, int] = {}
     for event, normalized_changes in prepared:
         for path, status, metadata, change, prompt_event_id in normalized_changes:
-            _upsert_project_file(
+            delta = _upsert_project_file(
                 db,
                 event=event,
                 project_files_by_key=project_files_by_key,
                 path=path,
                 status=status,
                 metadata=metadata,
+            )
+            tracked_file_deltas[event.project_id] = (
+                tracked_file_deltas.get(event.project_id, 0) + delta
             )
             _create_code_change_patch(
                 db,
@@ -227,6 +234,7 @@ def sync_project_resources_from_events(
                 change=change,
                 prompt_event_id=prompt_event_id,
             )
+    return tracked_file_deltas
 
 
 def sync_project_resources_from_event(db: DBSession, event: Event, payload: dict[str, Any]) -> None:

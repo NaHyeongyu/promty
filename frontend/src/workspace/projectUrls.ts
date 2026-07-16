@@ -6,12 +6,20 @@ import {
 import type { ProjectDetailTabId } from "../components/project-detail";
 import type { Project } from "./types";
 
+function currentLocation() {
+  if (typeof window === "undefined") {
+    return { origin: "http://localhost:3000", pathname: "/" };
+  }
+  return window.location;
+}
+
 export function projectDetailUrl(projectKey: string) {
+  const location = currentLocation();
   const params = new URLSearchParams({
     project: projectKey,
     tab: "overview",
   });
-  return `${window.location.origin}/?${params.toString()}`;
+  return `${location.origin}/?${params.toString()}`;
 }
 
 export function externalProjectHref(projectUrl: string) {
@@ -22,12 +30,28 @@ export function externalProjectHref(projectUrl: string) {
   return /^https?:\/\//i.test(value) ? value : `https://${value}`;
 }
 
+export function publicProjectUrl(projectId: string) {
+  const location = currentLocation();
+  return `${location.origin}${location.pathname}${buildUrlNavigationSearch(
+    normalizeUrlNavigationState({
+      ...DEFAULT_URL_NAVIGATION_STATE,
+      activeItem: "explore",
+      selectedPublicProjectId: projectId,
+    }),
+  )}`;
+}
+
 export function buildProjectShareUrl(
   project: Project,
   selectedProjectRouteKey: string | null,
   tab: ProjectDetailTabId = "overview",
 ) {
-  return `${window.location.origin}${window.location.pathname}${buildUrlNavigationSearch(
+  if (project.visibility === "public") {
+    return publicProjectUrl(project.id);
+  }
+
+  const location = currentLocation();
+  return `${location.origin}${location.pathname}${buildUrlNavigationSearch(
     normalizeUrlNavigationState({
       ...DEFAULT_URL_NAVIGATION_STATE,
       activeDetailTab: tab,

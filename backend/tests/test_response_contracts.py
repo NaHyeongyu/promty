@@ -1,0 +1,72 @@
+from __future__ import annotations
+
+from fastapi import FastAPI
+
+from app.api.published_flows import router as published_flows_router
+from app.main import app
+
+
+def _response_schema(path: str, method: str = "get") -> dict:
+    return app.openapi()["paths"][path][method]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ]
+
+
+def test_project_detail_endpoints_publish_concrete_response_models() -> None:
+    assert _response_schema("/api/projects/{project_id}/detail")["$ref"].endswith(
+        "/ProjectDetailResponse"
+    )
+    assert _response_schema("/api/projects/{project_id}/prompt-activities")["$ref"].endswith(
+        "/ProjectPromptActivitiesResponse"
+    )
+    assert _response_schema("/api/projects/{project_id}/files")["$ref"].endswith(
+        "/ProjectFilesResponse"
+    )
+
+
+def test_memory_endpoints_publish_concrete_response_models() -> None:
+    assert _response_schema("/api/projects/{project_id}/memory/generation-preview")[
+        "$ref"
+    ].endswith("/MemoryGenerationPreviewResponse")
+    assert _response_schema("/api/projects/{project_id}/memory/batches/{batch_id}")[
+        "$ref"
+    ].endswith("/MemoryBatchResponse")
+    assert _response_schema("/api/projects/memory/review-queue/refresh", "post")["$ref"].endswith(
+        "/MemoryReviewQueueResponse"
+    )
+
+
+def test_admin_inventory_endpoints_publish_concrete_response_models() -> None:
+    assert _response_schema("/api/admin/overview")["$ref"].endswith("/AdminOverviewResponse")
+    assert _response_schema("/api/admin/events")["$ref"].endswith("/AdminEventPageResponse")
+    assert _response_schema("/api/admin/system")["$ref"].endswith("/AdminSystemResponse")
+    assert "additionalProperties" not in _response_schema("/api/admin/users")
+    assert "additionalProperties" not in _response_schema("/api/admin/projects")
+    assert "additionalProperties" not in _response_schema("/api/admin/jobs")
+
+
+def test_github_resource_endpoints_publish_concrete_response_models() -> None:
+    assert _response_schema("/api/projects/github/repositories")["$ref"].endswith(
+        "/GithubRepositoriesResponse"
+    )
+    assert _response_schema("/api/projects/{project_id}/github/files")["$ref"].endswith(
+        "/ProjectGithubFilesResponse"
+    )
+    assert _response_schema("/api/projects/{project_id}/github/files/content")["$ref"].endswith(
+        "/ProjectGithubFileContentResponse"
+    )
+
+
+def test_community_endpoints_publish_concrete_response_models() -> None:
+    community_app = FastAPI()
+    community_app.include_router(published_flows_router)
+    paths = community_app.openapi()["paths"]
+    list_schema = paths["/api/published-flows"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+    assert list_schema["type"] == "array"
+    assert list_schema["items"]["$ref"].endswith("/PublishedFlowSummaryResponse")
+    detail_schema = paths["/api/published-flows/{flow_key}"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+    assert detail_schema["$ref"].endswith("/PublishedFlowDetailResponse")

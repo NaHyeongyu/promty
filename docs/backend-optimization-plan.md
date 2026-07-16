@@ -113,7 +113,7 @@ bytes (minimum operational envelope `4096` bytes), and Project Memory compile
 prompt `262144` bytes. Each value is configurable through the documented env
 settings. Provider success bodies are read incrementally with a `1048576`-byte
 default ceiling, generation requests ask for at most `8192` output tokens, and
-the complete request/read/retry cycle has a monotonic `120`-second deadline.
+each single provider attempt has a monotonic `120`-second deadline.
 Each event materialization slice reads at most `500` rows by default. The
 `PROMPTHUB_MEMORY_SLICE_EVENT_MAX_ROWS`/`PROMTY_MEMORY_SLICE_EVENT_MAX_ROWS`
 setting controls this ceiling, while persisted continuation progress provides
@@ -184,14 +184,14 @@ parsing. Generated Project Memory uses the same UTF-8 body ceiling.
 | Multi-session ingest post-processing | Memory eligibility was checked once per touched session | One bulk eligibility query plus output-sensitive generation | 100 prompt-only sessions remain <= 20 statements with no generator calls; late lower-sequence prompts are included in the bulk check so an already stored response/file pair is not missed |
 | Memory due-window rows/queries | Next/exact/under-target decisions: 4/4/2 queries; slice state loaded historical artifact rows; event range was unbounded | Bounded by one slice | Prompt scan and decrypted event range are each <= 500 rows; each call persists <= 4 slices; long gaps resume contiguously with crash-safe logical-end/operational markers and a context-only anchor excluded from coverage |
 | Memory read index plan (10,000 rollback-only synthetic artifacts) | State aggregation read 5,000 pending rows (2.685 ms, 530 buffer hits in the final comparison) | One indexed state row | Runtime state used `ix_artifacts_memory_slice_session_end` in 0.029 ms with 3 buffer hits; generated list used `ix_artifacts_generated_memory_project_updated` in 0.026 ms |
-| Provider request/evidence bytes | Unbounded pending evidence, success response, and Project Memory compile prompt | Deterministic hard ceiling | Draft prompt <= 131,072 bytes; derived evidence <= 98,304 bytes; Project Memory prompt <= 262,144 bytes; success response <= 1,048,576 bytes; output <= 8,192 requested tokens; full retry cycle <= 120 seconds |
-| Provider blocking/read behavior | Per-request timeout did not enforce a total retry/read deadline | Bound every blocking read and retry | Every response read lowers the underlying HTTP/SSL socket timeout to the remaining wall deadline; no unbounded `read()` fallback, response/error prefixes are byte-capped, and metrics contain no content |
+| Provider request/evidence bytes | Unbounded pending evidence, success response, and Project Memory compile prompt | Deterministic hard ceiling | Draft prompt <= 131,072 bytes; derived evidence <= 98,304 bytes; Project Memory prompt <= 262,144 bytes; success response <= 1,048,576 bytes; output <= 8,192 requested tokens; one attempt <= 120 seconds |
+| Provider blocking/read behavior | Per-request timeout did not enforce a total request/read deadline | Bound every blocking read | Every response read lowers the underlying HTTP/SSL socket timeout to the remaining wall deadline; no unbounded `read()` fallback and metrics contain no content |
 | Provider result cardinality/storage | Model-controlled semantic lists and a full generation response duplicated into every draft | Bounded normalized result without full-response duplication | Semantic lists <= 32 items; source IDs <= 128 entries of <= 200 chars; Project Memory body <= 131,072 UTF-8 bytes; edit warnings are unique and <= 32; draft metadata stores counts/reason summary only |
 | Admin overview SQL statements | Approximately 32 by static inspection | Single digits plus bounded detail queries | Exactly 7 statements in PostgreSQL contract/query-count test |
 | Project mutation summary SQL statements | 9 scalar/list statements | One aggregate statement | 1 statement |
 | Review queue summary/range reads | Two project-summary aggregates plus one range query for every project | One summary read and only pending projects queried | 1 summary aggregate plus one bounded range query per project with pending work |
 | GitHub remote calls per tree/file read | 2 sequential calls, no shared pool | 1 metadata-cache hit plus content/tree call | 1 steady-state call through a shared pool; DB transaction released first; stale branch recovery only on 404 |
-| Project Memory generation request | Provider work ran in the web request and one batch could claim every pending draft | Durable enqueue and bounded worker execution | `202` enqueue; separate worker, lease heartbeat/fencing, concurrency 2, durable per-chunk retry checkpoints; <= 60 drafts per batch with overflow left pending |
+| Project Memory generation request | Provider work ran in the web request and one batch could claim every pending draft | Durable enqueue and bounded worker execution | `202` enqueue; separate worker, lease heartbeat/fencing, concurrency 2, at-most-once provider attempts; <= 60 drafts per batch with overflow left pending |
 | Project Memory version/future fan-out | Latest-version selection loaded all version history; all missing chunk futures could be submitted before a failure | One latest row per draft and concurrency-window submission | PostgreSQL `DISTINCT ON` returns one latest `ArtifactVersion` per claimed draft; at most 2 provider futures are in flight by default and a first failure submits no further work |
 | Memory generation failure recovery | A caught job failure could commit a cleared resume marker and partial slice | Preserve job outcome but roll back memory mutations | Generation runs inside a nested savepoint; PostgreSQL regression coverage restores the marker, removes the partial row, and retains the failed job state |
 | Manual Project Memory edit | Unbounded request and persisted body | Reject or normalize before allocation/version writes | Request <= 1,048,576 bytes at ASGI boundary; body <= 131,072 UTF-8 bytes at schema and service boundaries |
@@ -229,11 +229,9 @@ These are intentionally not hidden inside the completed measurements:
   does not retroactively rebuild an already consumed memory slice. Define and
   enforce a collector ordering contract, or add explicit slice invalidation and
   downstream memory regeneration before supporting arbitrary gap filling.
-- `POST /api/projects/{project_id}/memory/project/compile` is a legacy direct
-  compilation endpoint. Its DB transaction is released before provider work
-  and its prompt is now bounded, but the HTTP request still waits for the
-  provider. Move it to a dedicated durable compile job if this endpoint is
-  used by the product UI.
+- Manual Project Memory recompilation is intentionally not exposed. Project
+  Memory is compiled only when a batch contributes source memories that were
+  not already included in the existing snapshot.
 - GitHub tree reads still use GitHub's recursive tree endpoint. Introduce
   directory-level pagination plus SHA/ETag caching before supporting very large
   monorepositories through this browser.

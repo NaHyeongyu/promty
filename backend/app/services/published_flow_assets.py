@@ -6,7 +6,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -81,6 +81,33 @@ def create_published_flow_asset(
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"Image file must be {max_bytes} bytes or smaller",
+        )
+
+    asset_count = (
+        db.scalar(
+            select(func.count(PublishedFlowAsset.id)).where(
+                PublishedFlowAsset.published_flow_id == flow.id
+            )
+        )
+        or 0
+    )
+    if asset_count >= settings.published_flow_asset_max_count_per_flow:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="This prompt flow has reached its image limit",
+        )
+    user_asset_bytes = (
+        db.scalar(
+            select(func.coalesce(func.sum(PublishedFlowAsset.byte_size), 0)).where(
+                PublishedFlowAsset.author_id == current_user.id
+            )
+        )
+        or 0
+    )
+    if user_asset_bytes + len(content) > settings.published_flow_asset_max_total_bytes_per_user:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Your community image storage quota has been reached",
         )
 
     detected_content_type = _sniff_image_content_type(content)

@@ -9,6 +9,7 @@ from app.core.encryption import (
     EncryptionDecryptionError,
     decrypt_app_text,
     decrypt_github_token,
+    decrypt_github_token_with_rotation,
     encrypt_app_text,
     encrypt_app_text_to_string,
     encrypt_github_token,
@@ -68,3 +69,31 @@ def test_github_token_encryption_round_trip() -> None:
     encrypted = encrypt_github_token(token)
 
     assert decrypt_github_token(encrypted) == token
+
+
+def test_github_token_decryption_accepts_previous_key_and_marks_rotation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    legacy_settings = SimpleNamespace(
+        api_token=None,
+        github_token_encryption_key="legacy-key",
+        github_token_encryption_previous_keys=(),
+        jwt_secret=None,
+        oauth_state_secret=None,
+    )
+    monkeypatch.setattr(encryption, "settings", legacy_settings)
+    encrypted = encrypt_github_token("rotated-github-token")
+
+    rotated_settings = SimpleNamespace(
+        api_token=None,
+        github_token_encryption_key="current-key",
+        github_token_encryption_previous_keys=("legacy-key",),
+        jwt_secret=None,
+        oauth_state_secret=None,
+    )
+    monkeypatch.setattr(encryption, "settings", rotated_settings)
+
+    token, needs_rotation = decrypt_github_token_with_rotation(encrypted)
+
+    assert token == "rotated-github-token"
+    assert needs_rotation is True

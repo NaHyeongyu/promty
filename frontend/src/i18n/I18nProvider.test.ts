@@ -28,5 +28,11 @@ describe("i18n", () => {
     expect(
       translateMessage("ko", "project.deleteConfirm", { name: "PromptHub" }),
     ).toContain("PromptHub");
+    expect(translateMessage("ko", "error.notFoundTitle")).toBe(
+      "페이지를 찾을 수 없습니다",
+    );
+    expect(
+      translateMessage("ja", "project.nameSearchNoMatch", { query: "Promty" }),
+    ).toContain("Promty");
   });
 });

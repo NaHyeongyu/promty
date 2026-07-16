@@ -292,8 +292,15 @@ export PROMPTHUB_APP_URL="https://app.prompthub.example"
 export PROMPTHUB_GITHUB_CLIENT_ID="github-oauth-client-id"
 export PROMPTHUB_GITHUB_CLIENT_SECRET="github-oauth-client-secret"
 export PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_KEY="replace-with-github-token-encryption-secret"
+export PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_PREVIOUS_KEYS=""
 export PROMPTHUB_APP_ENCRYPTION_KEY="replace-with-app-data-encryption-secret"
 export PROMPTHUB_APP_ENCRYPTION_KEY_ID="local"
+export PROMPTHUB_ADMIN_GITHUB_IDS="immutable-numeric-github-id"
+export PROMPTHUB_AUTH_RATE_LIMIT_REQUESTS="30"
+export PROMPTHUB_AUTH_RATE_LIMIT_WINDOW_SECONDS="60"
+export PROMPTHUB_ADMIN_RATE_LIMIT_REQUESTS="120"
+export PROMPTHUB_ADMIN_RATE_LIMIT_WINDOW_SECONDS="60"
+export PROMPTHUB_ADMIN_AUDIT_RETENTION_DAYS="180"
 export PROMPTHUB_PROMPT_MAX_CHARS="50000"
 export PROMPTHUB_RESPONSE_MAX_CHARS="50000"
 export PROMPTHUB_EVENT_BATCH_MAX_BODY_BYTES="33554432"
@@ -322,6 +329,62 @@ Prompt text, AI response text, and unified diff patch text in raw event storage 
 Collectors do not use the web JWT. CLI login issues a separate per-user collector token stored as a hash in PostgreSQL. `POST /api/events/batch` accepts that collector token as `Authorization: Bearer <token>`. `PROMPTHUB_API_TOKEN` remains available as an optional local/global ingest token. Anonymous ingest is disabled by default; only set `PROMPTHUB_ALLOW_ANONYMOUS_INGEST=true` for isolated local development.
 
 The web OAuth flow uses a signed state value plus a short-lived HttpOnly nonce cookie to reduce login CSRF risk.
+
+Administrator authorization uses only immutable numeric GitHub IDs from
+`PROMPTHUB_ADMIN_GITHUB_IDS`; usernames and email addresses do not grant administrator
+access. OAuth and administrator endpoints have per-client sliding-window rate limits.
+Administrator console access and cross-owner project access are recorded in
+`admin_audit_logs` without storing session tokens, email addresses, prompts, or responses.
+
+The standalone operations console is available at `/admin`. It provides system-wide
+overview, user and credential inventory, full project management, decrypted event search
+and export, memory-generation job control, database/runtime telemetry, security posture,
+and the administrator audit trail. The configured administrator can suspend, restore, or
+delete non-admin users; issue and revoke collector tokens; disconnect GitHub access;
+create, update, export, or delete projects; and cancel or safely retry eligible memory
+jobs. Destructive and sensitive actions require typing the target username or project
+slug, are authorized again by the API, and are written to the audit trail. Raw events and
+administrator audit entries remain append-only from the console to preserve provenance.
+
+Administrator control endpoints:
+
+```text
+GET  /api/admin/overview
+GET  /api/admin/users
+GET  /api/admin/projects
+GET  /api/admin/jobs
+GET  /api/admin/events
+GET  /api/admin/system
+GET  /api/admin/audit-logs
+POST /api/admin/users/{user_id}/suspend
+POST /api/admin/users/{user_id}/restore
+DELETE /api/admin/users/{user_id}
+POST /api/admin/users/{user_id}/collector-tokens
+POST /api/admin/users/{user_id}/collector-tokens/{token_id}/revoke
+POST /api/admin/users/{user_id}/collector-tokens/revoke-all
+POST /api/admin/users/{user_id}/github-connection/disconnect
+POST /api/admin/projects
+PATCH /api/admin/projects/{project_id}
+DELETE /api/admin/projects/{project_id}
+POST /api/admin/jobs/{batch_id}/cancel
+POST /api/admin/jobs/{batch_id}/retry
+POST /api/admin/exports/events
+POST /api/admin/exports/projects/{project_id}
+```
+
+Signed-in users can publish a project from its Overview settings and browse shared
+projects from the Explore sidebar. Public project reads use dedicated read-only
+contracts:
+
+```text
+GET /api/projects/public
+GET /api/projects/public/{project_id}
+```
+
+The public response includes project metadata, aggregate activity, and generated or
+verified memory. Raw prompts, AI responses, unified diffs, and tracked file contents
+remain owner-only. Changing the project back to private immediately removes it from the
+public list and makes its public URL return not found.
 
 GitHub OAuth endpoints:
 
@@ -379,3 +442,14 @@ cd backend
 
 Compose loads development-only fallback secrets from `docker/compose.env` and
 then applies overrides from the ignored root `.env.local` when it exists.
+
+Run unit, PostgreSQL integration, and authenticated browser CRUD checks with:
+
+```bash
+cd backend && PROMPTHUB_RUN_POSTGRES_TESTS=1 ../.venv/bin/pytest -q
+cd frontend && npm test
+cd frontend && npm run test:e2e
+```
+
+The E2E suite expects the Compose stack to be running. It creates an isolated
+short-lived browser user inside the backend container and removes it after the run.

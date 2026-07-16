@@ -3,14 +3,13 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Integer, case, cast, desc, func, or_, select
+from sqlalchemy import Integer, cast, desc, func, or_, select
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import settings
 from app.core.time import utc_now
 from app.models.artifact_generation_jobs import ArtifactGenerationJob
 from app.models.artifacts import Artifact
-from app.models.events import Event
 from app.models.projects import Project
 from app.models.sessions import Session
 from app.services.memory.context import (
@@ -40,13 +39,9 @@ from app.services.memory.project_memory import (
 )
 from app.services.memory.windows import (
     due_memory_window as _due_memory_window,
-    _events_for_memory_window as _events_for_memory_window,
-    _latest_prompt_through_sequence as _latest_prompt_through_sequence,
-    latest_memory_slice as _latest_memory_slice,
     latest_session_event as _latest_session_event,
     memory_slice_prompt_target as _memory_slice_prompt_target,
     memory_slice_runtime_state as _memory_slice_runtime_state,
-    slice_metadata as _slice_metadata,
 )
 from app.services.memory.repository import (
     payload_from_artifact as _payload_from_artifact,
@@ -109,8 +104,6 @@ def create_artifact_generation_job(
 def run_artifact_generation_job(
     db: DBSession,
     job: ArtifactGenerationJob,
-    *,
-    force_regenerate: bool = False,
 ) -> ArtifactGenerationJob:
     job.status = "running"
     job.updated_at = utc_now()
@@ -128,12 +121,10 @@ def run_artifact_generation_job(
                 db,
                 session,
                 finalize=True,
-                force_regenerate_latest=force_regenerate,
             )
             artifacts = generate_context_memories_for_session(
                 db,
                 session,
-                force_regenerate=force_regenerate,
                 trigger_reason=job.reason,
             )
             if not artifacts:
@@ -173,7 +164,6 @@ def _generate_pending_draft_for_context(
     db: DBSession,
     *,
     context: dict[str, Any],
-    force_regenerate: bool,
     session: Session,
     storage_key: str,
 ) -> Artifact:
@@ -185,11 +175,7 @@ def _generate_pending_draft_for_context(
             Artifact.storage_key == storage_key,
         )
     ).scalar_one_or_none()
-    if (
-        not force_regenerate
-        and artifact is not None
-        and _artifact_is_current_for_context(artifact, context)
-    ):
+    if artifact is not None and _artifact_is_current_for_context(artifact, context):
         return artifact
 
     evidence = _pending_draft_evidence_from_context(context)
@@ -268,7 +254,6 @@ def generate_due_memory_artifacts_for_session(
     session: Session,
     *,
     finalize: bool = False,
-    force_regenerate_latest: bool = False,
 ) -> list[Artifact]:
     _lock_memory_materialization_session(db, session)
     generated_artifacts: list[Artifact] = []
@@ -327,7 +312,6 @@ def generate_due_memory_artifacts_for_session(
                 slice_metadata=slice_metadata,
                 start_sequence=window["start_sequence"],
             ),
-            force_regenerate=False,
             session=session,
             storage_key=(
                 f"memory/session/{session.id}/pending/"
@@ -352,48 +336,6 @@ def generate_due_memory_artifacts_for_session(
         }
         last_artifact.updated_at = utc_now()
 
-    if not generated_artifacts and force_regenerate_latest:
-        latest_slice = _latest_memory_slice(db, session)
-        if latest_slice is not None:
-            metadata = _slice_metadata(latest_slice)
-            start_sequence = metadata.get("start_sequence")
-            end_sequence = metadata.get("end_sequence")
-            context_prompt_sequence = metadata.get("context_prompt_sequence")
-            if isinstance(start_sequence, int) and isinstance(end_sequence, int):
-                context_prompt = (
-                    _latest_prompt_through_sequence(
-                        db,
-                        session,
-                        through_sequence=context_prompt_sequence,
-                    )
-                    if isinstance(context_prompt_sequence, int)
-                    else None
-                )
-                generated_artifacts.append(
-                    _generate_pending_draft_for_context(
-                        db,
-                        context=_build_session_memory_context(
-                            db,
-                            session,
-                            context_event_rows=(
-                                [context_prompt] if context_prompt is not None else None
-                            ),
-                            end_sequence=end_sequence,
-                            event_rows=_events_for_memory_window(
-                                db,
-                                session,
-                                start_sequence=start_sequence,
-                                through_sequence=end_sequence,
-                            ),
-                            slice_metadata=metadata,
-                            start_sequence=start_sequence,
-                        ),
-                        force_regenerate=True,
-                        session=session,
-                        storage_key=latest_slice.storage_key,
-                    )
-                )
-
     return generated_artifacts
 
 
@@ -413,6 +355,7 @@ def _pending_memory_drafts_for_session(
                 Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE,
                 Artifact.metadata_["artifact_stage"].astext == PENDING_DRAFT_STAGE,
                 Artifact.metadata_["review_state"].astext == REVIEW_STATE_DRAFT,
+                Artifact.metadata_["sent_to_ai_at"].astext.is_(None),
             )
             .order_by(Artifact.created_at, Artifact.updated_at)
         ).scalars()
@@ -612,37 +555,14 @@ def materialize_project_memory_drafts(
     limit: int | None = None,
     project_id: UUID,
 ) -> None:
-    latest_session_activity = (
-        select(
-            Event.session_id.label("session_id"),
-            func.max(Event.created_at).label("latest_event_at"),
-            func.max(
-                case(
-                    (Event.event_type == "PromptSubmitted", Event.created_at),
-                    else_=None,
-                )
-            ).label("latest_prompt_at"),
-        )
-        .where(Event.project_id == project_id)
-        .group_by(Event.session_id)
-        .subquery()
-    )
     idle_before = utc_now() - SESSION_IDLE_COMPLETE_AFTER
     session_query = (
         select(Session)
-        .join(
-            latest_session_activity,
-            latest_session_activity.c.session_id == Session.id,
-        )
         .where(
             Session.project_id == project_id,
             or_(
                 Session.ended_at.is_not(None),
-                func.coalesce(
-                    latest_session_activity.c.latest_prompt_at,
-                    latest_session_activity.c.latest_event_at,
-                )
-                <= idle_before,
+                Session.last_activity_at <= idle_before,
             ),
         )
         .order_by(desc(Session.started_at))
@@ -725,33 +645,16 @@ def materialize_next_idle_memory_session(db: DBSession) -> bool:
         )
         return True
 
-    latest_session_activity = (
-        select(
-            Event.session_id.label("session_id"),
-            func.max(Event.created_at).label("latest_event_at"),
-            func.max(
-                case(
-                    (Event.event_type == "PromptSubmitted", Event.created_at),
-                    else_=None,
-                )
-            ).label("latest_prompt_at"),
-        )
-        .group_by(Event.session_id)
-        .subquery()
-    )
     idle_before = utc_now() - SESSION_IDLE_COMPLETE_AFTER
     session = db.execute(
         select(Session)
-        .join(
-            latest_session_activity,
-            latest_session_activity.c.session_id == Session.id,
-        )
         .where(
             Session.ended_at.is_(None),
-            latest_session_activity.c.latest_event_at <= idle_before,
+            Session.last_activity_at.is_not(None),
+            Session.last_activity_at <= idle_before,
         )
         .order_by(
-            latest_session_activity.c.latest_event_at,
+            Session.last_activity_at,
             Session.started_at,
             Session.id,
         )
@@ -786,6 +689,7 @@ def list_project_memory_pending_ranges(
                 Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE,
                 Artifact.metadata_["artifact_stage"].astext == PENDING_DRAFT_STAGE,
                 Artifact.metadata_["review_state"].astext == REVIEW_STATE_DRAFT,
+                Artifact.metadata_["sent_to_ai_at"].astext.is_(None),
             )
             .order_by(desc(Artifact.updated_at), desc(Artifact.created_at))
             .limit(limit)
@@ -799,7 +703,6 @@ def generate_context_memories_for_session(
     session: Session,
     *,
     end_sequence: int | None = None,
-    force_regenerate: bool = False,
     start_sequence: int | None = None,
     trigger_reason: str,
 ) -> list[Artifact]:
@@ -814,7 +717,6 @@ def generate_context_memories_for_session(
             db,
             session,
             finalize=True,
-            force_regenerate_latest=force_regenerate,
         )
         pending_drafts = _pending_memory_drafts_for_session(
             db,
@@ -834,6 +736,15 @@ def generate_context_memories_for_session(
         else _latest_event_sequence(db, session)
     )
     source_draft_ids = [str(draft.id) for draft in pending_drafts]
+    sent_to_ai_at = _iso(utc_now())
+    for draft in pending_drafts:
+        metadata = draft.metadata_ if isinstance(draft.metadata_, dict) else {}
+        draft.metadata_ = {
+            **metadata,
+            "sent_to_ai_at": metadata.get("sent_to_ai_at") or sent_to_ai_at,
+        }
+        draft.updated_at = utc_now()
+    db.flush()
     payloads, generation_metadata = _build_memory_draft_payloads_from_context(
         context,
         trigger_reason=trigger_reason,
@@ -853,7 +764,7 @@ def generate_context_memories_for_session(
                 Artifact.storage_key == storage_key,
             )
         ).scalar_one_or_none()
-        if existing_memory is not None and not force_regenerate:
+        if existing_memory is not None:
             memories.append(existing_memory)
             continue
         memories.append(
@@ -1004,7 +915,6 @@ def create_and_run_session_memory_job(
     project_id: UUID,
     reason: str,
     session_id: UUID,
-    force_regenerate: bool = False,
 ) -> ArtifactGenerationJob:
     job = create_artifact_generation_job(
         db,
@@ -1012,8 +922,4 @@ def create_and_run_session_memory_job(
         reason=reason,
         session_id=session_id,
     )
-    return run_artifact_generation_job(
-        db,
-        job,
-        force_regenerate=force_regenerate,
-    )
+    return run_artifact_generation_job(db, job)

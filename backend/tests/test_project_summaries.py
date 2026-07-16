@@ -59,3 +59,12 @@ def test_project_metadata_allows_clearing_external_url() -> None:
 
     assert payload.project_url is None
     assert "project_url" in payload.model_fields_set
+
+
+def test_public_project_routes_publish_read_only_contracts() -> None:
+    from app.main import app
+
+    paths = app.openapi()["paths"]
+
+    assert set(paths["/api/projects/public"]) == {"get"}
+    assert set(paths["/api/projects/public/{project_id}"]) == {"get"}

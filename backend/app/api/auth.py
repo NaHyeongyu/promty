@@ -156,9 +156,7 @@ def finish_github_login(
                 )
             )
             response = RedirectResponse(
-                parse.urlunsplit(
-                    parsed_return_to._replace(query=parse.urlencode(return_query))
-                ),
+                parse.urlunsplit(parsed_return_to._replace(query=parse.urlencode(return_query))),
                 status_code=status.HTTP_302_FOUND,
             )
             response.delete_cookie(
@@ -169,9 +167,7 @@ def finish_github_login(
             )
             return response
 
-        cli_redirect_uri = validate_cli_redirect_uri(
-            str(payload.get("cli_redirect_uri", ""))
-        )
+        cli_redirect_uri = validate_cli_redirect_uri(str(payload.get("cli_redirect_uri", "")))
         query = parse.urlencode(
             {
                 "error": "github_authorization_cancelled",
@@ -197,6 +193,11 @@ def finish_github_login(
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Repository authorization requires an authenticated Promty session",
+            )
+        if current_web_user.suspended_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Promty account is suspended",
             )
         if str(current_web_user.id) != expected_user_id:
             raise HTTPException(
@@ -230,6 +231,12 @@ def finish_github_login(
         return response
 
     user = upsert_github_user(db, access_token)
+    if user.suspended_at is not None:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Promty account is suspended",
+        )
 
     if mode == "web":
         db.commit()

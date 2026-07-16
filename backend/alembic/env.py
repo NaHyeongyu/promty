@@ -17,11 +17,28 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
+LEGACY_PUBLISHED_PROMPT_TABLES = {
+    "published_prompt_comments",
+    "published_prompt_files",
+    "published_prompt_reactions",
+    "published_prompts",
+}
+
+
+def include_object(object_, name: str | None, type_: str, reflected: bool, compare_to) -> bool:
+    """Keep retired prompt publishing data without treating it as active model drift."""
+
+    if type_ == "table" and name in LEGACY_PUBLISHED_PROMPT_TABLES:
+        return False
+    table = getattr(object_, "table", None)
+    return getattr(table, "name", None) not in LEGACY_PUBLISHED_PROMPT_TABLES
+
 
 def run_migrations_offline() -> None:
     context.configure(
         url=settings.database_url,
         target_metadata=target_metadata,
+        include_object=include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -38,7 +55,11 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            include_object=include_object,
+        )
 
         with context.begin_transaction():
             context.run_migrations()

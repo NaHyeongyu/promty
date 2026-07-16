@@ -90,6 +90,35 @@ def test_project_detail_lookup_keeps_non_admin_unowned_project_hidden(
     assert exc_info.value.status_code == 404
 
 
+def test_public_project_lookup_allows_other_members_only_when_explicitly_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(project_views, "is_admin_user", lambda _user: False)
+    owner = _user(username="public-owner")
+    member = _user(username="public-viewer")
+    project = _project(owner)
+
+    with pytest.raises(HTTPException) as private_error:
+        detail_project_for_user(
+            FakeSession(project),
+            project.id,
+            member,
+            allow_public=True,
+        )
+
+    project.visibility = "public"
+    assert private_error.value.status_code == 404
+    assert (
+        detail_project_for_user(
+            FakeSession(project),
+            project.id,
+            member,
+            allow_public=True,
+        )
+        is project
+    )
+
+
 def test_memory_project_lookup_is_owner_only_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

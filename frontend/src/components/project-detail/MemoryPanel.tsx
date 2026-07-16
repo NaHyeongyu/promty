@@ -567,6 +567,10 @@ export function MemoryPanel({
     generatedArtifacts.length,
   );
   const pendingDateRange = combinedMemoryDateRange(data.memory.pendingRanges);
+  const pendingDraftKey = data.memory.pendingRanges
+    .map((range) => range.draftId)
+    .sort()
+    .join(":");
   const resultDateRange = combinedMemoryDateRange(generatedArtifacts);
   const hasPendingDocumentation = data.memory.pendingRanges.length > 0;
   const pendingPromptCount = data.memory.pendingRanges.reduce(
@@ -630,6 +634,11 @@ export function MemoryPanel({
   }, [data.project.id]);
 
   useEffect(() => {
+    setGenerationError(null);
+    setGenerationRetryable(true);
+  }, [pendingDraftKey]);
+
+  useEffect(() => {
     const wasDelayed = previousSharedDelayedRef.current;
     previousSharedDelayedRef.current = isProjectMemoryGenerationDelayed;
     if (
@@ -668,7 +677,8 @@ export function MemoryPanel({
     if (
       !onGenerateProjectMemory ||
       !hasPendingDocumentation ||
-      isGenerationActive
+      isGenerationActive ||
+      (generationError !== null && !generationRetryable)
     ) {
       return;
     }
@@ -783,30 +793,39 @@ export function MemoryPanel({
                   {pendingDateRange ?? t("memory.readyDescription")}
                 </p>
               </div>
-              <button
-                aria-busy={isGenerationActive || undefined}
-                aria-disabled={
-                  !hasPendingDocumentation ||
-                  !onGenerateProjectMemory ||
-                  isGenerationActive
-                }
-                className="bh-memory-primary-action"
-                onClick={() => void createProjectMemory()}
-                type="button"
-              >
-                <Sparkles aria-hidden="true" size={16} strokeWidth={1.7} />
-                <span>
-                  {isGenerationActive
-                    ? t("memory.updating")
-                    : isProjectMemoryGenerationDelayed
-                      ? t("memory.updateStatus")
-                    : generationError
-                      ? generationRetryable
-                        ? t("memory.retryUpdate")
-                        : t("memory.retryLatest")
-                      : t("memory.create")}
-                </span>
-              </button>
+              <div className="bh-memory-generation-action">
+                <button
+                  aria-busy={isGenerationActive || undefined}
+                  aria-disabled={
+                    !hasPendingDocumentation ||
+                    !onGenerateProjectMemory ||
+                    isGenerationActive ||
+                    (generationError !== null && !generationRetryable)
+                  }
+                  className="bh-memory-primary-action"
+                  onClick={() => void createProjectMemory()}
+                  disabled={
+                    !onGenerateProjectMemory ||
+                    isGenerationActive ||
+                    (generationError !== null && !generationRetryable)
+                  }
+                  type="button"
+                >
+                  <Sparkles aria-hidden="true" size={16} strokeWidth={1.7} />
+                  <span>
+                    {isGenerationActive
+                      ? t("memory.updating")
+                      : isProjectMemoryGenerationDelayed
+                        ? t("memory.updateStatus")
+                      : generationError
+                        ? generationRetryable
+                          ? t("memory.retryUpdate")
+                          : t("memory.failed")
+                        : t("memory.create")}
+                  </span>
+                </button>
+                <span>{t("memory.createHint")}</span>
+              </div>
               {isGenerationActive ? (
                 <div
                   aria-live="polite"

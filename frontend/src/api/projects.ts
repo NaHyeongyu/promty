@@ -8,6 +8,8 @@ import type {
   MemoryReviewQueueSnapshotApiResponse,
   ProjectPromptActivitiesApiResponse,
   ProjectSummary,
+  PublicProjectDetailResponse,
+  PublicProjectPage,
 } from "../workspace/types";
 import { requestJson, requestJsonBody, requestVoid } from "./client";
 
@@ -102,6 +104,45 @@ export function fetchProjectSummaries(signal?: AbortSignal): Promise<ProjectSumm
     errorMessage: "Projects request failed",
     unauthorizedMessage: "Sign in again before loading projects.",
   });
+}
+
+export function fetchPublicProjects(
+  options: {
+    limit?: number;
+    offset?: number;
+    query?: string;
+    signal?: AbortSignal;
+    sort?: "newest" | "recent";
+  } = {},
+): Promise<PublicProjectPage> {
+  const params = new URLSearchParams({
+    limit: String(options.limit ?? 24),
+    offset: String(options.offset ?? 0),
+    sort: options.sort ?? "recent",
+  });
+  if (options.query?.trim()) params.set("query", options.query.trim());
+  return requestJson<PublicProjectPage>(
+    `/api/projects/public?${params.toString()}`,
+    { signal: options.signal },
+    {
+      errorMessage: "Public projects request failed",
+      unauthorizedMessage: "Sign in again before exploring public projects.",
+    },
+  );
+}
+
+export function fetchPublicProjectDetail(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<PublicProjectDetailResponse> {
+  return requestJson<PublicProjectDetailResponse>(
+    `/api/projects/public/${encodeURIComponent(projectId)}`,
+    { signal },
+    {
+      errorMessage: "Public project request failed",
+      unauthorizedMessage: "Sign in again before opening this public project.",
+    },
+  );
 }
 
 export function createProject(

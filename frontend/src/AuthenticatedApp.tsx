@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { fetchCurrentUser, logoutSession } from "./api/auth";
 import { UnauthorizedError } from "./api/client";
@@ -6,15 +6,18 @@ import { AdminDashboard } from "./components/app/AdminDashboard";
 import { AccountWorkspaceRoute } from "./components/app/AccountWorkspaceRoute";
 import { AuthLoadingPage, WebLoginPage } from "./components/app/AuthScreens";
 import { ProjectsPage } from "./components/app/ProjectsPage";
+import { CommunityPage } from "./components/app/CommunityPage";
+import { PublicProjectsPage } from "./components/app/PublicProjectsPage";
 import { ReviewQueueDrawer } from "./components/app/ReviewQueueDrawer";
 import { RepositoryConnector } from "./components/app/RepositoryConnector";
 import { WorkspaceSidebar } from "./components/app/WorkspaceSidebar";
 import {
   ProjectDetailPage,
   type ActivityNavigationState,
+  type PromptActivityItem,
   type ProjectDetailTabId,
 } from "./components/project-detail";
-import { API_URL } from "./config";
+import { API_URL, PUBLISHED_FLOWS_ENABLED } from "./config";
 import { formatRelativeTimestamp } from "./lib/formatters";
 import { githubFileUrl } from "./lib/github";
 import { useI18n } from "./i18n/I18nProvider";
@@ -25,6 +28,7 @@ import { useProjectCatalog } from "./hooks/useProjectCatalog";
 import { useProjectDetail } from "./hooks/useProjectDetail";
 import { useProjectFiles } from "./hooks/useProjectFiles";
 import { useProjectSharing } from "./hooks/useProjectSharing";
+import { usePublishedFlows } from "./hooks/usePublishedFlows";
 import { useRepositoryConnector } from "./hooks/useRepositoryConnector";
 import { useRepositoryFiles } from "./hooks/useRepositoryFiles";
 import {
@@ -56,6 +60,15 @@ import type {
   Project,
   SidebarItemId,
 } from "./workspace/types";
+import "./styles-loading.css";
+import "./styles-workspace.css";
+import "./styles-review-queue.css";
+import "./styles-account.css";
+import "./styles-responsive.css";
+import "./styles-onboarding.css";
+import "./styles-navigation.css";
+import "./styles-projects.css";
+import "./styles-public-projects.css";
 
 function githubRepositoryConnectUrl() {
   return `${API_URL}/api/auth/github/web/repository/start?${new URLSearchParams({
@@ -78,13 +91,15 @@ export function AuthenticatedApp() {
     () => new URLSearchParams(window.location.search).get("view") === "reviews",
   );
   const [reviewQueueProjectId, setReviewQueueProjectId] = useState<string | null>(null);
+  const [unresolvedProjectRouteKey, setUnresolvedProjectRouteKey] =
+    useState<string | null>(null);
   const reviewQueueReturnFocusRef = useRef<HTMLElement | null>(null);
-  const handleUnauthorized = () => {
+  const handleUnauthorized = useCallback(() => {
     setIsReviewQueueOpen(false);
     setReviewQueueProjectId(null);
     setAuthStatus("unauthenticated");
     setCurrentUser(null);
-  };
+  }, []);
   const {
     clearWorkspaceData,
     errorMessage,
@@ -154,6 +169,8 @@ export function AuthenticatedApp() {
     currentNavigationState,
     selectedProjectId,
     selectedProjectRouteKey,
+    selectedPublicProjectId,
+    selectedCommunityFlowKey,
   } = useWorkspaceNavigationState({
     initialNavigationState,
     onPopState: () => {
@@ -171,6 +188,8 @@ export function AuthenticatedApp() {
     loadAdminOverview,
   } = useAdminOverview({ onUnauthorized: handleUnauthorized });
   const accountSettings = useAccountSettings({ onUnauthorized: handleUnauthorized });
+  const community = usePublishedFlows({ onUnauthorized: handleUnauthorized });
+  const [communitySearchQuery, setCommunitySearchQuery] = useState("");
   const previewMode = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("preview");
@@ -201,11 +220,15 @@ export function AuthenticatedApp() {
   const activeTitle =
     activeItem === "projects"
       ? t("nav.projects")
-      : activeItem === "admin"
-        ? t("nav.admin")
-        : activeItem === "settings" || activeItem === "profile"
-          ? t("settings.title")
-          : t("settings.account");
+      : activeItem === "explore"
+        ? t("nav.explore")
+        : PUBLISHED_FLOWS_ENABLED && activeItem === "community"
+          ? t("nav.community")
+        : activeItem === "admin"
+          ? t("nav.admin")
+          : activeItem === "settings" || activeItem === "profile"
+            ? t("settings.title")
+            : t("settings.account");
   const projectRouteKey = (project: Project | null | undefined) =>
     sanitizeProjectRouteKey(project?.slug) ?? project?.id ?? null;
   const projectMatchesRouteKey = (project: Project, routeKey: string) =>
@@ -289,6 +312,51 @@ export function AuthenticatedApp() {
     writeUrlNavigationState(nextState, mode);
   };
 
+  useEffect(() => {
+    if (
+      !PUBLISHED_FLOWS_ENABLED ||
+      authStatus !== "authenticated" ||
+      activeItem !== "community"
+    ) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void community.loadPublishedFlows(communitySearchQuery, controller.signal);
+    }, communitySearchQuery ? 250 : 0);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [activeItem, authStatus, community.loadPublishedFlows, communitySearchQuery]);
+
+  useEffect(() => {
+    if (
+      !PUBLISHED_FLOWS_ENABLED ||
+      authStatus !== "authenticated" ||
+      activeItem !== "community"
+    ) return;
+    if (selectedCommunityFlowKey) {
+      const controller = new AbortController();
+      void community.loadPublishedFlowDetail(
+        selectedCommunityFlowKey,
+        controller.signal,
+      );
+      return () => controller.abort();
+    }
+    const firstFlow = community.publishedFlows[0];
+    if (firstFlow) {
+      navigateWorkspace(
+        { activeItem: "community", selectedCommunityFlowKey: firstFlow.slug },
+        "replace",
+      );
+    }
+  }, [
+    activeItem,
+    authStatus,
+    community.loadPublishedFlowDetail,
+    community.publishedFlows,
+    selectedCommunityFlowKey,
+  ]);
+
   const loadSession = async () => {
     setAuthStatus("loading");
     clearWorkspaceData();
@@ -320,6 +388,7 @@ export function AuthenticatedApp() {
     clearProjectFiles();
     clearRepositoryFiles();
     clearAdminOverview();
+    community.clearPublishedFlows();
     accountSettings.clearAccountSettings();
     closeRepositoryConnector();
     setIsReviewQueueOpen(false);
@@ -343,6 +412,7 @@ export function AuthenticatedApp() {
     activeItem,
     hasLoadedWorkspaceData,
     navigateWorkspace,
+    onProjectRouteNotFound: setUnresolvedProjectRouteKey,
     projectCatalog,
     projectMatchesRouteKey,
     projectRouteKey,
@@ -444,6 +514,11 @@ export function AuthenticatedApp() {
       return;
     }
 
+    if (item === "admin") {
+      window.location.assign("/admin");
+      return;
+    }
+
     setIsReviewQueueOpen(false);
 
     if (item === "projects" && selectedProjectId) {
@@ -507,6 +582,27 @@ export function AuthenticatedApp() {
       repositoryFileContentPath: null,
     });
   };
+  const prepareCommunityDraft = async (activity: PromptActivityItem) => {
+    if (!PUBLISHED_FLOWS_ENABLED || !selectedProject) return;
+    try {
+      const flow = await community.createPublishedFlow({
+        project_id: selectedProject.id,
+        prompt_event_ids: [activity.id],
+        status: "draft",
+        title: activity.prompt.split(/\r?\n/, 1)[0]?.slice(0, 255) || null,
+        visibility: "private",
+      });
+      setCommunitySearchQuery("");
+      navigateWorkspace({
+        activeItem: "community",
+        selectedCommunityFlowKey: flow.slug,
+      });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : t("community.updateFailed"),
+      );
+    }
+  };
 
   if (authStatus === "loading") {
     return <AuthLoadingPage />;
@@ -540,6 +636,7 @@ export function AuthenticatedApp() {
           repositoryFileSelectedPath: repositoryFileContentPath,
           repositoryFiles: projectGithubFiles?.files ?? [],
           repositoryFilesConnectUrl: githubRepositoryConnectUrl(),
+          repositoryFilesError: projectGithubFilesError,
           repositoryFilesLoading: isProjectGithubFilesLoading,
           repositoryFilesMessage: isProjectGithubFilesLoading
             ? t("files.repositoryLoadingPeriod")
@@ -614,6 +711,7 @@ export function AuthenticatedApp() {
     activeItem === "projects" &&
     projectDetail === null &&
     !projectDetailError &&
+    !unresolvedProjectRouteKey &&
     Boolean(pendingProjectRouteKey);
   const isShowingProjectDetail =
     activeItem === "projects" &&
@@ -675,6 +773,7 @@ export function AuthenticatedApp() {
         onOpenReviewQueue={openReviewQueue}
         onSelectItem={selectSidebarItem}
         pendingReviewProjectCount={reviewProjectCount}
+        publishedFlowsEnabled={PUBLISHED_FLOWS_ENABLED}
         savedProjectCount={bookmarkedProjects.length}
         savedProjects={sidebarBookmarkedProjects}
         selectedProjectId={selectedProjectId}
@@ -705,7 +804,14 @@ export function AuthenticatedApp() {
               activityNavigation={activityNavigation}
               activeTab={activeDetailTab}
               data={projectDetailRenderData}
-              errorMessage={projectDetailError}
+              errorMessage={
+                unresolvedProjectRouteKey
+                  ? t("project.notFoundDescription")
+                  : projectDetailError
+              }
+              errorTitle={
+                unresolvedProjectRouteKey ? t("project.notFoundTitle") : undefined
+              }
               isProjectResolving={isResolvingProjectDetail}
               isLoading={
                 isResolvingProjectDetail ||
@@ -750,11 +856,30 @@ export function AuthenticatedApp() {
               onOpenAllProjects={closeProjectDetail}
               onProjectSelect={selectedProject ? switchProjectDetail : undefined}
               onRepositoryFileSelect={activeProjectId ? selectRepositoryFile : undefined}
+              onRetryRepositoryFiles={
+                activeProjectId
+                  ? () => {
+                      void loadProjectGithubFiles(activeProjectId);
+                    }
+                  : undefined
+              }
+              onRetryTrackedFiles={
+                activeProjectId
+                  ? () => {
+                      void loadProjectFiles(activeProjectId);
+                    }
+                  : undefined
+              }
               onShareProject={
                 selectedProject
                   ? () => {
                       void shareProject(selectedProject, activeDetailTab);
                     }
+                  : undefined
+              }
+              onSharePrompt={
+                PUBLISHED_FLOWS_ENABLED && selectedProject
+                  ? prepareCommunityDraft
                   : undefined
               }
               onSaveProjectMetadata={selectedProject ? saveProjectMetadata : undefined}
@@ -769,7 +894,7 @@ export function AuthenticatedApp() {
               }
               projectOptions={projectHeaderOptions}
               onRetry={
-                activeProjectId
+                activeProjectId && !unresolvedProjectRouteKey
                   ? () => {
                       void loadProjectDetail(activeProjectId, selectedProject);
                       void loadProjectFiles(activeProjectId);
@@ -810,6 +935,52 @@ export function AuthenticatedApp() {
             projectSortMode={projectSortMode}
             repositoryConnector={repositoryConnector}
             visibleProjects={visibleProjects}
+          />
+        ) : activeItem === "explore" ? (
+          <PublicProjectsPage
+            onSelectProject={(projectId, mode = "push") => {
+              navigateWorkspace(
+                {
+                  activeDetailTab: "overview",
+                  activeItem: "explore",
+                  repositoryFileContentPath: null,
+                  selectedProjectId: null,
+                  selectedProjectRouteKey: null,
+                  selectedPublicProjectId: projectId,
+                },
+                mode,
+              );
+            }}
+            onUnauthorized={handleUnauthorized}
+            selectedProjectId={selectedPublicProjectId}
+          />
+        ) : PUBLISHED_FLOWS_ENABLED && activeItem === "community" ? (
+          <CommunityPage
+            errorMessage={
+              community.publishedFlowDetailError ?? community.publishedFlowsError
+            }
+            flows={community.publishedFlows}
+            isDetailLoading={community.isPublishedFlowDetailLoading}
+            isLoading={community.isPublishedFlowsLoading}
+            isSaving={community.isPublishedFlowSaving}
+            onArchiveFlow={community.archivePublishedFlow}
+            onReload={() => {
+              void community.loadPublishedFlows(communitySearchQuery);
+              if (selectedCommunityFlowKey) {
+                void community.loadPublishedFlowDetail(selectedCommunityFlowKey);
+              }
+            }}
+            onSearchChange={setCommunitySearchQuery}
+            onSelectFlow={(flowKey) =>
+              navigateWorkspace({
+                activeItem: "community",
+                selectedCommunityFlowKey: flowKey,
+              })
+            }
+            onUpdateFlow={community.updatePublishedFlow}
+            onUploadAsset={community.uploadPublishedFlowAsset}
+            searchQuery={communitySearchQuery}
+            selectedFlow={community.selectedPublishedFlow}
           />
         ) : activeItem === "admin" && canUseAdmin ? (
           <>
