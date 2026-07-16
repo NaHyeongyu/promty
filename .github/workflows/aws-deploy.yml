@@ -90,6 +90,7 @@ jobs:
             "commands": [
               "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${REGISTRY}",
               "docker pull ${REGISTRY}/${ECR_REPOSITORY}:latest",
+              "if grep -q '^PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS=' /opt/promty/backend.env; then sed -i 's/^PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS=.*/PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS=15552000/' /opt/promty/backend.env; else echo 'PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS=15552000' >> /opt/promty/backend.env; fi",
               "docker rm -f promty-memory-worker || true",
               "docker rm -f promty-backend || true",
               "docker run -d --name promty-backend --restart unless-stopped --network promty --env-file /opt/promty/backend.env -e PROMPTHUB_PUBLISHED_FLOWS_ENABLED=true -e PROMPTHUB_ADMIN_GITHUB_IDS=191438254 -e PROMPTHUB_DATABASE_POOL_SIZE=5 -e PROMPTHUB_DATABASE_MAX_OVERFLOW=2 ${REGISTRY}/${ECR_REPOSITORY}:latest",
