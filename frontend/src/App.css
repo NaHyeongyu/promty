@@ -1,10 +1,71 @@
-@import "./styles-auth.css";
-@import "./styles-admin.css";
-@import "./styles-loading.css";
-@import "./styles-workspace.css";
-@import "./styles-review-queue.css";
-@import "./styles-account.css";
-@import "./styles-responsive.css";
-@import "./styles-onboarding.css";
-@import "./styles-navigation.css";
-@import "./styles-projects.css";
+.app-status-page {
+  box-sizing: border-box;
+  display: grid;
+  min-height: 100vh;
+  min-height: 100dvh;
+  place-items: center;
+  padding: var(--bh-space-6);
+  background: var(--bh-color-background);
+}
+
+.app-status-card {
+  display: grid;
+  width: min(520px, 100%);
+  justify-items: start;
+  gap: var(--bh-space-4);
+  border: 1px solid var(--bh-color-border);
+  border-radius: var(--bh-radius-lg);
+  padding: clamp(var(--bh-space-6), 6vw, var(--bh-space-10));
+  background: var(--bh-color-surface);
+  box-shadow: var(--bh-shadow-overlay);
+}
+
+.app-status-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--bh-space-2);
+  color: var(--bh-color-text-primary);
+  text-decoration: none;
+}
+
+.app-status-brand .brand-logo {
+  width: 28px;
+  height: 28px;
+}
+
+.app-status-icon {
+  color: var(--bh-color-danger);
+}
+
+.app-status-loading-icon {
+  color: var(--bh-color-primary);
+  animation: app-status-spin 900ms linear infinite;
+}
+
+@keyframes app-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-status-loading-icon {
+    animation: none;
+  }
+}
+
+.app-status-card h1,
+.app-status-card p {
+  margin: 0;
+}
+
+.app-status-card p {
+  color: var(--bh-color-text-secondary);
+  line-height: var(--bh-line-height-body);
+}
+
+.app-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bh-space-2);
+}

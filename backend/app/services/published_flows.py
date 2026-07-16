@@ -24,6 +24,7 @@ from app.services.published_flow_creation import create_published_flow_record
 from app.services.published_flow_redaction import (
     normalize_tags as _normalize_tags,
     optional_redacted_text as _optional_redacted_text,
+    redact_text as _redact_text,
 )
 from app.services.published_flow_serializers import (
     serialize_flow_detail,
@@ -88,6 +89,8 @@ def update_published_flow(
     current_user: User,
     fields: set[str],
     flow_key: str,
+    included_file_ids: list[UUID] | None,
+    included_item_ids: list[UUID] | None,
     notes: str | None,
     status_value: str | None,
     summary: str | None,
@@ -104,7 +107,7 @@ def update_published_flow(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Title is required",
             )
-        flow.title = next_title[:MAX_TITLE_LENGTH]
+        flow.title = (_redact_text(next_title) or "Prompt flow")[:MAX_TITLE_LENGTH]
     if "summary" in fields:
         flow.summary = _optional_redacted_text(summary)
     if "context_summary" in fields:
@@ -113,6 +116,26 @@ def update_published_flow(
         flow.notes = _optional_redacted_text(notes)
     if "tags" in fields:
         flow.tags = _normalize_tags(tags or [])
+    if "included_item_ids" in fields:
+        selected_item_ids = set(included_item_ids or [])
+        known_item_ids = {item.id for item in flow.items}
+        if not selected_item_ids.issubset(known_item_ids):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="One or more selected prompts do not belong to this flow",
+            )
+        for item in flow.items:
+            item.is_included = item.id in selected_item_ids
+    if "included_file_ids" in fields:
+        selected_file_ids = set(included_file_ids or [])
+        known_file_ids = {file.id for file in flow.files}
+        if not selected_file_ids.issubset(known_file_ids):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="One or more selected files do not belong to this flow",
+            )
+        for file in flow.files:
+            file.is_included = file.id in selected_file_ids
     if "visibility" in fields:
         if visibility not in VALID_FLOW_VISIBILITIES:
             raise HTTPException(
@@ -127,6 +150,14 @@ def update_published_flow(
                 detail="Invalid status",
             )
         _apply_flow_status(flow, status_value)
+
+    flow.prompt_count = sum(1 for item in flow.items if item.is_included)
+    flow.file_count = len({file.file_path for file in flow.files if file.is_included})
+    if flow.status == "published" and flow.prompt_count < 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Select at least one prompt before publishing",
+        )
 
     flow.updated_at = utc_now()
     db.flush()

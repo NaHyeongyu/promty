@@ -7,7 +7,6 @@ from uuid import uuid4
 import pytest
 
 from app.services.memory import project_memory
-from app.services.memory import workflows
 
 
 def _base_state(project_id):
@@ -192,68 +191,9 @@ def test_guard_recomputes_the_current_db_base(monkeypatch) -> None:
     )
 
 
-def test_manual_compile_releases_transaction_before_provider(monkeypatch) -> None:
-    project_id = uuid4()
-    artifact = SimpleNamespace(id=uuid4())
+def test_manual_project_memory_regeneration_route_is_not_exposed() -> None:
+    from app.main import app
 
-    class FakeDB:
-        transaction_open = True
-        commit_count = 0
+    paths = app.openapi()["paths"]
 
-        def commit(self) -> None:
-            self.transaction_open = False
-            self.commit_count += 1
-
-        def rollback(self) -> None:
-            self.transaction_open = False
-
-    db = FakeDB()
-    compilation_input = SimpleNamespace(base_guard="guard")
-    prepared = SimpleNamespace(base_guard="guard")
-
-    monkeypatch.setattr(
-        workflows,
-        "project_for_user",
-        lambda *_args, **_kwargs: SimpleNamespace(id=project_id),
-    )
-    monkeypatch.setattr(
-        workflows,
-        "prepare_project_memory_compilation",
-        lambda *_args, **_kwargs: compilation_input,
-    )
-
-    def generate(_input):
-        assert db.transaction_open is False
-        return prepared
-
-    monkeypatch.setattr(workflows, "generate_project_memory_compilation", generate)
-    monkeypatch.setattr(
-        workflows,
-        "lock_project_memory",
-        lambda *_args, **_kwargs: setattr(db, "transaction_open", True),
-    )
-    monkeypatch.setattr(
-        workflows,
-        "project_memory_compilation_guard",
-        lambda *_args, **_kwargs: "guard",
-    )
-    monkeypatch.setattr(
-        workflows,
-        "write_project_memory_compilation",
-        lambda *_args, **_kwargs: artifact,
-    )
-    monkeypatch.setattr(
-        workflows,
-        "serialize_project_memory_snapshot",
-        lambda _artifact: {"artifact": str(_artifact.id)},
-    )
-
-    result = workflows.compile_project_memory_response(
-        db,  # type: ignore[arg-type]
-        project_id=project_id,
-        regenerate=False,
-        user=SimpleNamespace(),  # type: ignore[arg-type]
-    )
-
-    assert result == {"artifact": str(artifact.id)}
-    assert db.commit_count == 1
+    assert "/api/projects/{project_id}/memory/project/compile" not in paths

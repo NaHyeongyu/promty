@@ -8,9 +8,13 @@ import { useI18n } from "../../i18n/I18nProvider";
 export function FilesPanel({
   data,
   onRepositoryFileSelect,
+  onRetryRepositoryFiles,
+  onRetryTrackedFiles,
 }: {
   data: ProjectDetailData;
   onRepositoryFileSelect?: (path: string) => void;
+  onRetryRepositoryFiles?: () => void;
+  onRetryTrackedFiles?: () => void;
 }) {
   const { t } = useI18n();
   const isRepositoryLinked = Boolean(data.project.repositoryUrl);
@@ -51,7 +55,17 @@ export function FilesPanel({
             description={data.filesError}
             icon={BookOpen}
             title={t("files.trackedLoadFailed")}
-          />
+          >
+            {onRetryTrackedFiles ? (
+              <button
+                className="bh-empty-state-button"
+                onClick={onRetryTrackedFiles}
+                type="button"
+              >
+                {t("common.retry")}
+              </button>
+            ) : null}
+          </EmptyState>
         ) : data.files.length > 0 ? (
           <>
             {data.filesTruncated ? (
@@ -113,6 +127,22 @@ export function FilesPanel({
               ))}
             </div>
           </div>
+        ) : data.repositoryFilesError ? (
+          <EmptyState
+            description={data.repositoryFilesError}
+            icon={BookOpen}
+            title={t("files.repositoryLoadFailed")}
+          >
+            {onRetryRepositoryFiles ? (
+              <button
+                className="bh-empty-state-button"
+                onClick={onRetryRepositoryFiles}
+                type="button"
+              >
+                {t("common.retry")}
+              </button>
+            ) : null}
+          </EmptyState>
         ) : data.repositoryFiles.length > 0 ? (
           <div className="bh-repository-browser bh-repository-browser-external">
             <FileTree

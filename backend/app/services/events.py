@@ -28,6 +28,7 @@ from app.services.memory.constants import (
 from app.services.memory.windows import memory_slice_prompt_target
 from app.services.projects.search import upsert_prompt_search_documents
 from app.services.projects.resources import sync_project_resources_from_events
+from app.services.projects.stats import increment_project_stats, project_stats_delta
 
 SYSTEM_USER_ID = uuid5(NAMESPACE_DNS, "prompthub.system_user")
 
@@ -120,6 +121,7 @@ def _new_session(event: EventCreate, project: Project) -> Session:
         cwd=_payload_value(event, "cwd"),
         branch=_payload_value(event, "branch"),
         started_at=event.timestamp,
+        last_activity_at=event.timestamp,
         ended_at=None,
     )
     _apply_session_metadata(session, event)
@@ -137,6 +139,9 @@ def _apply_session_metadata(session: Session, event: EventCreate) -> None:
         session.cwd = cwd
     if branch and not session.branch:
         session.branch = branch
+    last_activity_at = getattr(session, "last_activity_at", None)
+    if last_activity_at is None or event.timestamp > last_activity_at:
+        session.last_activity_at = event.timestamp
     if event.event_type == "SessionEnded":
         session.ended_at = event.timestamp
     elif session.ended_at is not None and event.timestamp > session.ended_at:
@@ -325,10 +330,11 @@ def _stage_new_events(
     new_events: list[PreparedEvent],
     *,
     owner: User | None,
-) -> tuple[dict[UUID, Event], dict[UUID, Session]]:
+) -> tuple[dict[UUID, Event], dict[UUID, Session], set[UUID]]:
     projects_by_id, sessions_by_id = _prefetch_projects_and_sessions(db, new_events)
     event_rows_by_id: dict[UUID, Event] = {}
     touched_sessions: dict[UUID, Session] = {}
+    new_session_ids: set[UUID] = set()
     system_user: User | None = None
 
     for prepared in new_events:
@@ -359,6 +365,7 @@ def _stage_new_events(
             session = _new_session(event, project)
             db.add(session)
             sessions_by_id[session.id] = session
+            new_session_ids.add(session.id)
 
         event_row = Event(
             id=event.id,
@@ -375,7 +382,7 @@ def _stage_new_events(
         event_rows_by_id[event_row.id] = event_row
         touched_sessions[session.id] = session
 
-    return event_rows_by_id, touched_sessions
+    return event_rows_by_id, touched_sessions, new_session_ids
 
 
 def _due_memory_session_ids(
@@ -531,7 +538,7 @@ def add_events(
         existing_by_id=existing_by_id,
         sequence_owners=_existing_sequence_owners(db, prepared_events),
     )
-    new_rows_by_id, touched_sessions = _stage_new_events(
+    new_rows_by_id, touched_sessions, new_session_ids = _stage_new_events(
         db,
         new_events,
         owner=owner,
@@ -546,10 +553,37 @@ def add_events(
         (rows_by_id[prepared.event.id], prepared.payload) for prepared in first_occurrences
     ]
     upsert_prompt_search_documents(db, unique_event_payloads)
-    sync_project_resources_from_events(
+    tracked_file_deltas = sync_project_resources_from_events(
         db,
         [(new_rows_by_id[prepared.event.id], prepared.payload) for prepared in new_events],
     )
+    stats_by_project: dict[UUID, dict[str, Any]] = {}
+    for prepared in new_events:
+        event = prepared.event
+        stats = stats_by_project.setdefault(
+            event.project_id,
+            project_stats_delta(project_id=event.project_id),
+        )
+        stats["event_count"] += 1
+        if event.event_type == "PromptSubmitted":
+            stats["prompt_count"] += 1
+        latest_event_at = stats.get("latest_event_at")
+        if latest_event_at is None or event.timestamp > latest_event_at:
+            stats["latest_event_at"] = event.timestamp
+    for session_id in new_session_ids:
+        session = touched_sessions[session_id]
+        stats = stats_by_project.setdefault(
+            session.project_id,
+            project_stats_delta(project_id=session.project_id),
+        )
+        stats["session_count"] += 1
+    for project_id, tracked_file_delta in tracked_file_deltas.items():
+        stats = stats_by_project.setdefault(
+            project_id,
+            project_stats_delta(project_id=project_id),
+        )
+        stats["tracked_files"] += tracked_file_delta
+    increment_project_stats(db, stats_by_project.values())
     due_session_ids = _due_memory_session_ids(
         db,
         new_events=new_events,

@@ -12,33 +12,31 @@ from app.services.memory.constants import SESSION_IDLE_COMPLETE_AFTER
 
 
 def session_completion_state(db: DBSession, session: Session) -> dict[str, Any]:
-    latest_event_at = db.scalar(
-        select(func.max(Event.created_at)).where(
-            Event.project_id == session.project_id,
-            Event.session_id == session.id,
-        )
-    )
-    latest_prompt_at = db.scalar(
-        select(func.max(Event.created_at)).where(
-            Event.project_id == session.project_id,
-            Event.session_id == session.id,
-            Event.event_type == "PromptSubmitted",
-        )
-    )
     if session.ended_at is not None:
         return {
             "completed": True,
             "completed_at": session.ended_at,
             "reason": "explicit",
         }
+    latest_event_at = getattr(session, "last_activity_at", None)
+    if latest_event_at is None:
+        # Defensive fallback for rows created outside the collector path. The
+        # migration backfills production sessions and normal ingest keeps the
+        # column current, so this query should be exceptional.
+        latest_event_at = db.scalar(
+            select(func.max(Event.created_at)).where(
+                Event.project_id == session.project_id,
+                Event.session_id == session.id,
+            )
+        )
     # A response or file-change hook is still session activity. Using the most
     # recent prompt alone can finalize a session while its trailing events are
     # actively arriving.
-    idle_reference_at = latest_event_at or latest_prompt_at
+    idle_reference_at = latest_event_at
     if idle_reference_at and idle_reference_at <= utc_now() - SESSION_IDLE_COMPLETE_AFTER:
         return {
             "completed": True,
-            "completed_at": latest_event_at or idle_reference_at,
+            "completed_at": idle_reference_at,
             "reason": "idle_timeout",
         }
     return {
@@ -63,13 +61,7 @@ def complete_session_if_ready(
     if not force:
         return state
 
-    latest_event_at = db.scalar(
-        select(func.max(Event.created_at)).where(
-            Event.project_id == session.project_id,
-            Event.session_id == session.id,
-        )
-    )
-    session.ended_at = latest_event_at or utc_now()
+    session.ended_at = getattr(session, "last_activity_at", None) or utc_now()
     db.flush()
     return {
         "completed": True,

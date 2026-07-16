@@ -10,6 +10,8 @@ from app.api.auth import router as auth_router
 from app.api.events import router as events_router
 from app.api.memory import router as memory_router
 from app.api.projects import router as projects_router
+from app.api.published_flows import router as published_flows_router
+from app.core.access_logging import install_sensitive_access_log_filter
 from app.core.config import settings
 from app.core.encryption import EncryptionError
 from app.core.text_limits import PROJECT_MEMORY_UPDATE_REQUEST_MAX_BYTES
@@ -18,6 +20,10 @@ from app.middleware.request_body_limit import (
     EventBatchBodyLimitMiddleware,
     ProjectMemoryBodyLimitMiddleware,
 )
+from app.middleware.admin_audit import AdminAuditMiddleware
+from app.middleware.security_rate_limit import SecurityRateLimitMiddleware
+
+install_sensitive_access_log_filter()
 
 app = FastAPI(title="Promty API")
 app.add_middleware(
@@ -35,14 +41,23 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
     allow_credentials=True,
 )
+app.add_middleware(
+    SecurityRateLimitMiddleware,
+    admin_requests=settings.admin_rate_limit_requests,
+    admin_window_seconds=settings.admin_rate_limit_window_seconds,
+    auth_requests=settings.auth_rate_limit_requests,
+    auth_window_seconds=settings.auth_rate_limit_window_seconds,
+    community_requests=settings.community_rate_limit_requests,
+    community_window_seconds=settings.community_rate_limit_window_seconds,
+)
+app.add_middleware(AdminAuditMiddleware)
 app.include_router(auth_router)
 app.include_router(account_router)
 app.include_router(admin_router)
 app.include_router(events_router)
 app.include_router(memory_router)
-# Community publishing routes are paused for now.
-# from app.api.published_flows import router as published_flows_router
-# app.include_router(published_flows_router)
+if settings.published_flows_enabled:
+    app.include_router(published_flows_router)
 app.include_router(projects_router)
 
 

@@ -206,6 +206,7 @@
     grid-template-columns: 1fr;
   }
 
+  .bh-memory-generation-action,
   .bh-memory-primary-action,
   .bh-memory-pending-row button {
     width: 100%;

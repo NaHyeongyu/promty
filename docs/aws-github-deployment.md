@@ -522,6 +522,12 @@ PROMPTHUB_APP_URL=https://promty.org
 PROMPTHUB_CORS_ORIGINS=https://promty.org,https://www.promty.org
 PROMPTHUB_SESSION_COOKIE_SECURE=true
 PROMPTHUB_SESSION_COOKIE_SAMESITE=lax
+PROMPTHUB_ADMIN_GITHUB_IDS=191438254
+PROMPTHUB_AUTH_RATE_LIMIT_REQUESTS=30
+PROMPTHUB_AUTH_RATE_LIMIT_WINDOW_SECONDS=60
+PROMPTHUB_ADMIN_RATE_LIMIT_REQUESTS=120
+PROMPTHUB_ADMIN_RATE_LIMIT_WINDOW_SECONDS=60
+PROMPTHUB_ADMIN_AUDIT_RETENTION_DAYS=180
 PROMPTHUB_PUBLISHED_FLOW_ASSET_STORAGE=s3
 PROMPTHUB_AWS_REGION=ap-southeast-2
 PROMPTHUB_AWS_S3_BUCKET=promty-prod-assets-435917083683
@@ -569,6 +575,37 @@ aws ssm send-command \
   --document-name AWS-RunShellScript \
   --parameters 'commands=["docker restart promty-backend","docker restart promty-memory-worker","docker exec promty-backend python -c \"import urllib.request; print(urllib.request.urlopen('\''http://127.0.0.1:8011/health/ready'\'', timeout=5).read().decode())\""]'
 ```
+
+### Encryption key rotation
+
+Rotate encryption keys one at a time during a controlled maintenance window:
+
+1. Create a fresh random value and publish it as a new Secrets Manager version.
+2. Keep the prior secret version labelled `AWSPREVIOUS`. EC2 bootstrap writes that version
+   into the corresponding decrypt-only `*_PREVIOUS_KEYS` variable.
+3. Recreate the backend and memory-worker containers so they read the new environment.
+4. Run the validation pass inside the backend container:
+
+   ```bash
+   python scripts/reencrypt_sensitive_data.py --dry-run
+   python scripts/reencrypt_github_tokens.py --dry-run
+   ```
+
+5. Re-encrypt stored values with the current key:
+
+   ```bash
+   python scripts/reencrypt_sensitive_data.py
+   python scripts/reencrypt_github_tokens.py
+   ```
+
+6. Verify login, repository browsing, project activity, and Project Memory reads before
+   removing the previous key. Do not begin another rotation while data still requires a key
+   older than `AWSPREVIOUS`.
+
+GitHub tokens are also lazily re-encrypted when used. Rotating the JWT secret signs out all
+web sessions; rotate it separately from the OAuth state secret so failures are easy to
+isolate. Never remove an application encryption key until the full re-encryption command
+has completed and a backup has been verified.
 
 ## Domain And DNS
 
@@ -744,7 +781,7 @@ aws ssm send-command \
     "docker pull 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com/promty/backend:latest",
     "docker rm -f promty-memory-worker || true",
     "docker rm -f promty-backend || true",
-    "docker run -d --name promty-backend --restart unless-stopped --network promty --env-file /opt/promty/backend.env -e PROMPTHUB_DATABASE_POOL_SIZE=5 -e PROMPTHUB_DATABASE_MAX_OVERFLOW=2 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com/promty/backend:latest",
+    "docker run -d --name promty-backend --restart unless-stopped --network promty --env-file /opt/promty/backend.env -e PROMPTHUB_ADMIN_GITHUB_IDS=191438254 -e PROMPTHUB_DATABASE_POOL_SIZE=5 -e PROMPTHUB_DATABASE_MAX_OVERFLOW=2 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com/promty/backend:latest",
     "sleep 8",
     "docker exec promty-backend python -c \"import urllib.request; print(urllib.request.urlopen('\''http://127.0.0.1:8011/health/ready'\'', timeout=5).read().decode())\"",
     "docker run -d --name promty-memory-worker --restart unless-stopped --network promty --env-file /opt/promty/backend.env -e PROMPTHUB_DATABASE_POOL_SIZE=2 -e PROMPTHUB_DATABASE_MAX_OVERFLOW=1 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com/promty/backend:latest python -m app.workers.project_memory"

@@ -4,6 +4,7 @@ import {
   normalizeUrlNavigationState,
   readUrlNavigationState,
 } from "./navigation";
+import { PUBLISHED_FLOWS_ENABLED } from "../config";
 
 describe("workspace navigation", () => {
   beforeEach(() => {
@@ -66,5 +67,36 @@ describe("workspace navigation", () => {
     });
 
     expect(buildUrlNavigationSearch(state)).toBe("?project=prompt-hub&tab=overview");
+  });
+
+  it("keeps a selected public project in Explore URLs", () => {
+    const projectId = "56828395-f94c-56f7-9ff9-a2feb027ae19";
+    const state = normalizeUrlNavigationState({
+      activeItem: "explore",
+      selectedPublicProjectId: projectId,
+    });
+
+    expect(state.selectedProjectId).toBeNull();
+    expect(state.selectedPublicProjectId).toBe(projectId);
+    expect(buildUrlNavigationSearch(state)).toBe(
+      `?view=explore&public_project=${projectId}`,
+    );
+  });
+
+  it("follows the Community release flag for prompt-flow URLs", () => {
+    const state = normalizeUrlNavigationState({
+      activeItem: "community",
+      selectedCommunityFlowKey: "secure-review-flow",
+    });
+
+    expect(state.activeItem).toBe(PUBLISHED_FLOWS_ENABLED ? "community" : "projects");
+    expect(state.selectedCommunityFlowKey).toBe(
+      PUBLISHED_FLOWS_ENABLED ? "secure-review-flow" : null,
+    );
+    expect(buildUrlNavigationSearch(state)).toBe(
+      PUBLISHED_FLOWS_ENABLED
+        ? "?view=community&flow=secure-review-flow"
+        : "",
+    );
   });
 });

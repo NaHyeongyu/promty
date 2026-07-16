@@ -4,6 +4,7 @@ import { firstMatchingEvent } from "./useFirstEventPolling";
 
 function event(id: string, projectId: string): EventRecord {
   return {
+    schema_version: 1,
     event_type: "PromptSubmitted",
     id,
     payload: {},

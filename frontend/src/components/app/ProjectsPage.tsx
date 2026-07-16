@@ -98,9 +98,9 @@ export function ProjectsPage({
         ) : errorMessage ? (
           <EmptyState
             description={errorMessage}
-            eyebrow="Sync issue"
+            eyebrow={t("project.syncIssue")}
             icon={RefreshCw}
-            title="Could not load events"
+            title={t("project.listLoadFailed")}
           >
             <button
               className="empty-state-button"
@@ -109,7 +109,7 @@ export function ProjectsPage({
               type="button"
             >
               <RefreshCw aria-hidden="true" size={16} strokeWidth={1.5} />
-              <span>{isEventsLoading ? "Retrying" : "Retry"}</span>
+              <span>{isEventsLoading ? t("common.refreshing") : t("common.retry")}</span>
             </button>
           </EmptyState>
         ) : displayProjects.length === 0 ? (
@@ -163,7 +163,9 @@ export function ProjectsPage({
                   <span>{t("project.noMatches")}</span>
                   <h2 id="project-search-empty-title">{t("project.noProjectsFound")}</h2>
                   <p>
-                    No project names match <code>{projectSearchQuery.trim()}</code>.
+                    {t("project.nameSearchNoMatch", {
+                      query: projectSearchQuery.trim(),
+                    })}
                   </p>
                 </div>
                 <button className="toolbar-button" onClick={onClearSearch} type="button">

@@ -8,6 +8,7 @@ import {
   Folder,
   RefreshCw,
   ServerCog,
+  ShieldCheck,
   User,
 } from "lucide-react";
 import {
@@ -84,6 +85,27 @@ export function AdminDashboard({
   const actionItems = overview?.action_items ?? [];
   const sessionGaps = overview?.ai_activity.session_gaps ?? [];
   const recentMemory = overview?.memory_monitor.recent_artifacts ?? [];
+  const recentAdminAuditLogs = overview?.recent_admin_audit_logs ?? [];
+
+  if (!overview) {
+    return (
+      <section className="admin-console" aria-label="Admin console">
+        <div
+          className="auth-message"
+          data-error={errorMessage ? "true" : undefined}
+          role={errorMessage ? "alert" : "status"}
+        >
+          {errorMessage ?? "Loading administrator overview…"}
+        </div>
+        {errorMessage ? (
+          <button className="toolbar-button" onClick={onRefresh} type="button">
+            <RefreshCw aria-hidden="true" size={16} strokeWidth={1.5} />
+            <span>Retry</span>
+          </button>
+        ) : null}
+      </section>
+    );
+  }
 
   return (
     <section className="admin-console" aria-label="Admin console">
@@ -202,7 +224,45 @@ export function AdminDashboard({
               <dt>Collectors</dt>
               <dd>{formatCompactNumber(metrics?.active_collector_tokens ?? 0)} active</dd>
             </div>
+            <div>
+              <dt>Admin limit</dt>
+              <dd>
+                {overview?.system.admin_rate_limit
+                  ? `${overview.system.admin_rate_limit.requests}/${overview.system.admin_rate_limit.window_seconds}s`
+                  : "unknown"}
+              </dd>
+            </div>
+            <div>
+              <dt>Audit retention</dt>
+              <dd>{overview?.system.admin_audit_retention_days ?? 0} days</dd>
+            </div>
           </dl>
+        </section>
+
+        <section className="admin-panel is-span-2" aria-label="Administrator audit log">
+          <div className="admin-panel-header">
+            <h3>Administrator Audit</h3>
+            <span>{recentAdminAuditLogs.length} recent</span>
+          </div>
+          <div className="admin-audit-list">
+            {recentAdminAuditLogs.length > 0 ? (
+              recentAdminAuditLogs.map((audit) => (
+                <div className="admin-audit-row" key={audit.id}>
+                  <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.5} />
+                  <div>
+                    <strong>{audit.action}</strong>
+                    <span>{audit.request_path}</span>
+                    <small>
+                      {audit.actor.username} · {audit.request_method} · HTTP {audit.status_code} ·{" "}
+                      {formatOptionalTimestamp(audit.created_at, "Unknown")}
+                    </small>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="admin-empty-line">No administrator access has been recorded yet.</div>
+            )}
+          </div>
         </section>
 
         <section className="admin-panel is-span-2" aria-label="Recent projects">

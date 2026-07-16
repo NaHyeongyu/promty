@@ -3,16 +3,17 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import and_, case, desc, func, literal, nullslast, select, true, union_all
+from sqlalchemy import and_, case, desc, func, literal, nullslast, or_, select, true, union_all
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models.artifact_generation_jobs import ArtifactGenerationJob
+from app.models.admin_audit_logs import AdminAuditLog
 from app.models.artifacts import Artifact
 from app.models.events import Event
 from app.models.github_connections import GitHubConnection
 from app.models.project_files import ProjectFile
 from app.models.projects import Project
+from app.models.project_memory_batches import ProjectMemoryBatch
 from app.models.sessions import Session as PromptSession
 from app.models.tokens import CollectorToken
 from app.models.users import User
@@ -104,19 +105,36 @@ def _overview_metrics(
         .label("github_connections")
     ).cte("admin_github_stats")
     job_stats = select(
-        func.count(ArtifactGenerationJob.id)
-        .filter(ArtifactGenerationJob.status == "failed")
-        .label("failed_jobs"),
-        func.count(ArtifactGenerationJob.id)
-        .filter(ArtifactGenerationJob.status == "running")
-        .label("running_jobs"),
-        func.count(ArtifactGenerationJob.id)
-        .filter(ArtifactGenerationJob.status == "pending")
-        .label("pending_jobs"),
-        func.count(ArtifactGenerationJob.id)
+        func.count(ProjectMemoryBatch.id)
         .filter(
-            ArtifactGenerationJob.status.in_(["pending", "running"]),
-            ArtifactGenerationJob.updated_at < stale_job_cutoff,
+            or_(
+                ProjectMemoryBatch.status == "failed",
+                and_(
+                    ProjectMemoryBatch.status == "superseded",
+                    ProjectMemoryBatch.result_status == "generation_failed",
+                ),
+            )
+        )
+        .label("failed_jobs"),
+        func.count(ProjectMemoryBatch.id)
+        .filter(ProjectMemoryBatch.status == "running")
+        .label("running_jobs"),
+        func.count(ProjectMemoryBatch.id)
+        .filter(ProjectMemoryBatch.status == "pending")
+        .label("pending_jobs"),
+        func.count(ProjectMemoryBatch.id)
+        .filter(
+            or_(
+                and_(
+                    ProjectMemoryBatch.status == "pending",
+                    ProjectMemoryBatch.updated_at < stale_job_cutoff,
+                ),
+                and_(
+                    ProjectMemoryBatch.status == "running",
+                    ProjectMemoryBatch.lease_expires_at.is_not(None),
+                    ProjectMemoryBatch.lease_expires_at < func.now(),
+                ),
+            )
         )
         .label("stale_jobs"),
     ).cte("admin_job_stats")
@@ -151,7 +169,7 @@ def _breakdowns(db: Session, *, limit: int = 12) -> dict[str, list[dict[str, Any
     dimensions = (
         ("events_by_type", Event.event_type, Event),
         ("events_by_tool", Event.tool, Event),
-        ("jobs_by_status", ArtifactGenerationJob.status, ArtifactGenerationJob),
+        ("jobs_by_status", ProjectMemoryBatch.status, ProjectMemoryBatch),
         ("projects_by_visibility", Project.visibility, Project),
     )
     statements = [
@@ -415,6 +433,32 @@ def _recent_users(db: Session) -> list[dict[str, Any]]:
     ]
 
 
+def _recent_admin_audit_logs(db: Session) -> list[dict[str, Any]]:
+    rows = db.execute(
+        select(AdminAuditLog)
+        .order_by(desc(AdminAuditLog.created_at), desc(AdminAuditLog.id))
+        .limit(20)
+    ).scalars()
+    return [
+        {
+            "action": audit.action,
+            "actor": {
+                "github_id": audit.actor_github_id,
+                "id": str(audit.actor_user_id) if audit.actor_user_id else None,
+                "username": audit.actor_username,
+            },
+            "created_at": _iso(audit.created_at),
+            "id": str(audit.id),
+            "request_method": audit.request_method,
+            "request_path": audit.request_path,
+            "resource_id": audit.resource_id,
+            "resource_type": audit.resource_type,
+            "status_code": audit.status_code,
+        }
+        for audit in rows
+    ]
+
+
 def _recent_projects(db: Session) -> list[dict[str, Any]]:
     event_stats = (
         select(
@@ -457,11 +501,19 @@ def _recent_projects(db: Session) -> list[dict[str, Any]]:
     )
     failed_job_stats = (
         select(
-            ArtifactGenerationJob.project_id.label("project_id"),
-            func.count(ArtifactGenerationJob.id).label("failed_job_count"),
+            ProjectMemoryBatch.project_id.label("project_id"),
+            func.count(ProjectMemoryBatch.id).label("failed_job_count"),
         )
-        .where(ArtifactGenerationJob.status == "failed")
-        .group_by(ArtifactGenerationJob.project_id)
+        .where(
+            or_(
+                ProjectMemoryBatch.status == "failed",
+                and_(
+                    ProjectMemoryBatch.status == "superseded",
+                    ProjectMemoryBatch.result_status == "generation_failed",
+                ),
+            )
+        )
+        .group_by(ProjectMemoryBatch.project_id)
         .cte("admin_recent_project_failed_job_stats")
     )
     projects: list[dict[str, Any]] = []
@@ -752,14 +804,22 @@ def admin_overview_response(db: Session) -> dict[str, Any]:
         },
         "breakdowns": breakdowns,
         "recent_events": _recent_events(db),
+        "recent_admin_audit_logs": _recent_admin_audit_logs(db),
         "recent_projects": _recent_projects(db),
         "recent_users": _recent_users(db),
         "risks": risks,
         "system": {
-            "admin_configured": bool(
-                settings.admin_usernames or settings.admin_emails or settings.admin_github_ids
-            ),
+            "admin_configured": bool(settings.admin_github_ids),
+            "admin_audit_retention_days": settings.admin_audit_retention_days,
+            "admin_rate_limit": {
+                "requests": settings.admin_rate_limit_requests,
+                "window_seconds": settings.admin_rate_limit_window_seconds,
+            },
             "app_url": settings.app_url,
+            "auth_rate_limit": {
+                "requests": settings.auth_rate_limit_requests,
+                "window_seconds": settings.auth_rate_limit_window_seconds,
+            },
             "cors_origins": list(settings.cors_origins),
             "gemini_configured": bool(settings.gemini_api_key),
             "openai_configured": bool(settings.openai_api_key),
@@ -767,7 +827,7 @@ def admin_overview_response(db: Session) -> dict[str, Any]:
                 "draft": settings.memory_draft_generator,
                 "project": settings.project_memory_generator,
             },
-            "published_flows_enabled": False,
+            "published_flows_enabled": settings.published_flows_enabled,
             "session_cookie_secure": settings.session_cookie_secure,
             "session_cookie_samesite": settings.session_cookie_samesite,
         },

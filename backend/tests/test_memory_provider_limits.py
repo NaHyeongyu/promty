@@ -263,7 +263,7 @@ def test_slow_trickle_read_stops_at_monotonic_wall_deadline(monkeypatch) -> None
     assert clock.now == pytest.approx(1.2)
 
 
-def test_retry_is_not_started_when_backoff_cannot_fit_wall_deadline(monkeypatch) -> None:
+def test_retry_configuration_does_not_start_a_second_provider_call(monkeypatch) -> None:
     calls = 0
     monkeypatch.setattr(
         openai_memory,
@@ -285,7 +285,7 @@ def test_retry_is_not_started_when_backoff_cannot_fit_wall_deadline(monkeypatch)
     with pytest.raises(openai_memory.OpenAIMemoryGenerationError) as raised:
         openai_memory._request_openai_json("prompt")
 
-    assert str(raised.value) == "OpenAI request exceeded the configured time limit."
+    assert str(raised.value) == "OpenAI request failed before receiving an HTTP response."
     assert calls == 1
 
 
@@ -313,6 +313,14 @@ def test_provider_limit_settings_support_aliases_and_safe_defaults(monkeypatch) 
         "PROMPTHUB_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS",
         "PROMTY_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS",
         "PROMPTHUB_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS",
+        "PROMTY_OPENAI_INPUT_USD_PER_MILLION_TOKENS",
+        "PROMPTHUB_OPENAI_INPUT_USD_PER_MILLION_TOKENS",
+        "PROMTY_OPENAI_OUTPUT_USD_PER_MILLION_TOKENS",
+        "PROMPTHUB_OPENAI_OUTPUT_USD_PER_MILLION_TOKENS",
+        "PROMTY_GEMINI_INPUT_USD_PER_MILLION_TOKENS",
+        "PROMPTHUB_GEMINI_INPUT_USD_PER_MILLION_TOKENS",
+        "PROMTY_GEMINI_OUTPUT_USD_PER_MILLION_TOKENS",
+        "PROMPTHUB_GEMINI_OUTPUT_USD_PER_MILLION_TOKENS",
     )
     for name in names:
         monkeypatch.delenv(name, raising=False)
@@ -321,11 +329,19 @@ def test_provider_limit_settings_support_aliases_and_safe_defaults(monkeypatch) 
     assert defaults.memory_provider_response_max_bytes == 1_048_576
     assert defaults.memory_provider_output_max_tokens == 8_192
     assert defaults.memory_provider_wall_deadline_seconds == 120.0
+    assert defaults.openai_input_usd_per_million_tokens == 0.25
+    assert defaults.openai_output_usd_per_million_tokens == 2.0
+    assert defaults.gemini_input_usd_per_million_tokens == 0.30
+    assert defaults.gemini_output_usd_per_million_tokens == 2.50
 
     monkeypatch.setenv("PROMPTHUB_MEMORY_PROVIDER_RESPONSE_MAX_BYTES", "2048")
     monkeypatch.setenv("PROMTY_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS", "777")
     monkeypatch.setenv("PROMPTHUB_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS", "4.5")
+    monkeypatch.setenv("PROMTY_OPENAI_INPUT_USD_PER_MILLION_TOKENS", "0.4")
+    monkeypatch.setenv("PROMPTHUB_GEMINI_OUTPUT_USD_PER_MILLION_TOKENS", "3.5")
     configured = Settings()
     assert configured.memory_provider_response_max_bytes == 2_048
     assert configured.memory_provider_output_max_tokens == 777
     assert configured.memory_provider_wall_deadline_seconds == 4.5
+    assert configured.openai_input_usd_per_million_tokens == 0.4
+    assert configured.gemini_output_usd_per_million_tokens == 3.5

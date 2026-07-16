@@ -700,7 +700,6 @@ def test_pending_draft_generation_builds_evidence_once(monkeypatch) -> None:
     result = memory_artifacts._generate_pending_draft_for_context(
         db,
         context=context,
-        force_regenerate=False,
         session=session,
         storage_key="memory/session/test/pending/1-3",
     )
@@ -737,6 +736,8 @@ def test_idle_session_materialization_claims_and_finalizes_one_session(
     assert generated_sessions == [(session, True)]
     assert db.statements[1]._limit_clause.value == 1
     assert db.statements[1]._for_update_arg.skip_locked is True
+    assert "last_activity_at" in str(db.statements[1])
+    assert "FROM events" not in str(db.statements[1])
 
 
 def test_worker_resumes_unfinished_window_before_idle_scan(monkeypatch) -> None:

@@ -133,6 +133,7 @@ export type ProjectMemoryArtifactStage =
 export type ProjectMemoryReviewState =
   | "draft"
   | "edited"
+  | "generation_failed"
   | "generated"
   | "ignored"
   | "saved"
@@ -322,6 +323,7 @@ export type ProjectDetailData = {
   repositoryFileSelectedPath?: string | null;
   repositoryFiles: FileTreeNode[];
   repositoryFilesConnectUrl?: string;
+  repositoryFilesError?: string | null;
   repositoryFilesLoading?: boolean;
   repositoryFilesMessage?: string;
   repositoryFilesRepository?: string;
@@ -331,11 +333,28 @@ export type ProjectDetailData = {
 
 export type PromptFlowUpdatePayload = {
   context_summary?: string | null;
+  included_file_ids?: string[];
+  included_item_ids?: string[];
   notes?: string | null;
   status?: "archived" | "draft" | "published";
   summary?: string | null;
   tags?: string[];
   title?: string;
+  visibility?: "private" | "public" | "unlisted";
+};
+
+export type PromptFlowCreatePayload = {
+  context_summary?: string | null;
+  end_prompt_event_id?: string | null;
+  notes?: string | null;
+  project_id: string;
+  prompt_event_ids?: string[];
+  session_id?: string | null;
+  start_prompt_event_id?: string | null;
+  status?: "draft" | "published";
+  summary?: string | null;
+  tags?: string[];
+  title?: string | null;
   visibility?: "private" | "public" | "unlisted";
 };
 
@@ -356,8 +375,8 @@ export type PublishedFlowDetail = {
   slug: string;
   title: string;
   summary?: string | null;
-  visibility: string;
-  status: string;
+  visibility: "private" | "public" | "unlisted";
+  status: "archived" | "draft" | "published";
   prompt_count: number;
   file_count: number;
   assets?: PublishedFlowAsset[];

@@ -136,6 +136,11 @@ def require_ingest_token(
             )
         )
         if collector_token is not None:
+            if collector_token.user.suspended_at is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Promty account is suspended",
+                )
             collector_token.last_used_at = datetime.now(timezone.utc)
             if x_promty_collector_version:
                 collector_token.collector_version = x_promty_collector_version.strip()[:64]
@@ -167,15 +172,8 @@ def get_optional_web_user(
 
 
 def is_admin_user(user: User) -> bool:
-    admin_usernames = {value.lower() for value in settings.admin_usernames}
-    admin_emails = {value.lower() for value in settings.admin_emails}
     admin_github_ids = set(settings.admin_github_ids)
-
-    return (
-        user.username.lower() in admin_usernames
-        or (user.email is not None and user.email.lower() in admin_emails)
-        or (user.github_id is not None and str(user.github_id) in admin_github_ids)
-    )
+    return user.github_id is not None and str(user.github_id) in admin_github_ids
 
 
 def require_web_user(
@@ -185,6 +183,11 @@ def require_web_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Promty login required",
+        )
+    if user.suspended_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Promty account is suspended",
         )
     return user
 

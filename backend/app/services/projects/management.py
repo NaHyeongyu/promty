@@ -11,6 +11,7 @@ from app.models.artifacts import Artifact
 from app.models.events import Event
 from app.models.project_files import ProjectFile
 from app.models.projects import Project
+from app.models.project_stats import ProjectStats
 from app.models.sessions import Session as PromptSession
 from app.models.users import User
 from app.services.github_repositories import repository_metadata_from_url
@@ -106,6 +107,7 @@ def project_summary_with_counts(db: Session, project: Project) -> dict[str, Any]
                             Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE,
                             Artifact.metadata_["artifact_stage"].astext == PENDING_DRAFT_STAGE,
                             Artifact.metadata_["review_state"].astext == REVIEW_STATE_DRAFT,
+                            Artifact.metadata_["sent_to_ai_at"].astext.is_(None),
                         ),
                         1,
                     )
@@ -179,40 +181,6 @@ def project_summary_with_counts(db: Session, project: Project) -> dict[str, Any]
 
 def list_project_summaries(db: Session, *, current_user: User) -> list[dict[str, Any]]:
     owned_project_ids = select(Project.id).where(Project.owner_id == current_user.id)
-    session_stats = (
-        select(
-            PromptSession.project_id.label("project_id"),
-            func.count(PromptSession.id).label("session_count"),
-        )
-        .where(PromptSession.project_id.in_(owned_project_ids))
-        .group_by(PromptSession.project_id)
-        .subquery()
-    )
-    event_stats = (
-        select(
-            Event.project_id.label("project_id"),
-            func.count(Event.id).label("event_count"),
-            func.count(case((Event.event_type == "PromptSubmitted", 1))).label(
-                "prompt_count",
-            ),
-            func.max(Event.created_at).label("latest_event_at"),
-        )
-        .where(Event.project_id.in_(owned_project_ids))
-        .group_by(Event.project_id)
-        .subquery()
-    )
-    tracked_file_stats = (
-        select(
-            ProjectFile.project_id.label("project_id"),
-            func.count(ProjectFile.id).label("tracked_files"),
-        )
-        .where(
-            ProjectFile.project_id.in_(owned_project_ids),
-            ProjectFile.status != "deleted",
-        )
-        .group_by(ProjectFile.project_id)
-        .subquery()
-    )
     artifact_stats = (
         select(
             Artifact.project_id.label("project_id"),
@@ -231,6 +199,7 @@ def list_project_summaries(db: Session, *, current_user: User) -> list[dict[str,
                             Artifact.type == MEMORY_DRAFT_ARTIFACT_TYPE,
                             Artifact.metadata_["artifact_stage"].astext == PENDING_DRAFT_STAGE,
                             Artifact.metadata_["review_state"].astext == REVIEW_STATE_DRAFT,
+                            Artifact.metadata_["sent_to_ai_at"].astext.is_(None),
                         ),
                         1,
                     )
@@ -252,21 +221,19 @@ def list_project_summaries(db: Session, *, current_user: User) -> list[dict[str,
     rows = db.execute(
         select(
             Project,
-            session_stats.c.session_count,
-            event_stats.c.event_count,
-            event_stats.c.latest_event_at,
-            event_stats.c.prompt_count,
-            tracked_file_stats.c.tracked_files,
+            func.coalesce(ProjectStats.session_count, 0),
+            func.coalesce(ProjectStats.event_count, 0),
+            ProjectStats.latest_event_at,
+            func.coalesce(ProjectStats.prompt_count, 0),
+            func.coalesce(ProjectStats.tracked_files, 0),
             artifact_stats.c.memory_count,
             artifact_stats.c.pending_memory_count,
             artifact_stats.c.latest_memory_at,
         )
-        .outerjoin(session_stats, session_stats.c.project_id == Project.id)
-        .outerjoin(event_stats, event_stats.c.project_id == Project.id)
-        .outerjoin(tracked_file_stats, tracked_file_stats.c.project_id == Project.id)
+        .outerjoin(ProjectStats, ProjectStats.project_id == Project.id)
         .outerjoin(artifact_stats, artifact_stats.c.project_id == Project.id)
         .where(Project.owner_id == current_user.id)
-        .order_by(nullslast(desc(event_stats.c.latest_event_at)), desc(Project.updated_at))
+        .order_by(nullslast(desc(ProjectStats.latest_event_at)), desc(Project.updated_at))
     ).all()
     project_ids = [project.id for project, *_ in rows]
     if not project_ids:

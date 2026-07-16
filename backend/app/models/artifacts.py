@@ -16,6 +16,12 @@ class Artifact(Base):
     __tablename__ = "artifacts"
     __table_args__ = (
         Index(
+            "ix_artifacts_project_type_created_at",
+            "project_id",
+            "type",
+            "created_at",
+        ),
+        Index(
             "ix_artifacts_project_type_updated_created",
             "project_id",
             "type",

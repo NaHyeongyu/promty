@@ -5,14 +5,17 @@ import os
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import event as sqlalchemy_event
 from sqlalchemy.orm import Session
 
-from app.db.session import SessionLocal
+from app.db.session import SessionLocal, engine
 from app.models.events import Event
 from app.models.projects import Project
 from app.models.sessions import Session as PromptSession
 from app.models.users import User
 from app.services.projects import management
+from app.schemas.project_responses import ProjectDetailResponse
+from app.services.projects.views import read_project_detail_response
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("PROMPTHUB_RUN_POSTGRES_TESTS") != "1",
@@ -116,11 +119,46 @@ def test_project_create_read_update_delete_round_trip(
         payload={"prompt": "Verify cascading project deletion."},
         created_at=datetime.now(UTC),
     )
-    db.add(event)
+    files_changed_event = Event(
+        id=uuid4(),
+        project_id=project.id,
+        session_id=prompt_session.id,
+        sequence=2,
+        schema_version=1,
+        tool="codex-cli",
+        event_type="FilesChanged",
+        payload={
+            "changes": [
+                {"path": "frontend/src/App.tsx", "status": "modified"},
+                {"path": "backend/app/main.py", "status": "modified"},
+                {"path": "frontend/src/App.tsx", "status": "modified"},
+            ]
+        },
+        created_at=datetime.now(UTC),
+    )
+    db.add_all((event, files_changed_event))
     db.flush()
     session_id = prompt_session.id
     event_id = event.id
 
+    detail_statements: list[str] = []
+
+    def capture_detail_statement(
+        _connection,
+        _cursor,
+        statement: str,
+        *_args,
+    ) -> None:
+        detail_statements.append(statement)
+
+    sqlalchemy_event.listen(engine, "before_cursor_execute", capture_detail_statement)
+    try:
+        detail = read_project_detail_response(project.id, user, db)
+    finally:
+        sqlalchemy_event.remove(engine, "before_cursor_execute", capture_detail_statement)
+    ProjectDetailResponse.model_validate(detail)
+    assert detail["activities"][0]["files_changed"] == 2
+    assert len(detail_statements) <= 7
     management.delete_project(db, project_id=project.id, user=user)
     db.expire_all()
 

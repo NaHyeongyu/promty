@@ -172,6 +172,12 @@ class Settings:
     github_token_encryption_key: str | None = field(
         default_factory=lambda: _optional_env("PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_KEY")
     )
+    github_token_encryption_previous_keys: tuple[str, ...] = field(
+        default_factory=lambda: _csv_env(
+            "PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_PREVIOUS_KEYS",
+            (),
+        )
+    )
     app_encryption_key: str | None = field(
         default_factory=lambda: _optional_env("PROMPTHUB_APP_ENCRYPTION_KEY")
     )
@@ -207,31 +213,28 @@ class Settings:
             "gemini-2.5-flash",
         )
     )
+    gemini_input_usd_per_million_tokens: float = field(
+        default_factory=lambda: _float_env_any(
+            (
+                "PROMTY_GEMINI_INPUT_USD_PER_MILLION_TOKENS",
+                "PROMPTHUB_GEMINI_INPUT_USD_PER_MILLION_TOKENS",
+            ),
+            0.30,
+        )
+    )
+    gemini_output_usd_per_million_tokens: float = field(
+        default_factory=lambda: _float_env_any(
+            (
+                "PROMTY_GEMINI_OUTPUT_USD_PER_MILLION_TOKENS",
+                "PROMPTHUB_GEMINI_OUTPUT_USD_PER_MILLION_TOKENS",
+            ),
+            2.50,
+        )
+    )
     gemini_timeout_seconds: int = field(
         default_factory=lambda: _int_env_any(
             ("PROMTY_GEMINI_TIMEOUT_SECONDS", "PROMPTHUB_GEMINI_TIMEOUT_SECONDS"),
             30,
-        )
-    )
-    gemini_max_retries: int = field(
-        default_factory=lambda: _int_env_any(
-            ("PROMTY_GEMINI_MAX_RETRIES", "PROMPTHUB_GEMINI_MAX_RETRIES"),
-            2,
-        )
-    )
-    gemini_retry_base_seconds: float = field(
-        default_factory=lambda: _float_env_any(
-            ("PROMTY_GEMINI_RETRY_BASE_SECONDS", "PROMPTHUB_GEMINI_RETRY_BASE_SECONDS"),
-            2.0,
-        )
-    )
-    gemini_retry_max_sleep_seconds: float = field(
-        default_factory=lambda: _float_env_any(
-            (
-                "PROMTY_GEMINI_RETRY_MAX_SLEEP_SECONDS",
-                "PROMPTHUB_GEMINI_RETRY_MAX_SLEEP_SECONDS",
-            ),
-            20.0,
         )
     )
     openai_api_key: str | None = field(
@@ -247,6 +250,24 @@ class Settings:
             "gpt-5-mini",
         )
     )
+    openai_input_usd_per_million_tokens: float = field(
+        default_factory=lambda: _float_env_any(
+            (
+                "PROMTY_OPENAI_INPUT_USD_PER_MILLION_TOKENS",
+                "PROMPTHUB_OPENAI_INPUT_USD_PER_MILLION_TOKENS",
+            ),
+            0.25,
+        )
+    )
+    openai_output_usd_per_million_tokens: float = field(
+        default_factory=lambda: _float_env_any(
+            (
+                "PROMTY_OPENAI_OUTPUT_USD_PER_MILLION_TOKENS",
+                "PROMPTHUB_OPENAI_OUTPUT_USD_PER_MILLION_TOKENS",
+            ),
+            2.00,
+        )
+    )
     openai_timeout_seconds: int = field(
         default_factory=lambda: _int_env_any(
             ("PROMTY_OPENAI_TIMEOUT_SECONDS", "PROMPTHUB_OPENAI_TIMEOUT_SECONDS"),
@@ -257,27 +278,6 @@ class Settings:
         default_factory=lambda: _str_env_any(
             ("PROMTY_OPENAI_REASONING_EFFORT", "PROMPTHUB_OPENAI_REASONING_EFFORT"),
             "minimal",
-        )
-    )
-    openai_max_retries: int = field(
-        default_factory=lambda: _int_env_any(
-            ("PROMTY_OPENAI_MAX_RETRIES", "PROMPTHUB_OPENAI_MAX_RETRIES"),
-            2,
-        )
-    )
-    openai_retry_base_seconds: float = field(
-        default_factory=lambda: _float_env_any(
-            ("PROMTY_OPENAI_RETRY_BASE_SECONDS", "PROMPTHUB_OPENAI_RETRY_BASE_SECONDS"),
-            2.0,
-        )
-    )
-    openai_retry_max_sleep_seconds: float = field(
-        default_factory=lambda: _float_env_any(
-            (
-                "PROMTY_OPENAI_RETRY_MAX_SLEEP_SECONDS",
-                "PROMPTHUB_OPENAI_RETRY_MAX_SLEEP_SECONDS",
-            ),
-            20.0,
         )
     )
     memory_provider_response_max_bytes: int = field(
@@ -412,6 +412,15 @@ class Settings:
             2.0,
         )
     )
+    memory_worker_max_poll_seconds: float = field(
+        default_factory=lambda: _float_env_any(
+            (
+                "PROMTY_MEMORY_WORKER_MAX_POLL_SECONDS",
+                "PROMPTHUB_MEMORY_WORKER_MAX_POLL_SECONDS",
+            ),
+            10.0,
+        )
+    )
     memory_worker_heartbeat_seconds: float = field(
         default_factory=lambda: _float_env_any(
             (
@@ -419,6 +428,17 @@ class Settings:
                 "PROMPTHUB_MEMORY_WORKER_HEARTBEAT_SECONDS",
             ),
             60.0,
+        )
+    )
+    memory_worker_health_file: str = os.environ.get(
+        "PROMPTHUB_MEMORY_WORKER_HEALTH_FILE",
+        "/tmp/prompthub-memory-worker.heartbeat",
+    )
+    memory_worker_health_timeout_seconds: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_MEMORY_WORKER_HEALTH_TIMEOUT_SECONDS",
+            180,
+            minimum=10,
         )
     )
     memory_worker_chunk_concurrency: int = field(
@@ -433,6 +453,9 @@ class Settings:
             ),
         )
     )
+    published_flows_enabled: bool = field(
+        default_factory=lambda: _bool_env("PROMPTHUB_PUBLISHED_FLOWS_ENABLED", False)
+    )
     published_flow_asset_root: str = os.environ.get(
         "PROMPTHUB_PUBLISHED_FLOW_ASSET_ROOT",
         "~/.prompthub/published-flow-assets",
@@ -443,6 +466,20 @@ class Settings:
     )
     published_flow_asset_max_bytes: int = field(
         default_factory=lambda: _int_env("PROMPTHUB_PUBLISHED_FLOW_ASSET_MAX_BYTES", 5_242_880)
+    )
+    published_flow_asset_max_count_per_flow: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_PUBLISHED_FLOW_ASSET_MAX_COUNT_PER_FLOW",
+            20,
+            minimum=1,
+        )
+    )
+    published_flow_asset_max_total_bytes_per_user: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_PUBLISHED_FLOW_ASSET_MAX_TOTAL_BYTES_PER_USER",
+            104_857_600,
+            minimum=1,
+        )
     )
     aws_region: str | None = field(default_factory=lambda: _optional_env("PROMPTHUB_AWS_REGION"))
     aws_s3_bucket: str | None = field(
@@ -474,14 +511,57 @@ class Settings:
         default_factory=lambda: _bool_env("PROMPTHUB_SESSION_COOKIE_SECURE", False)
     )
     session_cookie_samesite: str = os.environ.get("PROMPTHUB_SESSION_COOKIE_SAMESITE", "lax")
-    admin_usernames: tuple[str, ...] = field(
-        default_factory=lambda: _csv_env("PROMPTHUB_ADMIN_USERNAMES", ())
-    )
-    admin_emails: tuple[str, ...] = field(
-        default_factory=lambda: _csv_env("PROMPTHUB_ADMIN_EMAILS", ())
-    )
     admin_github_ids: tuple[str, ...] = field(
         default_factory=lambda: _csv_env("PROMPTHUB_ADMIN_GITHUB_IDS", ())
+    )
+    auth_rate_limit_requests: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_AUTH_RATE_LIMIT_REQUESTS",
+            30,
+            minimum=1,
+        )
+    )
+    auth_rate_limit_window_seconds: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_AUTH_RATE_LIMIT_WINDOW_SECONDS",
+            60,
+            minimum=1,
+        )
+    )
+    admin_rate_limit_requests: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_ADMIN_RATE_LIMIT_REQUESTS",
+            120,
+            minimum=1,
+        )
+    )
+    admin_rate_limit_window_seconds: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_ADMIN_RATE_LIMIT_WINDOW_SECONDS",
+            60,
+            minimum=1,
+        )
+    )
+    community_rate_limit_requests: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_COMMUNITY_RATE_LIMIT_REQUESTS",
+            120,
+            minimum=1,
+        )
+    )
+    community_rate_limit_window_seconds: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_COMMUNITY_RATE_LIMIT_WINDOW_SECONDS",
+            60,
+            minimum=1,
+        )
+    )
+    admin_audit_retention_days: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_ADMIN_AUDIT_RETENTION_DAYS",
+            180,
+            minimum=1,
+        )
     )
 
 

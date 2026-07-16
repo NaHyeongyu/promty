@@ -38,6 +38,7 @@ services:
       PROMPTHUB_DATABASE_POOL_TIMEOUT_SECONDS: "5"
       PROMPTHUB_DATABASE_POOL_RECYCLE_SECONDS: "300"
       PROMPTHUB_SESSION_COOKIE_SECURE: "false"
+      PROMPTHUB_PUBLISHED_FLOWS_ENABLED: "true"
     ports:
       - "8011:8011"
     depends_on:
@@ -76,6 +77,12 @@ services:
       backend:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.workers.healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
   frontend:
     image: node:22-alpine
@@ -83,6 +90,7 @@ services:
     command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
     environment:
       VITE_PROMPTHUB_API_URL: http://127.0.0.1:8011
+      VITE_PROMPTHUB_PUBLISHED_FLOWS_ENABLED: "true"
     volumes:
       - .:/app
       - frontend-node-modules:/app/frontend/node_modules

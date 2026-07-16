@@ -117,6 +117,16 @@ def test_review_queue_refresh_route_is_exposed() -> None:
     assert "post" in operation
 
 
+def test_project_memory_generation_preview_route_is_exposed() -> None:
+    from app.main import app
+
+    operation = app.openapi()["paths"][
+        "/api/projects/{project_id}/memory/generation-preview"
+    ]
+
+    assert "get" in operation
+
+
 def test_memory_generation_is_project_scoped() -> None:
     from app.main import app
 

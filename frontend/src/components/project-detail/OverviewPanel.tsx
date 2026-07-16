@@ -19,6 +19,7 @@ import {
 } from "./overviewPanelUtils";
 import type { ProjectDetailData } from "./types";
 import { useI18n } from "../../i18n/I18nProvider";
+import { publicProjectUrl } from "../../workspace/projectUrls";
 import { useOverviewEditors } from "./useOverviewEditors";
 
 function PlainDescriptionContent({
@@ -258,6 +259,12 @@ export function OverviewPanel({
                     )}
                     {projectVisibility === "public" ? t("project.workspaceListed") : t("project.private")}
                   </span>
+                  {projectVisibility === "public" ? (
+                    <a href={publicProjectUrl(data.project.id)}>
+                      <ExternalLink aria-hidden="true" size={16} strokeWidth={1.5} />
+                      {t("project.viewPublicListing")}
+                    </a>
+                  ) : null}
                 </div>
               </section>
 
@@ -433,6 +440,11 @@ export function OverviewPanel({
                     </button>
                   ))}
                 </div>
+                <p className="bh-overview-visibility-hint">
+                  {projectVisibilityDraft === "public"
+                    ? t("project.publicVisibilityHint")
+                    : t("project.privateVisibilityHint")}
+                </p>
               </fieldset>
               {projectMetadataError ? (
                 <p className="bh-description-editor-error">{projectMetadataError}</p>

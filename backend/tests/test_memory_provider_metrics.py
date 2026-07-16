@@ -110,7 +110,7 @@ def test_openai_success_logs_only_safe_request_metadata(
     assert response_sentinel not in caplog.text
 
 
-def test_gemini_failure_logs_each_retry_without_sensitive_content(
+def test_gemini_failure_is_logged_once_without_sensitive_content(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -143,7 +143,6 @@ def test_gemini_failure_logs_each_retry_without_sensitive_content(
         )
 
     monkeypatch.setattr(gemini_memory.request, "urlopen", urlopen)
-    monkeypatch.setattr(gemini_memory, "sleep_before_retry", lambda _delay: None)
     caplog.set_level(logging.INFO, logger=metrics_logger.name)
 
     with pytest.raises(
@@ -155,13 +154,13 @@ def test_gemini_failure_logs_each_retry_without_sensitive_content(
             stage="project_memory_generation",
         )
 
-    assert len(requests) == 2
+    assert len(requests) == 1
     request_bytes = len(getattr(requests[0], "data"))
     records = [record for record in caplog.records if record.name == metrics_logger.name]
     fields = [_metric_fields(record.getMessage()) for record in records]
-    assert len(fields) == 2
-    assert [field["attempt"] for field in fields] == ["1", "2"]
-    assert [field["outcome"] for field in fields] == ["retry", "failure"]
+    assert len(fields) == 1
+    assert [field["attempt"] for field in fields] == ["1"]
+    assert [field["outcome"] for field in fields] == ["failure"]
     assert {field["status"] for field in fields} == {"http_429"}
     assert {field["provider"] for field in fields} == {"gemini"}
     assert {field["model"] for field in fields} == {"gemini-test"}

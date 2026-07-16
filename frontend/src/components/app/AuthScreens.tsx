@@ -13,6 +13,7 @@ import { API_URL, BRAND_NAME } from "../../config";
 import { useI18n } from "../../i18n/I18nProvider";
 import { currentWorkspaceReturnUrl } from "../../workspace/navigation";
 import { BrandLogo, GitHubIcon } from "./Branding";
+import "../../styles-auth.css";
 
 export function CliLoginPage() {
   const { t } = useI18n();

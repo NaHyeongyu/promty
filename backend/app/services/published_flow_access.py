@@ -13,10 +13,7 @@ from app.models.users import User
 def readable_flow_filter(current_user: User):
     return or_(
         PublishedFlow.author_id == current_user.id,
-        (
-            (PublishedFlow.status == "published")
-            & (PublishedFlow.visibility.in_(["public", "unlisted"]))
-        ),
+        ((PublishedFlow.status == "published") & (PublishedFlow.visibility == "public")),
     )
 
 

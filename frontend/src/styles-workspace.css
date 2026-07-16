@@ -1075,6 +1075,29 @@ h1 {
   gap: var(--bh-space-4);
 }
 
+.community-search {
+  display: flex;
+  width: min(360px, 100%);
+  min-height: 40px;
+  align-items: center;
+  gap: var(--bh-space-2);
+  border: 1px solid var(--bh-color-border);
+  border-radius: var(--bh-radius-sm);
+  padding: 0 var(--bh-space-3);
+  color: var(--bh-color-text-muted);
+  background: var(--bh-color-surface);
+}
+
+.community-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: var(--bh-color-text-primary);
+  background: transparent;
+  font: inherit;
+}
+
 .community-flow-list,
 .community-flow-items,
 .community-flow-files {
@@ -1355,6 +1378,53 @@ h1 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(120px, 160px) minmax(120px, 160px);
   gap: var(--bh-space-3);
+}
+
+.community-security-note {
+  border: 1px solid var(--bh-color-primary-border);
+  border-radius: var(--bh-radius-sm);
+  padding: var(--bh-space-3);
+  color: var(--bh-color-text-secondary);
+  background: var(--bh-color-primary-subtle);
+  font-size: var(--bh-font-size-small);
+  line-height: var(--bh-line-height-body);
+}
+
+.community-selection {
+  display: grid;
+  min-width: 0;
+  gap: var(--bh-space-2);
+  margin: 0;
+  border: 1px solid var(--bh-color-border);
+  border-radius: var(--bh-radius-sm);
+  padding: var(--bh-space-3);
+}
+
+.community-selection legend {
+  padding: 0 var(--bh-space-1);
+  color: var(--bh-color-text-muted);
+  font-size: var(--bh-font-size-caption);
+  font-weight: var(--bh-font-weight-label);
+}
+
+.community-flow-editor .community-selection label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--bh-space-2);
+  color: var(--bh-color-text-secondary);
+  font-size: var(--bh-font-size-small);
+  line-height: var(--bh-line-height-body);
+}
+
+.community-flow-editor .community-selection input {
+  width: auto;
+  margin-top: 3px;
+  accent-color: var(--bh-color-primary);
+}
+
+.community-flow-item[data-excluded="true"],
+.community-flow-file[data-excluded="true"] {
+  opacity: 0.55;
 }
 
 .community-flow-error {

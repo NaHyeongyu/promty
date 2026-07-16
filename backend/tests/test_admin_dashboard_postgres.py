@@ -10,15 +10,16 @@ from sqlalchemy import event as sqlalchemy_event
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal, engine
-from app.models.artifact_generation_jobs import ArtifactGenerationJob
 from app.models.artifacts import Artifact
 from app.models.events import Event
 from app.models.github_connections import GitHubConnection
 from app.models.project_files import ProjectFile
+from app.models.project_memory_batches import ProjectMemoryBatch
 from app.models.projects import Project
 from app.models.sessions import Session as PromptSession
 from app.models.tokens import CollectorToken
 from app.models.users import User
+from app.schemas.admin_responses import AdminOverviewResponse
 from app.services.admin.dashboard import admin_overview_response
 from app.services.memory.constants import (
     MEMORY_ARTIFACT_TYPE,
@@ -142,22 +143,24 @@ def _seed_dashboard_rows(db: Session) -> tuple[User, Project, datetime]:
                 created_at=now,
                 updated_at=now,
             ),
-            ArtifactGenerationJob(
+            ProjectMemoryBatch(
+                idempotency_key=f"dashboard-failed-{marker}",
                 project_id=project.id,
-                session_id=session.id,
+                requested_by_user_id=user.id,
+                source_session_ids=[str(session.id)],
                 status="failed",
-                reason="test",
-                generator="test",
+                error_code="test",
+                error_message="Dashboard integration failure",
                 created_at=now,
                 updated_at=now,
                 completed_at=now,
             ),
-            ArtifactGenerationJob(
+            ProjectMemoryBatch(
+                idempotency_key=f"dashboard-pending-{marker}",
                 project_id=project.id,
-                session_id=session.id,
+                requested_by_user_id=user.id,
+                source_session_ids=[str(session.id)],
                 status="pending",
-                reason="test",
-                generator="test",
                 created_at=now - timedelta(hours=1),
                 updated_at=now - timedelta(hours=1),
             ),
@@ -167,7 +170,7 @@ def _seed_dashboard_rows(db: Session) -> tuple[User, Project, datetime]:
     return user, project, now
 
 
-def test_admin_overview_uses_seven_statements_and_preserves_contract(db: Session) -> None:
+def test_admin_overview_uses_eight_statements_and_preserves_contract(db: Session) -> None:
     baseline = admin_overview_response(db)
     user, project, _now = _seed_dashboard_rows(db)
     statements: list[str] = []
@@ -188,7 +191,9 @@ def test_admin_overview_uses_seven_statements_and_preserves_contract(db: Session
     finally:
         sqlalchemy_event.remove(engine, "before_cursor_execute", capture_statement)
 
-    assert len(statements) == 7
+    AdminOverviewResponse.model_validate(response)
+
+    assert len(statements) == 8
     assert set(response) == {
         "action_items",
         "ai_activity",
@@ -197,6 +202,7 @@ def test_admin_overview_uses_seven_statements_and_preserves_contract(db: Session
         "memory_monitor",
         "metrics",
         "project_monitor",
+        "recent_admin_audit_logs",
         "recent_events",
         "recent_projects",
         "recent_users",

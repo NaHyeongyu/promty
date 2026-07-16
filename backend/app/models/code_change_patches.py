@@ -32,7 +32,6 @@ class CodeChangePatch(Base):
     project_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("projects.id", ondelete="CASCADE"),
-        index=True,
     )
     session_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
@@ -43,7 +42,7 @@ class CodeChangePatch(Base):
         PGUUID(as_uuid=True),
         ForeignKey("events.id", ondelete="CASCADE"),
     )
-    prompt_event_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), index=True)
+    prompt_event_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
     path: Mapped[str] = mapped_column(String(2048), nullable=False)
     old_path: Mapped[str | None] = mapped_column(String(2048))
     status: Mapped[str] = mapped_column(String(32), nullable=False)

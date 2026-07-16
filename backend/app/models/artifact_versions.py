@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -19,6 +19,11 @@ class ArtifactVersion(Base):
             "artifact_id",
             "version",
             name="ux_artifact_versions_artifact_version",
+        ),
+        Index(
+            "ix_artifact_versions_project_created_at",
+            "project_id",
+            "created_at",
         ),
     )
 

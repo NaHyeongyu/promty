@@ -4,3 +4,5 @@ export const API_URL = (
 
 export const BRAND_NAME = "Promty";
 export const BRAND_LOGO_SRC = "/promty.svg";
+export const PUBLISHED_FLOWS_ENABLED =
+  import.meta.env.VITE_PROMPTHUB_PUBLISHED_FLOWS_ENABLED === "true";

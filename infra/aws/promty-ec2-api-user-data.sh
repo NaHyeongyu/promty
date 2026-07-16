@@ -23,6 +23,16 @@ fetch_secret() {
     --output text
 }
 
+fetch_previous_secret() {
+  aws secretsmanager get-secret-value \
+    --region "${AWS_REGION}" \
+    --secret-id "$1" \
+    --version-stage AWSPREVIOUS \
+    --query SecretString \
+    --output text \
+    2>/dev/null || true
+}
+
 write_env() {
   local name="$1"
   local value="$2"
@@ -97,6 +107,12 @@ PROMPTHUB_APP_URL=https://promty.org
 PROMPTHUB_CORS_ORIGINS=https://promty.org,https://www.promty.org
 PROMPTHUB_SESSION_COOKIE_SECURE=true
 PROMPTHUB_SESSION_COOKIE_SAMESITE=lax
+PROMPTHUB_ADMIN_GITHUB_IDS=191438254
+PROMPTHUB_AUTH_RATE_LIMIT_REQUESTS=30
+PROMPTHUB_AUTH_RATE_LIMIT_WINDOW_SECONDS=60
+PROMPTHUB_ADMIN_RATE_LIMIT_REQUESTS=120
+PROMPTHUB_ADMIN_RATE_LIMIT_WINDOW_SECONDS=60
+PROMPTHUB_ADMIN_AUDIT_RETENTION_DAYS=180
 PROMPTHUB_PUBLISHED_FLOW_ASSET_STORAGE=s3
 PROMPTHUB_AWS_REGION=${AWS_REGION}
 PROMPTHUB_AWS_S3_BUCKET=${BACKUP_BUCKET}
@@ -108,9 +124,19 @@ PROMTY_PROJECT_MEMORY_GENERATOR=local
 EOF
 
 write_env "PROMPTHUB_APP_ENCRYPTION_KEY" "$(fetch_secret promty/prod/app-encryption-key)"
+APP_ENCRYPTION_PREVIOUS_KEY="$(fetch_previous_secret promty/prod/app-encryption-key)"
+if [ -n "${APP_ENCRYPTION_PREVIOUS_KEY}" ]; then
+  write_env "PROMPTHUB_APP_ENCRYPTION_PREVIOUS_KEYS" "${APP_ENCRYPTION_PREVIOUS_KEY}"
+fi
 write_env "PROMPTHUB_GITHUB_CLIENT_ID" "$(fetch_secret promty/prod/github-client-id)"
 write_env "PROMPTHUB_GITHUB_CLIENT_SECRET" "$(fetch_secret promty/prod/github-client-secret)"
 write_env "PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_KEY" "$(fetch_secret promty/prod/github-token-encryption-key)"
+GITHUB_TOKEN_ENCRYPTION_PREVIOUS_KEY="$(fetch_previous_secret promty/prod/github-token-encryption-key)"
+if [ -n "${GITHUB_TOKEN_ENCRYPTION_PREVIOUS_KEY}" ]; then
+  write_env \
+    "PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_PREVIOUS_KEYS" \
+    "${GITHUB_TOKEN_ENCRYPTION_PREVIOUS_KEY}"
+fi
 write_env "PROMPTHUB_OAUTH_STATE_SECRET" "$(fetch_secret promty/prod/oauth-state-secret)"
 write_env "PROMPTHUB_JWT_SECRET" "$(fetch_secret promty/prod/jwt-secret)"
 write_env "PROMPTHUB_API_TOKEN" "$(fetch_secret promty/prod/global-ingest-token)"
@@ -152,6 +178,7 @@ docker run -d \
   --restart unless-stopped \
   --network promty \
   --env-file "${APP_DIR}/backend.env" \
+  -e PROMPTHUB_PUBLISHED_FLOWS_ENABLED=true \
   -e PROMPTHUB_DATABASE_POOL_SIZE=5 \
   -e PROMPTHUB_DATABASE_MAX_OVERFLOW=2 \
   "${BACKEND_IMAGE}"
@@ -167,6 +194,12 @@ docker run -d \
   --restart unless-stopped \
   --network promty \
   --env-file "${APP_DIR}/backend.env" \
+  --health-cmd "python -m app.workers.healthcheck" \
+  --health-interval 10s \
+  --health-timeout 3s \
+  --health-retries 3 \
+  --health-start-period 10s \
+  -e PROMPTHUB_PUBLISHED_FLOWS_ENABLED=true \
   -e PROMPTHUB_DATABASE_POOL_SIZE=2 \
   -e PROMPTHUB_DATABASE_MAX_OVERFLOW=1 \
   "${BACKEND_IMAGE}" \

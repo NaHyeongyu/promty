@@ -11,13 +11,23 @@ from app.core.security import require_web_user
 from app.db.session import get_db
 from app.models.users import User
 from app.schemas.memory import ProjectMemoryGenerateRequest, ProjectMemoryUpdateRequest
+from app.schemas.memory_responses import (
+    MemoryArtifactSummaryResponse,
+    MemoryBatchResponse,
+    MemoryGenerationPreviewResponse,
+    MemoryGeneratorStatusResponse,
+    MemoryReviewQueueResponse,
+    PendingMemoryRangeResponse,
+    ProjectMemorySnapshotResponse,
+    SessionCompletionResponse,
+)
 from app.services.memory.workflows import (
-    compile_project_memory_response,
     complete_project_session_response,
     generate_project_memory_response,
     list_pending_memory_ranges_response,
     list_project_artifacts_response,
     memory_generator_status,
+    preview_project_memory_generation_response,
     read_project_memory_batch_response,
     read_project_memory_response,
     refresh_memory_review_queue_response,
@@ -27,7 +37,10 @@ from app.services.memory.workflows import (
 router = APIRouter(prefix="/api/projects", tags=["memory"])
 
 
-@router.post("/memory/review-queue/refresh")
+@router.post(
+    "/memory/review-queue/refresh",
+    response_model=MemoryReviewQueueResponse,
+)
 def refresh_memory_review_queue(
     limit: int = Query(default=100, ge=1, le=100),
     current_user: User = Depends(require_web_user),
@@ -42,7 +55,10 @@ def refresh_memory_review_queue(
     return response
 
 
-@router.get("/{project_id}/memory/pending")
+@router.get(
+    "/{project_id}/memory/pending",
+    response_model=list[PendingMemoryRangeResponse],
+)
 def list_project_memory_pending(
     project_id: UUID,
     limit: int = Query(default=20, ge=1, le=100),
@@ -59,19 +75,21 @@ def list_project_memory_pending(
     return ranges
 
 
-@router.get("/_memory/generator")
+@router.get("/_memory/generator", response_model=MemoryGeneratorStatusResponse)
 def read_memory_generator_status(
     _current_user: User = Depends(require_web_user),
 ) -> dict[str, Any]:
     return memory_generator_status()
 
 
-@router.post("/{project_id}/sessions/{session_id}/complete")
+@router.post(
+    "/{project_id}/sessions/{session_id}/complete",
+    response_model=SessionCompletionResponse,
+)
 def complete_project_session(
     project_id: UUID,
     session_id: UUID,
     force: bool = Query(default=True),
-    regenerate: bool = Query(default=False),
     current_user: User = Depends(require_web_user),
     db: DBSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -86,7 +104,11 @@ def complete_project_session(
     return response
 
 
-@router.post("/{project_id}/memory/generate", status_code=202)
+@router.post(
+    "/{project_id}/memory/generate",
+    status_code=202,
+    response_model=MemoryBatchResponse,
+)
 def generate_project_memory(
     project_id: UUID,
     payload: ProjectMemoryGenerateRequest,
@@ -103,7 +125,26 @@ def generate_project_memory(
     return response
 
 
-@router.get("/{project_id}/memory/batches/{batch_id}")
+@router.get(
+    "/{project_id}/memory/generation-preview",
+    response_model=MemoryGenerationPreviewResponse,
+)
+def preview_project_memory_generation(
+    project_id: UUID,
+    current_user: User = Depends(require_web_user),
+    db: DBSession = Depends(get_db),
+) -> dict[str, Any]:
+    return preview_project_memory_generation_response(
+        db,
+        project_id=project_id,
+        user=current_user,
+    )
+
+
+@router.get(
+    "/{project_id}/memory/batches/{batch_id}",
+    response_model=MemoryBatchResponse,
+)
 def read_project_memory_batch(
     project_id: UUID,
     batch_id: UUID,
@@ -118,24 +159,10 @@ def read_project_memory_batch(
     )
 
 
-@router.post("/{project_id}/memory/project/compile")
-def compile_project_memory_snapshot(
-    project_id: UUID,
-    regenerate: bool = Query(default=False),
-    current_user: User = Depends(require_web_user),
-    db: DBSession = Depends(get_db),
-) -> dict[str, Any]:
-    response = compile_project_memory_response(
-        db,
-        project_id=project_id,
-        regenerate=regenerate,
-        user=current_user,
-    )
-    db.commit()
-    return response
-
-
-@router.get("/{project_id}/memory/project")
+@router.get(
+    "/{project_id}/memory/project",
+    response_model=ProjectMemorySnapshotResponse | None,
+)
 def read_project_memory_snapshot(
     project_id: UUID,
     current_user: User = Depends(require_web_user),
@@ -144,7 +171,10 @@ def read_project_memory_snapshot(
     return read_project_memory_response(db, project_id=project_id, user=current_user)
 
 
-@router.patch("/{project_id}/memory/project")
+@router.patch(
+    "/{project_id}/memory/project",
+    response_model=ProjectMemorySnapshotResponse,
+)
 def update_project_memory(
     project_id: UUID,
     payload: ProjectMemoryUpdateRequest,
@@ -161,7 +191,10 @@ def update_project_memory(
     return response
 
 
-@router.get("/{project_id}/artifacts")
+@router.get(
+    "/{project_id}/artifacts",
+    response_model=list[MemoryArtifactSummaryResponse],
+)
 def list_project_artifacts(
     project_id: UUID,
     limit: int = Query(default=20, ge=1, le=100),

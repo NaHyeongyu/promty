@@ -270,6 +270,31 @@
   line-height: var(--bh-line-height-body);
 }
 
+.bh-inline-request-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bh-space-3);
+  border: 1px solid var(--bh-color-danger);
+  border-radius: var(--bh-radius-sm);
+  padding: var(--bh-space-3);
+  color: var(--bh-color-danger);
+  background: var(--bh-color-danger-subtle);
+  font-size: var(--bh-font-size-body);
+}
+
+.bh-inline-request-error button {
+  flex: 0 0 auto;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .bh-prompt-page-action {
   display: inline-flex;
   align-items: center;

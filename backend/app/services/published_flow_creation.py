@@ -34,7 +34,12 @@ from app.services.published_flow_constants import (
     VALID_FLOW_VISIBILITIES,
 )
 from app.services.published_flow_redaction import (
+    PUBLISHED_FLOW_DIFF_PURPOSE,
+    PUBLISHED_FLOW_PROMPT_PURPOSE,
+    PUBLISHED_FLOW_RESPONSE_PURPOSE,
     normalize_tags,
+    protected_published_text,
+    redact_file_path,
     redact_text,
 )
 
@@ -261,9 +266,7 @@ def _selected_prompts_by_ids(
     )
     prompt_by_id = {event.id: event for event in selected_prompt_rows}
     selected_events = [
-        prompt_by_id[prompt_id]
-        for prompt_id in unique_prompt_ids
-        if prompt_id in prompt_by_id
+        prompt_by_id[prompt_id] for prompt_id in unique_prompt_ids if prompt_id in prompt_by_id
     ]
 
     if len(selected_events) != len(unique_prompt_ids):
@@ -272,9 +275,7 @@ def _selected_prompts_by_ids(
             detail="One or more selected prompts were not found in this project",
         )
 
-    session_ids = {
-        event.session_id for event in selected_events if event.session_id is not None
-    }
+    session_ids = {event.session_id for event in selected_events if event.session_id is not None}
     events_by_session, payloads = _events_for_sessions(
         db,
         project_id=project_id,
@@ -339,9 +340,7 @@ def _selected_prompts_by_session_range(
         payloads=payloads,
         responses=_prompt_responses(events, payloads),
         selected_events=selected_events,
-        selection_type="session_range"
-        if len(selected_events) != len(prompt_events)
-        else "session",
+        selection_type="session_range" if len(selected_events) != len(prompt_events) else "session",
         session=session,
         start_event=start_event,
         start_sequence=start_sequence,
@@ -383,9 +382,7 @@ def _source_session_id(selection: FlowPromptSelection) -> UUID | None:
         return selection.session.id
 
     selected_session_ids = {
-        event.session_id
-        for event in selection.selected_events
-        if event.session_id is not None
+        event.session_id for event in selection.selected_events if event.session_id is not None
     }
     if len(selected_session_ids) == 1:
         return next(iter(selected_session_ids))
@@ -441,11 +438,15 @@ def create_published_flow_record(
         if isinstance(change.get("path"), str)
     }
     file_count = len(distinct_files)
-    flow_title = (
+    flow_title = redact_text(
         title or _default_title(project, selection.selected_events, selection.payloads)
-    ).strip()
+    )
+    flow_title = (flow_title or "").strip()
     if not flow_title:
-        flow_title = _default_title(project, selection.selected_events, selection.payloads)
+        flow_title = (
+            redact_text(_default_title(project, selection.selected_events, selection.payloads))
+            or "Prompt flow"
+        )
     flow_title = flow_title[:MAX_TITLE_LENGTH]
     flow_summary = (summary or _default_summary(selection.selected_events, file_count)).strip()
     selected_event = selection.selected_events[0]
@@ -494,10 +495,17 @@ def create_published_flow_record(
                 files_changed=len({change["path"] for change in changes}),
                 item_order=index,
                 model_name=payload_model(payload, event.tool),
-                prompt_text=redact_text(payload_prompt(payload)) or "",
+                prompt_text=protected_published_text(
+                    payload_prompt(payload),
+                    purpose=PUBLISHED_FLOW_PROMPT_PURPOSE,
+                )
+                or "",
                 published_flow_id=flow.id,
                 response_received_at=response.get("response_received_at"),
-                response_text=response.get("response"),
+                response_text=protected_published_text(
+                    response.get("response"),
+                    purpose=PUBLISHED_FLOW_RESPONSE_PURPOSE,
+                ),
                 sequence=event.sequence,
                 source_event_id=event.id,
                 submitted_at=event.created_at,
@@ -515,10 +523,11 @@ def create_published_flow_record(
                     if isinstance(change.get("status"), str)
                     else None,
                     deletions=change.get("deletions") or 0,
-                    diff=redact_text(
-                        change.get("patch") if isinstance(change.get("patch"), str) else None
+                    diff=protected_published_text(
+                        change.get("patch") if isinstance(change.get("patch"), str) else None,
+                        purpose=PUBLISHED_FLOW_DIFF_PURPOSE,
                     ),
-                    file_path=path,
+                    file_path=redact_file_path(path),
                     language=_language_from_path(path),
                     published_flow_id=flow.id,
                     source_event_id=event.id,

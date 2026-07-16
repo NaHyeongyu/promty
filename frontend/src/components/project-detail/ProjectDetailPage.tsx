@@ -16,6 +16,7 @@ import type {
   ActivityNavigationState,
   ProjectDetailData,
   ProjectMemoryArtifact,
+  PromptActivityItem,
   ProjectDetailTab,
   ProjectDetailTabId,
   ProjectHeaderProjectOption,
@@ -27,6 +28,7 @@ type ProjectDetailPageProps = {
   activeTab: ProjectDetailTabId;
   data: ProjectDetailData;
   errorMessage?: string | null;
+  errorTitle?: string;
   isProjectResolving?: boolean;
   isLoading?: boolean;
   isRefreshing?: boolean;
@@ -41,7 +43,10 @@ type ProjectDetailPageProps = {
   onOpenAllProjects?: () => void;
   onProjectSelect?: (projectId: string) => void;
   onRepositoryFileSelect?: (path: string) => void;
+  onRetryRepositoryFiles?: () => void;
+  onRetryTrackedFiles?: () => void;
   onShareProject?: () => void;
+  onSharePrompt?: (activity: PromptActivityItem) => void;
   onSaveProjectMetadata?: (metadata: {
     slug?: string;
     tags?: string[];
@@ -96,16 +101,20 @@ function ProjectPanel({
   activeTab,
   data,
   errorMessage,
+  errorTitle,
   isLoading,
   isProjectMemoryGenerationActive,
   isProjectMemoryGenerationDelayed,
   onActivityNavigationChange,
+  onSharePrompt,
   onGenerateProjectMemory,
   onLoadMemoryArtifacts,
   onDeleteProject,
   onSaveProjectMetadata,
   onSaveDescription,
   onRepositoryFileSelect,
+  onRetryRepositoryFiles,
+  onRetryTrackedFiles,
   onRetry,
   onTabChange,
 }: {
@@ -113,14 +122,18 @@ function ProjectPanel({
   activeTab: ProjectDetailTabId;
   data: ProjectDetailData;
   errorMessage?: string | null;
+  errorTitle?: string;
   isLoading?: boolean;
   isProjectMemoryGenerationActive?: boolean;
   isProjectMemoryGenerationDelayed?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
+  onSharePrompt?: (activity: PromptActivityItem) => void;
   onGenerateProjectMemory?: () => Promise<MemoryGenerationResult>;
   onLoadMemoryArtifacts?: (limit: number) => Promise<ProjectMemoryArtifact[]>;
   onDeleteProject?: () => Promise<void>;
   onRepositoryFileSelect?: (path: string) => void;
+  onRetryRepositoryFiles?: () => void;
+  onRetryTrackedFiles?: () => void;
   onRetry?: () => void;
   onSaveProjectMetadata?: (metadata: {
     slug?: string;
@@ -140,7 +153,7 @@ function ProjectPanel({
       <EmptyState
         description={errorMessage}
         icon={BookOpen}
-        title={t("project.detailLoadFailed")}
+        title={errorTitle ?? t("project.detailLoadFailed")}
       >
         {onRetry ? (
           <button className="bh-empty-state-button" onClick={onRetry} type="button">
@@ -192,12 +205,20 @@ function ProjectPanel({
         activityNavigation={activityNavigation}
         data={data}
         onActivityNavigationChange={onActivityNavigationChange}
+        onSharePrompt={onSharePrompt}
       />
     );
   }
 
   if (activeTab === "files") {
-    return <FilesPanel data={data} onRepositoryFileSelect={onRepositoryFileSelect} />;
+    return (
+      <FilesPanel
+        data={data}
+        onRepositoryFileSelect={onRepositoryFileSelect}
+        onRetryRepositoryFiles={onRetryRepositoryFiles}
+        onRetryTrackedFiles={onRetryTrackedFiles}
+      />
+    );
   }
 
   return (
@@ -214,6 +235,7 @@ export function ProjectDetailPage({
   activeTab,
   data,
   errorMessage,
+  errorTitle,
   isProjectResolving,
   isLoading,
   isRefreshing,
@@ -229,8 +251,11 @@ export function ProjectDetailPage({
   onLoadMemoryArtifacts,
   onProjectSelect,
   onRepositoryFileSelect,
+  onRetryRepositoryFiles,
+  onRetryTrackedFiles,
   onRetry,
   onShareProject,
+  onSharePrompt,
   onSaveProjectMetadata,
   onSaveDescription,
   onToggleBookmark,
@@ -295,16 +320,20 @@ export function ProjectDetailPage({
           activeTab={activeTab}
           data={data}
           errorMessage={errorMessage}
+          errorTitle={errorTitle}
           isLoading={isLoading}
           isProjectMemoryGenerationActive={isProjectMemoryGenerationActive}
           isProjectMemoryGenerationDelayed={isProjectMemoryGenerationDelayed}
           onActivityNavigationChange={onActivityNavigationChange}
+          onSharePrompt={onSharePrompt}
           onGenerateProjectMemory={onGenerateProjectMemory}
           onLoadMemoryArtifacts={onLoadMemoryArtifacts}
           onDeleteProject={onDeleteProject}
           onSaveProjectMetadata={onSaveProjectMetadata}
           onSaveDescription={onSaveDescription}
           onRepositoryFileSelect={onRepositoryFileSelect}
+          onRetryRepositoryFiles={onRetryRepositoryFiles}
+          onRetryTrackedFiles={onRetryTrackedFiles}
           onRetry={onRetry}
           onTabChange={onTabChange}
         />

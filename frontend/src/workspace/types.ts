@@ -4,7 +4,13 @@ import type {
   PublishedFlowDetail,
 } from "../components/project-detail";
 
-export type SidebarItemId = "projects" | "admin" | "settings" | "profile";
+export type SidebarItemId =
+  | "projects"
+  | "explore"
+  | "community"
+  | "admin"
+  | "settings"
+  | "profile";
 
 export type Project = {
   defaultBranch?: string;
@@ -46,7 +52,7 @@ export type AccountGithubConnection = {
   created_at: string | null;
   revoked_at: string | null;
   scopes: string[];
-  status: string;
+  status: "connected" | "not_connected";
   token_type: string | null;
   updated_at: string | null;
 };
@@ -73,13 +79,24 @@ export type AccountCollectorTokenCreateResponse = {
   token: string;
 };
 
+export type SupportedTool = "claude-code" | "codex-cli" | "cursor" | "gemini-cli";
+
+export type EventType =
+  | "SessionStarted"
+  | "PromptSubmitted"
+  | "ResponseReceived"
+  | "FilesChanged"
+  | "CommitCreated"
+  | "SessionEnded";
+
 export type EventRecord = {
+  schema_version: number;
   id: string;
   project_id: string;
   session_id: string;
   sequence: number;
-  tool: string;
-  event_type: string;
+  tool: SupportedTool;
+  event_type: EventType;
   timestamp: string;
   payload: Record<string, unknown>;
 };
@@ -108,12 +125,49 @@ export type ProjectSummary = {
   visibility: "private" | "public";
 };
 
+export type PublicProjectOwner = {
+  avatar_url: string | null;
+  id: string;
+  username: string;
+};
+
+export type PublicProjectSummary = {
+  connected_models: string[];
+  created_at: string;
+  default_branch: string;
+  description: string | null;
+  events: number;
+  github_url: string | null;
+  id: string;
+  is_owner: boolean;
+  latest_event_at: string | null;
+  latest_memory_at: string | null;
+  memory_count: number;
+  name: string;
+  owner: PublicProjectOwner;
+  project_url: string | null;
+  prompts: number;
+  sessions: number;
+  slug: string;
+  tags: string[];
+  tracked_files: number;
+  updated_at: string;
+  visibility: "public";
+};
+
+export type PublicProjectPage = {
+  items: PublicProjectSummary[];
+  limit: number;
+  offset: number;
+  total: number;
+};
+
 export type ProjectSortMode = "recent" | "added";
 
 export type ProjectDetailApiResponse = {
   activities: Array<{
     events: number;
-    files_changed?: number;
+    files_changed: number;
     id: string;
     last_activity_at: string | null;
     model: string;
@@ -187,6 +241,7 @@ export type ProjectDetailApiResponse = {
       technologies?: string[];
       title: string;
       trigger_reason?: string | null;
+      type: string;
       updated_at: string | null;
       why_it_matters?: string | null;
       window_reason?: string | null;
@@ -208,6 +263,7 @@ export type ProjectDetailApiResponse = {
         outcome: string | null;
         prompt_count?: number | null;
         reason?: string | null;
+        review_state?: string | null;
         sections?: Array<{
           summary: string;
           title: string;
@@ -268,6 +324,7 @@ export type ProjectDetailApiResponse = {
     files_changed_since_yesterday?: number;
     latest_activity_at: string | null;
     last_modified_at: string | null;
+    memory_artifacts_since_yesterday?: number;
     prompts_since_yesterday?: number;
     repository_connected: boolean;
     sessions_since_yesterday?: number;
@@ -291,6 +348,11 @@ export type ProjectDetailApiResponse = {
     updated_at: string | null;
     visibility?: string | null;
   };
+};
+
+export type PublicProjectDetailResponse = ProjectDetailApiResponse & {
+  is_owner: boolean;
+  owner: PublicProjectOwner;
 };
 
 export type ProjectPromptActivityApiItem = NonNullable<
@@ -386,13 +448,13 @@ export type PublishedFlowSummary = PublishedFlowDetail & {
   prompt_count: number;
   published_at: string | null;
   slug: string;
-  status: string;
+  status: "archived" | "draft" | "published";
   summary: string | null;
   tags: string[];
   title: string;
   tool_name: string | null;
   updated_at: string | null;
-  visibility: string;
+  visibility: "private" | "public" | "unlisted";
 };
 
 export type PublishedFlowDetailResponse = PublishedFlowSummary & {
@@ -517,6 +579,21 @@ export type AdminOverview = {
     without_activity: number;
     without_repo: number;
   };
+  recent_admin_audit_logs: Array<{
+    action: string;
+    actor: {
+      github_id: string;
+      id: string | null;
+      username: string;
+    };
+    created_at: string | null;
+    id: string;
+    request_method: string;
+    request_path: string;
+    resource_id: string | null;
+    resource_type: string | null;
+    status_code: number;
+  }>;
   recent_events: Array<{
     created_at: string | null;
     event_type: string;
@@ -567,8 +644,17 @@ export type AdminOverview = {
     title: string;
   }>;
   system: {
+    admin_audit_retention_days: number;
     admin_configured: boolean;
+    admin_rate_limit: {
+      requests: number;
+      window_seconds: number;
+    };
     app_url: string;
+    auth_rate_limit: {
+      requests: number;
+      window_seconds: number;
+    };
     cors_origins: string[];
     gemini_configured: boolean;
     memory_generators: {
@@ -581,6 +667,148 @@ export type AdminOverview = {
     session_cookie_samesite: string;
   };
 };
+
+export type AdminPage<T> = {
+  items: T[];
+  limit: number;
+  offset: number;
+  total: number;
+};
+
+export type AdminUser = {
+  active_collector_tokens: number;
+  avatar_url: string | null;
+  collector_tokens: AccountCollectorToken[];
+  counts: {
+    events: number;
+    projects: number;
+    prompts: number;
+    sessions: number;
+  };
+  created_at: string | null;
+  email: string | null;
+  github: {
+    connected: boolean;
+    scopes: string[];
+    updated_at: string | null;
+  };
+  github_id: string;
+  id: string;
+  is_admin: boolean;
+  last_collector_at: string | null;
+  latest_activity_at: string | null;
+  status: "active" | "suspended";
+  suspended_at: string | null;
+  suspension_reason: string | null;
+  username: string;
+};
+
+export type AdminProject = {
+  active_jobs: number;
+  created_at: string | null;
+  default_branch: string;
+  description: string | null;
+  event_count: number;
+  failed_jobs: number;
+  github_connected: boolean;
+  github_url: string | null;
+  id: string;
+  latest_activity_at: string | null;
+  latest_memory_at: string | null;
+  memory_count: number;
+  name: string;
+  owner: {
+    id: string;
+    username: string;
+  };
+  project_url: string | null;
+  prompt_count: number;
+  slug: string;
+  tags: string[];
+  updated_at: string | null;
+  visibility: "private" | "public";
+};
+
+export type AdminJob = {
+  attempt_count: number;
+  cancellable: boolean;
+  completed_at: string | null;
+  created_at: string | null;
+  error: string | null;
+  error_code: string | null;
+  generator: string;
+  id: string;
+  lease_expires_at: string | null;
+  owner: {
+    id: string;
+    username: string;
+  };
+  project: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+  reason: string;
+  result_status: string | null;
+  retryable: boolean;
+  session_id: string | null;
+  stale: boolean;
+  status: "pending" | "running" | "succeeded" | "failed" | "superseded";
+  updated_at: string | null;
+};
+
+export type AdminEvent = {
+  created_at: string | null;
+  event_type: string;
+  id: string;
+  owner: { id: string; username: string };
+  payload: Record<string, unknown>;
+  project: { id: string; name: string; slug: string };
+  schema_version: number;
+  sequence: number;
+  session_id: string;
+  tool: string;
+};
+
+export type AdminEventPage = AdminPage<AdminEvent> & {
+  search_truncated: boolean;
+};
+
+export type AdminSystem = {
+  database: {
+    connections: Record<string, number>;
+    dialect: string;
+    migration: string | null;
+    pool: string;
+    size_bytes: number | null;
+    table_sizes: Array<{ name: string; size_bytes: number }>;
+  };
+  deployment: {
+    environment: string;
+    region: string | null;
+    release_sha: string | null;
+  };
+  providers: {
+    gemini: { configured: boolean; model: string };
+    openai: { configured: boolean; model: string };
+    real_billing_available: boolean;
+  };
+  runtime: {
+    api_url: string;
+    app_url: string;
+    platform: string;
+    python: string;
+    started_at: string | null;
+    uptime_seconds: number;
+  };
+  worker: {
+    pending_batches: number;
+    running_batches: number;
+    status: string;
+  };
+};
+
+export type AdminAuditLog = AdminOverview["recent_admin_audit_logs"][number];
 
 export type ProjectGithubFilesState = {
   files: FileTreeNode[];

@@ -9,15 +9,28 @@ from app.core.config import settings
 from app.db.session import SessionLocal
 from app.services.memory.artifacts import materialize_next_idle_memory_session
 from app.services.memory.batches import run_next_project_memory_batch
+from app.workers.health import record_worker_heartbeat
 
 logger = logging.getLogger(__name__)
 IDLE_SESSION_RESCAN_SECONDS = 30.0
 
 
+def _next_idle_poll_seconds(
+    current: float,
+    *,
+    base: float,
+    maximum: float,
+) -> float:
+    return min(max(current * 2, base), maximum)
+
+
 def run_worker(stop: Event) -> None:
     poll_seconds = max(settings.memory_worker_poll_seconds, 0.1)
+    max_poll_seconds = max(settings.memory_worker_max_poll_seconds, poll_seconds)
+    idle_poll_seconds = poll_seconds
     next_idle_scan_at = 0.0
     while not stop.is_set():
+        record_worker_heartbeat()
         db = SessionLocal()
         try:
             processed = run_next_project_memory_batch(db)
@@ -32,8 +45,16 @@ def run_worker(stop: Event) -> None:
             processed = False
         finally:
             db.close()
-        if not processed:
-            stop.wait(poll_seconds)
+            record_worker_heartbeat()
+        if processed:
+            idle_poll_seconds = poll_seconds
+            continue
+        stop.wait(idle_poll_seconds)
+        idle_poll_seconds = _next_idle_poll_seconds(
+            idle_poll_seconds,
+            base=poll_seconds,
+            maximum=max_poll_seconds,
+        )
 
 
 def main() -> None:
