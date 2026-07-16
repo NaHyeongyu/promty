@@ -159,7 +159,6 @@ def test_project_create_read_update_delete_round_trip(
     ProjectDetailResponse.model_validate(detail)
     assert detail["activities"][0]["files_changed"] == 2
     assert len(detail_statements) <= 7
-
     management.delete_project(db, project_id=project.id, user=user)
     db.expire_all()
 

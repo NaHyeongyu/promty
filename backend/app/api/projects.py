@@ -115,8 +115,6 @@ def read_public_project(
         current_user=current_user,
         project_id=project_id,
     )
-
-
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_project(
     project_id: UUID,
