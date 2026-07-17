@@ -8,7 +8,7 @@ import {
 } from "../lib/formatters";
 import type { Project } from "./types";
 
-export const MOCK_GITHUB_UNLINKED_PROJECT_ID = "mock-github-unlinked-project";
+export const MOCK_GITHUB_UNLINKED_PROJECT_ID = "7ec7f56d-9024-4c72-8b62-e5c8709f1ba1";
 
 export function mockGithubUnlinkedProject(): Project {
   const timestamp = "2026-07-04T14:18:00Z";

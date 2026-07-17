@@ -4,6 +4,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, TextIO
 
+from secure_storage import open_private_text
+
 try:
     import fcntl
 except ImportError:  # pragma: no cover - Windows
@@ -17,8 +19,7 @@ except ImportError:  # pragma: no cover - POSIX
 
 @contextmanager
 def locked_file(path: Path) -> Iterator[TextIO]:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a+", encoding="utf-8") as lock_file:
+    with open_private_text(path, "a+") as lock_file:
         if fcntl is not None:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
         elif msvcrt is not None:

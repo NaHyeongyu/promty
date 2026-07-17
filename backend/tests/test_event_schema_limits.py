@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.events import (
+    EVENT_BATCH_MAX_ITEMS,
     EVENT_CHANGE_PATCH_MAX_CHARS,
     EVENT_CHANGES_MAX_ITEMS,
     EVENT_FILE_PATH_MAX_CHARS,
@@ -119,3 +120,10 @@ def test_batch_resource_count_matches_ingest_change_precedence() -> None:
     batch = EventBatchCreate.model_validate({"events": [event, event]})
 
     assert len(batch.events) == 2
+
+
+def test_event_batch_rejects_too_many_events() -> None:
+    event = _files_changed_event(files=[])
+
+    with pytest.raises(ValidationError, match="List should have at most"):
+        EventBatchCreate.model_validate({"events": [event] * (EVENT_BATCH_MAX_ITEMS + 1)})

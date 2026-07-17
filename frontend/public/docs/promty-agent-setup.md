@@ -65,6 +65,8 @@ npx promty-collector init --tool <selected-tool> --profiles dev,prod
 
 Multi-profile mode writes the same event ID to independent queues and runs an uploader for each destination. Do not combine `--profiles` with singular URL, path, or token overrides; configure each profile separately first.
 
+Each uploader sends a lightweight heartbeat every minute. If a reboot stops the background process, the next captured event restarts the matching profile uploader automatically. Event capture is persisted to disk first, so a restart or network failure does not discard the local event.
+
 ## Installation procedure
 
 1. Confirm the current working directory belongs to the intended Git repository.
@@ -97,7 +99,7 @@ npx promty-collector doctor --profiles dev,prod --tool <selected-tool>
 
 ## Updates
 
-Collector `0.1.2` and newer checks npm every six hours and updates its durable runtime automatically. The uploader restarts with the same profile and queue after a successful update. Users on an older collector must run the selected `init --tool <selected-tool> --profile <profile>` command once to enable automatic updates. Use `--no-auto-update` only when updates are managed externally.
+Automatic updates are disabled by default. Add `--auto-update` to `init` or `start-uploader` only when the user explicitly wants the uploader to check npm every six hours, install a newer release, and restart with the same profile and queue. Otherwise update manually with `npx promty-collector@latest init --tool <selected-tool> --profile <profile>`.
 
 ## Expected hook coverage
 

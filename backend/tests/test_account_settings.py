@@ -1,13 +1,24 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from uuid import uuid4
+
 from app.models.tokens import CollectorToken
 from app.models.users import User
+from app.services import account_settings
 from app.services.account_settings import (
+    LATEST_COLLECTOR_VERSION,
     account_overview_response,
     create_collector_token_response,
     update_account_preferences_response,
 )
+
+
+def test_latest_collector_version_matches_published_package_manifest() -> None:
+    manifest_path = Path(__file__).resolve().parents[2] / "collector" / "package.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert LATEST_COLLECTOR_VERSION == manifest["version"]
 
 
 def test_account_routes_publish_response_contracts() -> None:
@@ -16,12 +27,12 @@ def test_account_routes_publish_response_contracts() -> None:
     schema = app.openapi()
     paths = schema["paths"]
 
-    assert paths["/api/account/overview"]["get"]["responses"]["200"]["content"][
+    assert paths["/api/account/overview"]["get"]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ]["$ref"].endswith("AccountOverviewResponse")
+    assert paths["/api/account/collector-tokens"]["post"]["responses"]["200"]["content"][
         "application/json"
-    ]["schema"]["$ref"].endswith("AccountOverviewResponse")
-    assert paths["/api/account/collector-tokens"]["post"]["responses"]["200"][
-        "content"
-    ]["application/json"]["schema"]["$ref"].endswith("CollectorTokenCreateResponse")
+    ]["schema"]["$ref"].endswith("CollectorTokenCreateResponse")
 
 
 class FakeScalarResult:
@@ -81,7 +92,12 @@ def test_create_collector_token_response_returns_secret_once() -> None:
     assert db.tokens[0].token_hash != response["token"]
 
 
-def test_account_overview_response_includes_connection_and_tokens() -> None:
+def test_account_overview_response_includes_connection_and_tokens(monkeypatch) -> None:
+    monkeypatch.setattr(
+        account_settings,
+        "get_latest_collector_version",
+        lambda *, fallback: fallback,
+    )
     user = _user()
     db = FakeSession(
         tokens=[
@@ -100,6 +116,7 @@ def test_account_overview_response_includes_connection_and_tokens() -> None:
     assert response["user"]["preferred_locale"] == "en"
     assert response["github_connection"]["connected"] is False
     assert response["collector_tokens"][0]["name"] == "Local laptop"
+    assert response["latest_collector_version"] == "0.1.5"
 
 
 def test_account_language_preference_is_saved() -> None:

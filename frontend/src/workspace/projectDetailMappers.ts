@@ -15,6 +15,8 @@ import {
   formatRelativeTimestamp,
   formatSinceYesterdayDelta,
 } from "../lib/formatters";
+import { githubRepositoryUrl } from "../lib/github";
+import { safeExternalHttpUrl } from "../lib/urls";
 import { externalProjectHref } from "./projectUrls";
 import type {
   Project,
@@ -167,7 +169,7 @@ export function projectMemoryArtifactFromApi(
     reviewState: projectMemoryReviewStateFromApi(artifact.review_state),
     requestedGenerator: artifact.requested_generator ?? null,
     sections: artifact.sections ?? [],
-    sessionId: artifact.session_id,
+    sessionId: artifact.session_id ?? null,
     sourceDraftIds: artifact.source_draft_ids ?? [],
     sourceSessionIds: artifact.source_session_ids ?? [],
     sliceIndex: artifact.slice_index ?? null,
@@ -237,7 +239,9 @@ export function projectDetailDataFromApi(
   const totalPrompts =
     payload.metrics.total_prompts ?? payload.prompt_activities?.length ?? 0;
   const projectDescription = payload.project.description?.trim() ?? "";
-  const repositoryUrl = payload.project.repository_url ?? fallbackProject?.githubUrl;
+  const repositoryUrl = githubRepositoryUrl(
+    payload.project.repository_url ?? fallbackProject?.githubUrl,
+  );
   const projectUrl = payload.project.project_url ?? fallbackProject?.projectUrl ?? "";
 
   return {
@@ -368,7 +372,7 @@ export function projectDetailDataFromApi(
       isBookmarked: payload.project.is_bookmarked === true,
       name: payload.project.name || fallbackProject?.name || "Project",
       repositoryStatus: payload.project.repository_status,
-      repositoryUrl,
+      repositoryUrl: repositoryUrl ?? undefined,
       projectUrl: projectUrl || undefined,
       slug: payload.project.slug ?? fallbackProject?.slug,
       tags: payload.project.tags ?? fallbackProject?.tags ?? [],
@@ -454,7 +458,7 @@ export function repositoryFileContentFromApi(
   return {
     branch: payload.branch,
     content: payload.content,
-    htmlUrl: payload.html_url,
+    htmlUrl: safeExternalHttpUrl(payload.html_url),
     message: payload.message,
     name: payload.name,
     path: payload.path,

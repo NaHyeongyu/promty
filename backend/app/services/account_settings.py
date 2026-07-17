@@ -13,6 +13,11 @@ from app.models.github_connections import GitHubConnection
 from app.models.tokens import CollectorToken
 from app.models.users import User
 from app.core.locales import normalize_app_locale
+from app.services.collector_versions import get_latest_collector_version
+
+
+LATEST_COLLECTOR_VERSION = "0.1.5"
+
 
 def _iso(value: Any) -> str | None:
     return value.isoformat() if value is not None else None
@@ -63,14 +68,12 @@ def serialize_github_connection(
     user: User,
 ) -> dict[str, Any]:
     connection = _github_connection_for_user(db, user)
-    active_connection = (
-        connection is not None and connection.revoked_at is None
+    active_connection = connection is not None and connection.revoked_at is None
+    scopes = (
+        [scope.strip() for scope in (connection.scopes or "").split(",") if scope.strip()]
+        if connection
+        else []
     )
-    scopes = [
-        scope.strip()
-        for scope in (connection.scopes or "").split(",")
-        if scope.strip()
-    ] if connection else []
     return {
         "connected": active_connection,
         "created_at": _iso(connection.created_at) if connection else None,
@@ -112,7 +115,7 @@ def account_overview_response(db: Session, *, user: User) -> dict[str, Any]:
     serialized_user = serialize_user(user)
     serialized_user["github_repository_access"] = github_connection["connected"]
     return {
-        "latest_collector_version": "0.1.2",
+        "latest_collector_version": get_latest_collector_version(fallback=LATEST_COLLECTOR_VERSION),
         "collector_tokens": list_collector_tokens(db, user=user),
         "github_connection": github_connection,
         "user": serialized_user,

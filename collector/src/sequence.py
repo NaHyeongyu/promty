@@ -4,10 +4,10 @@ from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
-from uuid import uuid4
 
 from events import BaseEvent
 from file_lock import locked_file
+from secure_storage import open_private_text, write_private_text_atomic
 
 DEFAULT_SEQUENCE_PATH = Path(
     os.environ.get("PROMPTHUB_SEQUENCE_PATH", "~/.prompthub/sequences.json")
@@ -48,7 +48,7 @@ class SequenceStore:
         if not self.path.exists():
             return {}
 
-        with self.path.open("r", encoding="utf-8") as file:
+        with open_private_text(self.path, "r") as file:
             payload = json.load(file)
 
         if not isinstance(payload, dict):
@@ -61,8 +61,7 @@ class SequenceStore:
         }
 
     def _write(self, sequences: dict[str, int]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = self.path.with_suffix(f"{self.path.suffix}.{uuid4()}.tmp")
-        with tmp_path.open("w", encoding="utf-8") as file:
-            json.dump(sequences, file, ensure_ascii=False)
-        tmp_path.replace(self.path)
+        write_private_text_atomic(
+            self.path,
+            json.dumps(sequences, ensure_ascii=False),
+        )

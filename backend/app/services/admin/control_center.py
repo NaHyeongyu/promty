@@ -17,11 +17,21 @@ from app.models.events import Event
 from app.models.github_connections import GitHubConnection
 from app.models.projects import Project
 from app.models.project_memory_batches import ProjectMemoryBatch
+from app.models.public_project_views import PublicProjectView
+from app.models.public_project_saves import PublicProjectSave
 from app.models.sessions import Session as PromptSession
 from app.models.tokens import CollectorToken
 from app.models.users import User
+from app.models.support_inquiries import SupportInquiry
+from app.core.encryption import maybe_decrypt_app_text_from_string
+from app.services.support import SUPPORT_MESSAGE_PURPOSE, SUPPORT_SUBJECT_PURPOSE
 from app.services.account_settings import serialize_collector_token
 from app.services.memory.constants import MEMORY_ARTIFACT_TYPE
+from app.services.projects.popularity import (
+    REPEAT_VIEW_WEIGHT,
+    SAVE_WEIGHT,
+    UNIQUE_VIEW_WEIGHT,
+)
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -209,7 +219,10 @@ def admin_projects_response(
     limit: int,
     offset: int,
     query: str | None,
+    sort: str = "recent",
+    visibility: str | None = None,
 ) -> dict[str, Any]:
+    since_7d = datetime.now(timezone.utc) - timedelta(days=7)
     event_stats = (
         select(
             Event.project_id.label("project_id"),
@@ -245,6 +258,43 @@ def admin_projects_response(
         .group_by(ProjectMemoryBatch.project_id)
         .cte("admin_control_project_job_stats")
     )
+    view_stats = (
+        select(
+            PublicProjectView.project_id.label("project_id"),
+            func.count(PublicProjectView.id).label("view_count"),
+            func.count(PublicProjectView.id)
+            .filter(PublicProjectView.viewed_at >= since_7d)
+            .label("views_7d"),
+            func.count(func.distinct(PublicProjectView.viewer_id))
+            .filter(PublicProjectView.viewed_at >= since_7d)
+            .label("unique_viewers_7d"),
+        )
+        .group_by(PublicProjectView.project_id)
+        .cte("admin_control_project_view_stats")
+    )
+    save_stats = (
+        select(
+            PublicProjectSave.project_id.label("project_id"),
+            func.count(PublicProjectSave.user_id).label("save_count"),
+            func.count(PublicProjectSave.user_id)
+            .filter(PublicProjectSave.created_at >= since_7d)
+            .label("saves_7d"),
+        )
+        .join(Project, Project.id == PublicProjectSave.project_id)
+        .where(PublicProjectSave.user_id != Project.owner_id)
+        .group_by(PublicProjectSave.project_id)
+        .cte("admin_control_project_save_stats")
+    )
+    weekly_popularity = (
+        func.coalesce(view_stats.c.unique_viewers_7d, 0) * UNIQUE_VIEW_WEIGHT
+        + func.greatest(
+            func.coalesce(view_stats.c.views_7d, 0)
+            - func.coalesce(view_stats.c.unique_viewers_7d, 0),
+            0,
+        )
+        * REPEAT_VIEW_WEIGHT
+        + func.coalesce(save_stats.c.saves_7d, 0) * SAVE_WEIGHT
+    ).label("weekly_popularity_score")
     search_filter = None
     if query:
         pattern = f"%{query.strip()}%"
@@ -254,9 +304,15 @@ def admin_projects_response(
             User.username.ilike(pattern),
         )
 
-    total_statement = select(func.count(Project.id)).join(User, User.id == Project.owner_id)
+    filters = []
     if search_filter is not None:
-        total_statement = total_statement.where(search_filter)
+        filters.append(search_filter)
+    if visibility in {"private", "public"}:
+        filters.append(Project.visibility == visibility)
+
+    total_statement = select(func.count(Project.id)).join(User, User.id == Project.owner_id)
+    if filters:
+        total_statement = total_statement.where(*filters)
     total = int(db.scalar(total_statement) or 0)
 
     statement = (
@@ -270,20 +326,50 @@ def admin_projects_response(
             memory_stats.c.latest_memory_at,
             func.coalesce(job_stats.c.failed_jobs, 0),
             func.coalesce(job_stats.c.active_jobs, 0),
+            func.coalesce(view_stats.c.view_count, 0),
+            func.coalesce(view_stats.c.views_7d, 0),
+            func.coalesce(view_stats.c.unique_viewers_7d, 0),
+            func.coalesce(save_stats.c.save_count, 0),
+            func.coalesce(save_stats.c.saves_7d, 0),
+            weekly_popularity,
         )
         .join(User, User.id == Project.owner_id)
         .outerjoin(event_stats, event_stats.c.project_id == Project.id)
         .outerjoin(memory_stats, memory_stats.c.project_id == Project.id)
         .outerjoin(job_stats, job_stats.c.project_id == Project.id)
-        .order_by(
-            nullslast(desc(event_stats.c.latest_activity_at)),
-            desc(Project.updated_at),
-        )
+        .outerjoin(view_stats, view_stats.c.project_id == Project.id)
+        .outerjoin(save_stats, save_stats.c.project_id == Project.id)
         .limit(limit)
         .offset(offset)
     )
-    if search_filter is not None:
-        statement = statement.where(search_filter)
+    if filters:
+        statement = statement.where(*filters)
+    if sort == "popularity":
+        order_by = (desc(weekly_popularity), desc(Project.updated_at), desc(Project.id))
+    elif sort == "saves":
+        order_by = (
+            desc(func.coalesce(save_stats.c.save_count, 0)),
+            desc(func.coalesce(save_stats.c.saves_7d, 0)),
+            desc(Project.updated_at),
+        )
+    elif sort == "views":
+        order_by = (
+            desc(func.coalesce(view_stats.c.view_count, 0)),
+            desc(func.coalesce(view_stats.c.views_7d, 0)),
+            desc(Project.updated_at),
+        )
+    elif sort == "views_7d":
+        order_by = (
+            desc(func.coalesce(view_stats.c.views_7d, 0)),
+            desc(func.coalesce(view_stats.c.unique_viewers_7d, 0)),
+            desc(Project.updated_at),
+        )
+    else:
+        order_by = (
+            nullslast(desc(event_stats.c.latest_activity_at)),
+            desc(Project.updated_at),
+        )
+    statement = statement.order_by(*order_by)
     items = [
         {
             "active_jobs": int(active_jobs or 0),
@@ -302,9 +388,15 @@ def admin_projects_response(
             "owner": {"id": str(owner.id), "username": owner.username},
             "project_url": project.project_url,
             "prompt_count": int(prompt_count or 0),
+            "save_count": int(save_count or 0),
+            "saves_7d": int(saves_7d or 0),
             "slug": project.slug,
             "tags": project.tags or [],
             "updated_at": _iso(project.updated_at),
+            "view_count": int(view_count or 0),
+            "views_7d": int(views_7d or 0),
+            "unique_viewers_7d": int(unique_viewers_7d or 0),
+            "weekly_popularity_score": round(float(weekly_popularity_score or 0), 2),
             "visibility": project.visibility,
         }
         for (
@@ -317,6 +409,12 @@ def admin_projects_response(
             latest_memory_at,
             failed_jobs,
             active_jobs,
+            view_count,
+            views_7d,
+            unique_viewers_7d,
+            save_count,
+            saves_7d,
+            weekly_popularity_score,
         ) in db.execute(statement).all()
     ]
     return {"items": items, "limit": limit, "offset": offset, "total": total}
@@ -510,3 +608,64 @@ def disconnect_admin_github_response(
         connection.revoked_at = utc_now()
         db.flush()
     return {"disconnected": disconnected, "user_id": str(user.id)}
+
+
+def _admin_support_inquiry_response(inquiry: SupportInquiry) -> dict[str, Any]:
+    return {
+        "category": inquiry.category,
+        "created_at": _iso(inquiry.created_at),
+        "id": str(inquiry.id),
+        "message": maybe_decrypt_app_text_from_string(
+            inquiry.message, purpose=SUPPORT_MESSAGE_PURPOSE
+        ) or "",
+        "notification_error": inquiry.notification_error,
+        "notification_status": inquiry.notification_status,
+        "requester_email": inquiry.requester_email,
+        "requester_username": inquiry.requester_username,
+        "status": inquiry.status,
+        "subject": maybe_decrypt_app_text_from_string(
+            inquiry.subject, purpose=SUPPORT_SUBJECT_PURPOSE
+        ) or "",
+        "updated_at": _iso(inquiry.updated_at),
+    }
+
+
+def admin_support_inquiries_response(
+    db: Session,
+    *,
+    inquiry_status: str | None,
+    limit: int,
+    offset: int,
+) -> dict[str, Any]:
+    filters = []
+    if inquiry_status:
+        filters.append(SupportInquiry.status == inquiry_status)
+    total = int(db.scalar(select(func.count(SupportInquiry.id)).where(*filters)) or 0)
+    inquiries = db.scalars(
+        select(SupportInquiry)
+        .where(*filters)
+        .order_by(desc(SupportInquiry.created_at))
+        .limit(limit)
+        .offset(offset)
+    ).all()
+    return {
+        "items": [_admin_support_inquiry_response(inquiry) for inquiry in inquiries],
+        "limit": limit,
+        "offset": offset,
+        "total": total,
+    }
+
+
+def update_admin_support_inquiry_status(
+    db: Session,
+    *,
+    inquiry_id: UUID,
+    status: str,
+) -> dict[str, Any] | None:
+    inquiry = db.get(SupportInquiry, inquiry_id)
+    if inquiry is None:
+        return None
+    inquiry.status = status
+    inquiry.updated_at = datetime.now(timezone.utc)
+    db.flush()
+    return _admin_support_inquiry_response(inquiry)

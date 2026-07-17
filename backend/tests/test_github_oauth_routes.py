@@ -17,10 +17,11 @@ from app.services.oauth_state import decode_oauth_state, encode_oauth_state, non
 
 class FakeSession:
     def __init__(self) -> None:
+        self.added: list[object] = []
         self.commit_count = 0
 
-    def add(self, _item: object) -> None:
-        return None
+    def add(self, item: object) -> None:
+        self.added.append(item)
 
     def commit(self) -> None:
         self.commit_count += 1
@@ -117,6 +118,7 @@ def test_web_login_callback_does_not_store_repository_connection(
 
     assert response.status_code == 302
     assert db.commit_count == 1
+    assert len(db.added) == 1
     assert settings.session_cookie_name in response.headers.get("set-cookie", "")
 
 

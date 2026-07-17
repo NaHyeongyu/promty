@@ -155,6 +155,11 @@ class PublicProjectSummaryResponse(StrictResponse):
     tags: list[str]
     tracked_files: int
     updated_at: str
+    view_count: int
+    weekly_popularity_score: float
+    weekly_saves: int
+    weekly_unique_viewers: int
+    weekly_views: int
     visibility: Literal["public"]
 
 
@@ -169,10 +174,64 @@ class PublicProfileResponse(PublicProjectListResponse):
     profile: PublicProjectOwnerResponse
 
 
-class PublicProjectDetailResponse(ProjectDetailResponse):
+class PublicProjectViewHistoryResponse(StrictResponse):
+    date: str
+    views: int
+
+
+class PublicMemoryArtifactResponse(StrictResponse):
+    artifact_stage: str | None
+    changed_file_count: int
+    created_at: str | None
+    first_event_at: str | None
+    generator: str | None
+    id: str
+    last_event_at: str | None
+    memory_scope: str | None
+    model: str | None
+    outcome: str | None
+    prompt_count: int | None
+    reason: str | None
+    review_state: Literal["edited", "verified"]
+    sections: list[dict[str, Any]] = Field(default_factory=list)
+    summary: str | None
+    tags: list[str]
+    technologies: list[str]
+    title: str
+    type: str
+    updated_at: str | None
+    why_it_matters: str | None
+
+
+class PublicProjectMemoryResponse(StrictResponse):
+    latest_artifact_at: str | None
+    recent_artifacts: list[PublicMemoryArtifactResponse]
+    total_artifacts: int
+
+
+class PublicProjectDetailResponse(StrictResponse):
+    activities: list[ProjectActivitySummaryResponse]
+    files: list[FileTreeNodeResponse]
     is_owner: bool
     is_saved: bool
+    memory: PublicProjectMemoryResponse
+    metrics: ProjectDetailMetricsResponse
     owner: PublicProjectOwnerResponse
+    project: ProjectDetailProjectResponse
+    prompt_activities: list[dict[str, Any]]
+    unique_viewers: int
+    view_count: int
+    view_history: list[PublicProjectViewHistoryResponse]
+    views_7d: int
+
+
+class PublicProjectViewResponse(StrictResponse):
+    project_id: str
+    recorded: bool
+    unique_viewers: int
+    view_count: int
+    view_history: list[PublicProjectViewHistoryResponse]
+    views_7d: int
 
 
 class PublicProjectSaveResponse(StrictResponse):
@@ -184,6 +243,7 @@ class PromptFileChangeResponse(StrictResponse):
     additions: int | None
     binary: bool = False
     deletions: int | None
+    event_id: str | None = None
     old_path: str | None = None
     patch: str | None = None
     patch_omitted_reason: str | None = None

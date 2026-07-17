@@ -15,6 +15,7 @@ import {
   User,
 } from "lucide-react";
 import { formatOptionalTimestamp } from "../../lib/formatters";
+import { getCollectorHealth } from "../../lib/collectorHealth";
 import {
   APP_LANGUAGES,
   type AppLocale,
@@ -428,10 +429,8 @@ export function UserSettingsPage({
   const revokedCollectorTokens = collectorTokens.filter(
     (token) => token.status === "revoked",
   );
-  const latestCollectorUse = activeCollectorTokens
-    .map((token) => token.last_used_at)
-    .filter((value): value is string => Boolean(value))
-    .sort((first, second) => Date.parse(second) - Date.parse(first))[0];
+  const collectorHealth = getCollectorHealth(accountOverview);
+  const latestCollectorUse = collectorHealth.latestUsedAt;
   const sortedActiveCollectorTokens = [...activeCollectorTokens].sort(
     (first, second) => {
       const lastUsedDifference =
@@ -445,25 +444,24 @@ export function UserSettingsPage({
   const mostRecentlyUsedTokenId = sortedActiveCollectorTokens.find(
     (token) => token.last_used_at,
   )?.id;
-  const latestCollectorUseAge = latestCollectorUse
-    ? Date.now() - Date.parse(latestCollectorUse)
-    : null;
   const collectorIngestion =
-    activeCollectorTokens.length === 0
+    collectorHealth.state === "not-configured"
       ? { label: t("settings.statusNotConfigured"), tone: "danger" }
-      : !latestCollectorUse
+      : collectorHealth.state === "waiting"
         ? { label: t("settings.statusWaitingSync"), tone: "warning" }
-        : latestCollectorUseAge !== null &&
-            latestCollectorUseAge <= 24 * 60 * 60 * 1000
-          ? { label: t("settings.statusConnected"), tone: "success" }
-          : { label: t("settings.statusStale"), tone: "warning" };
+        : collectorHealth.state === "disconnected"
+          ? { label: t("settings.statusDisconnected"), tone: "danger" }
+          : collectorHealth.state === "delayed"
+            ? { label: t("settings.statusStale"), tone: "warning" }
+            : { label: t("settings.statusConnected"), tone: "success" };
   const repositoryCoverage =
     projectCount > 0
       ? `${connectedRepositoryCount.toLocaleString()} / ${projectCount.toLocaleString()}`
       : t("settings.noProjects");
   const hasConnectedRepository = connectedRepositoryCount > 0;
-  const isCollectorRecent =
-    latestCollectorUseAge !== null && latestCollectorUseAge <= 24 * 60 * 60 * 1000;
+  const isCollectorRecent = ["connected", "update-required"].includes(
+    collectorHealth.state,
+  );
   const hasProjectMemory = memoryCount > 0 || pendingMemoryCount > 0;
   const completedStageCount = [
     Boolean(currentUser),

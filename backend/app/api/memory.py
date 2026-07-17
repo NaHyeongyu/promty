@@ -22,6 +22,7 @@ from app.schemas.memory_responses import (
     SessionCompletionResponse,
 )
 from app.services.memory.workflows import (
+    approve_project_memory_response,
     complete_project_session_response,
     generate_project_memory_response,
     list_pending_memory_ranges_response,
@@ -184,6 +185,24 @@ def update_project_memory(
     response = update_project_memory_response(
         db,
         body_markdown=payload.body_markdown,
+        project_id=project_id,
+        user=current_user,
+    )
+    db.commit()
+    return response
+
+
+@router.post(
+    "/{project_id}/memory/project/approve",
+    response_model=ProjectMemorySnapshotResponse,
+)
+def approve_project_memory(
+    project_id: UUID,
+    current_user: User = Depends(require_web_user),
+    db: DBSession = Depends(get_db),
+) -> dict[str, Any]:
+    response = approve_project_memory_response(
+        db,
         project_id=project_id,
         user=current_user,
     )

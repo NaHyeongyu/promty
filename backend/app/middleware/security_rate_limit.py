@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections import deque
+import hashlib
+from ipaddress import ip_address, ip_network
 import math
 from threading import Lock
 import time
@@ -10,13 +12,33 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 
-def client_address(scope: Scope) -> str:
+def client_address(scope: Scope, *, trusted_proxy_networks: tuple = ()) -> str:
+    client = scope.get("client")
+    immediate_address = str(client[0]) if client else "unknown"
     headers = Headers(scope=scope)
     forwarded_for = headers.get("x-forwarded-for")
-    if forwarded_for:
-        return forwarded_for.split(",", 1)[0].strip() or "unknown"
-    client = scope.get("client")
-    return str(client[0]) if client else "unknown"
+    try:
+        proxy_is_trusted = any(
+            ip_address(immediate_address) in network for network in trusted_proxy_networks
+        )
+    except ValueError:
+        proxy_is_trusted = False
+    if forwarded_for and proxy_is_trusted:
+        forwarded_address = forwarded_for.split(",", 1)[0].strip()
+        try:
+            return str(ip_address(forwarded_address))
+        except ValueError:
+            return immediate_address
+    return immediate_address
+
+
+def bearer_token_fingerprint(scope: Scope) -> str | None:
+    authorization = Headers(scope=scope).get("authorization", "")
+    scheme, separator, token = authorization.partition(" ")
+    if not separator or scheme.lower() != "bearer" or not token.strip():
+        return None
+    digest = hashlib.sha256(token.strip().encode("utf-8")).hexdigest()
+    return f"token:{digest}"
 
 
 class SlidingWindowRateLimiter:
@@ -63,8 +85,11 @@ class SecurityRateLimitMiddleware:
         auth_window_seconds: int,
         community_requests: int = 120,
         community_window_seconds: int = 60,
+        ingest_requests: int = 120,
+        ingest_window_seconds: int = 60,
         support_requests: int = 5,
         support_window_seconds: int = 300,
+        trusted_proxy_cidrs: tuple[str, ...] = (),
         limiter: SlidingWindowRateLimiter | None = None,
     ) -> None:
         for value in (
@@ -74,6 +99,8 @@ class SecurityRateLimitMiddleware:
             auth_window_seconds,
             community_requests,
             community_window_seconds,
+            ingest_requests,
+            ingest_window_seconds,
             support_requests,
             support_window_seconds,
         ):
@@ -86,8 +113,16 @@ class SecurityRateLimitMiddleware:
         self.auth_window_seconds = auth_window_seconds
         self.community_requests = community_requests
         self.community_window_seconds = community_window_seconds
+        self.ingest_requests = ingest_requests
+        self.ingest_window_seconds = ingest_window_seconds
         self.support_requests = support_requests
         self.support_window_seconds = support_window_seconds
+        try:
+            self.trusted_proxy_networks = tuple(
+                ip_network(value, strict=False) for value in trusted_proxy_cidrs
+            )
+        except ValueError as exc:
+            raise ValueError("trusted proxy CIDRs must be valid networks") from exc
         self.limiter = limiter or SlidingWindowRateLimiter()
 
     def _rule(self, scope: Scope) -> tuple[str, int, int] | None:
@@ -102,6 +137,11 @@ class SecurityRateLimitMiddleware:
             return "community", self.community_requests, self.community_window_seconds
         if path == "/api/projects/public" or path.startswith("/api/projects/public/"):
             return "community", self.community_requests, self.community_window_seconds
+        if (
+            path in {"/api/events/batch", "/api/events/heartbeat"}
+            and scope.get("method") == "POST"
+        ):
+            return "ingest", self.ingest_requests, self.ingest_window_seconds
         if path == "/api/support" or path.startswith("/api/support/"):
             return "support", self.support_requests, self.support_window_seconds
         return None
@@ -113,16 +153,34 @@ class SecurityRateLimitMiddleware:
             return
 
         group, limit, window_seconds = rule
-        retry_after = self.limiter.retry_after(
-            f"{group}:{client_address(scope)}",
-            limit=limit,
-            now=time.monotonic(),
-            window_seconds=window_seconds,
-        )
-        if retry_after is None:
+        address_key = f"{group}:ip:{client_address(scope, trusted_proxy_networks=self.trusted_proxy_networks)}"
+        rate_limit_keys = [(address_key, limit)]
+        if group == "ingest" and (token_key := bearer_token_fingerprint(scope)):
+            # Bound both a credential and its source. The source ceiling prevents
+            # attackers from bypassing the limiter with a stream of random tokens.
+            rate_limit_keys = [
+                (f"{group}:{token_key}", limit),
+                (address_key, limit * 4),
+            ]
+        now = time.monotonic()
+        retry_after_values = [
+            retry_after
+            for key, key_limit in rate_limit_keys
+            if (
+                retry_after := self.limiter.retry_after(
+                    key,
+                    limit=key_limit,
+                    now=now,
+                    window_seconds=window_seconds,
+                )
+            )
+            is not None
+        ]
+        if not retry_after_values:
             await self.app(scope, receive, send)
             return
 
+        retry_after = max(retry_after_values)
         response = JSONResponse(
             status_code=429,
             content={"detail": "Too many requests. Try again later."},

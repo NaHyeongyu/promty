@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import time
 
 import pytest
 from fastapi import HTTPException
 
 from app.core.config import settings
+from app.services import oauth_state
 from app.services.oauth_state import (
     STATE_TTL_SECONDS,
     decode_oauth_state,
@@ -54,6 +56,40 @@ def test_oauth_state_rejects_expired_payload() -> None:
     assert exc.value.detail == "Expired OAuth state"
 
 
+def test_oauth_state_rejects_far_future_issued_at() -> None:
+    token = encode_oauth_state(
+        {
+            "iat": int(time.time()) + 120,
+            "mode": "cli",
+        }
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        decode_oauth_state(token)
+
+    assert exc.value.status_code == 400
+
+
+def test_oauth_state_does_not_reuse_ingest_or_github_secrets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        oauth_state,
+        "settings",
+        replace(
+            settings,
+            api_token="shared-ingest-secret",
+            github_client_secret="shared-github-secret",
+            oauth_state_secret=None,
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        oauth_state.encode_oauth_state({"iat": int(time.time()), "mode": "web"})
+
+    assert exc.value.status_code == 503
+
+
 def test_validate_cli_redirect_uri_allows_only_local_callback() -> None:
     assert (
         validate_cli_redirect_uri("http://127.0.0.1:39123/callback")
@@ -67,6 +103,12 @@ def test_validate_cli_redirect_uri_allows_only_local_callback() -> None:
     for uri in (
         "https://127.0.0.1:39123/callback",
         "http://0.0.0.0:39123/callback",
+        "http://user:password@localhost:39123/callback",
+        "http://localhost:39123/callback;parameter",
+        "http://localhost:39123/callback?next=attacker",
+        "http://localhost:39123/callback#fragment",
+        "http://localhost:99999/callback",
+        "http://[invalid/callback",
         "http://127.0.0.1:39123/other",
         "http://example.com/callback",
     ):
@@ -86,6 +128,13 @@ def test_validate_web_return_to_stays_on_app_origin() -> None:
     ):
         with pytest.raises(HTTPException):
             validate_web_return_to(uri)
+
+
+def test_oauth_state_rejects_oversized_input() -> None:
+    with pytest.raises(HTTPException) as exc:
+        decode_oauth_state("x" * (oauth_state.OAUTH_STATE_MAX_CHARS + 1))
+
+    assert exc.value.status_code == 400
 
 
 def test_require_web_oauth_nonce_matches_cookie_hash() -> None:

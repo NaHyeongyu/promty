@@ -21,7 +21,11 @@ from app.models.sessions import Session as PromptSession
 from app.models.tokens import CollectorToken
 from app.models.users import User
 from app.schemas.admin_responses import AdminOverviewResponse
-from app.services.admin.dashboard import _risk_acknowledgement_state, admin_overview_response
+from app.services.admin.dashboard import (
+    _risk_acknowledgement_state,
+    admin_overview_response,
+    set_admin_alert_state,
+)
 from app.services.memory.constants import (
     MEMORY_ARTIFACT_TYPE,
     MEMORY_DRAFT_ARTIFACT_TYPE,
@@ -219,7 +223,7 @@ def test_risk_acknowledgement_uses_latest_audit_state(db: Session) -> None:
     assert cleared["acknowledged_by"] is None
 
 
-def test_admin_overview_uses_nine_statements_and_preserves_contract(db: Session) -> None:
+def test_admin_overview_uses_ten_statements_and_preserves_contract(db: Session) -> None:
     baseline = admin_overview_response(db)
     user, project, _now = _seed_dashboard_rows(db)
     statements: list[str] = []
@@ -242,9 +246,10 @@ def test_admin_overview_uses_nine_statements_and_preserves_contract(db: Session)
 
     AdminOverviewResponse.model_validate(response)
 
-    assert len(statements) == 9
+    assert len(statements) == 10
     assert set(response) == {
         "action_items",
+        "action_summary",
         "ai_activity",
         "breakdowns",
         "generated_at",
@@ -257,6 +262,7 @@ def test_admin_overview_uses_nine_statements_and_preserves_contract(db: Session)
         "recent_users",
         "risks",
         "system",
+        "view_analytics",
     }
     assert set(response["metrics"]) == set(baseline["metrics"])
     assert set(response["memory_monitor"]) == set(baseline["memory_monitor"])
@@ -295,6 +301,7 @@ def test_admin_overview_uses_nine_statements_and_preserves_contract(db: Session)
         "memory": 1,
         "prompts": 1,
         "sessions": 1,
+        "views": 0,
     }
     assert response["recent_users"][0]["id"] == str(user.id)
     assert response["recent_users"][0]["github_connected"] is True
@@ -314,3 +321,21 @@ def test_admin_overview_uses_nine_statements_and_preserves_contract(db: Session)
     )
     assert "artifacts.metadata" not in recent_memory_statement
     assert "artifacts.sections" not in recent_memory_statement
+
+
+def test_admin_alert_state_hides_resolved_condition(db: Session) -> None:
+    user, _project, _now = _seed_dashboard_rows(db)
+    initial = admin_overview_response(db, admin_user_id=user.id)
+    alert = next(item for item in initial["action_items"] if item["key"] == "generation-failed")
+
+    set_admin_alert_state(
+        db,
+        admin_user_id=user.id,
+        alert_key=alert["key"],
+        condition_hash=alert["condition_hash"],
+        status="resolved",
+        snooze_hours=24,
+    )
+    resolved = admin_overview_response(db, admin_user_id=user.id)
+    assert not any(item["key"] == "generation-failed" for item in resolved["action_items"])
+    assert resolved["action_summary"]["resolved"] >= 1

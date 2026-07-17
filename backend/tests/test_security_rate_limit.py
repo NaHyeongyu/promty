@@ -10,17 +10,26 @@ from app.middleware.security_rate_limit import (
 )
 
 
-def _scope(path: str, *, forwarded_for: str = "203.0.113.10") -> dict[str, Any]:
+def _scope(
+    path: str,
+    *,
+    bearer_token: str | None = None,
+    forwarded_for: str = "203.0.113.10",
+    method: str = "GET",
+) -> dict[str, Any]:
+    headers = [(b"x-forwarded-for", forwarded_for.encode("ascii"))]
+    if bearer_token:
+        headers.append((b"authorization", f"Bearer {bearer_token}".encode("ascii")))
     return {
         "type": "http",
         "asgi": {"version": "3.0"},
         "http_version": "1.1",
-        "method": "GET",
+        "method": method,
         "scheme": "https",
         "path": path,
         "raw_path": path.encode("ascii"),
         "query_string": b"",
-        "headers": [(b"x-forwarded-for", forwarded_for.encode("ascii"))],
+        "headers": headers,
         "client": ("127.0.0.1", 1234),
         "server": ("testserver", 443),
     }
@@ -52,8 +61,11 @@ def _middleware() -> SecurityRateLimitMiddleware:
         auth_window_seconds=60,
         community_requests=2,
         community_window_seconds=60,
+        ingest_requests=2,
+        ingest_window_seconds=60,
         support_requests=2,
         support_window_seconds=60,
+        trusted_proxy_cidrs=("127.0.0.0/8",),
     )
 
 
@@ -77,6 +89,18 @@ def test_rate_limit_is_scoped_by_forwarded_client_address() -> None:
     _request(middleware, _scope(path, forwarded_for="203.0.113.10"))
 
     assert _request(middleware, _scope(path, forwarded_for="203.0.113.11"))[0]["status"] == 204
+
+
+def test_rate_limit_rejects_unparseable_forwarded_identity() -> None:
+    middleware = _middleware()
+    path = "/api/auth/github/web/start"
+
+    _request(middleware, _scope(path, forwarded_for="attacker-key-one"))
+    _request(middleware, _scope(path, forwarded_for="attacker-key-two"))
+
+    assert (
+        _request(middleware, _scope(path, forwarded_for="attacker-key-three"))[0]["status"] == 429
+    )
 
 
 def test_rate_limit_does_not_apply_to_regular_project_requests() -> None:
@@ -103,6 +127,76 @@ def test_support_rate_limit_is_separate_and_stricter_ready() -> None:
     assert _request(middleware, _scope(path))[0]["status"] == 429
 
 
+def test_ingest_rate_limit_is_scoped_to_the_bearer_credential() -> None:
+    middleware = _middleware()
+    path = "/api/events/batch"
+
+    for _ in range(2):
+        assert (
+            _request(
+                middleware,
+                _scope(path, bearer_token="collector-a", method="POST"),
+            )[0]["status"]
+            == 204
+        )
+    assert (
+        _request(
+            middleware,
+            _scope(path, bearer_token="collector-a", method="POST"),
+        )[0]["status"]
+        == 429
+    )
+    assert (
+        _request(
+            middleware,
+            _scope(path, bearer_token="collector-b", method="POST"),
+        )[0]["status"]
+        == 204
+    )
+
+
+def test_ingest_source_ceiling_blocks_random_token_bypass() -> None:
+    middleware = _middleware()
+    path = "/api/events/batch"
+
+    for index in range(8):
+        assert (
+            _request(
+                middleware,
+                _scope(path, bearer_token=f"random-{index}", method="POST"),
+            )[0]["status"]
+            == 204
+        )
+    assert (
+        _request(
+            middleware,
+            _scope(path, bearer_token="random-8", method="POST"),
+        )[0]["status"]
+        == 429
+    )
+
+
+def test_ingest_rate_limit_also_covers_collector_heartbeat() -> None:
+    middleware = _middleware()
+    path = "/api/events/heartbeat"
+
+    for _ in range(2):
+        assert (
+            _request(
+                middleware,
+                _scope(path, bearer_token="collector-a", method="POST"),
+            )[0]["status"]
+            == 204
+        )
+    assert (
+        _request(
+            middleware,
+            _scope(path, bearer_token="collector-a", method="POST"),
+        )[0]["status"]
+        == 429
+    )
+
+
 def test_sliding_window_allows_requests_after_the_window_expires() -> None:
     limiter = SlidingWindowRateLimiter()
 
@@ -122,4 +216,6 @@ def test_main_wires_security_rate_limit_middleware() -> None:
     assert middleware.kwargs["admin_requests"] == settings.admin_rate_limit_requests
     assert middleware.kwargs["auth_requests"] == settings.auth_rate_limit_requests
     assert middleware.kwargs["community_requests"] == settings.community_rate_limit_requests
+    assert middleware.kwargs["ingest_requests"] == settings.ingest_rate_limit_requests
     assert middleware.kwargs["support_requests"] == settings.support_rate_limit_requests
+    assert middleware.kwargs["trusted_proxy_cidrs"] == settings.trusted_proxy_cidrs

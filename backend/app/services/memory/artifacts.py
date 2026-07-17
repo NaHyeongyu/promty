@@ -29,6 +29,7 @@ from app.services.memory.providers import (
 )
 from app.services.memory.session_completion import complete_session_if_ready
 from app.services.memory.project_memory import (
+    approve_project_memory_snapshot as approve_project_memory_snapshot,
     compile_project_memory as compile_project_memory,
     count_project_memory_artifacts as count_project_memory_artifacts,
     count_project_memory_history_artifacts as count_project_memory_history_artifacts,

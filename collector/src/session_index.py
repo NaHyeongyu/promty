@@ -5,10 +5,10 @@ import json
 import os
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 from events import BaseEvent, SupportedTool, utc_now_iso
 from file_lock import locked_file
+from secure_storage import open_private_text, write_private_text_atomic
 
 DEFAULT_SESSION_INDEX_PATH = Path(
     os.environ.get("PROMPTHUB_SESSION_INDEX_PATH", "~/.prompthub/session-index.json")
@@ -85,7 +85,7 @@ class SessionIndex:
             return {}
 
         try:
-            with self.path.open("r", encoding="utf-8") as file:
+            with open_private_text(self.path, "r") as file:
                 payload = json.load(file)
         except (OSError, json.JSONDecodeError):
             return {}
@@ -93,8 +93,7 @@ class SessionIndex:
         return payload if isinstance(payload, dict) else {}
 
     def _write(self, records: dict[str, Any]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = self.path.with_suffix(f"{self.path.suffix}.{uuid4()}.tmp")
-        with tmp_path.open("w", encoding="utf-8") as file:
-            json.dump(records, file, ensure_ascii=False)
-        tmp_path.replace(self.path)
+        write_private_text_atomic(
+            self.path,
+            json.dumps(records, ensure_ascii=False),
+        )

@@ -13,14 +13,11 @@ from app.core.config import settings
 from app.core.encoding import base64_urldecode, base64_urlencode
 
 STATE_TTL_SECONDS = 600
+OAUTH_STATE_MAX_CHARS = 8_192
 
 
 def _state_secret() -> bytes:
-    secret = (
-        settings.oauth_state_secret
-        or settings.api_token
-        or settings.github_client_secret
-    )
+    secret = settings.oauth_state_secret
     if not secret:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -38,6 +35,8 @@ def encode_oauth_state(payload: dict[str, Any]) -> str:
 
 
 def decode_oauth_state(value: str) -> dict[str, Any]:
+    if len(value) > OAUTH_STATE_MAX_CHARS:
+        raise HTTPException(status_code=400, detail="Invalid OAuth state")
     try:
         body, signature = value.split(".", 1)
     except ValueError as exc:
@@ -59,17 +58,32 @@ def decode_oauth_state(value: str) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
 
     issued_at = payload.get("iat")
-    if not isinstance(issued_at, int) or time.time() - issued_at > STATE_TTL_SECONDS:
+    now = time.time()
+    if (
+        not isinstance(issued_at, int)
+        or issued_at > now + 60
+        or now - issued_at > STATE_TTL_SECONDS
+    ):
         raise HTTPException(status_code=400, detail="Expired OAuth state")
     return payload
 
 
 def validate_cli_redirect_uri(uri: str) -> str:
-    parsed = parse.urlparse(uri)
+    try:
+        parsed = parse.urlparse(uri)
+        hostname = parsed.hostname
+        parsed.port
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid CLI redirect_uri") from exc
     if (
         parsed.scheme != "http"
-        or parsed.hostname not in {"127.0.0.1", "localhost"}
+        or hostname not in {"127.0.0.1", "localhost"}
         or parsed.path != "/callback"
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+        or parsed.username is not None
+        or parsed.password is not None
     ):
         raise HTTPException(status_code=400, detail="Invalid CLI redirect_uri")
     return uri
@@ -79,8 +93,12 @@ def validate_web_return_to(uri: str | None) -> str:
     if not uri:
         return settings.app_url.rstrip("/")
 
-    parsed = parse.urlparse(uri)
-    app = parse.urlparse(settings.app_url)
+    try:
+        parsed = parse.urlparse(uri)
+        app = parse.urlparse(settings.app_url)
+        parsed.port
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid web return_to URL") from exc
     if parsed.scheme != app.scheme or parsed.netloc != app.netloc:
         raise HTTPException(status_code=400, detail="Invalid web return_to URL")
     if parsed.path.startswith("//"):

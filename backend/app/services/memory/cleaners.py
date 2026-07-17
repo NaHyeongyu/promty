@@ -330,10 +330,9 @@ def clean_project_memory_response(value: Any, context: dict[str, Any]) -> dict[s
             fallback_ids=fallback_ids,
             key="decision",
         ),
-        "instructions_for_future_ai_agents": _clean_string_list(
-            sections.get("instructions_for_future_ai_agents"),
-            limit=None,
-        ),
+        # Model-authored operational instructions must not cross the trust
+        # boundary into a future tool-capable coding agent.
+        "instructions_for_future_ai_agents": [],
         "open_questions": _clean_string_list(sections.get("open_questions"), limit=None),
         "product_goal": truncate(
             sections.get("product_goal"),
@@ -365,11 +364,17 @@ def clean_project_memory_response(value: Any, context: dict[str, Any]) -> dict[s
         body_markdown,
         max_bytes=PROJECT_MEMORY_BODY_MAX_BYTES,
     )
+    warnings = _clean_string_list(parsed.get("warnings"), limit=None)
+    if _clean_string_list(sections.get("instructions_for_future_ai_agents"), limit=1):
+        warnings = [
+            *warnings[: MAX_SEMANTIC_LIST_ITEMS - 1],
+            "Model-generated future-agent instructions were removed pending user review.",
+        ]
     return {
         "body_markdown": body_markdown,
         "confidence": _clean_confidence(parsed.get("confidence"), fallback=0.45),
         "sections": cleaned_sections,
         "snapshot_type": "project_memory",
         "source_memory_ids": _clean_source_ids(parsed.get("source_memory_ids"), fallback_ids),
-        "warnings": _clean_string_list(parsed.get("warnings"), limit=None),
+        "warnings": warnings,
     }

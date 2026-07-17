@@ -537,6 +537,7 @@ export function MemoryPanel({
   data,
   isProjectMemoryGenerationActive = false,
   isProjectMemoryGenerationDelayed = false,
+  onApproveProjectMemory,
   onGenerateProjectMemory,
   onLoadMemoryArtifacts,
   onOpenSession,
@@ -544,17 +545,24 @@ export function MemoryPanel({
   data: ProjectDetailData;
   isProjectMemoryGenerationActive?: boolean;
   isProjectMemoryGenerationDelayed?: boolean;
+  onApproveProjectMemory?: () => Promise<void>;
   onGenerateProjectMemory?: () => Promise<MemoryGenerationResult>;
   onLoadMemoryArtifacts?: (limit: number) => Promise<ProjectMemoryArtifact[]>;
   onOpenSession?: (sessionId: string) => void;
 }) {
   const { t } = useI18n();
   const [loadedArtifacts, setLoadedArtifacts] = useState<ProjectMemoryArtifact[] | null>(null);
+  const [isApprovingForAgents, setIsApprovingForAgents] = useState(false);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
   const displayedArtifacts = loadedArtifacts ?? data.memory.recentArtifacts;
   const projectMemoryArtifact = data.memory.recentArtifacts.find(
     (artifact) =>
       artifact.artifactStage === "project_memory" || artifact.memoryScope === "project",
   );
+  const projectMemoryNeedsApproval = projectMemoryArtifact?.reviewState === "generated";
+  const projectMemoryIsApproved =
+    projectMemoryArtifact?.reviewState === "verified" ||
+    projectMemoryArtifact?.reviewState === "edited";
   const generatedArtifacts = useMemo(
     () =>
       [...displayedArtifacts]
@@ -752,6 +760,23 @@ export function MemoryPanel({
     }
   };
 
+  const approveForAgentUse = async () => {
+    if (!onApproveProjectMemory || isApprovingForAgents) {
+      return;
+    }
+    setIsApprovingForAgents(true);
+    setApprovalError(null);
+    try {
+      await onApproveProjectMemory();
+    } catch (error) {
+      setApprovalError(
+        error instanceof Error ? error.message : t("memory.approvalFailed"),
+      );
+    } finally {
+      setIsApprovingForAgents(false);
+    }
+  };
+
   return (
     <section className="bh-memory-workspace" aria-label={t("project.memory")}>
       <header className="bh-memory-toolbar">
@@ -873,16 +898,33 @@ export function MemoryPanel({
                     : t("memory.compiledDocument")}
                 </p>
               </div>
-              <span>
-                {projectMemoryArtifact.sourceSessionIds.length > 0
-                  ? `${projectMemoryArtifact.sourceSessionIds.length} source ${
-                      projectMemoryArtifact.sourceSessionIds.length === 1
-                        ? "session"
-                        : "sessions"
-                    }`
-                  : t("memory.compiled")}
-              </span>
+              <div className="bh-memory-agent-approval">
+                <span>
+                  {projectMemoryArtifact.sourceSessionIds.length > 0
+                    ? `${projectMemoryArtifact.sourceSessionIds.length} source ${
+                        projectMemoryArtifact.sourceSessionIds.length === 1
+                          ? "session"
+                          : "sessions"
+                      }`
+                    : t("memory.compiled")}
+                </span>
+                {projectMemoryNeedsApproval && onApproveProjectMemory ? (
+                  <button
+                    disabled={isApprovingForAgents}
+                    onClick={() => void approveForAgentUse()}
+                    type="button"
+                  >
+                    <CheckCircle2 aria-hidden="true" size={15} />
+                    {isApprovingForAgents
+                      ? t("memory.approvingForAgents")
+                      : t("memory.approveForAgents")}
+                  </button>
+                ) : projectMemoryIsApproved ? (
+                  <small>{t("memory.approvedForAgents")}</small>
+                ) : null}
+              </div>
             </div>
+            {approvalError ? <p role="alert">{approvalError}</p> : null}
             <MarkdownContent
               className="bh-markdown-preview bh-memory-project-document"
               emptyLabel={t("memory.noCompiled")}

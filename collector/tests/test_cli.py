@@ -90,6 +90,15 @@ def test_profile_uses_isolated_config_queue_and_uploader_files(
     assert args.log_path == str(profile_root / "uploader.log")
 
 
+def test_automatic_updates_require_explicit_opt_in() -> None:
+    parser = build_parser()
+
+    assert parser.parse_args(["upload"]).no_auto_update is True
+    assert parser.parse_args(["start-uploader"]).no_auto_update is True
+    assert parser.parse_args(["init"]).no_auto_update is True
+    assert parser.parse_args(["upload", "--auto-update"]).no_auto_update is False
+
+
 def test_profile_does_not_override_explicit_urls_or_paths() -> None:
     args = build_parser().parse_args(
         [
@@ -219,6 +228,63 @@ def test_doctor_profiles_checks_each_profile_independently(
     output = capsys.readouterr().out
     assert "dev/backend: ok" in output
     assert "prod/backend: ok" in output
+
+
+def test_profile_capture_restarts_a_stopped_uploader(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile_root = tmp_path / "profiles" / "dev"
+    profile_root.mkdir(parents=True)
+    (profile_root / "config.json").write_text("{}", encoding="utf-8")
+    started: list[argparse.Namespace] = []
+    monkeypatch.setattr(cli, "_read_pid", lambda _path: None)
+    monkeypatch.setattr(cli, "start_uploader", lambda args: started.append(args) or 0)
+
+    cli._ensure_uploader_for_capture_queue(profile_root / "events")
+
+    assert len(started) == 1
+    assert Path(started[0].config_path) == profile_root / "config.json"
+    assert Path(started[0].queue_path) == profile_root / "events"
+    assert Path(started[0].pid_path) == profile_root / "uploader.pid"
+
+
+def test_profile_capture_does_not_restart_a_running_uploader(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile_root = tmp_path / "profiles" / "dev"
+    profile_root.mkdir(parents=True)
+    (profile_root / "config.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(cli, "_read_pid", lambda _path: 123)
+    monkeypatch.setattr(cli, "_pid_is_running", lambda _pid: True)
+    monkeypatch.setattr(
+        cli,
+        "start_uploader",
+        lambda _args: pytest.fail("running uploader must not be restarted"),
+    )
+
+    cli._ensure_uploader_for_capture_queue(profile_root / "events")
+
+
+def test_profile_capture_keeps_event_safe_when_restart_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    profile_root = tmp_path / "profiles" / "dev"
+    profile_root.mkdir(parents=True)
+    (profile_root / "config.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(cli, "_read_pid", lambda _path: None)
+    monkeypatch.setattr(
+        cli,
+        "start_uploader",
+        lambda _args: (_ for _ in ()).throw(RuntimeError("spawn failed")),
+    )
+
+    cli._ensure_uploader_for_capture_queue(profile_root / "events")
+
+    assert "spawn failed" in capsys.readouterr().err
 
 
 def test_runtime_launcher_uses_a_durable_copy(

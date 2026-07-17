@@ -7,8 +7,8 @@ import type {
 } from "../workspace/types";
 import {
   isMockGithubUnlinkedProject,
-  mockGithubUnlinkedProjectDetail,
 } from "../workspace/previewData";
+import { figmaMockProjectDetail } from "../workspace/figmaPreviewData";
 import type {
   UrlNavigationState,
   UrlNavigationWriteMode,
@@ -44,25 +44,38 @@ export function useWorkspaceAdminEffect({
   const navigateWorkspaceRef = useLatestRef(navigateWorkspace);
 
   useEffect(() => {
-    if (authStatus !== "authenticated" || activeItem !== "admin") {
+    if (authStatus !== "authenticated") {
       return;
     }
     if (!currentUserIsAdmin) {
-      navigateWorkspaceRef.current(
-        {
-          activeItem: "projects",
-          repositoryFileContentPath: null,
-          selectedProjectId: null,
-          selectedProjectRouteKey: null,
-        },
-        "replace",
-      );
+      if (activeItem === "admin") {
+        navigateWorkspaceRef.current(
+          {
+            activeItem: "projects",
+            repositoryFileContentPath: null,
+            selectedProjectId: null,
+            selectedProjectRouteKey: null,
+          },
+          "replace",
+        );
+      }
       return;
     }
 
     const controller = new AbortController();
     void loadAdminOverviewRef.current(controller.signal);
-    return () => controller.abort();
+    const refresh = () => {
+      if (document.visibilityState === "visible") {
+        void loadAdminOverviewRef.current();
+      }
+    };
+    const interval = window.setInterval(refresh, 60_000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, [
     activeItem,
     authStatus,
@@ -252,7 +265,7 @@ export function useWorkspaceProjectResourceEffects({
     }
 
     if (isMockGithubUnlinkedProject(selectedProjectId) && selectedProject) {
-      setProjectDetailRef.current(mockGithubUnlinkedProjectDetail(selectedProject));
+      setProjectDetailRef.current(figmaMockProjectDetail(selectedProject));
       clearProjectFilesRef.current();
       clearRepositoryBrowserStateRef.current();
       return;

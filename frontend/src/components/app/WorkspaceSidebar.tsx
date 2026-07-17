@@ -20,11 +20,13 @@ import { BrandLockup } from "./Branding";
 
 export type CollectorSidebarStatus = {
   detail: string;
-  tone: "attention" | "connected" | "muted";
+  tone: "attention" | "connected" | "danger" | "muted";
+  updateAvailable: boolean;
 };
 
 export function WorkspaceSidebar({
   activeItem,
+  adminAlertCount,
   canUseAdmin,
   collectorStatus,
   currentUser,
@@ -39,6 +41,7 @@ export function WorkspaceSidebar({
   selectedProjectId,
 }: {
   activeItem: SidebarItemId;
+  adminAlertCount: number;
   canUseAdmin: boolean;
   collectorStatus: CollectorSidebarStatus;
   currentUser: AuthUser | null;
@@ -212,6 +215,8 @@ export function WorkspaceSidebar({
           {canUseAdmin ? (
             <SidebarNavItem
               active={activeItem === "admin"}
+              ariaLabel={adminAlertCount > 0 ? `${t("nav.admin")}, ${adminAlertCount}` : t("nav.admin")}
+              badge={adminAlertCount > 0 ? adminAlertCount : undefined}
               icon={Gauge}
               label={t("nav.admin")}
               onClick={() => selectItem("admin")}
@@ -233,6 +238,9 @@ export function WorkspaceSidebar({
               <strong>{t("nav.collector")}</strong>
               <small>{collectorStatus.detail}</small>
             </span>
+            {collectorStatus.updateAvailable ? (
+              <em className="sidebar-collector-update-badge">{t("collector.updateAvailable")}</em>
+            ) : null}
           </button>
 
           <a

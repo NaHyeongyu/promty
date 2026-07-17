@@ -75,9 +75,15 @@ class AdminProjectResponse(StrictResponse):
     owner: AdminOwnerResponse
     project_url: str | None
     prompt_count: int
+    save_count: int
+    saves_7d: int
     slug: str
     tags: list[str]
     updated_at: str | None
+    view_count: int
+    views_7d: int
+    unique_viewers_7d: int
+    weekly_popularity_score: float
     visibility: Literal["private", "public"]
 
 
@@ -272,10 +278,45 @@ class AdminDisconnectGithubResponse(StrictResponse):
 
 class AdminActionItemResponse(StrictResponse):
     area: str
+    condition_hash: str
     count: int | None
     detail: str
+    key: str
     severity: str
+    snoozed_until: str | None
+    state: Literal["read", "snoozed", "unread"]
+    target: str
     title: str
+    window: str
+
+
+class AdminActionSummaryResponse(StrictResponse):
+    active: int
+    read: int
+    resolved: int
+    snoozed: int
+    unread: int
+
+
+class AdminAlertStateResponse(StrictResponse):
+    condition_hash: str
+    key: str
+    snoozed_until: str | None
+    state: Literal["read", "resolved", "snoozed"]
+
+
+class AdminSupportInquiryResponse(StrictResponse):
+    category: str
+    created_at: str | None
+    id: str
+    message: str
+    notification_error: str | None
+    notification_status: str
+    requester_email: str
+    requester_username: str
+    status: Literal["new", "in_progress", "resolved"]
+    subject: str
+    updated_at: str | None
 
 
 class AdminSessionGapProjectResponse(StrictResponse):
@@ -320,14 +361,19 @@ class AdminOverviewMetricsResponse(StrictResponse):
     events_24h: int
     events_7d: int
     failed_jobs: int
+    failed_support_notifications: int
     github_connections: int
     memory_artifacts: int
     memory_artifacts_24h: int
     pending_jobs: int
     pending_memory_drafts: int
+    open_support_inquiries: int
     projects: int
     projects_without_activity: int
     projects_without_repo: int
+    public_project_views: int
+    public_project_views_24h: int
+    public_project_views_7d: int
     prompts: int
     prompts_24h: int
     responses: int
@@ -336,6 +382,7 @@ class AdminOverviewMetricsResponse(StrictResponse):
     sessions: int
     stale_jobs: int
     tracked_files: int
+    unique_public_viewers_7d: int
     users: int
 
 
@@ -380,6 +427,23 @@ class AdminRecentProjectCountsResponse(StrictResponse):
     memory: int
     prompts: int
     sessions: int
+    views: int
+
+
+class AdminTopViewedProjectResponse(StrictResponse):
+    id: str
+    name: str
+    owner_username: str
+    view_count: int
+    views_7d: int
+
+
+class AdminViewAnalyticsResponse(StrictResponse):
+    top_projects: list[AdminTopViewedProjectResponse]
+    total_views: int
+    unique_viewers_7d: int
+    views_24h: int
+    views_7d: int
 
 
 class AdminRecentProjectResponse(StrictResponse):
@@ -452,6 +516,7 @@ class AdminOverviewSystemResponse(StrictResponse):
 
 class AdminOverviewResponse(StrictResponse):
     action_items: list[AdminActionItemResponse]
+    action_summary: AdminActionSummaryResponse
     ai_activity: AdminAiActivityResponse
     breakdowns: AdminBreakdownsResponse
     generated_at: str | None
@@ -464,3 +529,4 @@ class AdminOverviewResponse(StrictResponse):
     recent_users: list[AdminRecentUserResponse]
     risks: list[AdminRiskResponse]
     system: AdminOverviewSystemResponse
+    view_analytics: AdminViewAnalyticsResponse

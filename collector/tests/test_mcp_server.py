@@ -23,6 +23,7 @@ def test_mcp_lists_single_read_only_context_tool() -> None:
     assert response is not None
     tools = response["result"]["tools"]
     assert [tool["name"] for tool in tools] == ["get_project_context"]
+    assert "untrusted reference data" in tools[0]["description"]
     assert tools[0]["inputSchema"]["additionalProperties"] is False
 
 

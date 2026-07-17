@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -12,16 +12,19 @@ from app.core.security import require_admin_user
 from app.db.session import get_db
 from app.models.users import User
 from app.schemas.admin import (
+    AdminAlertStateRequest,
     AdminCollectorTokenCreateRequest,
     AdminConfirmationRequest,
     AdminEventExportRequest,
     AdminProjectCreateRequest,
     AdminProjectExportRequest,
     AdminProjectUpdateRequest,
+    AdminSupportInquiryStatusRequest,
     AdminUserSuspendRequest,
 )
 from app.schemas.account import CollectorTokenCreateResponse, CollectorTokenResponse
 from app.schemas.admin_responses import (
+    AdminAlertStateResponse,
     AdminAuditLogResponse,
     AdminCancelJobResponse,
     AdminDeleteProjectResponse,
@@ -39,17 +42,24 @@ from app.schemas.admin_responses import (
     AdminRevokeAllTokensResponse,
     AdminSuspendUserResponse,
     AdminSystemResponse,
+    AdminSupportInquiryResponse,
     AdminUserResponse,
 )
 from app.services.admin.control_center import (
     admin_audit_logs_response,
     admin_projects_response,
+    admin_support_inquiries_response,
     admin_users_response,
     disconnect_admin_github_response,
     revoke_admin_collector_token_response,
     revoke_all_admin_collector_tokens_response,
+    update_admin_support_inquiry_status,
 )
-from app.services.admin.dashboard import OPERATIONAL_RISK_KEYS, admin_overview_response
+from app.services.admin.dashboard import (
+    OPERATIONAL_RISK_KEYS,
+    admin_overview_response,
+    set_admin_alert_state,
+)
 from app.services.admin.operations import (
     admin_events_response,
     admin_memory_jobs_response,
@@ -72,10 +82,42 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 @router.get("/overview", response_model=AdminOverviewResponse)
 def read_admin_overview(
-    _admin_user: User = Depends(require_admin_user),
+    admin_user: User = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    return admin_overview_response(db)
+    return admin_overview_response(db, admin_user_id=admin_user.id)
+
+
+@router.put(
+    "/alerts/{alert_key}/state",
+    response_model=AdminAlertStateResponse,
+)
+def update_admin_alert_state(
+    alert_key: str,
+    payload: AdminAlertStateRequest,
+    request: Request,
+    admin_user: User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    _set_audit_action(
+        request,
+        action=f"admin.alert.{payload.state}",
+        resource_id=alert_key,
+        resource_type="admin_alert",
+    )
+    try:
+        response = set_admin_alert_state(
+            db,
+            admin_user_id=admin_user.id,
+            alert_key=alert_key,
+            condition_hash=payload.condition_hash,
+            status=payload.state,
+            snooze_hours=payload.snooze_hours,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+    _commit_or_conflict(db, detail="Administrator alert state could not be saved.")
+    return response
 
 
 @router.get("/users", response_model=AdminPageResponse[AdminUserResponse])
@@ -92,12 +134,74 @@ def read_admin_users(
 @router.get("/projects", response_model=AdminPageResponse[AdminProjectResponse])
 def read_admin_projects(
     query: str | None = Query(default=None, max_length=255),
+    sort: Literal["popularity", "recent", "saves", "views", "views_7d"] = Query(
+        default="recent"
+    ),
+    visibility: Literal["all", "private", "public"] = Query(default="all"),
     limit: int = Query(default=100, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _admin_user: User = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    return admin_projects_response(db, limit=limit, offset=offset, query=query)
+    return admin_projects_response(
+        db,
+        limit=limit,
+        offset=offset,
+        query=query,
+        sort=sort,
+        visibility=None if visibility == "all" else visibility,
+    )
+
+
+@router.get(
+    "/support-inquiries",
+    response_model=AdminPageResponse[AdminSupportInquiryResponse],
+)
+def read_admin_support_inquiries(
+    inquiry_status: str | None = Query(
+        default=None,
+        alias="status",
+        pattern="^(new|in_progress|resolved)$",
+    ),
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    _admin_user: User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return admin_support_inquiries_response(
+        db,
+        inquiry_status=inquiry_status,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.patch(
+    "/support-inquiries/{inquiry_id}",
+    response_model=AdminSupportInquiryResponse,
+)
+def update_admin_support_inquiry(
+    inquiry_id: UUID,
+    payload: AdminSupportInquiryStatusRequest,
+    request: Request,
+    _admin_user: User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    _set_audit_action(
+        request,
+        action="admin.support_inquiry.update",
+        resource_id=inquiry_id,
+        resource_type="support_inquiry",
+    )
+    response = update_admin_support_inquiry_status(
+        db,
+        inquiry_id=inquiry_id,
+        status=payload.status,
+    )
+    if response is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inquiry not found")
+    _commit_or_conflict(db, detail="Support inquiry could not be updated.")
+    return response
 
 
 @router.get("/jobs", response_model=AdminPageResponse[AdminJobResponse])

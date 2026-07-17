@@ -37,6 +37,7 @@ type ProjectDetailPageProps = {
   isProjectMemoryGenerationDelayed?: boolean;
   isShareCopied?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
+  onApproveProjectMemory?: () => Promise<void>;
   onConnectRepository?: () => void;
   onDeleteProject?: () => Promise<void>;
   onLoadMemoryArtifacts?: (limit: number) => Promise<ProjectMemoryArtifact[]>;
@@ -106,6 +107,7 @@ function ProjectPanel({
   isProjectMemoryGenerationActive,
   isProjectMemoryGenerationDelayed,
   onActivityNavigationChange,
+  onApproveProjectMemory,
   onSharePrompt,
   onGenerateProjectMemory,
   onLoadMemoryArtifacts,
@@ -127,6 +129,7 @@ function ProjectPanel({
   isProjectMemoryGenerationActive?: boolean;
   isProjectMemoryGenerationDelayed?: boolean;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
+  onApproveProjectMemory?: () => Promise<void>;
   onSharePrompt?: (activity: PromptActivityItem) => void;
   onGenerateProjectMemory?: () => Promise<MemoryGenerationResult>;
   onLoadMemoryArtifacts?: (limit: number) => Promise<ProjectMemoryArtifact[]>;
@@ -181,6 +184,7 @@ function ProjectPanel({
         data={data}
         isProjectMemoryGenerationActive={isProjectMemoryGenerationActive}
         isProjectMemoryGenerationDelayed={isProjectMemoryGenerationDelayed}
+        onApproveProjectMemory={onApproveProjectMemory}
         onGenerateProjectMemory={onGenerateProjectMemory}
         onLoadMemoryArtifacts={onLoadMemoryArtifacts}
         onOpenSession={(sessionId) => {
@@ -244,6 +248,7 @@ export function ProjectDetailPage({
   isProjectMemoryGenerationDelayed,
   isShareCopied,
   onActivityNavigationChange,
+  onApproveProjectMemory,
   onGenerateProjectMemory,
   onConnectRepository,
   onDeleteProject,
@@ -290,13 +295,13 @@ export function ProjectDetailPage({
         lastActivityLabel={projectHeaderLastActivityLabel(data)}
         modelNames={projectHeaderModelNames(data)}
         name={data.project.name}
-        onConnectRepository={data.project.repositoryUrl ? undefined : onConnectRepository}
+        onConnectRepository={repositoryUrl ? undefined : onConnectRepository}
         onOpenAllProjects={onOpenAllProjects}
         onProjectSelect={onProjectSelect}
         onShareProject={onShareProject}
         onToggleBookmark={onToggleBookmark}
         projectOptions={projectOptions}
-        repositoryUrl={data.project.repositoryUrl}
+        repositoryUrl={repositoryUrl ?? undefined}
         selectedProjectId={data.project.id}
       />
 
@@ -325,6 +330,7 @@ export function ProjectDetailPage({
           isProjectMemoryGenerationActive={isProjectMemoryGenerationActive}
           isProjectMemoryGenerationDelayed={isProjectMemoryGenerationDelayed}
           onActivityNavigationChange={onActivityNavigationChange}
+          onApproveProjectMemory={onApproveProjectMemory}
           onSharePrompt={onSharePrompt}
           onGenerateProjectMemory={onGenerateProjectMemory}
           onLoadMemoryArtifacts={onLoadMemoryArtifacts}

@@ -10,6 +10,16 @@ class AdminConfirmationRequest(BaseModel):
     confirmation: str = Field(..., min_length=1, max_length=255)
 
 
+class AdminAlertStateRequest(BaseModel):
+    condition_hash: str = Field(..., min_length=64, max_length=64, pattern="^[a-f0-9]{64}$")
+    snooze_hours: int = Field(default=24, ge=1, le=168)
+    state: Literal["read", "resolved", "snoozed"]
+
+
+class AdminSupportInquiryStatusRequest(BaseModel):
+    status: Literal["new", "in_progress", "resolved"]
+
+
 class AdminUserSuspendRequest(AdminConfirmationRequest):
     reason: str = Field(..., min_length=3, max_length=500)
 

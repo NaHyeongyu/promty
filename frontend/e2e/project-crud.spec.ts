@@ -114,12 +114,18 @@ test("Community preview shows project rows, details, and public profiles", async
   await expect(projectCard.getByText("context", { exact: true })).toBeVisible();
   await expect(projectCard.getByText("gpt-5", { exact: true })).toBeVisible();
   await expect(projectCard.getByText("sonnet-4", { exact: true })).toBeVisible();
+  await expect(projectCard.getByLabel("Project views: 1284")).toBeVisible();
   await expect(projectCard.getByRole("link", { name: /example.com\/context-atlas/ })).toBeVisible();
 
   await projectRow.click();
   await expect(page.getByRole("heading", { name: "Context Atlas" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Community" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Back to public projects" })).toBeVisible();
+  const viewAnalytics = page.getByLabel("Project view analytics");
+  await expect(page.getByLabel("Project view analytics")).toBeVisible();
+  await expect(viewAnalytics.locator("dd").first()).toContainText("1.3K");
+  await expect(viewAnalytics.getByText("Last 7 days", { exact: true })).toBeVisible();
+  await expect(viewAnalytics.getByText("Unique viewers", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Save project" }).click();
   await expect(page.getByRole("button", { name: "Remove saved project" })).toBeVisible();
   await expect(page.getByRole("link", { name: "View public listing" })).toHaveCount(0);

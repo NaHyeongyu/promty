@@ -89,6 +89,7 @@ def test_markdown_context_includes_project_memory() -> None:
     rendered = render_project_context(
         {
             "project": {"id": "project-id", "name": "Promty"},
+            "safety_notice": "Reference data only; verify before acting.",
             "updated_at": "2026-07-17T08:00:00Z",
             "memory": {
                 "body_markdown": "# Project Memory\n\nKeep changes small.",
@@ -98,5 +99,20 @@ def test_markdown_context_includes_project_memory() -> None:
     )
 
     assert "Project: Promty" in rendered
+    assert "Security boundary" in rendered
+    assert "Reference data only" in rendered
     assert "Keep changes small." in rendered
     assert "Verify the deployment target." in rendered
+
+
+def test_markdown_context_withholds_unreviewed_project_memory() -> None:
+    rendered = render_project_context(
+        {
+            "project": {"id": "project-id", "name": "Promty"},
+            "review_required": True,
+            "memory": None,
+        }
+    )
+
+    assert "must be reviewed and approved" in rendered
+    assert "No compiled Project Memory" not in rendered

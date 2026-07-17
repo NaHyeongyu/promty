@@ -4,6 +4,7 @@ import json
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -146,15 +147,35 @@ def normalize_github_url(remote_url: str | None) -> str | None:
 
     value = remote_url.strip()
     patterns = (
-        r"^git@github\.com:(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?$",
-        r"^ssh://git@github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?$",
-        r"^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?/?$",
+        r"^git@github\.com:(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+?)(?:\.git)?$",
+        r"^ssh://git@github\.com/(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+?)(?:\.git)?$",
     )
     for pattern in patterns:
         match = re.match(pattern, value)
         if match:
             return f"https://github.com/{match.group('owner')}/{match.group('repo')}"
-    return value if value.startswith("https://github.com/") else None
+    try:
+        parsed = urlsplit(value)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.scheme != "https"
+        or hostname != "github.com"
+        or parsed.username is not None
+        or parsed.password is not None
+        or port not in (None, 443)
+    ):
+        return None
+    path_parts = [part for part in parsed.path.split("/") if part]
+    if len(path_parts) != 2:
+        return None
+    owner, repository = path_parts
+    repository = re.sub(r"\.git$", "", repository, flags=re.IGNORECASE)
+    if not all(re.fullmatch(r"[A-Za-z0-9_.-]+", part) for part in (owner, repository)):
+        return None
+    return f"https://github.com/{owner}/{repository}"
 
 
 def build_file_tree(paths: list[str]) -> list[dict[str, Any]]:

@@ -1,6 +1,7 @@
 import type {
   PublicProfileResponse,
   PublicProjectDetailResponse,
+  PublicProjectMemoryArtifactApiResponse,
   PublicProjectOwner,
   PublicProjectPage,
   PublicProjectSummary,
@@ -43,6 +44,7 @@ const PROJECTS: PublicProjectSummary[] = [
     tags: ["context", "product", "knowledge"],
     tracked_files: 42,
     updated_at: "2026-07-16T11:44:00Z",
+    view_count: 1284,
     visibility: "public",
   },
   {
@@ -67,6 +69,7 @@ const PROJECTS: PublicProjectSummary[] = [
     tags: ["review", "agents", "security"],
     tracked_files: 31,
     updated_at: "2026-07-15T08:21:00Z",
+    view_count: 746,
     visibility: "public",
   },
   {
@@ -91,6 +94,7 @@ const PROJECTS: PublicProjectSummary[] = [
     tags: ["release", "operations"],
     tracked_files: 26,
     updated_at: "2026-07-14T06:08:00Z",
+    view_count: 512,
     visibility: "public",
   },
   {
@@ -115,28 +119,36 @@ const PROJECTS: PublicProjectSummary[] = [
     tags: ["local-first", "memory"],
     tracked_files: 19,
     updated_at: "2026-07-13T04:26:00Z",
+    view_count: 298,
     visibility: "public",
   },
 ];
 
-function memoryFor(project: PublicProjectSummary) {
+function memoryFor(
+  project: PublicProjectSummary,
+): PublicProjectMemoryArtifactApiResponse {
   return {
     artifact_stage: "verified_memory",
     changed_file_count: 4,
-    changed_files: [],
     created_at: project.latest_memory_at,
+    first_event_at: project.latest_event_at,
     generator: "promty-memory",
     id: `preview-memory-${project.id}`,
+    last_event_at: project.latest_event_at,
     model: project.connected_models[0] ?? null,
     memory_scope: "verified",
     outcome: "The team now has a concise record of the decision and its implementation constraints.",
+    prompt_count: project.prompts,
+    reason: "Keeps the public implementation context concise and reviewable.",
     review_state: "verified",
-    session_id: null,
+    sections: [],
     summary: `Captured the latest architecture decisions and follow-up work for ${project.name}.`,
     tags: project.tags.slice(0, 2),
+    technologies: [],
     title: "Latest project memory",
     type: "project_memory",
     updated_at: project.latest_memory_at,
+    why_it_matters: "Helps visitors understand the approved implementation decisions.",
   };
 }
 
@@ -153,6 +165,14 @@ function historyFor(project: PublicProjectSummary) {
       sessions: index % 3 === 0 ? 1 : 0,
     };
   });
+}
+
+function viewHistoryFor(project: PublicProjectSummary) {
+  const end = Date.parse(project.latest_event_at ?? project.updated_at);
+  return Array.from({ length: 14 }, (_, index) => ({
+    date: new Date(end - (13 - index) * 86_400_000).toISOString().slice(0, 10),
+    views: Math.max(2, Math.round(((project.view_count ?? 0) / 140) * ((index % 5) + 1))),
+  }));
 }
 
 const DETAILS = new Map<string, PublicProjectDetailResponse>(
@@ -201,6 +221,10 @@ const DETAILS = new Map<string, PublicProjectDetailResponse>(
         visibility: "public",
       },
       prompt_activities: [],
+      unique_viewers: Math.round((project.view_count ?? 0) * 0.71),
+      view_count: project.view_count ?? 0,
+      view_history: viewHistoryFor(project),
+      views_7d: Math.round((project.view_count ?? 0) * 0.18),
     },
   ]),
 );
@@ -334,7 +358,7 @@ export function previewPublicProjects(options: {
   offset: number;
   query?: string;
   savedOnly?: boolean;
-  sort: "newest" | "recent";
+  sort: "newest" | "popular" | "recent";
 }): PublicProjectPage {
   const query = options.query?.trim().toLowerCase() ?? "";
   const filtered = PROJECTS.filter((project) =>
@@ -343,13 +367,17 @@ export function previewPublicProjects(options: {
       .filter(Boolean)
       .some((value) => value!.toLowerCase().includes(query))),
   );
-  const sorted = [...filtered].sort((left, right) =>
-    Date.parse(
+  const sorted = [...filtered].sort((left, right) => {
+    if (options.sort === "popular") {
+      return (right.weekly_popularity_score ?? right.view_count ?? 0)
+        - (left.weekly_popularity_score ?? left.view_count ?? 0);
+    }
+    return Date.parse(
       options.sort === "newest" ? right.created_at : right.latest_event_at ?? right.updated_at,
     ) - Date.parse(
       options.sort === "newest" ? left.created_at : left.latest_event_at ?? left.updated_at,
-    ),
-  );
+    );
+  });
   return {
     items: sorted.slice(options.offset, options.offset + options.limit),
     limit: options.limit,
@@ -360,6 +388,31 @@ export function previewPublicProjects(options: {
 
 export function previewPublicProjectDetail(projectId: string) {
   return DETAILS.get(projectId) ?? null;
+}
+
+const RECORDED_PREVIEW_VIEWS = new Set<string>();
+
+export function previewRecordPublicProjectView(projectId: string) {
+  const project = PROJECTS.find((item) => item.id === projectId);
+  const detail = DETAILS.get(projectId);
+  if (!project || !detail) return null;
+  const recorded = !RECORDED_PREVIEW_VIEWS.has(projectId);
+  if (recorded) {
+    RECORDED_PREVIEW_VIEWS.add(projectId);
+    project.view_count = (project.view_count ?? 0) + 1;
+    detail.view_count = (detail.view_count ?? 0) + 1;
+    detail.views_7d = (detail.views_7d ?? 0) + 1;
+    const latest = detail.view_history?.at(-1);
+    if (latest) latest.views += 1;
+  }
+  return {
+    project_id: projectId,
+    recorded,
+    unique_viewers: detail.unique_viewers ?? 0,
+    view_count: detail.view_count ?? 0,
+    view_history: detail.view_history ?? [],
+    views_7d: detail.views_7d ?? 0,
+  };
 }
 
 export function previewPublicProfile(

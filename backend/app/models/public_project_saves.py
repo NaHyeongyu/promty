@@ -15,6 +15,7 @@ class PublicProjectSave(Base):
     __tablename__ = "public_project_saves"
     __table_args__ = (
         Index("ix_public_project_saves_project_id", "project_id"),
+        Index("ix_public_project_saves_project_created_at", "project_id", "created_at"),
     )
 
     user_id: Mapped[UUID] = mapped_column(

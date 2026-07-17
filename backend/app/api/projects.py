@@ -29,6 +29,7 @@ from app.schemas.project_responses import (
     PublicProjectDetailResponse,
     PublicProjectListResponse,
     PublicProjectSaveResponse,
+    PublicProjectViewResponse,
     PublicProfileResponse,
 )
 from app.services.github_repositories import (
@@ -51,6 +52,7 @@ from app.services.projects.public import (
     read_public_profile_response,
     update_public_project_save,
 )
+from app.services.projects.analytics import record_public_project_view
 from app.services.projects.views import (
     project_for_user as _project_for_user,
     read_project_detail_response,
@@ -94,7 +96,7 @@ def create_project(
 def list_public_projects(
     query: str | None = Query(default=None, max_length=120),
     saved_only: bool = Query(default=False),
-    sort: Literal["newest", "recent"] = Query(default="recent"),
+    sort: Literal["newest", "popular", "recent"] = Query(default="popular"),
     limit: int = Query(default=24, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     current_user: User = Depends(require_web_user),
@@ -155,6 +157,21 @@ def save_public_project(
         is_saved=payload.is_saved,
     )
     _commit_or_conflict(db, detail="Public project save could not be updated.")
+    return response
+
+
+@router.post("/public/{project_id}/view", response_model=PublicProjectViewResponse)
+def track_public_project_view(
+    project_id: UUID,
+    current_user: User = Depends(require_web_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    response = record_public_project_view(
+        db,
+        current_user=current_user,
+        project_id=project_id,
+    )
+    _commit_or_conflict(db, detail="Public project view could not be recorded.")
     return response
 
 

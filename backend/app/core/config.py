@@ -66,9 +66,17 @@ def _int_env(name: str, default: int) -> int:
         return default
 
 
-def _bounded_int_env(name: str, default: int, *, minimum: int) -> int:
+def _bounded_int_env(
+    name: str,
+    default: int,
+    *,
+    minimum: int,
+    maximum: int | None = None,
+) -> int:
     value = _int_env(name, default)
-    return value if value >= minimum else default
+    if value < minimum or (maximum is not None and value > maximum):
+        return default
+    return value
 
 
 def _str_env_any(names: tuple[str, ...], default: str) -> str:
@@ -195,9 +203,11 @@ class Settings:
         default_factory=lambda: _int_env("PROMPTHUB_RESPONSE_MAX_CHARS", 50000)
     )
     event_batch_max_body_bytes: int = field(
-        default_factory=lambda: _int_env(
+        default_factory=lambda: _bounded_int_env(
             "PROMPTHUB_EVENT_BATCH_MAX_BODY_BYTES",
-            33_554_432,
+            8_388_608,
+            minimum=1,
+            maximum=8_388_608,
         )
     )
     gemini_api_key: str | None = field(
@@ -499,8 +509,12 @@ class Settings:
     jwt_issuer: str = os.environ.get("PROMPTHUB_JWT_ISSUER", "prompthub")
     jwt_audience: str = os.environ.get("PROMPTHUB_JWT_AUDIENCE", "prompthub-web")
     access_token_ttl_seconds: int = field(
-        # Set PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS=15552000 for a 180-day web session.
-        default_factory=lambda: _int_env("PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS", 3600)
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS",
+            3600,
+            minimum=300,
+            maximum=28_800,
+        )
     )
     session_cookie_name: str = os.environ.get("PROMPTHUB_SESSION_COOKIE_NAME", "prompthub_session")
     oauth_state_cookie_name: str = os.environ.get(
@@ -556,6 +570,26 @@ class Settings:
             minimum=1,
         )
     )
+    ingest_rate_limit_requests: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_INGEST_RATE_LIMIT_REQUESTS",
+            120,
+            minimum=1,
+        )
+    )
+    ingest_rate_limit_window_seconds: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_INGEST_RATE_LIMIT_WINDOW_SECONDS",
+            60,
+            minimum=1,
+        )
+    )
+    trusted_proxy_cidrs: tuple[str, ...] = field(
+        default_factory=lambda: _csv_env(
+            "PROMPTHUB_TRUSTED_PROXY_CIDRS",
+            ("127.0.0.0/8", "::1/128", "172.16.0.0/12"),
+        )
+    )
     support_rate_limit_requests: int = field(
         default_factory=lambda: _bounded_int_env(
             "PROMPTHUB_SUPPORT_RATE_LIMIT_REQUESTS",
@@ -570,15 +604,41 @@ class Settings:
             minimum=1,
         )
     )
-    support_email_provider: str = os.environ.get(
-        "PROMPTHUB_SUPPORT_EMAIL_PROVIDER",
-        "ses",
-    ).strip().lower()
+    support_email_provider: str = (
+        os.environ.get(
+            "PROMPTHUB_SUPPORT_EMAIL_PROVIDER",
+            "ses",
+        )
+        .strip()
+        .lower()
+    )
     support_notification_emails: tuple[str, ...] = field(
         default_factory=lambda: _csv_env("PROMPTHUB_SUPPORT_NOTIFICATION_EMAILS", ())
     )
     support_from_email: str | None = field(
         default_factory=lambda: _optional_env("PROMPTHUB_SUPPORT_FROM_EMAIL")
+    )
+    buffer_api_key: str | None = field(
+        default_factory=lambda: _optional_env("PROMPTHUB_BUFFER_API_KEY")
+    )
+    buffer_channel_ids_json: str = os.environ.get(
+        "PROMPTHUB_BUFFER_CHANNEL_IDS",
+        "{}",
+    )
+    devto_api_key: str | None = field(
+        default_factory=lambda: _optional_env("PROMPTHUB_DEVTO_API_KEY")
+    )
+    devto_organization_id: int | None = field(
+        default_factory=lambda: _int_env("PROMPTHUB_DEVTO_ORGANIZATION_ID", 0) or None
+    )
+    github_marketing_token: str | None = field(
+        default_factory=lambda: _optional_env("PROMPTHUB_GITHUB_MARKETING_TOKEN")
+    )
+    github_marketing_repository_id: str | None = field(
+        default_factory=lambda: _optional_env("PROMPTHUB_GITHUB_MARKETING_REPOSITORY_ID")
+    )
+    github_marketing_discussion_category_id: str | None = field(
+        default_factory=lambda: _optional_env("PROMPTHUB_GITHUB_MARKETING_DISCUSSION_CATEGORY_ID")
     )
     admin_audit_retention_days: int = field(
         default_factory=lambda: _bounded_int_env(
