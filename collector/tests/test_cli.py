@@ -26,7 +26,15 @@ from runtime_install import install_runtime
 def test_parser_exposes_expected_commands() -> None:
     parser = build_parser()
 
-    for command in ("capture", "capture-changes", "doctor", "init", "upload"):
+    for command in (
+        "capture",
+        "capture-changes",
+        "doctor",
+        "init",
+        "install-hooks",
+        "uninstall-hooks",
+        "upload",
+    ):
         args = parser.parse_args([command])
         assert args.command == command
 
@@ -289,9 +297,10 @@ def test_install_hooks_uses_durable_launcher(
         assert str(Path(cli.__file__).resolve()) not in commands[0]
 
 
-def test_init_installs_codex_and_claude_hooks_by_default(
+def test_init_installs_codex_and_claude_hooks_when_explicitly_selected(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     repo_root = tmp_path / "repository"
     repo_root.mkdir()
@@ -308,6 +317,8 @@ def test_init_installs_codex_and_claude_hooks_by_default(
     args = build_parser().parse_args(
         [
             "init",
+            "--tool",
+            "all",
             "--repo-root",
             str(repo_root),
             "--skip-login",
@@ -321,6 +332,10 @@ def test_init_installs_codex_and_claude_hooks_by_default(
     assert args.func(args) == 0
     assert runtime_install_count == 2
 
+    output = capsys.readouterr().out
+    assert f"Repository scope: Promty hooks apply only to {repo_root}." in output
+    assert "other repositories are not collected automatically" in output
+
     for tool, settings_path, specs in (
         ("codex-cli", Path(".codex/hooks.json"), CODEX_HOOKS),
         ("claude-code", Path(".claude/settings.local.json"), CLAUDE_HOOKS),
@@ -332,6 +347,33 @@ def test_init_installs_codex_and_claude_hooks_by_default(
             assert len(commands) == 1
             assert str(launcher_path) in commands[0]
             assert f"--tool {tool}" in commands[0]
+
+
+def test_init_defaults_to_codex_without_changing_claude(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo_root = tmp_path / "repository"
+    repo_root.mkdir()
+    monkeypatch.setenv("PROMTY_HOME", str(tmp_path / "promty-home"))
+    monkeypatch.setenv("PROMTY_PYTHON", sys.executable)
+    monkeypatch.setattr(cli, "_git_root", lambda _: repo_root)
+    args = build_parser().parse_args(
+        [
+            "init",
+            "--repo-root",
+            str(repo_root),
+            "--skip-login",
+            "--skip-uploader",
+        ]
+    )
+
+    assert args.tool == "codex-cli"
+    assert args.func(args) == 0
+    assert (repo_root / ".codex" / "hooks.json").is_file()
+    assert not (repo_root / ".claude" / "settings.local.json").exists()
+    assert "Claude Code settings will not be changed" in capsys.readouterr().out
 
 
 def test_init_profiles_install_one_mirrored_hook_and_start_two_uploaders(
@@ -426,6 +468,8 @@ def test_init_attempts_both_hooks_and_fails_on_partial_installation(
     args = build_parser().parse_args(
         [
             "init",
+            "--tool",
+            "all",
             "--repo-root",
             str(repo_root),
             "--skip-login",
@@ -440,6 +484,83 @@ def test_init_attempts_both_hooks_and_fails_on_partial_installation(
     assert "Promty init incomplete" in output.err
     assert "Promty init complete" not in output.out
     assert (repo_root / ".claude" / "settings.local.json").is_file()
+
+
+def test_uninstall_hooks_removes_only_selected_promty_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo_root = tmp_path / "repository"
+    claude_settings_path = repo_root / ".claude" / "settings.local.json"
+    codex_hooks_path = repo_root / ".codex" / "hooks.json"
+    claude_settings_path.parent.mkdir(parents=True)
+    codex_hooks_path.parent.mkdir(parents=True)
+    claude_settings_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "SessionStart": [
+                        {
+                            "hooks": [
+                                {
+                                    "command": "promty capture --tool claude-code",
+                                    "timeout": 5,
+                                    "type": "command",
+                                }
+                            ]
+                        }
+                    ],
+                    "UserPromptSubmit": [
+                        {
+                            "matcher": "",
+                            "hooks": [
+                                {
+                                    "command": "promty capture --tool claude-code",
+                                    "timeout": 5,
+                                    "type": "command",
+                                },
+                                {
+                                    "command": "./scripts/custom-hook",
+                                    "timeout": 3,
+                                    "type": "command",
+                                },
+                            ],
+                        }
+                    ],
+                },
+                "permissions": {"allow": ["Bash(git status:*)"]},
+            }
+        ),
+        encoding="utf-8",
+    )
+    codex_original = {"hooks": {"Stop": [{"hooks": [{"command": "codex-custom"}]}]}}
+    codex_hooks_path.write_text(json.dumps(codex_original), encoding="utf-8")
+    monkeypatch.setattr(cli, "_git_root", lambda _: repo_root)
+    args = build_parser().parse_args(
+        ["uninstall-hooks", "--tool", "claude-code", "--repo-root", str(repo_root)]
+    )
+
+    assert args.func(args) == 0
+    updated = json.loads(claude_settings_path.read_text(encoding="utf-8"))
+    assert "SessionStart" not in updated["hooks"]
+    assert updated["hooks"]["UserPromptSubmit"] == [
+        {
+            "hooks": [
+                {
+                    "command": "./scripts/custom-hook",
+                    "timeout": 3,
+                    "type": "command",
+                }
+            ],
+            "matcher": "",
+        }
+    ]
+    assert updated["permissions"] == {"allow": ["Bash(git status:*)"]}
+    assert json.loads(codex_hooks_path.read_text(encoding="utf-8")) == codex_original
+    output = capsys.readouterr().out
+    assert "Claude Code: removed 2 Promty hooks" in output
+    assert "Codex CLI settings were not changed" in output
 
 
 def test_doctor_can_check_both_hook_integrations(

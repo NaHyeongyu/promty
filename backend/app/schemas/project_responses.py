@@ -164,6 +164,10 @@ class PublicProjectListResponse(StrictResponse):
     total: int
 
 
+class PublicProfileResponse(PublicProjectListResponse):
+    profile: PublicProjectOwnerResponse
+
+
 class PublicProjectDetailResponse(ProjectDetailResponse):
     is_owner: bool
     owner: PublicProjectOwnerResponse

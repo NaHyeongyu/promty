@@ -28,12 +28,35 @@ test("project CRUD works through the authenticated browser workspace", async ({ 
   const editor = page.getByRole("dialog", { name: "Edit project" });
   await editor.getByLabel("Project URL").fill("https://example.com/e2e-project");
   await editor.getByLabel("Tags").fill("e2e, crud");
-  await editor.getByRole("radio", { name: "Public in Explore" }).click();
+  await editor.getByRole("radio", { name: "Public in Community" }).click();
   await editor.getByRole("button", { name: "Save", exact: true }).click();
 
   await expect(page.getByRole("link", { name: "https://example.com/e2e-project" })).toBeVisible();
   await expect(page.getByText("e2e", { exact: true })).toBeVisible();
   await expect(page.getByText("crud", { exact: true })).toBeVisible();
+
+  await page.getByRole("link", { name: "View public listing" }).click();
+  await expect(page.getByRole("heading", { name: repositoryName })).toBeVisible();
+  await page.getByRole("button", { name: /^View .+'s profile$/ }).click();
+  await expect(page).toHaveURL(/\?view=community&profile=/);
+  const publicProfileUrl = page.url();
+  await expect(page.getByText("Community profile", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: new RegExp(repositoryName) }).click();
+  await expect(page).toHaveURL(new RegExp(`public_project=${created.id}`));
+  await expect(page.getByRole("heading", { name: repositoryName })).toBeVisible();
+
+  await page.getByRole("link", { name: "Overview" }).click();
+  await page.getByRole("button", { name: "Edit", exact: true }).first().click();
+  const privacyEditor = page.getByRole("dialog", { name: "Edit project" });
+  await privacyEditor.getByRole("radio", { name: "Private" }).click();
+  await privacyEditor.getByRole("button", { name: "Save", exact: true }).click();
+
+  await page.goto(publicProfileUrl);
+  await expect(page.getByRole("heading", { name: "No public projects" })).toBeVisible();
+  await expect(page.getByRole("button", { name: new RegExp(repositoryName) })).toHaveCount(0);
+
+  await page.goto(`/?project=${created.id}&tab=overview`);
+  await expect(page.getByRole("heading", { name: repositoryName })).toBeVisible();
 
   await page.getByRole("button", { name: "Edit", exact: true }).first().click();
   page.once("dialog", (dialog) => dialog.accept());
@@ -63,4 +86,43 @@ test("workspace exposes loading, request-error, and not-found states", async ({ 
 
   await page.goto("/definitely-not-a-route");
   await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
+});
+
+
+test("legacy Explore links open the unified Community projects tab", async ({ page }) => {
+  await page.goto("/?view=explore");
+
+  await expect(page.getByRole("heading", { name: "Community" })).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: /Search public projects/ })).toBeVisible();
+  await expect(page.getByRole("tablist")).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Primary navigation" })
+    .getByRole("button", { name: "Explore", exact: true }))
+    .toHaveCount(0);
+  await expect(page).toHaveURL(/\?view=community(?:&|$)/);
+});
+
+
+test("Community preview shows project rows, details, and public profiles", async ({ page }) => {
+  await page.goto("/?view=community&preview=community");
+
+  await expect(page.getByRole("heading", { name: "Community" })).toBeVisible();
+  await expect(page.getByText("Preview data", { exact: true })).toBeVisible();
+  const projectCard = page.getByRole("article", { name: "Context Atlas" });
+  const projectRow = projectCard.getByRole("button", { name: /Context Atlas/ });
+  await expect(projectCard).toBeVisible();
+  await expect(projectCard.getByText("mina.park", { exact: true })).toBeVisible();
+  await expect(projectCard.getByText("context", { exact: true })).toBeVisible();
+  await expect(projectCard.getByText("gpt-5", { exact: true })).toBeVisible();
+  await expect(projectCard.getByText("sonnet-4", { exact: true })).toBeVisible();
+  await expect(projectCard.getByRole("link", { name: /example.com\/context-atlas/ })).toBeVisible();
+
+  await projectRow.click();
+  await expect(page.getByRole("heading", { name: "Context Atlas" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Back to public projects" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Prompt Flows" })).toHaveCount(0);
+  await page.getByRole("button", { name: "View mina.park's profile" }).click();
+
+  await expect(page).toHaveURL(/preview=community.*profile=|profile=.*preview=community/);
+  await expect(page.getByRole("heading", { name: "mina.park" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Context Atlas/ })).toBeVisible();
 });

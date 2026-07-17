@@ -391,10 +391,35 @@ def admin_audit_logs_response(
     *,
     limit: int,
     offset: int,
+    action: str | None = None,
+    outcome: str | None = None,
+    query: str | None = None,
+    resource_type: str | None = None,
 ) -> dict[str, Any]:
-    total = int(db.scalar(select(func.count(AdminAuditLog.id))) or 0)
+    filters: list[Any] = []
+    if action and action.strip():
+        filters.append(AdminAuditLog.action.ilike(f"%{action.strip()}%"))
+    if resource_type and resource_type.strip():
+        filters.append(AdminAuditLog.resource_type == resource_type.strip())
+    if outcome == "success":
+        filters.append(AdminAuditLog.status_code < 400)
+    elif outcome == "error":
+        filters.append(AdminAuditLog.status_code >= 400)
+    if query and query.strip():
+        pattern = f"%{query.strip()}%"
+        filters.append(
+            or_(
+                AdminAuditLog.action.ilike(pattern),
+                AdminAuditLog.actor_username.ilike(pattern),
+                AdminAuditLog.request_path.ilike(pattern),
+                AdminAuditLog.resource_id.ilike(pattern),
+                AdminAuditLog.resource_type.ilike(pattern),
+            )
+        )
+    total = int(db.scalar(select(func.count(AdminAuditLog.id)).where(*filters)) or 0)
     logs = db.scalars(
         select(AdminAuditLog)
+        .where(*filters)
         .order_by(desc(AdminAuditLog.created_at), desc(AdminAuditLog.id))
         .limit(limit)
         .offset(offset)

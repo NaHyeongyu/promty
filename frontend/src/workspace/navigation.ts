@@ -3,8 +3,7 @@ import type {
   ActivityViewId,
   ProjectDetailTabId,
 } from "../components/project-detail";
-import { PUBLISHED_FLOWS_ENABLED } from "../config";
-import type { SidebarItemId } from "./types";
+import type { CommunityContentType, SidebarItemId } from "./types";
 
 export type UrlNavigationWriteMode = "push" | "replace";
 
@@ -12,9 +11,11 @@ export type UrlNavigationState = {
   activityNavigation: ActivityNavigationState;
   activeDetailTab: ProjectDetailTabId;
   activeItem: SidebarItemId;
+  communityContent: CommunityContentType;
   repositoryFileContentPath: string | null;
   selectedProjectId: string | null;
   selectedProjectRouteKey: string | null;
+  selectedPublicProfileId: string | null;
   selectedPublicProjectId: string | null;
   selectedCommunityFlowKey: string | null;
 };
@@ -28,9 +29,11 @@ export const DEFAULT_URL_NAVIGATION_STATE: UrlNavigationState = {
   },
   activeDetailTab: "overview",
   activeItem: "projects",
+  communityContent: "projects",
   repositoryFileContentPath: null,
   selectedProjectId: null,
   selectedProjectRouteKey: null,
+  selectedPublicProfileId: null,
   selectedPublicProjectId: null,
   selectedCommunityFlowKey: null,
 };
@@ -44,8 +47,7 @@ const PROJECT_DETAIL_TAB_IDS = new Set<ProjectDetailTabId>([
 ]);
 const SIDEBAR_ITEM_IDS = new Set<SidebarItemId>([
   "admin",
-  ...(PUBLISHED_FLOWS_ENABLED ? (["community"] as const) : []),
-  "explore",
+  "community",
   "projects",
   "settings",
   "profile",
@@ -169,9 +171,16 @@ function parseSidebarItemId(value: string | null): SidebarItemId {
   if (value === "home" || value === "reviews") {
     return "projects";
   }
+  if (value === "explore") {
+    return "community";
+  }
   return value && SIDEBAR_ITEM_IDS.has(value as SidebarItemId)
     ? (value as SidebarItemId)
     : "projects";
+}
+
+function parseCommunityContentType(): CommunityContentType {
+  return "projects";
 }
 
 function parseProjectDetailTabId(value: string | null): ProjectDetailTabId {
@@ -194,6 +203,7 @@ export function normalizeUrlNavigationState(
   const activeItem = SIDEBAR_ITEM_IDS.has(requestedActiveItem)
     ? requestedActiveItem
     : DEFAULT_URL_NAVIGATION_STATE.activeItem;
+  const communityContent = DEFAULT_URL_NAVIGATION_STATE.communityContent;
   const selectedProjectId =
     activeItem === "projects" ? sanitizeProjectId(state.selectedProjectId) : null;
   const selectedProjectRouteKey =
@@ -202,12 +212,17 @@ export function normalizeUrlNavigationState(
           state.selectedProjectRouteKey ?? state.selectedProjectId,
         )
       : null;
-  const selectedPublicProjectId =
-    activeItem === "explore" ? sanitizeProjectId(state.selectedPublicProjectId) : null;
-  const selectedCommunityFlowKey =
-    activeItem === "community"
-      ? sanitizeProjectRouteKey(state.selectedCommunityFlowKey)
+  const selectedPublicProfileId =
+    activeItem === "community" && communityContent === "projects"
+      ? sanitizeProjectId(state.selectedPublicProfileId)
       : null;
+  const selectedPublicProjectId =
+    activeItem === "community" &&
+    communityContent === "projects" &&
+    !selectedPublicProfileId
+      ? sanitizeProjectId(state.selectedPublicProjectId)
+      : null;
+  const selectedCommunityFlowKey = null;
   const hasSelectedProject = Boolean(selectedProjectId || selectedProjectRouteKey);
   const activeDetailTab = hasSelectedProject
     ? state.activeDetailTab ?? DEFAULT_URL_NAVIGATION_STATE.activeDetailTab
@@ -250,9 +265,11 @@ export function normalizeUrlNavigationState(
     activityNavigation,
     activeDetailTab,
     activeItem,
+    communityContent,
     repositoryFileContentPath,
     selectedProjectId,
     selectedProjectRouteKey,
+    selectedPublicProfileId,
     selectedPublicProjectId,
     selectedCommunityFlowKey,
   };
@@ -261,6 +278,7 @@ export function normalizeUrlNavigationState(
 export function readUrlNavigationState(): UrlNavigationState {
   const params = new URLSearchParams(window.location.search);
   const projectRouteKey = params.get("project");
+  const legacyView = params.get("view");
   return normalizeUrlNavigationState({
     activityNavigation: {
       selectedPromptId: params.get("prompt"),
@@ -269,12 +287,17 @@ export function readUrlNavigationState(): UrlNavigationState {
       view: parseActivityViewId(params.get("activity")),
     },
     activeDetailTab: parseProjectDetailTabId(params.get("tab")),
-    activeItem: projectRouteKey ? "projects" : parseSidebarItemId(params.get("view")),
+    activeItem: projectRouteKey ? "projects" : parseSidebarItemId(legacyView),
+    communityContent:
+      legacyView === "explore"
+        ? "projects"
+        : parseCommunityContentType(),
     repositoryFileContentPath: params.get("file"),
     selectedProjectId: projectRouteKey,
     selectedProjectRouteKey: projectRouteKey,
+    selectedPublicProfileId: params.get("profile"),
     selectedPublicProjectId: params.get("public_project"),
-    selectedCommunityFlowKey: params.get("flow"),
+    selectedCommunityFlowKey: null,
   });
 }
 
@@ -285,18 +308,20 @@ export function buildUrlNavigationSearch(state: UrlNavigationState) {
   if (
     previewMode === "empty-projects" ||
     previewMode === "github-unlinked-project" ||
-    previewMode === "project-loading"
+    previewMode === "project-loading" ||
+    previewMode === "community"
   ) {
     params.set("preview", previewMode);
   }
 
   if (state.activeItem !== "projects") {
     params.set("view", state.activeItem);
-    if (state.activeItem === "explore" && state.selectedPublicProjectId) {
-      params.set("public_project", state.selectedPublicProjectId);
-    }
-    if (state.activeItem === "community" && state.selectedCommunityFlowKey) {
-      params.set("flow", state.selectedCommunityFlowKey);
+    if (state.activeItem === "community") {
+      if (state.selectedPublicProfileId) {
+        params.set("profile", state.selectedPublicProfileId);
+      } else if (state.selectedPublicProjectId) {
+        params.set("public_project", state.selectedPublicProjectId);
+      }
     }
   } else if (state.selectedProjectRouteKey ?? state.selectedProjectId) {
     params.set("project", state.selectedProjectRouteKey ?? state.selectedProjectId ?? "");

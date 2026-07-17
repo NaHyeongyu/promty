@@ -124,6 +124,161 @@
   font-weight: var(--bh-font-weight-label);
 }
 
+.collector-tool-selector {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  gap: var(--bh-space-2);
+}
+
+.collector-tool-selector legend {
+  margin: 0;
+  padding: 0;
+  color: var(--bh-color-text-secondary);
+  font-size: var(--bh-font-size-small);
+  font-weight: var(--bh-font-weight-label);
+  line-height: var(--bh-line-height-heading);
+}
+
+.collector-tool-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--bh-space-2);
+}
+
+.collector-tool-option {
+  position: relative;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--bh-space-2);
+  min-width: 0;
+  min-height: 76px;
+  box-sizing: border-box;
+  border: 1px solid var(--bh-color-border);
+  border-radius: var(--bh-radius-sm);
+  padding: var(--bh-space-3);
+  color: var(--bh-color-text-muted);
+  background: var(--bh-color-background);
+  cursor: pointer;
+  transition:
+    border-color var(--bh-duration-fast),
+    background var(--bh-duration-fast);
+}
+
+.collector-tool-option:hover {
+  border-color: var(--bh-color-border-hover);
+  background: var(--bh-color-surface-hover);
+}
+
+.collector-tool-option[data-active="true"] {
+  border-color: var(--bh-color-primary-border);
+  background: var(--bh-color-primary-subtle);
+}
+
+.collector-tool-option:focus-within {
+  outline: 2px solid var(--bh-color-primary);
+  outline-offset: 2px;
+}
+
+.collector-tool-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.collector-tool-radio {
+  display: inline-grid;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  place-items: center;
+  margin-top: 1px;
+  border: 1px solid var(--bh-color-border-hover);
+  border-radius: 50%;
+  background: var(--bh-color-surface);
+}
+
+.collector-tool-option[data-active="true"] .collector-tool-radio {
+  border: 4px solid var(--bh-color-primary);
+  background: var(--bh-color-background);
+}
+
+.collector-tool-option > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: var(--bh-space-1);
+}
+
+.collector-tool-option strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--bh-space-1);
+  color: var(--bh-color-text-primary);
+  font-size: var(--bh-font-size-small);
+  font-weight: var(--bh-font-weight-label);
+  line-height: var(--bh-line-height-heading);
+}
+
+.collector-tool-option em {
+  border-radius: 999px;
+  padding: 2px 5px;
+  color: var(--bh-color-primary-hover);
+  background: var(--bh-color-primary-subtle);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: var(--bh-font-weight-label);
+  line-height: 1.2;
+}
+
+.collector-tool-option small {
+  color: var(--bh-color-text-muted);
+  font-size: var(--bh-font-size-caption);
+  line-height: var(--bh-line-height-body);
+}
+
+.collector-command-scope {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--bh-space-2);
+  border: 1px solid var(--bh-color-border);
+  border-radius: var(--bh-radius-sm);
+  padding: var(--bh-space-3);
+  background: var(--bh-color-surface-secondary);
+}
+
+.collector-command-scope > svg {
+  margin-top: 1px;
+  color: var(--bh-color-success);
+}
+
+.collector-command-scope > div {
+  display: grid;
+  min-width: 0;
+  gap: var(--bh-space-1);
+}
+
+.collector-command-scope strong {
+  color: var(--bh-color-text-primary);
+  font-size: var(--bh-font-size-caption);
+  font-weight: var(--bh-font-weight-label);
+  line-height: var(--bh-line-height-heading);
+}
+
+.collector-command-scope span {
+  overflow-wrap: anywhere;
+  color: var(--bh-color-text-muted);
+  font-size: var(--bh-font-size-caption);
+  line-height: var(--bh-line-height-body);
+}
+
 .setup-command-surface[data-disabled="true"] {
   opacity: 0.58;
 }
@@ -150,6 +305,19 @@
   color: var(--bh-color-text-muted);
   font-size: var(--bh-font-size-caption);
   line-height: var(--bh-line-height-body);
+}
+
+.collector-scope-note {
+  margin: 0;
+  border-left: 2px solid var(--bh-color-primary);
+  padding-left: var(--bh-space-3);
+  color: var(--bh-color-text-secondary);
+  font-size: var(--bh-font-size-caption);
+  line-height: var(--bh-line-height-body);
+}
+
+.collector-scope-note strong {
+  font-weight: var(--bh-font-weight-label);
 }
 
 .first-event-waiter {
@@ -364,8 +532,13 @@
   }
 
   .repository-connector-modes,
+  .collector-tool-options,
   .repository-url-row {
     grid-template-columns: 1fr;
+  }
+
+  .collector-tool-option {
+    min-height: auto;
   }
 
   .repository-access-gate {

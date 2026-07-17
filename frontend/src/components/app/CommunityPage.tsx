@@ -81,6 +81,7 @@ function CommunitySkeleton() {
 }
 
 export function CommunityPage({
+  embedded = false,
   errorMessage,
   flows,
   isDetailLoading,
@@ -89,12 +90,14 @@ export function CommunityPage({
   onArchiveFlow,
   onReload,
   onSearchChange,
+  onSelectAuthor,
   onSelectFlow,
   onUpdateFlow,
   onUploadAsset,
   searchQuery,
   selectedFlow,
 }: {
+  embedded?: boolean;
   errorMessage?: string | null;
   flows: PublishedFlowSummary[];
   isDetailLoading: boolean;
@@ -103,6 +106,7 @@ export function CommunityPage({
   onArchiveFlow: (flowKey: string) => Promise<PublishedFlowDetailResponse>;
   onReload: () => void;
   onSearchChange: (query: string) => void;
+  onSelectAuthor?: (userId: string) => void;
   onSelectFlow: (flowKey: string) => void;
   onUpdateFlow: (
     flowKey: string,
@@ -213,7 +217,7 @@ export function CommunityPage({
 
   return (
     <>
-      <header className="page-header">
+      {!embedded ? <header className="page-header community-page-header">
         <div>
           <span className="page-kicker">{t("community.kicker")}</span>
           <h1>{t("community.title")}</h1>
@@ -229,7 +233,21 @@ export function CommunityPage({
             value={searchQuery}
           />
         </label>
-      </header>
+      </header> : (
+        <div className="community-flow-controls">
+          <label className="community-search">
+            <Search aria-hidden="true" size={16} strokeWidth={1.5} />
+            <span className="bh-visually-hidden">{t("community.search")}</span>
+            <input
+              maxLength={120}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder={t("community.search")}
+              type="search"
+              value={searchQuery}
+            />
+          </label>
+        </div>
+      )}
 
       {errorMessage && flows.length === 0 ? (
         <EmptyState description={errorMessage} eyebrow={t("nav.community")} icon={Share2} title={t("community.loadFailed")}>
@@ -256,17 +274,11 @@ export function CommunityPage({
                 type="button"
               >
                 <span className="community-flow-card-kicker">
-                  <AiModelBadge className="is-compact" model={flow.model_name ?? flow.tool_name ?? "AI"} />
-                  <span className="community-flow-visibility">{flow.status} · {flow.visibility}</span>
+                  <span>{flow.author.username}</span>
+                  <span>{t("community.promptCount", { count: flow.prompt_count })}</span>
                 </span>
                 <strong>{flow.title}</strong>
                 {flow.summary ? <p>{flow.summary}</p> : null}
-                <div className="community-flow-meta">
-                  <span>{t("community.promptCount", { count: flow.prompt_count })}</span>
-                  <span>{t("community.fileCount", { count: flow.file_count })}</span>
-                  <span>{flow.author.username}</span>
-                </div>
-                {flow.tags.length ? <div className="community-flow-tags">{flow.tags.map((tag) => <span key={`${flow.id}-${tag}`}>{tag}</span>)}</div> : null}
               </button>
             ))}
           </div>
@@ -305,7 +317,20 @@ export function CommunityPage({
                 <dl className="community-flow-stats">
                   <div><dt>{t("community.prompts")}</dt><dd>{selectedFlow.prompt_count}</dd></div>
                   <div><dt>{t("community.files")}</dt><dd>{selectedFlow.file_count}</dd></div>
-                  <div><dt>{t("community.author")}</dt><dd>{selectedFlow.author.username}</dd></div>
+                  <div>
+                    <dt>{t("community.author")}</dt>
+                    <dd>
+                      {selectedFlow.author.id && onSelectAuthor ? (
+                        <button
+                          className="community-author-button"
+                          onClick={() => onSelectAuthor(selectedFlow.author.id!)}
+                          type="button"
+                        >
+                          {selectedFlow.author.username}
+                        </button>
+                      ) : selectedFlow.author.username}
+                    </dd>
+                  </div>
                 </dl>
 
                 {isEditing && selectedFlow.is_owner && editState ? (

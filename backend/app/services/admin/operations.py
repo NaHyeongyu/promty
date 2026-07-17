@@ -9,7 +9,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, delete, desc, func, or_, select, text
+from sqlalchemy import String, and_, cast, delete, desc, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -356,10 +356,29 @@ def admin_memory_jobs_response(
     job_status: str | None,
     limit: int,
     offset: int,
+    query: str | None = None,
 ) -> dict[str, Any]:
     stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
     filters = _batch_filters(job_status, stale_cutoff)
-    total = int(db.scalar(select(func.count(ProjectMemoryBatch.id)).where(*filters)) or 0)
+    if query and query.strip():
+        pattern = f"%{query.strip()}%"
+        filters.append(
+            or_(
+                cast(ProjectMemoryBatch.id, String).ilike(pattern),
+                ProjectMemoryBatch.error_code.ilike(pattern),
+                ProjectMemoryBatch.error_message.ilike(pattern),
+                Project.name.ilike(pattern),
+                Project.slug.ilike(pattern),
+                User.username.ilike(pattern),
+            )
+        )
+    base_statement = (
+        select(ProjectMemoryBatch.id)
+        .join(Project, Project.id == ProjectMemoryBatch.project_id)
+        .join(User, User.id == Project.owner_id)
+        .where(*filters)
+    )
+    total = int(db.scalar(select(func.count()).select_from(base_statement.subquery())) or 0)
     rows = db.execute(
         select(ProjectMemoryBatch, Project, User)
         .join(Project, Project.id == ProjectMemoryBatch.project_id)

@@ -3,7 +3,6 @@ import {
   Bookmark,
   BookOpen,
   ChevronDown,
-  Compass,
   Folder,
   Gauge,
   Inbox,
@@ -34,7 +33,6 @@ export function WorkspaceSidebar({
   onOpenReviewQueue,
   onSelectItem,
   pendingReviewProjectCount,
-  publishedFlowsEnabled,
   savedProjectCount,
   savedProjects,
   selectedProjectId,
@@ -49,7 +47,6 @@ export function WorkspaceSidebar({
   onOpenReviewQueue: (returnFocusElement: HTMLElement | null) => void;
   onSelectItem: (item: SidebarItemId) => void;
   pendingReviewProjectCount: number;
-  publishedFlowsEnabled: boolean;
   savedProjectCount: number;
   savedProjects: Project[];
   selectedProjectId: string | null;
@@ -149,19 +146,11 @@ export function WorkspaceSidebar({
             onClick={() => selectItem("projects")}
           />
           <SidebarNavItem
-            active={activeItem === "explore"}
-            icon={Compass}
-            label={t("nav.explore")}
-            onClick={() => selectItem("explore")}
+            active={activeItem === "community"}
+            icon={Share2}
+            label={t("nav.community")}
+            onClick={() => selectItem("community")}
           />
-          {publishedFlowsEnabled ? (
-            <SidebarNavItem
-              active={activeItem === "community"}
-              icon={Share2}
-              label={t("nav.community")}
-              onClick={() => selectItem("community")}
-            />
-          ) : null}
           <SidebarNavItem
             active={isReviewQueueOpen}
             action

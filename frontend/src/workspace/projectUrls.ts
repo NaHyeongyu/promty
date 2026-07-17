@@ -35,7 +35,8 @@ export function publicProjectUrl(projectId: string) {
   return `${location.origin}${location.pathname}${buildUrlNavigationSearch(
     normalizeUrlNavigationState({
       ...DEFAULT_URL_NAVIGATION_STATE,
-      activeItem: "explore",
+      activeItem: "community",
+      communityContent: "projects",
       selectedPublicProjectId: projectId,
     }),
   )}`;

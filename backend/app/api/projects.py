@@ -27,6 +27,7 @@ from app.schemas.project_responses import (
     ProjectPromptActivitiesResponse,
     PublicProjectDetailResponse,
     PublicProjectListResponse,
+    PublicProfileResponse,
 )
 from app.services.github_repositories import (
     list_github_repositories,
@@ -45,6 +46,7 @@ from app.services.projects.management import (
 from app.services.projects.public import (
     list_public_project_summaries,
     read_public_project_detail_response,
+    read_public_profile_response,
 )
 from app.services.projects.views import (
     project_for_user as _project_for_user,
@@ -104,6 +106,23 @@ def list_public_projects(
     )
 
 
+@router.get("/public/profiles/{user_id}", response_model=PublicProfileResponse)
+def read_public_profile(
+    user_id: UUID,
+    limit: int = Query(default=24, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    current_user: User = Depends(require_web_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return read_public_profile_response(
+        db,
+        current_user=current_user,
+        user_id=user_id,
+        limit=limit,
+        offset=offset,
+    )
+
+
 @router.get("/public/{project_id}", response_model=PublicProjectDetailResponse)
 def read_public_project(
     project_id: UUID,
@@ -115,6 +134,8 @@ def read_public_project(
         current_user=current_user,
         project_id=project_id,
     )
+
+
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_project(
     project_id: UUID,

@@ -1,12 +1,28 @@
 import { useEffect, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { API_URL } from "../../config";
+import { useI18n } from "../../i18n/I18nProvider";
 
-export function setupCommandText() {
-  const profile = window.location.hostname === "promty.org" || window.location.hostname === "www.promty.org"
+export type CollectorInstallTarget = "all" | "claude-code" | "codex-cli";
+
+type SetupCommandContext = {
+  apiUrl: string;
+  hostname: string;
+  origin: string;
+};
+
+export function setupCommandText(
+  tool: CollectorInstallTarget = "codex-cli",
+  context: SetupCommandContext = {
+    apiUrl: API_URL,
+    hostname: window.location.hostname,
+    origin: window.location.origin,
+  },
+) {
+  const profile = context.hostname === "promty.org" || context.hostname === "www.promty.org"
     ? "prod"
     : "dev";
-  return `npx promty-collector init --profile ${profile} --app-url ${window.location.origin} --api-url ${API_URL}`;
+  return `npx promty-collector init --tool ${tool} --profile ${profile} --app-url ${context.origin} --api-url ${context.apiUrl}`;
 }
 
 export function SetupCommandBlock({
@@ -24,6 +40,7 @@ export function SetupCommandBlock({
   label?: string;
   onCopy?: () => void;
 }) {
+  const { t } = useI18n();
   const [copyStatus, setCopyStatus] = useState<"copied" | "error" | "idle">("idle");
 
   useEffect(() => {
@@ -47,10 +64,10 @@ export function SetupCommandBlock({
 
   const hasCopied = copyStatus === "copied";
   const copyLabel = disabled
-    ? disabledReason ?? "Complete the privacy confirmation before copying"
+    ? disabledReason ?? t("collector.copyDisabled")
     : hasCopied
-      ? "Copied"
-      : "Copy command";
+      ? t("common.copied")
+      : t("collector.copyCommand");
 
   return (
     <div className="setup-command-block">
@@ -78,9 +95,9 @@ export function SetupCommandBlock({
         data-error={copyStatus === "error"}
       >
         {copyStatus === "copied"
-          ? "Command copied"
+          ? t("collector.commandCopied")
           : copyStatus === "error"
-            ? "Clipboard access failed. Select the command to copy it."
+            ? t("collector.clipboardFailed")
             : disabledReason ?? helperText ?? ""}
       </span>
     </div>

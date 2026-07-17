@@ -42,8 +42,14 @@ def _safe_public_url(value: str | None) -> str | None:
     return urlunsplit(parsed)
 
 
-def _public_conditions(query: str | None) -> list[Any]:
+def _public_conditions(
+    query: str | None,
+    *,
+    owner_id: UUID | None = None,
+) -> list[Any]:
     conditions: list[Any] = [Project.visibility == "public"]
+    if owner_id is not None:
+        conditions.append(Project.owner_id == owner_id)
     normalized_query = query.strip() if query else ""
     if normalized_query:
         pattern = f"%{normalized_query}%"
@@ -66,8 +72,9 @@ def list_public_project_summaries(
     offset: int,
     query: str | None,
     sort: Literal["newest", "recent"],
+    owner_id: UUID | None = None,
 ) -> dict[str, Any]:
-    conditions = _public_conditions(query)
+    conditions = _public_conditions(query, owner_id=owner_id)
     total = int(
         db.scalar(
             select(func.count(Project.id))
@@ -232,6 +239,40 @@ def list_public_project_summaries(
             }
         )
     return {"items": items, "limit": limit, "offset": offset, "total": total}
+
+
+def read_public_profile_response(
+    db: Session,
+    *,
+    current_user: User,
+    user_id: UUID,
+    limit: int,
+    offset: int,
+) -> dict[str, Any]:
+    profile = db.get(User, user_id)
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Public profile not found",
+        )
+
+    projects = list_public_project_summaries(
+        db,
+        current_user=current_user,
+        limit=limit,
+        offset=offset,
+        query=None,
+        sort="recent",
+        owner_id=profile.id,
+    )
+    return {
+        **projects,
+        "profile": {
+            "avatar_url": profile.avatar_url,
+            "id": str(profile.id),
+            "username": profile.username,
+        },
+    }
 
 
 def read_public_project_detail_response(

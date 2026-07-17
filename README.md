@@ -54,10 +54,15 @@ User-facing setup flow:
 
 ```bash
 python3 collector/src/cli.py init \
+  --tool codex-cli \
   --profile dev
 ```
 
-`init` opens the Promty login page, uses GitHub sign-in to receive a collector token, writes local Promty config, installs Codex and Claude Code hooks, and starts the uploader in the background.
+`init` opens the Promty login page, uses GitHub sign-in to receive a collector token, writes local Promty config, installs the selected AI tool hooks, and starts the uploader in the background. Codex is the safe CLI default; use `--tool claude-code` for Claude Code or explicitly select `--tool all` for both.
+
+The Promty runtime is shared on the machine, but hooks are installed only in the
+repository where `init` runs. Run `init` once in every additional repository you
+want to collect. Repositories without Promty hooks are not collected automatically.
 
 If the local repository has a GitHub `origin` remote, Promty automatically links the captured project to that GitHub repository:
 
@@ -70,7 +75,7 @@ Supported remote formats include `git@github.com:OWNER/REPO.git`, `ssh://git@git
 Run the published npm package with:
 
 ```bash
-npx promty-collector init
+npx promty-collector init --tool codex-cli
 ```
 
 Use `--profile dev` for local development and `--profile prod` for production.
@@ -81,19 +86,19 @@ To store every captured event in both environments, initialize both profiles
 explicitly:
 
 ```bash
-npx promty-collector init --profiles dev,prod
+npx promty-collector init --tool codex-cli --profiles dev,prod
 ```
 
 The collector creates each event once, writes the same event ID to independent
 profile queues, and uploads each queue separately. A backend outage therefore
 does not block or remove the other profile's pending events. Verify all targets
-with `npx promty-collector doctor --profiles dev,prod --tool all`.
+with `npx promty-collector doctor --profiles dev,prod --tool codex-cli`.
 
 The background uploader checks npm for a newer collector every six hours. When
 an update is available, it installs the content-addressed runtime and restarts
 itself with the same profile and queue. Pass `--no-auto-update` to `init` or
 `start-uploader` to opt out. Installations older than `0.1.2` require one manual
-`npx promty-collector@latest init --profile <dev|prod>` upgrade before automatic
+`npx promty-collector@latest init --tool codex-cli --profile <dev|prod>` upgrade before automatic
 updates become available.
 
 The npm package includes the Python collector and uses `python3` by default. Set
@@ -174,6 +179,12 @@ Install or repair Claude Code hooks without logging in:
 
 ```bash
 python3 collector/src/cli.py install-hooks --tool claude-code
+```
+
+Remove only Promty's Claude Code hooks while preserving unrelated Claude settings:
+
+```bash
+python3 collector/src/cli.py uninstall-hooks --tool claude-code
 ```
 
 Run local diagnostics:
@@ -420,8 +431,13 @@ docker compose up --build
 ```
 
 The frontend is available at `http://127.0.0.1:5173` and the API readiness check at
-`http://127.0.0.1:8011/health/ready`. To run only PostgreSQL and manage processes on
-the host instead:
+`http://127.0.0.1:8011/health/ready`.
+
+Use the isolated Community UI preview at
+`http://127.0.0.1:5173/?view=community&preview=community`. It supplies local mock
+projects and public profiles without writing them to PostgreSQL.
+
+To run only PostgreSQL and manage processes on the host instead:
 
 ```bash
 docker compose up -d postgres

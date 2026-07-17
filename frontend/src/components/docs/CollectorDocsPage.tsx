@@ -18,19 +18,23 @@ import { BrandLogo } from "../app/Branding";
 import "./collector-docs.css";
 
 type DocsAudience = "ai" | "human";
+type DocsInstallTarget = "all" | "claude-code" | "codex-cli";
 
-const LOCAL_COMMAND =
-  "npx promty-collector init --profile dev";
-const PRODUCTION_COMMAND =
-  "npx promty-collector init --profile prod";
-const MULTI_PROFILE_COMMAND =
-  "npx promty-collector init --profiles dev,prod";
+const TOOL_LABELS: Record<DocsInstallTarget, string> = {
+  "codex-cli": "Codex",
+  "claude-code": "Claude Code",
+  all: "Codex + Claude Code",
+};
 
-function currentSetupCommand() {
+function profileSetupCommand(profile: "dev" | "prod", tool: DocsInstallTarget) {
+  return `npx promty-collector init --tool ${tool} --profile ${profile}`;
+}
+
+function currentSetupCommand(tool: DocsInstallTarget) {
   const profile = window.location.hostname === "promty.org" || window.location.hostname === "www.promty.org"
     ? "prod"
     : "dev";
-  return `npx promty-collector init --profile ${profile} --app-url ${window.location.origin} --api-url ${API_URL}`;
+  return `npx promty-collector init --tool ${tool} --profile ${profile} --app-url ${window.location.origin} --api-url ${API_URL}`;
 }
 
 export function CollectorDocsPage({
@@ -73,7 +77,11 @@ function DocsHeader({ audience }: { audience: DocsAudience }) {
 }
 
 function HumanCollectorGuide() {
-  const setupCommand = currentSetupCommand();
+  const [installTarget, setInstallTarget] = useState<DocsInstallTarget>("codex-cli");
+  const setupCommand = currentSetupCommand(installTarget);
+  const selectedTools = installTarget === "all"
+    ? ["codex-cli", "claude-code"]
+    : [installTarget];
 
   return (
     <div className="docs-shell">
@@ -93,10 +101,10 @@ function HumanCollectorGuide() {
         <main className="docs-main">
           <section className="docs-hero">
             <span className="docs-eyebrow">Collector integration</span>
-            <h1>Connect Codex and Claude Code</h1>
+            <h1>Connect your AI coding tool</h1>
             <p>
-              Install repository-local hooks, authorize the collector, and send your AI work to
-              {` ${BRAND_NAME}`} without changing how you use either tool.
+              Choose the tool you use, review the exact repository files that will change, and
+              send your AI work to {BRAND_NAME} without touching other tool settings.
             </p>
             <div className="docs-hero-actions">
               <a className="docs-primary-link" href="#quick-start">
@@ -115,10 +123,43 @@ function HumanCollectorGuide() {
 
           <DocsSection id="quick-start" kicker="01" title="Quick start">
             <p>
-              Use the command for the environment you are currently viewing. It installs both
-              Codex and Claude Code hooks by default and starts the uploader in the background.
+              Select the integration you want. Codex is the default; Claude Code settings change
+              only when you select Claude Code or both tools explicitly.
             </p>
-            <CommandBlock command={setupCommand} label="Run from your repository root" />
+            <p>
+              The Promty runtime is installed once on this machine, but hooks belong only to the
+              repository where you run setup. Repeat this command from every additional repository;
+              repositories without Promty hooks are not collected automatically.
+            </p>
+            <div aria-label="AI tool to connect" className="docs-tool-picker" role="radiogroup">
+              {(Object.entries(TOOL_LABELS) as Array<[DocsInstallTarget, string]>).map(
+                ([tool, label]) => (
+                  <button
+                    aria-checked={installTarget === tool}
+                    data-active={installTarget === tool}
+                    key={tool}
+                    onClick={() => setInstallTarget(tool)}
+                    role="radio"
+                    type="button"
+                  >
+                    {label}
+                    {tool === "codex-cli" ? <span>Recommended</span> : null}
+                  </button>
+                ),
+              )}
+            </div>
+            <p className="docs-change-scope">
+              <Check aria-hidden="true" size={15} />
+              {installTarget === "codex-cli"
+                ? "Updates .codex/hooks.json. Claude Code settings stay unchanged."
+                : installTarget === "claude-code"
+                  ? "Updates .claude/settings.local.json. Codex settings stay unchanged."
+                  : "Updates the Codex and Claude Code hook files in this repository."}
+            </p>
+            <CommandBlock
+              command={setupCommand}
+              label={`${TOOL_LABELS[installTarget]} · run from your repository root`}
+            />
             <ol className="docs-steps">
               <Step title="Run the command">
                 Accept the one-time npm package prompt if it appears.
@@ -195,15 +236,14 @@ function HumanCollectorGuide() {
           </DocsSection>
 
           <DocsSection id="verify" kicker="04" title="Verify the connection">
-            <p>Run diagnostics for both integrations from the same repository.</p>
-            <CommandBlock command="npx promty-collector doctor --tool all" />
+            <p>Run diagnostics for the integration selected above from the same repository.</p>
+            <CommandBlock command={`npx promty-collector doctor --tool ${installTarget}`} />
             <p>Healthy output reports these checks as <InlineCode>ok</InlineCode>:</p>
             <div className="docs-check-grid">
               {[
                 "config",
                 "login",
-                "hooks/codex-cli",
-                "hooks/claude-code",
+                ...selectedTools.map((tool) => installTarget === "all" ? `hooks/${tool}` : "hooks"),
                 "queue",
                 "backend",
                 "uploader",
@@ -225,16 +265,19 @@ function HumanCollectorGuide() {
               save the same captured event to independent development and production queues.
             </Callout>
             <div className="docs-command-pair">
-              <CommandBlock command={LOCAL_COMMAND} label="Local development" />
-              <CommandBlock command={PRODUCTION_COMMAND} label="Production" />
+              <CommandBlock command={profileSetupCommand("dev", installTarget)} label="Local development" />
+              <CommandBlock command={profileSetupCommand("prod", installTarget)} label="Production" />
             </div>
-            <CommandBlock command={MULTI_PROFILE_COMMAND} label="Development and production" />
+            <CommandBlock
+              command={`npx promty-collector init --tool ${installTarget} --profiles dev,prod`}
+              label="Development and production"
+            />
             <p>
               Multi-profile mode creates an event once, keeps a separate retry queue for each
               destination, and reports each backend and uploader independently through doctor.
             </p>
             <CommandBlock
-              command="npx promty-collector doctor --profiles dev,prod --tool all"
+              command={`npx promty-collector doctor --profiles dev,prod --tool ${installTarget}`}
               label="Verify both profiles"
             />
           </DocsSection>
@@ -278,7 +321,9 @@ function HumanCollectorGuide() {
 }
 
 function AiCollectorGuide() {
-  const setupCommand = currentSetupCommand();
+  const codexSetupCommand = currentSetupCommand("codex-cli");
+  const claudeSetupCommand = currentSetupCommand("claude-code");
+  const combinedSetupCommand = currentSetupCommand("all");
   const instructions = `# Task: connect this repository to Promty
 
 Follow these instructions from the repository root.
@@ -287,7 +332,8 @@ Follow these instructions from the repository root.
 - Use the Promty environment supplied by the user. For this page, use:
   - app URL: ${window.location.origin}
   - API URL: ${API_URL}
-- Run exactly one init command for the selected environment.
+- Connect only the AI tool handling this task unless the user explicitly asks for both.
+- Run exactly one init command for the selected tool and environment.
 - Do not display, read aloud, commit, or paste collector tokens, ~/.prompthub/config.json, raw event queues, or private uploader logs.
 - Preserve existing hooks and unrelated repository changes.
 - Browser-based GitHub authorization and hook trust require the user's confirmation.
@@ -295,27 +341,32 @@ Follow these instructions from the repository root.
 ## Procedure
 1. Confirm the current working directory is inside the intended Git repository.
 2. Check that Node.js 20+, Python 3.12+, and Git are available.
-3. Run:
-   ${setupCommand}
+3. Select and run exactly one command:
+   - When running in Codex:
+     ${codexSetupCommand}
+   - When running in Claude Code:
+     ${claudeSetupCommand}
+   - Only when the user explicitly requested both tools:
+     ${combinedSetupCommand}
 4. If npx asks to install promty-collector, accept it.
 5. Ask the user to complete GitHub authorization if the browser flow pauses execution.
 6. Confirm the command exits successfully and prints "Promty init complete".
-7. Confirm these repository files exist without exposing secret values:
-   - .codex/hooks.json
-   - .claude/settings.local.json
-8. Tell the user to open /hooks in Codex, review the Promty commands, and trust this repository.
-9. Tell the user to restart existing Codex and Claude Code sessions.
-10. Run:
-    npx promty-collector doctor --tool all
+7. Confirm only the selected integration file was added or updated without exposing secret values:
+   - Codex: .codex/hooks.json
+   - Claude Code: .claude/settings.local.json
+   Do not require or modify the other tool's file unless both tools were explicitly selected.
+8. For Codex, tell the user to open /hooks, review the Promty commands, and trust this repository.
+9. Tell the user to restart the selected AI tool session.
+10. Run doctor with the same --tool value used for init.
 11. Report each diagnostic status. Do not claim success if any check says "needs-action".
-12. Ask the user to submit one non-sensitive test prompt in each tool, then confirm the new activity in Promty.
+12. Ask the user to submit one non-sensitive test prompt in the selected tool, then confirm the new activity in Promty.
 
 ## Expected hooks
 - Codex: UserPromptSubmit, Stop
 - Claude Code: SessionStart, UserPromptSubmit, Stop, SessionEnd
 
 ## Environment switching
-If an uploader is already running for a different API, do not just run init again. Stop that uploader first, run init once with the new URLs, and restart the AI sessions. An existing uploader keeps its original API destination until restarted.
+If an uploader is already running for a different API, do not just run init again. Stop that uploader first, run init once with the new URLs, and restart the selected AI tool session. An existing uploader keeps its original API destination until restarted.
 
 ## Completion report
 State:
@@ -323,7 +374,8 @@ State:
 - init exit status
 - hook files created or updated
 - Codex trust still required or confirmed
-- session restart still required or completed
+- selected AI tool and unchanged tool settings
+- selected tool session restart still required or completed
 - doctor results
 - any action the user must complete`;
 

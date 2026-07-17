@@ -125,6 +125,14 @@
     grid-template-columns: 1fr;
   }
 
+  .community-flow-controls {
+    align-items: stretch;
+  }
+
+  .community-flow-controls .community-search {
+    width: 100%;
+  }
+
   .community-flow-detail {
     position: static;
     max-height: none;

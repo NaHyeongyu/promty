@@ -411,9 +411,18 @@ class AdminRecentUserResponse(StrictResponse):
 
 
 class AdminRiskResponse(StrictResponse):
+    acknowledged: bool
+    acknowledged_at: str | None
+    acknowledged_by: str | None
     detail: str
+    key: str
     severity: str
     title: str
+
+
+class AdminRiskAcknowledgementResponse(StrictResponse):
+    acknowledged: bool
+    key: str
 
 
 class AdminRateLimitResponse(StrictResponse):

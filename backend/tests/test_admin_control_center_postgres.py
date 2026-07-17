@@ -133,6 +133,22 @@ def test_control_center_inventory_and_security_actions(db: Session) -> None:
     projects = admin_projects_response(db, limit=200, offset=0, query=marker)
     jobs = admin_memory_jobs_response(db, job_status="stale", limit=200, offset=0)
     audit = admin_audit_logs_response(db, limit=200, offset=0)
+    searched_jobs = admin_memory_jobs_response(
+        db,
+        job_status=None,
+        limit=25,
+        offset=0,
+        query=marker,
+    )
+    filtered_audit = admin_audit_logs_response(
+        db,
+        action="control_center",
+        limit=25,
+        offset=0,
+        outcome="success",
+        query=marker,
+        resource_type="user",
+    )
 
     managed_user = next(item for item in users["items"] if item["id"] == str(user.id))
     managed_project = next(item for item in projects["items"] if item["id"] == str(project.id))
@@ -144,6 +160,10 @@ def test_control_center_inventory_and_security_actions(db: Session) -> None:
     assert managed_project["prompt_count"] == 1
     assert managed_job["stale"] is True
     assert any(item["action"] == "admin.control_center.test" for item in audit["items"])
+    assert searched_jobs["total"] == 1
+    assert searched_jobs["items"][0]["id"] == str(managed_job["id"])
+    assert filtered_audit["total"] == 1
+    assert filtered_audit["items"][0]["action"] == "admin.control_center.test"
 
     revoked = revoke_all_admin_collector_tokens_response(
         db,
