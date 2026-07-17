@@ -7,8 +7,8 @@ import type {
 } from "../workspace/types";
 import {
   isMockGithubUnlinkedProject,
+  mockGithubUnlinkedProjectDetail,
 } from "../workspace/previewData";
-import { figmaMockProjectDetail } from "../workspace/figmaPreviewData";
 import type {
   UrlNavigationState,
   UrlNavigationWriteMode,
@@ -265,7 +265,7 @@ export function useWorkspaceProjectResourceEffects({
     }
 
     if (isMockGithubUnlinkedProject(selectedProjectId) && selectedProject) {
-      setProjectDetailRef.current(figmaMockProjectDetail(selectedProject));
+      setProjectDetailRef.current(mockGithubUnlinkedProjectDetail(selectedProject));
       clearProjectFilesRef.current();
       clearRepositoryBrowserStateRef.current();
       return;

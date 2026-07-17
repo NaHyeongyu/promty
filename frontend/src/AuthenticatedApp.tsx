@@ -323,7 +323,7 @@ export function AuthenticatedApp() {
     clearWorkspaceData();
     accountSettings.clearAccountSettings();
     setErrorMessage(null);
-    if (previewCommunity || previewGithubUnlinkedProject) {
+    if (previewCommunity) {
       setCurrentUser({
         avatar_url: null,
         email: "preview@promty.dev",
@@ -375,11 +375,7 @@ export function AuthenticatedApp() {
   }, []);
 
   useEffect(() => {
-    if (
-      authStatus !== "authenticated" ||
-      previewCommunity ||
-      previewGithubUnlinkedProject
-    ) {
+    if (authStatus !== "authenticated" || previewCommunity) {
       return;
     }
 
@@ -395,7 +391,7 @@ export function AuthenticatedApp() {
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, [authStatus, previewCommunity, previewGithubUnlinkedProject]);
+  }, [authStatus, previewCommunity]);
 
   useWorkspaceAdminEffect({
     activeItem,
@@ -407,7 +403,7 @@ export function AuthenticatedApp() {
   useWorkspaceProjectRouteEffect({
     allowUnlistedProject: currentUser?.is_admin === true,
     activeItem,
-    hasLoadedWorkspaceData: hasLoadedWorkspaceData || previewGithubUnlinkedProject,
+    hasLoadedWorkspaceData,
     navigateWorkspace,
     onProjectRouteNotFound: setUnresolvedProjectRouteKey,
     projectCatalog,

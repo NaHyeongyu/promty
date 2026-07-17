@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { ProjectHeaderProjectOption } from "../components/project-detail";
-import { figmaMockProjects } from "../workspace/figmaPreviewData";
+import { mockGithubUnlinkedProject } from "../workspace/previewData";
 import type { Project, ProjectSortMode } from "../workspace/types";
 
 type UseProjectCatalogOptions = {
@@ -25,11 +25,10 @@ export function useProjectCatalog({
       return projects;
     }
 
-    const mockProjects = figmaMockProjects();
-    const mockProjectIds = new Set(mockProjects.map((project) => project.id));
+    const mockProject = mockGithubUnlinkedProject();
     return [
-      ...mockProjects,
-      ...projects.filter((project) => !mockProjectIds.has(project.id)),
+      mockProject,
+      ...projects.filter((project) => project.id !== mockProject.id),
     ];
   }, [previewGithubUnlinkedProject, projects]);
   const displayProjects = previewEmptyProjects ? [] : projectCatalog;
