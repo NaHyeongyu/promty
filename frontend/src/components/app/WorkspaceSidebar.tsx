@@ -32,6 +32,7 @@ export function WorkspaceSidebar({
   currentUser,
   isReviewQueueOpen,
   onLogout,
+  onOpenCollectorUpdate,
   onOpenProject,
   onOpenReviewQueue,
   onSelectItem,
@@ -47,6 +48,7 @@ export function WorkspaceSidebar({
   currentUser: AuthUser | null;
   isReviewQueueOpen: boolean;
   onLogout: () => void;
+  onOpenCollectorUpdate?: () => void;
   onOpenProject: (projectId: string) => void;
   onOpenReviewQueue: (returnFocusElement: HTMLElement | null) => void;
   onSelectItem: (item: SidebarItemId) => void;
@@ -230,7 +232,13 @@ export function WorkspaceSidebar({
           <button
             className="sidebar-collector-status"
             data-tone={collectorStatus.tone}
-            onClick={() => selectItem("settings")}
+            onClick={() => {
+              if (collectorStatus.updateAvailable && onOpenCollectorUpdate) {
+                onOpenCollectorUpdate();
+                return;
+              }
+              selectItem("settings");
+            }}
             type="button"
           >
             <Radio aria-hidden="true" size={16} strokeWidth={1.5} />

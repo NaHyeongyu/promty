@@ -49,14 +49,12 @@ export function getCollectorHealth(
   const ageMs = Number.isNaN(parsedLatestUse)
     ? null
     : Math.max(0, now - parsedLatestUse);
-  const updateAvailable = activeTokens.some(
-    (token) =>
-      token.last_used_at &&
-      isCollectorUpdateAvailable(
-        token.collector_version,
+  const updateAvailable = latestToken
+    ? isCollectorUpdateAvailable(
+        latestToken.collector_version,
         overview.latest_collector_version,
-      ),
-  );
+      )
+    : false;
 
   let state: CollectorHealthState;
   if (activeTokens.length === 0) {

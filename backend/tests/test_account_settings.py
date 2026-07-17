@@ -15,10 +15,13 @@ from app.services.account_settings import (
 )
 
 
-def test_latest_collector_version_matches_published_package_manifest() -> None:
+def test_latest_collector_version_fallback_never_exceeds_package_manifest() -> None:
     manifest_path = Path(__file__).resolve().parents[2] / "collector" / "package.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert LATEST_COLLECTOR_VERSION == manifest["version"]
+    fallback = tuple(int(part) for part in LATEST_COLLECTOR_VERSION.split("."))
+    package = tuple(int(part) for part in manifest["version"].split("."))
+
+    assert fallback <= package
 
 
 def test_account_routes_publish_response_contracts() -> None:
@@ -116,7 +119,7 @@ def test_account_overview_response_includes_connection_and_tokens(monkeypatch) -
     assert response["user"]["preferred_locale"] == "en"
     assert response["github_connection"]["connected"] is False
     assert response["collector_tokens"][0]["name"] == "Local laptop"
-    assert response["latest_collector_version"] == "0.1.5"
+    assert response["latest_collector_version"] == "0.1.4"
 
 
 def test_account_language_preference_is_saved() -> None:

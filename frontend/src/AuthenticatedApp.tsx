@@ -8,6 +8,7 @@ import { AccountWorkspaceRoute } from "./components/app/AccountWorkspaceRoute";
 import { AuthLoadingPage, WebLoginPage } from "./components/app/AuthScreens";
 import { ProjectsPage } from "./components/app/ProjectsPage";
 import { CommunityHubPage } from "./components/app/CommunityHubPage";
+import { CollectorUpdateModal } from "./components/app/CollectorUpdateModal";
 import { PublicProjectsPage } from "./components/app/PublicProjectsPage";
 import { ReviewQueueDrawer } from "./components/app/ReviewQueueDrawer";
 import { RepositoryConnector } from "./components/app/RepositoryConnector";
@@ -21,6 +22,7 @@ import {
 import { API_URL } from "./config";
 import { formatRelativeTimestamp } from "./lib/formatters";
 import { getCollectorHealth } from "./lib/collectorHealth";
+import { isCollectorUpdateAvailable } from "./lib/collectorVersion";
 import { githubFileUrl } from "./lib/github";
 import { useI18n } from "./i18n/I18nProvider";
 import { useAccountSettings } from "./hooks/useAccountSettings";
@@ -92,6 +94,11 @@ export function AuthenticatedApp() {
   const [isReviewQueueOpen, setIsReviewQueueOpen] = useState(
     () => new URLSearchParams(window.location.search).get("view") === "reviews",
   );
+  const [isCollectorUpdateOpen, setIsCollectorUpdateOpen] = useState(false);
+  const [collectorVerificationStartedAt, setCollectorVerificationStartedAt] =
+    useState<number | null>(null);
+  const [collectorUpdateTargetVersion, setCollectorUpdateTargetVersion] =
+    useState<string | null>(null);
   const [reviewQueueProjectId, setReviewQueueProjectId] = useState<string | null>(null);
   const [unresolvedProjectRouteKey, setUnresolvedProjectRouteKey] =
     useState<string | null>(null);
@@ -194,6 +201,59 @@ export function AuthenticatedApp() {
   useEffect(() => {
     refreshAccountOverviewRef.current = accountSettings.refreshAccountOverview;
   }, [accountSettings.refreshAccountOverview]);
+  const activeCollectorTokens = useMemo(
+    () =>
+      accountSettings.accountOverview?.collector_tokens.filter(
+        (token) => token.status === "active",
+      ) ?? [],
+    [accountSettings.accountOverview],
+  );
+  const latestCollectorToken = [...activeCollectorTokens]
+    .filter((token) => token.last_used_at)
+    .sort(
+      (first, second) =>
+        Date.parse(second.last_used_at ?? "") - Date.parse(first.last_used_at ?? ""),
+    )[0];
+  const currentCollectorVersion = latestCollectorToken?.collector_version ?? null;
+  const latestCollectorVersion =
+    accountSettings.accountOverview?.latest_collector_version ?? "";
+  const collectorUpdateComplete = Boolean(
+    collectorVerificationStartedAt &&
+      collectorUpdateTargetVersion &&
+      activeCollectorTokens.some(
+        (token) =>
+          token.last_used_at &&
+          Date.parse(token.last_used_at) >= collectorVerificationStartedAt &&
+          !isCollectorUpdateAvailable(
+            token.collector_version,
+            collectorUpdateTargetVersion,
+          ),
+      ),
+  );
+  const closeCollectorUpdate = useCallback(() => {
+    setIsCollectorUpdateOpen(false);
+    setCollectorVerificationStartedAt(null);
+  }, []);
+  useEffect(() => {
+    if (
+      !isCollectorUpdateOpen ||
+      collectorVerificationStartedAt === null ||
+      collectorUpdateComplete
+    ) {
+      return;
+    }
+    void refreshAccountOverviewRef.current();
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refreshAccountOverviewRef.current();
+      }
+    }, 5_000);
+    return () => window.clearInterval(intervalId);
+  }, [
+    collectorUpdateComplete,
+    collectorVerificationStartedAt,
+    isCollectorUpdateOpen,
+  ]);
   const previewMode = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("preview");
@@ -691,6 +751,12 @@ export function AuthenticatedApp() {
     selectedProjectDetailData ?? emptyProjectDetailData(selectedProject);
   const reviewProjectCount = pendingReviewProjectCount(projectCatalog);
   const collectorHealth = getCollectorHealth(accountSettings.accountOverview);
+  const openCollectorUpdate = () => {
+    if (!latestCollectorVersion) return;
+    setCollectorUpdateTargetVersion(latestCollectorVersion);
+    setCollectorVerificationStartedAt(null);
+    setIsCollectorUpdateOpen(true);
+  };
   const collectorLastSeen = collectorHealth.latestUsedAt
     ? formatRelativeTimestamp(collectorHealth.latestUsedAt) ?? t("common.recently")
     : t("common.recently");
@@ -755,11 +821,27 @@ export function AuthenticatedApp() {
         onLogout={logout}
         onOpenProject={openProjectDetail}
         onOpenReviewQueue={openReviewQueue}
+        onOpenCollectorUpdate={openCollectorUpdate}
         onSelectItem={selectSidebarItem}
         pendingReviewProjectCount={reviewProjectCount}
         savedProjectCount={bookmarkedProjects.length}
         savedProjects={sidebarBookmarkedProjects}
         selectedProjectId={selectedProjectId}
+      />
+
+      <CollectorUpdateModal
+        currentVersion={currentCollectorVersion}
+        defaultEnvironment={
+          ["promty.org", "www.promty.org"].includes(window.location.hostname)
+            ? "prod"
+            : "dev"
+        }
+        isComplete={collectorUpdateComplete}
+        isOpen={isCollectorUpdateOpen}
+        isVerifying={collectorVerificationStartedAt !== null}
+        latestVersion={collectorUpdateTargetVersion ?? latestCollectorVersion}
+        onBeginVerification={() => setCollectorVerificationStartedAt(Date.now())}
+        onClose={closeCollectorUpdate}
       />
 
       <main className={`page${isShowingProjectDetail ? " page-project-detail" : ""}`}>

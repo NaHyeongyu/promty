@@ -16,7 +16,9 @@ from app.core.locales import normalize_app_locale
 from app.services.collector_versions import get_latest_collector_version
 
 
-LATEST_COLLECTOR_VERSION = "0.1.5"
+# This fallback must be a version that is already available from npm. Bump it
+# only after the matching collector package has been published successfully.
+LATEST_COLLECTOR_VERSION = "0.1.4"
 
 
 def _iso(value: Any) -> str | None:
