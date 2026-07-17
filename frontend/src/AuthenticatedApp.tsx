@@ -10,6 +10,7 @@ import { CommunityHubPage } from "./components/app/CommunityHubPage";
 import { PublicProjectsPage } from "./components/app/PublicProjectsPage";
 import { ReviewQueueDrawer } from "./components/app/ReviewQueueDrawer";
 import { RepositoryConnector } from "./components/app/RepositoryConnector";
+import { SupportPage } from "./components/app/SupportPage";
 import { WorkspaceSidebar } from "./components/app/WorkspaceSidebar";
 import {
   ProjectDetailPage,
@@ -67,6 +68,7 @@ import "./styles-onboarding.css";
 import "./styles-navigation.css";
 import "./styles-projects.css";
 import "./styles-public-projects.css";
+import "./styles-support.css";
 
 function githubRepositoryConnectUrl() {
   return `${API_URL}/api/auth/github/web/repository/start?${new URLSearchParams({
@@ -218,11 +220,13 @@ export function AuthenticatedApp() {
       ? t("nav.projects")
       : activeItem === "community"
         ? t("nav.community")
-        : activeItem === "admin"
-          ? t("nav.admin")
-          : activeItem === "settings" || activeItem === "profile"
-            ? t("settings.title")
-            : t("settings.account");
+        : activeItem === "support"
+          ? t("nav.support")
+          : activeItem === "admin"
+            ? t("nav.admin")
+            : activeItem === "settings" || activeItem === "profile"
+              ? t("settings.title")
+              : t("settings.account");
   const projectRouteKey = (project: Project | null | undefined) =>
     sanitizeProjectRouteKey(project?.slug) ?? project?.id ?? null;
   const projectMatchesRouteKey = (project: Project, routeKey: string) =>
@@ -857,7 +861,7 @@ export function AuthenticatedApp() {
             visibleProjects={visibleProjects}
           />
         ) : activeItem === "community" ? (
-          <CommunityHubPage>
+          <CommunityHubPage hideHeader={Boolean(selectedPublicProjectId || selectedPublicProfileId)}>
             <PublicProjectsPage
               embedded
               onSelectProject={(projectId, mode = "push") => {
@@ -918,6 +922,8 @@ export function AuthenticatedApp() {
               overview={adminOverview}
             />
           </>
+        ) : activeItem === "support" && currentUser ? (
+          <SupportPage currentUser={currentUser} onUnauthorized={handleUnauthorized} />
         ) : (
           <AccountWorkspaceRoute
             account={accountSettings}

@@ -34,7 +34,7 @@ from app.services.memory.artifacts import (
     _pending_draft_range,
     _pending_draft_generation_context,
 )
-from app.services.memory.context import dedupe_files, truncate
+from app.services.memory.context import dedupe_files
 from app.services.memory.constants import (
     MEMORY_ARTIFACT_TYPE,
     MEMORY_DRAFT_ARTIFACT_TYPE,
@@ -61,7 +61,6 @@ PROJECT_MEMORY_BATCH_CHUNK_SIZE = 6
 PROJECT_MEMORY_BATCH_GENERATOR = "project-memory-batch-v1"
 PROJECT_MEMORY_BATCH_LEASE = timedelta(minutes=10)
 PROJECT_MEMORY_BATCH_TRIGGER = "project_batch"
-PROJECT_MEMORY_BATCH_OUTCOME_MAX_CHARS = 600
 HTTP_STATUS_PATTERN = re.compile(r"\bHTTP(?: status)?\s+([1-5][0-9]{2})\b")
 
 
@@ -1135,15 +1134,15 @@ def _consolidated_sections(
             if not isinstance(title, str) or not isinstance(summary, str):
                 continue
             values = summaries_by_title.setdefault(title, [])
-            compact_summary = truncate(summary, 320)
-            if compact_summary and compact_summary not in values:
-                values.append(compact_summary)
+            full_summary = summary.strip()
+            if full_summary and full_summary not in values:
+                values.append(full_summary)
     return [
         {
-            "summary": truncate(" / ".join(summaries), 1800),
+            "summary": " / ".join(summaries),
             "title": title,
         }
-        for title, summaries in list(summaries_by_title.items())[:8]
+        for title, summaries in summaries_by_title.items()
         if summaries
     ]
 
@@ -1229,14 +1228,11 @@ def _prepare_project_batch_memory(
         "generator": PROJECT_MEMORY_BATCH_GENERATOR,
         "last_event_id": last_event_ids[-1] if last_event_ids else None,
         "model": models[0] if len(models) == 1 else "multiple" if models else None,
-        "outcome": truncate(
-            " ".join(outcomes[-3:]),
-            PROJECT_MEMORY_BATCH_OUTCOME_MAX_CHARS,
-        ),
+        "outcome": " ".join(outcomes),
         "prompt_event_ids": prompt_event_ids,
         "reason": "Created from the captured work in this project update.",
         "sections": _consolidated_sections(chunks),
-        "summary": truncate(" ".join(summaries), 1800),
+        "summary": " ".join(summaries),
         "tags": _unique_strings([*tags, "project-update"])[:12],
         "technologies": technologies[:20],
         "title": f"{batch.project_name} memory update",

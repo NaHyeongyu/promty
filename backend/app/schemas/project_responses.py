@@ -142,6 +142,7 @@ class PublicProjectSummaryResponse(StrictResponse):
     github_url: str | None
     id: str
     is_owner: bool
+    is_saved: bool
     latest_event_at: str | None
     latest_memory_at: str | None
     memory_count: int
@@ -170,7 +171,13 @@ class PublicProfileResponse(PublicProjectListResponse):
 
 class PublicProjectDetailResponse(ProjectDetailResponse):
     is_owner: bool
+    is_saved: bool
     owner: PublicProjectOwnerResponse
+
+
+class PublicProjectSaveResponse(StrictResponse):
+    is_saved: bool
+    project_id: str
 
 
 class PromptFileChangeResponse(StrictResponse):

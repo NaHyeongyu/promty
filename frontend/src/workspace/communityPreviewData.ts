@@ -30,6 +30,7 @@ const PROJECTS: PublicProjectSummary[] = [
     github_url: "https://github.com/promty-labs/context-atlas",
     id: "18daed8f-14f0-4a3b-a700-fb706faab65c",
     is_owner: false,
+    is_saved: false,
     latest_event_at: "2026-07-16T11:42:00Z",
     latest_memory_at: "2026-07-16T11:44:00Z",
     memory_count: 18,
@@ -53,6 +54,7 @@ const PROJECTS: PublicProjectSummary[] = [
     github_url: "https://github.com/promty-labs/agent-review-desk",
     id: "2fc4a1b5-8309-4858-9e44-b01a54d96e5d",
     is_owner: false,
+    is_saved: false,
     latest_event_at: "2026-07-15T08:18:00Z",
     latest_memory_at: "2026-07-15T08:21:00Z",
     memory_count: 11,
@@ -76,6 +78,7 @@ const PROJECTS: PublicProjectSummary[] = [
     github_url: "https://github.com/promty-labs/release-compass",
     id: "3e5b98db-f8a7-4598-afb2-ece045972aba",
     is_owner: false,
+    is_saved: false,
     latest_event_at: "2026-07-14T06:05:00Z",
     latest_memory_at: "2026-07-14T06:08:00Z",
     memory_count: 8,
@@ -99,6 +102,7 @@ const PROJECTS: PublicProjectSummary[] = [
     github_url: "https://github.com/promty-labs/local-memory-notebook",
     id: "46dcdf43-1da3-4c4f-9516-9f37849058fc",
     is_owner: false,
+    is_saved: false,
     latest_event_at: "2026-07-13T04:22:00Z",
     latest_memory_at: "2026-07-13T04:26:00Z",
     memory_count: 6,
@@ -117,12 +121,16 @@ const PROJECTS: PublicProjectSummary[] = [
 
 function memoryFor(project: PublicProjectSummary) {
   return {
+    artifact_stage: "verified_memory",
     changed_file_count: 4,
+    changed_files: [],
     created_at: project.latest_memory_at,
     generator: "promty-memory",
     id: `preview-memory-${project.id}`,
     model: project.connected_models[0] ?? null,
+    memory_scope: "verified",
     outcome: "The team now has a concise record of the decision and its implementation constraints.",
+    review_state: "verified",
     session_id: null,
     summary: `Captured the latest architecture decisions and follow-up work for ${project.name}.`,
     tags: project.tags.slice(0, 2),
@@ -132,6 +140,21 @@ function memoryFor(project: PublicProjectSummary) {
   };
 }
 
+function historyFor(project: PublicProjectSummary) {
+  const end = Date.parse(project.latest_event_at ?? project.updated_at);
+  return Array.from({ length: 14 }, (_, index) => {
+    const date = new Date(end - (13 - index) * 86_400_000);
+    const weight = (index % 4) + 1;
+    return {
+      date: date.toISOString().slice(0, 10),
+      files_changed: Math.max(0, Math.round((project.tracked_files / 30) * weight)),
+      memories: index % 5 === 0 ? 1 : 0,
+      prompts: Math.max(0, Math.round((project.prompts / 35) * weight)),
+      sessions: index % 3 === 0 ? 1 : 0,
+    };
+  });
+}
+
 const DETAILS = new Map<string, PublicProjectDetailResponse>(
   PROJECTS.map((project) => [
     project.id,
@@ -139,17 +162,23 @@ const DETAILS = new Map<string, PublicProjectDetailResponse>(
       activities: [],
       files: [],
       is_owner: false,
+      is_saved: project.is_saved,
       memory: {
         latest_artifact_at: project.latest_memory_at,
         recent_artifacts: [memoryFor(project)],
         total_artifacts: project.memory_count,
       },
       metrics: {
+        activity_history: historyFor(project),
         connected_models: project.connected_models,
         connected_tools: ["codex-cli"],
+        files_changed_since_yesterday: 2,
         latest_activity_at: project.latest_event_at,
         last_modified_at: project.updated_at,
+        memory_artifacts_since_yesterday: 1,
+        prompts_since_yesterday: 3,
         repository_connected: Boolean(project.github_url),
+        sessions_since_yesterday: 1,
         total_events: project.events,
         total_prompts: project.prompts,
         total_sessions: project.sessions,
@@ -236,7 +265,7 @@ const FLOWS: PublishedFlowDetailResponse[] = [
     published_at: "2026-07-12T03:00:00Z",
     slug: "focused-ui-review-loop",
     source_end_event_id: null,
-    source_project_id: null,
+    source_project_id: "18daed8f-14f0-4a3b-a700-fb706faab65c",
     source_session_id: null,
     source_start_event_id: null,
     start_sequence: 38,
@@ -281,7 +310,7 @@ const FLOWS: PublishedFlowDetailResponse[] = [
     published_at: "2026-07-10T07:30:00Z",
     slug: "release-readiness-pass",
     source_end_event_id: null,
-    source_project_id: null,
+    source_project_id: "2fc4a1b5-8309-4858-9e44-b01a54d96e5d",
     source_session_id: null,
     source_start_event_id: null,
     start_sequence: 19,
@@ -304,13 +333,15 @@ export function previewPublicProjects(options: {
   limit: number;
   offset: number;
   query?: string;
+  savedOnly?: boolean;
   sort: "newest" | "recent";
 }): PublicProjectPage {
   const query = options.query?.trim().toLowerCase() ?? "";
   const filtered = PROJECTS.filter((project) =>
-    !query || [project.name, project.description, project.owner.username, ...project.tags]
+    (!options.savedOnly || project.is_saved) &&
+    (!query || [project.name, project.description, project.owner.username, ...project.tags]
       .filter(Boolean)
-      .some((value) => value!.toLowerCase().includes(query)),
+      .some((value) => value!.toLowerCase().includes(query))),
   );
   const sorted = [...filtered].sort((left, right) =>
     Date.parse(
@@ -347,15 +378,32 @@ export function previewPublicProfile(
   };
 }
 
-export function previewPublishedFlows(query = ""): PublishedFlowSummary[] {
+export function previewPublishedFlows(
+  query = "",
+  projectId?: string,
+): PublishedFlowSummary[] {
   const normalized = query.trim().toLowerCase();
   return FLOWS.filter((flow) =>
-    !normalized || [flow.title, flow.summary, flow.author.username, ...flow.tags]
+    (!projectId || flow.source_project_id === projectId) &&
+    (!normalized || [flow.title, flow.summary, flow.author.username, ...flow.tags]
       .filter(Boolean)
-      .some((value) => value!.toLowerCase().includes(normalized)),
+      .some((value) => value!.toLowerCase().includes(normalized))),
   );
+}
+
+export function previewUpdatePublicProjectSave(projectId: string, isSaved: boolean) {
+  const project = PROJECTS.find((item) => item.id === projectId);
+  if (!project) return null;
+  project.is_saved = isSaved;
+  const detail = DETAILS.get(projectId);
+  if (detail) detail.is_saved = isSaved;
+  return { is_saved: isSaved, project_id: projectId };
 }
 
 export function previewPublishedFlowDetail(flowKey: string) {
   return FLOWS.find((flow) => flow.slug === flowKey) ?? null;
+}
+
+export function previewPublishedFlowDetailsForProject(projectId: string) {
+  return FLOWS.filter((flow) => flow.source_project_id === projectId);
 }

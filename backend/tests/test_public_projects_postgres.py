@@ -22,6 +22,7 @@ from app.services.projects.public import (
     list_public_project_summaries,
     read_public_project_detail_response,
     read_public_profile_response,
+    update_public_project_save,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -113,6 +114,7 @@ def test_public_project_list_and_read_only_detail_are_visible_to_other_users(
     item = next(item for item in listed["items"] if item["id"] == str(public_project.id))
     assert item["owner"]["username"] == owner.username
     assert item["is_owner"] is False
+    assert item["is_saved"] is False
     assert item["project_url"] is None
     assert item["prompts"] == 1
     assert "raw prompt" not in str(item).lower()
@@ -139,12 +141,63 @@ def test_public_project_list_and_read_only_detail_are_visible_to_other_users(
     )
     PublicProjectDetailResponse.model_validate(detail)
     assert detail["is_owner"] is False
+    assert detail["is_saved"] is False
     assert detail["owner"]["username"] == owner.username
     assert detail["project"]["visibility"] == "public"
     assert detail["project"]["project_url"] is None
     assert detail["prompt_activities"] == []
     assert detail["files"] == []
     assert "raw prompt" not in str(detail).lower()
+
+    saved = update_public_project_save(
+        db,
+        current_user=viewer,
+        project_id=public_project.id,
+        is_saved=True,
+    )
+    assert saved == {"is_saved": True, "project_id": str(public_project.id)}
+    assert read_public_project_detail_response(
+        db,
+        current_user=viewer,
+        project_id=public_project.id,
+    )["is_saved"] is True
+    assert list_public_project_summaries(
+        db,
+        current_user=viewer,
+        limit=24,
+        offset=0,
+        query="collaboration",
+        sort="recent",
+    )["items"][0]["is_saved"] is True
+    assert [item["id"] for item in list_public_project_summaries(
+        db,
+        current_user=viewer,
+        limit=24,
+        offset=0,
+        query=None,
+        saved_only=True,
+        sort="recent",
+    )["items"]] == [str(public_project.id)]
+    update_public_project_save(
+        db,
+        current_user=viewer,
+        project_id=public_project.id,
+        is_saved=False,
+    )
+    assert read_public_project_detail_response(
+        db,
+        current_user=viewer,
+        project_id=public_project.id,
+    )["is_saved"] is False
+    assert list_public_project_summaries(
+        db,
+        current_user=viewer,
+        limit=24,
+        offset=0,
+        query=None,
+        saved_only=True,
+        sort="recent",
+    )["items"] == []
 
     owner_detail = read_public_project_detail_response(
         db,

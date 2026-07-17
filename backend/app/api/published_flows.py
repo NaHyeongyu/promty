@@ -26,6 +26,7 @@ from app.services.published_flows import (
     archive_published_flow,
     create_published_flow,
     get_published_flow,
+    list_published_flow_details_for_project,
     list_published_flows,
     update_published_flow,
 )
@@ -36,11 +37,18 @@ router = APIRouter(prefix="/api/published-flows", tags=["published-flows"])
 @router.get("", response_model=list[PublishedFlowSummaryResponse])
 def read_published_flows(
     limit: int = Query(default=50, ge=1, le=100),
+    project_id: UUID | None = Query(default=None),
     q: str | None = Query(default=None, max_length=120),
     current_user: User = Depends(require_web_user),
     db: Session = Depends(get_db),
 ) -> list[PublishedFlowSummaryResponse]:
-    return list_published_flows(db, current_user=current_user, limit=limit, query=q)
+    return list_published_flows(
+        db,
+        current_user=current_user,
+        limit=limit,
+        project_id=project_id,
+        query=q,
+    )
 
 
 @router.post("", response_model=PublishedFlowDetailResponse, status_code=201)
@@ -70,6 +78,24 @@ def publish_flow(
         detail="Published flow could not be created because it conflicts with existing data.",
     )
     return response
+
+
+@router.get(
+    "/project/{project_id}/details",
+    response_model=list[PublishedFlowDetailResponse],
+)
+def read_project_published_flow_details(
+    project_id: UUID,
+    limit: int = Query(default=50, ge=1, le=100),
+    current_user: User = Depends(require_web_user),
+    db: Session = Depends(get_db),
+) -> list[PublishedFlowDetailResponse]:
+    return list_published_flow_details_for_project(
+        db,
+        current_user=current_user,
+        project_id=project_id,
+        limit=limit,
+    )
 
 
 @router.get("/{flow_key}", response_model=PublishedFlowDetailResponse)

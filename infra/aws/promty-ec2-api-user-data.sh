@@ -33,6 +33,15 @@ fetch_previous_secret() {
     2>/dev/null || true
 }
 
+fetch_optional_secret() {
+  aws secretsmanager get-secret-value \
+    --region "${AWS_REGION}" \
+    --secret-id "$1" \
+    --query SecretString \
+    --output text \
+    2>/dev/null || true
+}
+
 write_env() {
   local name="$1"
   local value="$2"
@@ -114,6 +123,10 @@ PROMPTHUB_AUTH_RATE_LIMIT_WINDOW_SECONDS=60
 PROMPTHUB_ADMIN_RATE_LIMIT_REQUESTS=120
 PROMPTHUB_ADMIN_RATE_LIMIT_WINDOW_SECONDS=60
 PROMPTHUB_ADMIN_AUDIT_RETENTION_DAYS=180
+PROMPTHUB_SUPPORT_EMAIL_PROVIDER=ses
+PROMPTHUB_SUPPORT_FROM_EMAIL=support@promty.org
+PROMPTHUB_SUPPORT_RATE_LIMIT_REQUESTS=5
+PROMPTHUB_SUPPORT_RATE_LIMIT_WINDOW_SECONDS=300
 PROMPTHUB_PUBLISHED_FLOW_ASSET_STORAGE=s3
 PROMPTHUB_AWS_REGION=${AWS_REGION}
 PROMPTHUB_AWS_S3_BUCKET=${BACKUP_BUCKET}
@@ -130,6 +143,10 @@ if [ -n "${APP_ENCRYPTION_PREVIOUS_KEY}" ]; then
   write_env "PROMPTHUB_APP_ENCRYPTION_PREVIOUS_KEYS" "${APP_ENCRYPTION_PREVIOUS_KEY}"
 fi
 write_env "PROMPTHUB_GITHUB_CLIENT_ID" "$(fetch_secret promty/prod/github-client-id)"
+SUPPORT_NOTIFICATION_EMAIL="$(fetch_optional_secret promty/prod/support-notification-email)"
+if [ -n "${SUPPORT_NOTIFICATION_EMAIL}" ]; then
+  write_env "PROMPTHUB_SUPPORT_NOTIFICATION_EMAILS" "${SUPPORT_NOTIFICATION_EMAIL}"
+fi
 write_env "PROMPTHUB_GITHUB_CLIENT_SECRET" "$(fetch_secret promty/prod/github-client-secret)"
 write_env "PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_KEY" "$(fetch_secret promty/prod/github-token-encryption-key)"
 GITHUB_TOKEN_ENCRYPTION_PREVIOUS_KEY="$(fetch_previous_secret promty/prod/github-token-encryption-key)"

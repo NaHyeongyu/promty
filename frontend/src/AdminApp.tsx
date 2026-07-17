@@ -535,7 +535,7 @@ export function AdminApp() {
           <span>{text("ADMINISTRATOR ACCESS", "관리자 접근")}</span>
           <h1>{text("Control center access denied", "제어 센터 접근이 거부되었습니다")}</h1>
           <p>{errorMessage ?? text("Your account is not authorized for this console.", "이 콘솔을 사용할 권한이 없는 계정입니다.")}</p>
-          <a className="toolbar-button" href="/"><ArrowLeft size={16} /> {text("Return to workspace", "워크스페이스로 돌아가기")}</a>
+          <a className="toolbar-button" href="/app"><ArrowLeft size={16} /> {text("Return to workspace", "워크스페이스로 돌아가기")}</a>
         </section>
       </main>
     );
@@ -576,7 +576,7 @@ export function AdminApp() {
           })}
         </nav>
         <div className="ops-rail-footer">
-          <a href="/"><ArrowLeft size={16} /><span>{text("Workspace", "워크스페이스")}</span></a>
+          <a href="/app"><ArrowLeft size={16} /><span>{text("Workspace", "워크스페이스")}</span></a>
           <button onClick={() => void logoutSession().finally(() => setAuthStatus("unauthenticated"))} type="button"><LogOut size={16} /><span>{text("Sign out", "로그아웃")}</span></button>
           <div className="ops-operator">
             <span className="sidebar-avatar">{currentUser?.avatar_url ? <img alt="" src={currentUser.avatar_url} /> : currentUser?.username.slice(0, 1).toUpperCase()}</span>

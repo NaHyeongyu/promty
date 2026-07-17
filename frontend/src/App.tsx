@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { AppLoadingPage, NotFoundPage } from "./components/app/AppStatusPages";
-import { appRouteFromPathname } from "./routing";
+import { appRouteFromPathname, isLegacyWorkspaceSearch } from "./routing";
 import "./App.css";
 
 const AdminApp = lazy(() =>
@@ -21,6 +21,16 @@ const CollectorDocsPage = lazy(() =>
     default: module.CollectorDocsPage,
   })),
 );
+const LandingPage = lazy(() =>
+  import("./components/marketing/LandingPage").then((module) => ({
+    default: module.LandingPage,
+  })),
+);
+const ProductPage = lazy(() =>
+  import("./components/marketing/ProductPage").then((module) => ({
+    default: module.ProductPage,
+  })),
+);
 
 function App() {
   const route = appRouteFromPathname(window.location.pathname);
@@ -30,7 +40,15 @@ function App() {
   else if (route === "collector-docs") page = <CollectorDocsPage />;
   else if (route === "collector-docs-ai") page = <CollectorDocsPage audience="ai" />;
   else if (route === "cli-login") page = <CliLoginPage />;
-  else page = route === "workspace" ? <AuthenticatedApp /> : <NotFoundPage />;
+  else if (route === "workspace") page = <AuthenticatedApp />;
+  else if (route === "landing") {
+    page = isLegacyWorkspaceSearch(window.location.search) ? (
+      <AuthenticatedApp />
+    ) : (
+      <LandingPage />
+    );
+  } else if (route === "product") page = <ProductPage />;
+  else page = <NotFoundPage />;
 
   return <Suspense fallback={<AppLoadingPage />}>{page}</Suspense>;
 }

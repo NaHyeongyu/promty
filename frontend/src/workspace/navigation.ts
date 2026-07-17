@@ -49,6 +49,7 @@ const SIDEBAR_ITEM_IDS = new Set<SidebarItemId>([
   "admin",
   "community",
   "projects",
+  "support",
   "settings",
   "profile",
 ]);

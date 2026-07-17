@@ -556,6 +556,30 @@ class Settings:
             minimum=1,
         )
     )
+    support_rate_limit_requests: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_SUPPORT_RATE_LIMIT_REQUESTS",
+            5,
+            minimum=1,
+        )
+    )
+    support_rate_limit_window_seconds: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMPTHUB_SUPPORT_RATE_LIMIT_WINDOW_SECONDS",
+            300,
+            minimum=1,
+        )
+    )
+    support_email_provider: str = os.environ.get(
+        "PROMPTHUB_SUPPORT_EMAIL_PROVIDER",
+        "ses",
+    ).strip().lower()
+    support_notification_emails: tuple[str, ...] = field(
+        default_factory=lambda: _csv_env("PROMPTHUB_SUPPORT_NOTIFICATION_EMAILS", ())
+    )
+    support_from_email: str | None = field(
+        default_factory=lambda: _optional_env("PROMPTHUB_SUPPORT_FROM_EMAIL")
+    )
     admin_audit_retention_days: int = field(
         default_factory=lambda: _bounded_int_env(
             "PROMPTHUB_ADMIN_AUDIT_RETENTION_DAYS",

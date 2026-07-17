@@ -86,12 +86,13 @@ export function ActivityCard({
   onOpen,
 }: ActivityCardProps) {
   const { t } = useI18n();
+  const displayLabel = activity.label ?? activity.model;
   return (
     <article
       className="bh-session-row"
       data-active={isSelected}
       aria-pressed={isSelected}
-      aria-label={`${activity.model} session`}
+      aria-label={`${displayLabel} session`}
       onClick={onOpen}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -104,10 +105,10 @@ export function ActivityCard({
     >
       <div className="bh-session-row-main">
         <div className="bh-session-row-header">
-          <strong>{activity.model}</strong>
+          <strong>{displayLabel}</strong>
           <span>{t("activity.promptsCount", { count: activity.prompts })}</span>
         </div>
-        <span>{t("activity.session", { id: activity.id.slice(0, 8) })}</span>
+        <span>{activity.label ? activity.model : t("activity.session", { id: activity.id.slice(0, 8) })}</span>
         <span>
           {t("activity.promptsCount", { count: activity.prompts })} · {t("activity.fileCount", { count: activity.filesChanged })} ·{" "}
           {activity.lastActivity}
@@ -331,9 +332,11 @@ export function PromptChangeDetail({
                 </>
               ) : (
                 <div className="bh-diff-note">
-                  {patchOmittedLabel(
-                    change.binary ? "binary" : change.patchOmittedReason,
-                  )}
+                  {change.patchOmittedReason === "public_redacted"
+                    ? t("activity.diffPublicRedacted")
+                    : patchOmittedLabel(
+                        change.binary ? "binary" : change.patchOmittedReason,
+                      )}
                 </div>
               )}
             </article>

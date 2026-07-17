@@ -219,6 +219,7 @@ export type ProjectMemoryPendingRange = {
 
 export type ActivityItem = {
   id: string;
+  label?: string;
   model: string;
   startedAt: string;
   lastActivity: string;

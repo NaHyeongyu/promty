@@ -12,6 +12,7 @@ from app.models.artifacts import Artifact
 from app.models.events import Event
 from app.models.project_files import ProjectFile
 from app.models.projects import Project
+from app.models.public_project_saves import PublicProjectSave
 from app.models.sessions import Session as PromptSession
 from app.models.users import User
 from app.services.memory.constants import (
@@ -72,9 +73,18 @@ def list_public_project_summaries(
     offset: int,
     query: str | None,
     sort: Literal["newest", "recent"],
+    saved_only: bool = False,
     owner_id: UUID | None = None,
 ) -> dict[str, Any]:
     conditions = _public_conditions(query, owner_id=owner_id)
+    if saved_only:
+        conditions.append(
+            Project.id.in_(
+                select(PublicProjectSave.project_id).where(
+                    PublicProjectSave.user_id == current_user.id,
+                )
+            )
+        )
     total = int(
         db.scalar(
             select(func.count(Project.id))
@@ -173,6 +183,14 @@ def list_public_project_summaries(
         .offset(offset)
     ).all()
     project_ids = [project.id for project, *_ in rows]
+    saved_project_ids = set(
+        db.scalars(
+            select(PublicProjectSave.project_id).where(
+                PublicProjectSave.user_id == current_user.id,
+                PublicProjectSave.project_id.in_(project_ids),
+            )
+        ).all()
+    ) if project_ids else set()
     connected_models: dict[UUID, set[str]] = {project_id: set() for project_id in project_ids}
     if project_ids:
         for project_id, model_value in db.execute(
@@ -219,6 +237,7 @@ def list_public_project_summaries(
                 "github_url": _safe_public_url(summary["github_url"]),
                 "id": summary["id"],
                 "is_owner": project.owner_id == current_user.id,
+                "is_saved": project.id in saved_project_ids,
                 "latest_event_at": summary["latest_event_at"],
                 "latest_memory_at": summary["latest_memory_at"],
                 "memory_count": summary["memory_count"],
@@ -312,9 +331,41 @@ def read_public_project_detail_response(
         response["project"].get("repository_url")
     )
     response["is_owner"] = project.owner_id == current_user.id
+    response["is_saved"] = db.get(
+        PublicProjectSave,
+        (current_user.id, project.id),
+    ) is not None
     response["owner"] = {
         "avatar_url": owner.avatar_url,
         "id": str(owner.id),
         "username": owner.username,
     }
     return response
+
+
+def update_public_project_save(
+    db: Session,
+    *,
+    current_user: User,
+    project_id: UUID,
+    is_saved: bool,
+) -> dict[str, Any]:
+    project = db.scalar(
+        select(Project).where(
+            Project.id == project_id,
+            Project.visibility == "public",
+        )
+    )
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Public project not found",
+        )
+
+    existing = db.get(PublicProjectSave, (current_user.id, project.id))
+    if is_saved and existing is None:
+        db.add(PublicProjectSave(user_id=current_user.id, project_id=project.id))
+    elif not is_saved and existing is not None:
+        db.delete(existing)
+    db.flush()
+    return {"is_saved": is_saved, "project_id": str(project.id)}

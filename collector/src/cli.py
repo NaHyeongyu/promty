@@ -26,6 +26,7 @@ from config import (
     resolve_token,
     write_config,
 )
+from context_client import fetch_project_context, project_id_for_context, render_project_context
 from events import (
     SUPPORTED_EVENT_TYPES,
     TOOL_ALIASES,
@@ -42,6 +43,7 @@ from payloads import (
     get_first_string,
 )
 from runtime_install import install_runtime, launcher_path, quote_command_path
+from mcp_server import PromtyMCPServer, run_mcp_server
 from sequence import SequenceStore
 from session_index import SessionIndex
 from uploader.client import PromptHubUploader
@@ -1336,6 +1338,34 @@ def init(args: argparse.Namespace) -> int:
     return _init_single_profile(args)
 
 
+def context(args: argparse.Namespace) -> int:
+    project_id = project_id_for_context(cwd=args.cwd, project_id=args.project_id)
+    payload = fetch_project_context(
+        api_url=resolve_api_url(args.api_url, args.config_path),
+        token=resolve_token(args.token, args.config_path),
+        project_id=project_id,
+        timeout=args.timeout,
+    )
+    if args.format == "json":
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        print(render_project_context(payload), end="")
+    return 0
+
+
+def mcp(args: argparse.Namespace) -> int:
+    return run_mcp_server(
+        PromtyMCPServer(
+            api_url=args.api_url,
+            token=args.token,
+            config_path=args.config_path,
+            cwd=args.cwd,
+            project_id=args.project_id,
+            timeout=args.timeout,
+        )
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="promty",
@@ -1550,6 +1580,31 @@ def build_parser() -> argparse.ArgumentParser:
 
     update_runtime_parser = subparsers.add_parser("update-runtime")
     update_runtime_parser.set_defaults(func=lambda _: _update_runtime())
+
+    context_parser = subparsers.add_parser(
+        "context",
+        help="Read the current repository's Project Memory for an AI agent.",
+    )
+    context_parser.add_argument("--api-url")
+    context_parser.add_argument("--config-path")
+    context_parser.add_argument("--cwd")
+    context_parser.add_argument("--project-id")
+    context_parser.add_argument("--timeout", type=float, default=10)
+    context_parser.add_argument("--token")
+    context_parser.add_argument("--format", choices=("markdown", "json"), default="markdown")
+    context_parser.set_defaults(func=context)
+
+    mcp_parser = subparsers.add_parser(
+        "mcp",
+        help="Run the read-only Promty Agent Context MCP server over stdio.",
+    )
+    mcp_parser.add_argument("--api-url")
+    mcp_parser.add_argument("--config-path")
+    mcp_parser.add_argument("--cwd")
+    mcp_parser.add_argument("--project-id")
+    mcp_parser.add_argument("--timeout", type=float, default=10)
+    mcp_parser.add_argument("--token")
+    mcp_parser.set_defaults(func=mcp)
 
     return parser
 

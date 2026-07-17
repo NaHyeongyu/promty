@@ -8,6 +8,7 @@ export type SidebarItemId =
   | "projects"
   | "community"
   | "admin"
+  | "support"
   | "settings"
   | "profile";
 
@@ -141,6 +142,7 @@ export type PublicProjectSummary = {
   github_url: string | null;
   id: string;
   is_owner: boolean;
+  is_saved: boolean;
   latest_event_at: string | null;
   latest_memory_at: string | null;
   memory_count: number;
@@ -357,6 +359,7 @@ export type ProjectDetailApiResponse = {
 
 export type PublicProjectDetailResponse = ProjectDetailApiResponse & {
   is_owner: boolean;
+  is_saved: boolean;
   owner: PublicProjectOwner;
 };
 

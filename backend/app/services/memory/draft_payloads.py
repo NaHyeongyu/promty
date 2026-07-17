@@ -49,10 +49,10 @@ def source_chunk_ids_for_context(context: dict[str, Any]) -> list[str]:
 
 
 def _section_from_strings(title: str, values: list[str]) -> dict[str, str] | None:
-    summaries = [truncate(value, 240) for value in values if value]
+    summaries = [value.strip() for value in values if value.strip()]
     if not summaries:
         return None
-    return {"summary": " / ".join(summaries[:4]), "title": title}
+    return {"summary": " / ".join(summaries), "title": title}
 
 
 def _sections_from_memory_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
@@ -156,7 +156,7 @@ def _payload_from_memory_draft(
         "generator": generator,
         "last_event_id": context["last_event_id"],
         "model": context["model"],
-        "outcome": truncate(draft.get("outcome"), 600) or draft["summary"],
+        "outcome": string_or_none(draft.get("outcome")) or draft["summary"],
         "prompt_event_ids": draft["evidence"]["source_event_ids"],
         "reason": draft["why_it_matters"],
         "sections": _sections_from_memory_draft(draft),

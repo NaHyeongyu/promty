@@ -52,6 +52,8 @@ def _middleware() -> SecurityRateLimitMiddleware:
         auth_window_seconds=60,
         community_requests=2,
         community_window_seconds=60,
+        support_requests=2,
+        support_window_seconds=60,
     )
 
 
@@ -92,6 +94,15 @@ def test_community_rate_limit_covers_flows_and_public_explore() -> None:
         assert _request(middleware, _scope(path))[0]["status"] == 429
 
 
+def test_support_rate_limit_is_separate_and_stricter_ready() -> None:
+    middleware = _middleware()
+    path = "/api/support/inquiries"
+
+    assert _request(middleware, _scope(path))[0]["status"] == 204
+    assert _request(middleware, _scope(path))[0]["status"] == 204
+    assert _request(middleware, _scope(path))[0]["status"] == 429
+
+
 def test_sliding_window_allows_requests_after_the_window_expires() -> None:
     limiter = SlidingWindowRateLimiter()
 
@@ -111,3 +122,4 @@ def test_main_wires_security_rate_limit_middleware() -> None:
     assert middleware.kwargs["admin_requests"] == settings.admin_rate_limit_requests
     assert middleware.kwargs["auth_requests"] == settings.auth_rate_limit_requests
     assert middleware.kwargs["community_requests"] == settings.community_rate_limit_requests
+    assert middleware.kwargs["support_requests"] == settings.support_rate_limit_requests

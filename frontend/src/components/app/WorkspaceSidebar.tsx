@@ -6,6 +6,7 @@ import {
   Folder,
   Gauge,
   Inbox,
+  LifeBuoy,
   LogOut,
   Menu,
   Radio,
@@ -246,6 +247,19 @@ export function WorkspaceSidebar({
               <small>Codex & Claude Code</small>
             </span>
           </a>
+
+          <button
+            className="sidebar-docs-link sidebar-support-link"
+            data-active={activeItem === "support"}
+            onClick={() => selectItem("support")}
+            type="button"
+          >
+            <LifeBuoy aria-hidden="true" size={16} strokeWidth={1.5} />
+            <span>
+              <strong>{t("nav.support")}</strong>
+              <small>{t("support.sidebarHint")}</small>
+            </span>
+          </button>
 
           <div className="sidebar-account" ref={accountMenuRef}>
             <button

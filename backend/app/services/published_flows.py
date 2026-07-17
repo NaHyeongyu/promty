@@ -183,6 +183,7 @@ def list_published_flows(
     *,
     current_user: User,
     limit: int = 50,
+    project_id: UUID | None = None,
     query: str | None = None,
 ) -> list[dict[str, Any]]:
     statement = (
@@ -192,6 +193,12 @@ def list_published_flows(
         .order_by(desc(PublishedFlow.published_at), desc(PublishedFlow.created_at))
         .limit(limit)
     )
+    if project_id is not None:
+        statement = statement.where(
+            PublishedFlow.source_project_id == project_id,
+            PublishedFlow.status == "published",
+            PublishedFlow.visibility == "public",
+        )
     if query:
         lowered = f"%{query.strip().lower()}%"
         statement = statement.where(
@@ -203,6 +210,36 @@ def list_published_flows(
 
     return [
         serialize_flow_summary(flow, current_user=current_user)
+        for flow in db.execute(statement).scalars()
+    ]
+
+
+def list_published_flow_details_for_project(
+    db: Session,
+    *,
+    current_user: User,
+    project_id: UUID,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    statement = (
+        select(PublishedFlow)
+        .options(
+            selectinload(PublishedFlow.assets),
+            selectinload(PublishedFlow.author),
+            selectinload(PublishedFlow.files),
+            selectinload(PublishedFlow.items),
+        )
+        .where(
+            _readable_flow_filter(current_user),
+            PublishedFlow.source_project_id == project_id,
+            PublishedFlow.status == "published",
+            PublishedFlow.visibility == "public",
+        )
+        .order_by(desc(PublishedFlow.published_at), desc(PublishedFlow.created_at))
+        .limit(limit)
+    )
+    return [
+        serialize_flow_detail(flow, current_user=current_user)
         for flow in db.execute(statement).scalars()
     ]
 

@@ -10,6 +10,7 @@ import type {
 import {
   isCommunityPreview,
   previewPublishedFlowDetail,
+  previewPublishedFlowDetailsForProject,
   previewPublishedFlows,
 } from "../workspace/communityPreviewData";
 import { requestJson, requestJsonBody } from "./client";
@@ -17,13 +18,17 @@ import { requestJson, requestJsonBody } from "./client";
 export function fetchPublishedFlows(
   query = "",
   signal?: AbortSignal,
+  projectId?: string,
 ): Promise<PublishedFlowSummary[]> {
   if (isCommunityPreview()) {
-    return Promise.resolve(previewPublishedFlows(query));
+    return Promise.resolve(previewPublishedFlows(query, projectId));
   }
   const params = new URLSearchParams();
   if (query.trim()) {
     params.set("q", query.trim());
+  }
+  if (projectId) {
+    params.set("project_id", projectId);
   }
   const search = params.toString();
   return requestJson<PublishedFlowSummary[]>(
@@ -47,6 +52,20 @@ export function fetchPublishedFlowDetail(
     `/api/published-flows/${encodeURIComponent(flowKey)}`,
     { signal },
     { errorMessage: "Prompt flow request failed" },
+  );
+}
+
+export function fetchPublishedFlowDetailsForProject(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<PublishedFlowDetailResponse[]> {
+  if (isCommunityPreview()) {
+    return Promise.resolve(previewPublishedFlowDetailsForProject(projectId));
+  }
+  return requestJson<PublishedFlowDetailResponse[]>(
+    `/api/published-flows/project/${encodeURIComponent(projectId)}/details`,
+    { signal },
+    { errorMessage: "Project prompt flows request failed" },
   );
 }
 

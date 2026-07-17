@@ -20,6 +20,7 @@ from app.schemas.published_flows import PublishedFlowDetailResponse
 from app.services.published_flows import (
     create_published_flow,
     get_published_flow,
+    list_published_flow_details_for_project,
     list_published_flows,
     update_published_flow,
 )
@@ -185,6 +186,25 @@ def test_community_visibility_content_selection_and_private_storage(db: Session)
 
     public_list = list_published_flows(db, current_user=viewer)
     assert [flow["slug"] for flow in public_list] == [draft["slug"]]
+    assert [flow["slug"] for flow in list_published_flows(
+        db,
+        current_user=viewer,
+        project_id=project.id,
+    )] == [draft["slug"]]
+    assert list_published_flows(
+        db,
+        current_user=viewer,
+        project_id=uuid4(),
+    ) == []
+    project_flow_details = list_published_flow_details_for_project(
+        db,
+        current_user=viewer,
+        project_id=project.id,
+    )
+    assert [flow["slug"] for flow in project_flow_details] == [draft["slug"]]
+    assert [item["prompt_text"] for item in project_flow_details[0]["items"]] == [
+        "Add the safe community view"
+    ]
     public_detail = get_published_flow(
         db,
         current_user=viewer,

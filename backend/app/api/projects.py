@@ -15,6 +15,7 @@ from app.schemas.projects import (
     ProjectCreateRequest,
     ProjectDescriptionUpdateRequest,
     ProjectMetadataUpdateRequest,
+    PublicProjectSaveUpdateRequest,
     ProjectRepositoryUpdateRequest,
     ProjectSummaryResponse,
 )
@@ -27,6 +28,7 @@ from app.schemas.project_responses import (
     ProjectPromptActivitiesResponse,
     PublicProjectDetailResponse,
     PublicProjectListResponse,
+    PublicProjectSaveResponse,
     PublicProfileResponse,
 )
 from app.services.github_repositories import (
@@ -47,6 +49,7 @@ from app.services.projects.public import (
     list_public_project_summaries,
     read_public_project_detail_response,
     read_public_profile_response,
+    update_public_project_save,
 )
 from app.services.projects.views import (
     project_for_user as _project_for_user,
@@ -90,6 +93,7 @@ def create_project(
 @router.get("/public", response_model=PublicProjectListResponse)
 def list_public_projects(
     query: str | None = Query(default=None, max_length=120),
+    saved_only: bool = Query(default=False),
     sort: Literal["newest", "recent"] = Query(default="recent"),
     limit: int = Query(default=24, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -102,6 +106,7 @@ def list_public_projects(
         limit=limit,
         offset=offset,
         query=query,
+        saved_only=saved_only,
         sort=sort,
     )
 
@@ -134,6 +139,23 @@ def read_public_project(
         current_user=current_user,
         project_id=project_id,
     )
+
+
+@router.patch("/public/{project_id}/save", response_model=PublicProjectSaveResponse)
+def save_public_project(
+    project_id: UUID,
+    payload: PublicProjectSaveUpdateRequest,
+    current_user: User = Depends(require_web_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    response = update_public_project_save(
+        db,
+        current_user=current_user,
+        project_id=project_id,
+        is_saved=payload.is_saved,
+    )
+    _commit_or_conflict(db, detail="Public project save could not be updated.")
+    return response
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
