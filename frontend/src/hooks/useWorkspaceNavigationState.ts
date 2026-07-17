@@ -30,6 +30,9 @@ export function useWorkspaceNavigationState({
   const [activeItem, setActiveItem] = useState<SidebarItemId>(
     initialNavigationState.activeItem,
   );
+  const [communityContent, setCommunityContent] = useState(
+    initialNavigationState.communityContent,
+  );
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     initialNavigationState.selectedProjectId,
   );
@@ -38,6 +41,9 @@ export function useWorkspaceNavigationState({
   );
   const [selectedPublicProjectId, setSelectedPublicProjectId] = useState<string | null>(
     initialNavigationState.selectedPublicProjectId,
+  );
+  const [selectedPublicProfileId, setSelectedPublicProfileId] = useState<string | null>(
+    initialNavigationState.selectedPublicProfileId,
   );
   const [selectedCommunityFlowKey, setSelectedCommunityFlowKey] = useState<string | null>(
     initialNavigationState.selectedCommunityFlowKey,
@@ -52,9 +58,11 @@ export function useWorkspaceNavigationState({
       activityNavigation,
       activeDetailTab,
       activeItem,
+      communityContent,
       repositoryFileContentPath,
       selectedProjectId,
       selectedProjectRouteKey,
+      selectedPublicProfileId,
       selectedPublicProjectId,
       selectedCommunityFlowKey,
     }),
@@ -62,9 +70,11 @@ export function useWorkspaceNavigationState({
       activityNavigation,
       activeDetailTab,
       activeItem,
+      communityContent,
       repositoryFileContentPath,
       selectedProjectId,
       selectedProjectRouteKey,
+      selectedPublicProfileId,
       selectedPublicProjectId,
       selectedCommunityFlowKey,
     ],
@@ -73,8 +83,10 @@ export function useWorkspaceNavigationState({
   const applyNavigationState = useCallback(
     (nextState: UrlNavigationState) => {
       setActiveItem(nextState.activeItem);
+      setCommunityContent(nextState.communityContent);
       setSelectedProjectId(nextState.selectedProjectId);
       setSelectedProjectRouteKey(nextState.selectedProjectRouteKey);
+      setSelectedPublicProfileId(nextState.selectedPublicProfileId);
       setSelectedPublicProjectId(nextState.selectedPublicProjectId);
       setSelectedCommunityFlowKey(nextState.selectedCommunityFlowKey);
       setActiveDetailTab(nextState.activeDetailTab);
@@ -104,8 +116,10 @@ export function useWorkspaceNavigationState({
     activityNavigation,
     applyNavigationState,
     currentNavigationState,
+    communityContent,
     selectedProjectId,
     selectedProjectRouteKey,
+    selectedPublicProfileId,
     selectedPublicProjectId,
     selectedCommunityFlowKey,
   };

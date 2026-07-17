@@ -6,11 +6,12 @@ import type {
 
 export type SidebarItemId =
   | "projects"
-  | "explore"
   | "community"
   | "admin"
   | "settings"
   | "profile";
+
+export type CommunityContentType = "projects" | "flows";
 
 export type Project = {
   defaultBranch?: string;
@@ -160,6 +161,10 @@ export type PublicProjectPage = {
   limit: number;
   offset: number;
   total: number;
+};
+
+export type PublicProfileResponse = PublicProjectPage & {
+  profile: PublicProjectOwner;
 };
 
 export type ProjectSortMode = "recent" | "added";
@@ -639,7 +644,11 @@ export type AdminOverview = {
     username: string;
   }>;
   risks: Array<{
+    acknowledged: boolean;
+    acknowledged_at: string | null;
+    acknowledged_by: string | null;
     detail: string;
+    key: string;
     severity: string;
     title: string;
   }>;

@@ -866,13 +866,13 @@ The user-facing install command should not contain a personal username.
 Preferred production command:
 
 ```bash
-npx promty-collector init --app-url https://promty.org --api-url https://api.promty.org
+npx promty-collector init --tool codex-cli --app-url https://promty.org --api-url https://api.promty.org
 ```
 
 For local development:
 
 ```bash
-npx promty-collector init --app-url http://127.0.0.1:5173 --api-url http://127.0.0.1:8011
+npx promty-collector init --tool codex-cli --app-url http://127.0.0.1:5173 --api-url http://127.0.0.1:8011
 ```
 
 The npm package release is separate from AWS deployment. Before publishing:

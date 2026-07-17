@@ -53,9 +53,9 @@ describe("externalProjectHref", () => {
 });
 
 describe("public project links", () => {
-  it("builds a deep link to the read-only explore view", () => {
+  it("builds a deep link to the Community projects view", () => {
     expect(publicProjectUrl(project.id)).toBe(
-      `http://localhost:3000/?view=explore&public_project=${project.id}`,
+      `http://localhost:3000/?view=community&public_project=${project.id}`,
     );
   });
 

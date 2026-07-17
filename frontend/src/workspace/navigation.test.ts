@@ -4,7 +4,6 @@ import {
   normalizeUrlNavigationState,
   readUrlNavigationState,
 } from "./navigation";
-import { PUBLISHED_FLOWS_ENABLED } from "../config";
 
 describe("workspace navigation", () => {
   beforeEach(() => {
@@ -15,6 +14,8 @@ describe("workspace navigation", () => {
     const state = normalizeUrlNavigationState({});
 
     expect(state.activeItem).toBe("projects");
+    expect(state.communityContent).toBe("projects");
+    expect(state.selectedPublicProfileId).toBeNull();
     expect(state.activityNavigation.view).toBe("prompts");
     expect(buildUrlNavigationSearch(state)).toBe("");
   });
@@ -69,34 +70,68 @@ describe("workspace navigation", () => {
     expect(buildUrlNavigationSearch(state)).toBe("?project=prompt-hub&tab=overview");
   });
 
-  it("keeps a selected public project in Explore URLs", () => {
+  it("keeps a selected public project in Community project URLs", () => {
     const projectId = "56828395-f94c-56f7-9ff9-a2feb027ae19";
     const state = normalizeUrlNavigationState({
-      activeItem: "explore",
+      activeItem: "community",
+      communityContent: "projects",
       selectedPublicProjectId: projectId,
     });
 
     expect(state.selectedProjectId).toBeNull();
     expect(state.selectedPublicProjectId).toBe(projectId);
     expect(buildUrlNavigationSearch(state)).toBe(
-      `?view=explore&public_project=${projectId}`,
+      `?view=community&public_project=${projectId}`,
     );
   });
 
-  it("follows the Community release flag for prompt-flow URLs", () => {
+  it("redirects legacy Explore links to Community projects", () => {
+    const projectId = "56828395-f94c-56f7-9ff9-a2feb027ae19";
+    window.location.search = `?view=explore&public_project=${projectId}`;
+
+    const state = readUrlNavigationState();
+
+    expect(state.activeItem).toBe("community");
+    expect(state.communityContent).toBe("projects");
+    expect(state.selectedPublicProjectId).toBe(projectId);
+    expect(buildUrlNavigationSearch(state)).toBe(
+      `?view=community&public_project=${projectId}`,
+    );
+  });
+
+  it("keeps public profiles separate from project detail URLs", () => {
+    const profileId = "451be15f-41ad-4bf0-9fdf-978ceff26f45";
+    const projectId = "56828395-f94c-56f7-9ff9-a2feb027ae19";
     const state = normalizeUrlNavigationState({
       activeItem: "community",
-      selectedCommunityFlowKey: "secure-review-flow",
+      communityContent: "projects",
+      selectedPublicProfileId: profileId,
+      selectedPublicProjectId: projectId,
     });
 
-    expect(state.activeItem).toBe(PUBLISHED_FLOWS_ENABLED ? "community" : "projects");
-    expect(state.selectedCommunityFlowKey).toBe(
-      PUBLISHED_FLOWS_ENABLED ? "secure-review-flow" : null,
-    );
+    expect(state.selectedPublicProfileId).toBe(profileId);
+    expect(state.selectedPublicProjectId).toBeNull();
     expect(buildUrlNavigationSearch(state)).toBe(
-      PUBLISHED_FLOWS_ENABLED
-        ? "?view=community&flow=secure-review-flow"
-        : "",
+      `?view=community&profile=${profileId}`,
     );
+  });
+
+  it("redirects removed prompt-flow URLs to Community projects", () => {
+    window.location.search =
+      "?view=community&content=flows&flow=secure-review-flow";
+    const state = readUrlNavigationState();
+
+    expect(state.activeItem).toBe("community");
+    expect(state.communityContent).toBe("projects");
+    expect(state.selectedCommunityFlowKey).toBeNull();
+    expect(buildUrlNavigationSearch(state)).toBe("?view=community");
+  });
+
+  it("preserves Community preview mode while navigating", () => {
+    window.location.search = "?view=community&preview=community";
+    const state = readUrlNavigationState();
+
+    expect(state.activeItem).toBe("community");
+    expect(buildUrlNavigationSearch(state)).toBe("?preview=community&view=community");
   });
 });

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Check, RefreshCw } from "lucide-react";
 import { BRAND_NAME } from "../../config";
 import {
@@ -6,7 +6,11 @@ import {
   useFirstEventPolling,
 } from "../../hooks/useFirstEventPolling";
 import type { EventRecord } from "../../workspace/types";
-import { setupCommandText, SetupCommandBlock } from "./SetupCommandBlock";
+import {
+  type CollectorInstallTarget,
+  setupCommandText,
+  SetupCommandBlock,
+} from "./SetupCommandBlock";
 import { useI18n } from "../../i18n/I18nProvider";
 
 export function CollectorSetupFlow({
@@ -15,21 +19,94 @@ export function CollectorSetupFlow({
   projectName?: string;
 }) {
   const { t } = useI18n();
+  const repositoryName = projectName ?? t("collector.yourProject");
+  const toolGroupName = useId();
+  const [installTarget, setInstallTarget] = useState<CollectorInstallTarget>("codex-cli");
+  const toolOptions: Array<{
+    description: string;
+    label: string;
+    recommended?: boolean;
+    value: CollectorInstallTarget;
+  }> = [
+    {
+      description: t("collector.toolCodexDescription"),
+      label: t("collector.toolCodex"),
+      recommended: true,
+      value: "codex-cli",
+    },
+    {
+      description: t("collector.toolClaudeDescription"),
+      label: t("collector.toolClaude"),
+      value: "claude-code",
+    },
+    {
+      description: t("collector.toolBothDescription"),
+      label: t("collector.toolBoth"),
+      value: "all",
+    },
+  ];
+  const commandScope = {
+    all: t("collector.commandScopeBoth"),
+    "claude-code": t("collector.commandScopeClaude"),
+    "codex-cli": t("collector.commandScopeCodex"),
+  }[installTarget];
+
   return (
     <div className="collector-setup-flow">
       <span className="collector-directory-hint">
-        Run from {projectName ? <strong>{projectName}</strong> : "your project directory"}
+        {t("collector.runFromRepository", { name: repositoryName })}
       </span>
 
+      <fieldset className="collector-tool-selector">
+        <legend>{t("collector.toolChoiceLabel")}</legend>
+        <div className="collector-tool-options">
+          {toolOptions.map((option) => (
+            <label
+              className="collector-tool-option"
+              data-active={installTarget === option.value}
+              key={option.value}
+            >
+              <input
+                checked={installTarget === option.value}
+                name={toolGroupName}
+                onChange={() => setInstallTarget(option.value)}
+                type="radio"
+                value={option.value}
+              />
+              <span className="collector-tool-radio" aria-hidden="true" />
+              <span>
+                <strong>
+                  {option.label}
+                  {option.recommended ? <em>{t("collector.recommended")}</em> : null}
+                </strong>
+                <small>{option.description}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      <div className="collector-command-scope">
+        <Check aria-hidden="true" size={16} strokeWidth={1.8} />
+        <div>
+          <strong>{t("collector.commandScopeTitle")}</strong>
+          <span>{commandScope}</span>
+        </div>
+      </div>
+
       <SetupCommandBlock
-        command={setupCommandText()}
-        helperText="Installs Codex and Claude Code hooks. Requires Node.js 20+, Python 3.12+, and Git."
-        label="Project terminal"
+        command={setupCommandText(installTarget)}
+        helperText={t("collector.setupRequirements")}
+        label={t("collector.projectTerminal")}
       />
 
+      <p className="collector-scope-note">
+        <strong>{t("collector.repositoryScopeTitle")}</strong>{" "}
+        {t("collector.repositoryScopeDescription")}
+      </p>
+
       <p className="collector-data-note">
-        {BRAND_NAME} stores prompts, responses, and code changes in your workspace. Review sensitive
-        content before connecting.
+        {t("collector.dataNotice", { brand: BRAND_NAME })}
       </p>
     </div>
   );

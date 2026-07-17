@@ -10,6 +10,7 @@ from sqlalchemy import event as sqlalchemy_event
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal, engine
+from app.models.admin_audit_logs import AdminAuditLog
 from app.models.artifacts import Artifact
 from app.models.events import Event
 from app.models.github_connections import GitHubConnection
@@ -20,7 +21,7 @@ from app.models.sessions import Session as PromptSession
 from app.models.tokens import CollectorToken
 from app.models.users import User
 from app.schemas.admin_responses import AdminOverviewResponse
-from app.services.admin.dashboard import admin_overview_response
+from app.services.admin.dashboard import _risk_acknowledgement_state, admin_overview_response
 from app.services.memory.constants import (
     MEMORY_ARTIFACT_TYPE,
     MEMORY_DRAFT_ARTIFACT_TYPE,
@@ -170,7 +171,55 @@ def _seed_dashboard_rows(db: Session) -> tuple[User, Project, datetime]:
     return user, project, now
 
 
-def test_admin_overview_uses_eight_statements_and_preserves_contract(db: Session) -> None:
+def test_risk_acknowledgement_uses_latest_audit_state(db: Session) -> None:
+    marker = str(uuid4())
+    now = datetime.now(timezone.utc)
+    risk = {
+        "detail": "Test detail",
+        "key": "session-cookie-secure",
+        "severity": "high",
+        "title": "Test risk",
+    }
+    db.add(
+        AdminAuditLog(
+            actor_github_id=marker,
+            actor_username=f"risk-admin-{marker}",
+            action="admin.risk.acknowledge",
+            resource_type="risk",
+            resource_id=risk["key"],
+            request_method="POST",
+            request_path=f"/api/admin/risks/{risk['key']}/acknowledge",
+            status_code=200,
+            created_at=now,
+        )
+    )
+    db.flush()
+
+    acknowledged = _risk_acknowledgement_state(db, [risk])[0]
+    assert acknowledged["acknowledged"] is True
+    assert acknowledged["acknowledged_by"] == f"risk-admin-{marker}"
+
+    db.add(
+        AdminAuditLog(
+            actor_github_id=marker,
+            actor_username=f"risk-admin-{marker}",
+            action="admin.risk.clear_acknowledgement",
+            resource_type="risk",
+            resource_id=risk["key"],
+            request_method="POST",
+            request_path=f"/api/admin/risks/{risk['key']}/clear-acknowledgement",
+            status_code=200,
+            created_at=now + timedelta(seconds=1),
+        )
+    )
+    db.flush()
+
+    cleared = _risk_acknowledgement_state(db, [risk])[0]
+    assert cleared["acknowledged"] is False
+    assert cleared["acknowledged_by"] is None
+
+
+def test_admin_overview_uses_nine_statements_and_preserves_contract(db: Session) -> None:
     baseline = admin_overview_response(db)
     user, project, _now = _seed_dashboard_rows(db)
     statements: list[str] = []
@@ -193,7 +242,7 @@ def test_admin_overview_uses_eight_statements_and_preserves_contract(db: Session
 
     AdminOverviewResponse.model_validate(response)
 
-    assert len(statements) == 8
+    assert len(statements) == 9
     assert set(response) == {
         "action_items",
         "ai_activity",

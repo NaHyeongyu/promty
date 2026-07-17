@@ -27,38 +27,61 @@ const adminMessages = {
   forbiddenMessage: "Admin access is not enabled for this GitHub account.",
 };
 
-export function fetchAdminUsers(signal?: AbortSignal): Promise<AdminPage<AdminUser>> {
+export type AdminListOptions = {
+  limit?: number;
+  offset?: number;
+  query?: string;
+};
+
+function adminListParams(options: AdminListOptions = {}) {
+  const params = new URLSearchParams({
+    limit: String(options.limit ?? 25),
+    offset: String(options.offset ?? 0),
+  });
+  if (options.query?.trim()) params.set("query", options.query.trim());
+  return params;
+}
+
+export function fetchAdminUsers(
+  options: AdminListOptions = {},
+  signal?: AbortSignal,
+): Promise<AdminPage<AdminUser>> {
   return requestJson<AdminPage<AdminUser>>(
-    "/api/admin/users?limit=200",
+    `/api/admin/users?${adminListParams(options).toString()}`,
     { signal },
     adminMessages,
   );
 }
 
 export function fetchAdminProjects(
+  options: AdminListOptions = {},
   signal?: AbortSignal,
 ): Promise<AdminPage<AdminProject>> {
   return requestJson<AdminPage<AdminProject>>(
-    "/api/admin/projects?limit=200",
+    `/api/admin/projects?${adminListParams(options).toString()}`,
     { signal },
     adminMessages,
   );
 }
 
-export function fetchAdminJobs(signal?: AbortSignal): Promise<AdminPage<AdminJob>> {
+export function fetchAdminJobs(
+  options: AdminListOptions & { status?: string } = {},
+  signal?: AbortSignal,
+): Promise<AdminPage<AdminJob>> {
+  const params = adminListParams(options);
+  if (options.status && options.status !== "all") params.set("status", options.status);
   return requestJson<AdminPage<AdminJob>>(
-    "/api/admin/jobs?limit=200",
+    `/api/admin/jobs?${params.toString()}`,
     { signal },
     adminMessages,
   );
 }
 
 export function fetchAdminEvents(
-  query = "",
+  options: AdminListOptions = {},
   signal?: AbortSignal,
 ): Promise<AdminEventPage> {
-  const params = new URLSearchParams({ limit: "500" });
-  if (query.trim()) params.set("query", query.trim());
+  const params = adminListParams(options);
   return requestJson<AdminEventPage>(
     `/api/admin/events?${params.toString()}`,
     { signal },
@@ -71,10 +94,19 @@ export function fetchAdminSystem(signal?: AbortSignal): Promise<AdminSystem> {
 }
 
 export function fetchAdminAuditLogs(
+  options: AdminListOptions & {
+    action?: string;
+    outcome?: "error" | "success";
+    resourceType?: string;
+  } = {},
   signal?: AbortSignal,
 ): Promise<AdminPage<AdminAuditLog>> {
+  const params = adminListParams(options);
+  if (options.action?.trim()) params.set("action", options.action.trim());
+  if (options.outcome) params.set("outcome", options.outcome);
+  if (options.resourceType?.trim()) params.set("resource_type", options.resourceType.trim());
   return requestJson<AdminPage<AdminAuditLog>>(
-    "/api/admin/audit-logs?limit=200",
+    `/api/admin/audit-logs?${params.toString()}`,
     { signal },
     adminMessages,
   );
@@ -243,6 +275,30 @@ export function retryAdminJob(
 ): Promise<{ batch_id: string; status: string }> {
   return requestJsonBody(
     `/api/admin/jobs/${jobId}/retry`,
+    "POST",
+    { confirmation },
+    adminMessages,
+  );
+}
+
+export function acknowledgeAdminRisk(
+  riskKey: string,
+  confirmation: string,
+): Promise<{ acknowledged: boolean; key: string }> {
+  return requestJsonBody(
+    `/api/admin/risks/${encodeURIComponent(riskKey)}/acknowledge`,
+    "POST",
+    { confirmation },
+    adminMessages,
+  );
+}
+
+export function clearAdminRiskAcknowledgement(
+  riskKey: string,
+  confirmation: string,
+): Promise<{ acknowledged: boolean; key: string }> {
+  return requestJsonBody(
+    `/api/admin/risks/${encodeURIComponent(riskKey)}/clear-acknowledgement`,
     "POST",
     { confirmation },
     adminMessages,

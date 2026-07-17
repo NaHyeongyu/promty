@@ -35,6 +35,7 @@ from app.schemas.admin_responses import (
     AdminProjectResponse,
     AdminRestoreUserResponse,
     AdminRetryJobResponse,
+    AdminRiskAcknowledgementResponse,
     AdminRevokeAllTokensResponse,
     AdminSuspendUserResponse,
     AdminSystemResponse,
@@ -48,7 +49,7 @@ from app.services.admin.control_center import (
     revoke_admin_collector_token_response,
     revoke_all_admin_collector_tokens_response,
 )
-from app.services.admin.dashboard import admin_overview_response
+from app.services.admin.dashboard import OPERATIONAL_RISK_KEYS, admin_overview_response
 from app.services.admin.operations import (
     admin_events_response,
     admin_memory_jobs_response,
@@ -105,6 +106,7 @@ def read_admin_jobs(
         default=None,
         pattern="^(pending|running|succeeded|failed|superseded|stale)$",
     ),
+    query: str | None = Query(default=None, max_length=255),
     limit: int = Query(default=100, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _admin_user: User = Depends(require_admin_user),
@@ -115,17 +117,30 @@ def read_admin_jobs(
         job_status=status,
         limit=limit,
         offset=offset,
+        query=query,
     )
 
 
 @router.get("/audit-logs", response_model=AdminPageResponse[AdminAuditLogResponse])
 def read_admin_audit_logs(
+    action: str | None = Query(default=None, max_length=128),
+    outcome: str | None = Query(default=None, pattern="^(success|error)$"),
+    query: str | None = Query(default=None, max_length=255),
+    resource_type: str | None = Query(default=None, max_length=64),
     limit: int = Query(default=100, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _admin_user: User = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    return admin_audit_logs_response(db, limit=limit, offset=offset)
+    return admin_audit_logs_response(
+        db,
+        action=action,
+        limit=limit,
+        offset=offset,
+        outcome=outcome,
+        query=query,
+        resource_type=resource_type,
+    )
 
 
 def _set_audit_action(
@@ -138,6 +153,68 @@ def _set_audit_action(
     request.state.admin_audit_action = action
     request.state.admin_audit_resource_id = str(resource_id)
     request.state.admin_audit_resource_type = resource_type
+
+
+def _risk_acknowledgement_response(
+    *,
+    acknowledged: bool,
+    admin_user: User,
+    confirmation: str,
+    request: Request,
+    risk_key: str,
+) -> dict[str, Any]:
+    if risk_key not in OPERATIONAL_RISK_KEYS:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Risk not found")
+    if confirmation != admin_user.username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f'Type "{admin_user.username}" to confirm this administrator action.',
+        )
+    _set_audit_action(
+        request,
+        action="admin.risk.acknowledge" if acknowledged else "admin.risk.clear_acknowledgement",
+        resource_id=risk_key,
+        resource_type="risk",
+    )
+    return {"acknowledged": acknowledged, "key": risk_key}
+
+
+@router.post(
+    "/risks/{risk_key}/acknowledge",
+    response_model=AdminRiskAcknowledgementResponse,
+)
+def acknowledge_admin_risk(
+    risk_key: str,
+    payload: AdminConfirmationRequest,
+    request: Request,
+    admin_user: User = Depends(require_admin_user),
+) -> dict[str, Any]:
+    return _risk_acknowledgement_response(
+        acknowledged=True,
+        admin_user=admin_user,
+        confirmation=payload.confirmation,
+        request=request,
+        risk_key=risk_key,
+    )
+
+
+@router.post(
+    "/risks/{risk_key}/clear-acknowledgement",
+    response_model=AdminRiskAcknowledgementResponse,
+)
+def clear_admin_risk_acknowledgement(
+    risk_key: str,
+    payload: AdminConfirmationRequest,
+    request: Request,
+    admin_user: User = Depends(require_admin_user),
+) -> dict[str, Any]:
+    return _risk_acknowledgement_response(
+        acknowledged=False,
+        admin_user=admin_user,
+        confirmation=payload.confirmation,
+        request=request,
+        risk_key=risk_key,
+    )
 
 
 @router.get("/events", response_model=AdminEventPageResponse)

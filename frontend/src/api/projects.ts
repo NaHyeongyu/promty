@@ -10,7 +10,14 @@ import type {
   ProjectSummary,
   PublicProjectDetailResponse,
   PublicProjectPage,
+  PublicProfileResponse,
 } from "../workspace/types";
+import {
+  isCommunityPreview,
+  previewPublicProjectDetail,
+  previewPublicProfile,
+  previewPublicProjects,
+} from "../workspace/communityPreviewData";
 import { requestJson, requestJsonBody, requestVoid } from "./client";
 
 export type ProjectDetailResourcesResponse = ProjectDetailApiResponse & {
@@ -115,6 +122,14 @@ export function fetchPublicProjects(
     sort?: "newest" | "recent";
   } = {},
 ): Promise<PublicProjectPage> {
+  if (isCommunityPreview()) {
+    return Promise.resolve(previewPublicProjects({
+      limit: options.limit ?? 24,
+      offset: options.offset ?? 0,
+      query: options.query,
+      sort: options.sort ?? "recent",
+    }));
+  }
   const params = new URLSearchParams({
     limit: String(options.limit ?? 24),
     offset: String(options.offset ?? 0),
@@ -135,12 +150,49 @@ export function fetchPublicProjectDetail(
   projectId: string,
   signal?: AbortSignal,
 ): Promise<PublicProjectDetailResponse> {
+  if (isCommunityPreview()) {
+    const project = previewPublicProjectDetail(projectId);
+    return project
+      ? Promise.resolve(project)
+      : Promise.reject(new Error("Preview project not found"));
+  }
   return requestJson<PublicProjectDetailResponse>(
     `/api/projects/public/${encodeURIComponent(projectId)}`,
     { signal },
     {
       errorMessage: "Public project request failed",
       unauthorizedMessage: "Sign in again before opening this public project.",
+    },
+  );
+}
+
+export function fetchPublicProfile(
+  userId: string,
+  options: {
+    limit?: number;
+    offset?: number;
+    signal?: AbortSignal;
+  } = {},
+): Promise<PublicProfileResponse> {
+  if (isCommunityPreview()) {
+    const profile = previewPublicProfile(userId, {
+      limit: options.limit ?? 24,
+      offset: options.offset ?? 0,
+    });
+    return profile
+      ? Promise.resolve(profile)
+      : Promise.reject(new Error("Preview profile not found"));
+  }
+  const params = new URLSearchParams({
+    limit: String(options.limit ?? 24),
+    offset: String(options.offset ?? 0),
+  });
+  return requestJson<PublicProfileResponse>(
+    `/api/projects/public/profiles/${encodeURIComponent(userId)}?${params.toString()}`,
+    { signal: options.signal },
+    {
+      errorMessage: "Public profile request failed",
+      unauthorizedMessage: "Sign in again before opening this public profile.",
     },
   );
 }

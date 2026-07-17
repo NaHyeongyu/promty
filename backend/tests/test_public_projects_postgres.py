@@ -16,10 +16,12 @@ from app.models.users import User
 from app.schemas.project_responses import (
     PublicProjectDetailResponse,
     PublicProjectListResponse,
+    PublicProfileResponse,
 )
 from app.services.projects.public import (
     list_public_project_summaries,
     read_public_project_detail_response,
+    read_public_profile_response,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -116,6 +118,20 @@ def test_public_project_list_and_read_only_detail_are_visible_to_other_users(
     assert "raw prompt" not in str(item).lower()
     assert "email" not in item["owner"]
 
+    profile = read_public_profile_response(
+        db,
+        current_user=viewer,
+        user_id=owner.id,
+        limit=24,
+        offset=0,
+    )
+    PublicProfileResponse.model_validate(profile)
+    assert profile["profile"]["username"] == owner.username
+    assert profile["total"] == 1
+    assert [project["id"] for project in profile["items"]] == [str(public_project.id)]
+    assert str(private_project.id) not in {project["id"] for project in profile["items"]}
+    assert "email" not in profile["profile"]
+
     detail = read_public_project_detail_response(
         db,
         current_user=viewer,
@@ -144,3 +160,22 @@ def test_public_project_list_and_read_only_detail_are_visible_to_other_users(
             project_id=private_project.id,
         )
     assert private_error.value.status_code == 404
+
+    public_project.visibility = "private"
+    db.flush()
+    hidden_profile = read_public_profile_response(
+        db,
+        current_user=viewer,
+        user_id=owner.id,
+        limit=24,
+        offset=0,
+    )
+    assert hidden_profile["items"] == []
+    assert hidden_profile["total"] == 0
+    with pytest.raises(HTTPException) as hidden_detail_error:
+        read_public_project_detail_response(
+            db,
+            current_user=viewer,
+            project_id=public_project.id,
+        )
+    assert hidden_detail_error.value.status_code == 404

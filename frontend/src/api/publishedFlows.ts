@@ -7,12 +7,20 @@ import type {
   PublishedFlowDetailResponse,
   PublishedFlowSummary,
 } from "../workspace/types";
+import {
+  isCommunityPreview,
+  previewPublishedFlowDetail,
+  previewPublishedFlows,
+} from "../workspace/communityPreviewData";
 import { requestJson, requestJsonBody } from "./client";
 
 export function fetchPublishedFlows(
   query = "",
   signal?: AbortSignal,
 ): Promise<PublishedFlowSummary[]> {
+  if (isCommunityPreview()) {
+    return Promise.resolve(previewPublishedFlows(query));
+  }
   const params = new URLSearchParams();
   if (query.trim()) {
     params.set("q", query.trim());
@@ -29,6 +37,12 @@ export function fetchPublishedFlowDetail(
   flowKey: string,
   signal?: AbortSignal,
 ): Promise<PublishedFlowDetailResponse> {
+  if (isCommunityPreview()) {
+    const flow = previewPublishedFlowDetail(flowKey);
+    return flow
+      ? Promise.resolve(flow)
+      : Promise.reject(new Error("Preview prompt flow not found"));
+  }
   return requestJson<PublishedFlowDetailResponse>(
     `/api/published-flows/${encodeURIComponent(flowKey)}`,
     { signal },

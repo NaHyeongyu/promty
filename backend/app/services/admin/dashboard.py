@@ -24,6 +24,13 @@ from app.services.memory.constants import (
     REVIEW_STATE_DRAFT,
 )
 
+OPERATIONAL_RISK_KEYS = {
+    "app-encryption-key",
+    "external-memory-generator",
+    "github-token-key",
+    "session-cookie-secure",
+}
+
 
 def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
@@ -220,6 +227,7 @@ def _operational_risks() -> list[dict[str, str]]:
         risks.append(
             {
                 "detail": "PROMPTHUB_SESSION_COOKIE_SECURE is false.",
+                "key": "session-cookie-secure",
                 "severity": "high",
                 "title": "Session cookie is not marked secure",
             }
@@ -228,6 +236,7 @@ def _operational_risks() -> list[dict[str, str]]:
         risks.append(
             {
                 "detail": "GitHub token encryption falls back to another application secret.",
+                "key": "github-token-key",
                 "severity": "medium",
                 "title": "Dedicated GitHub token key is not configured",
             }
@@ -236,6 +245,7 @@ def _operational_risks() -> list[dict[str, str]]:
         risks.append(
             {
                 "detail": "Prompt and response encryption falls back to another application secret.",
+                "key": "app-encryption-key",
                 "severity": "medium",
                 "title": "Dedicated app encryption key is not configured",
             }
@@ -251,11 +261,49 @@ def _operational_risks() -> list[dict[str, str]]:
         risks.append(
             {
                 "detail": "Compact prompt and response evidence can be sent to an external memory generator.",
+                "key": "external-memory-generator",
                 "severity": "info",
                 "title": "External memory generation is enabled",
             }
         )
     return risks
+
+
+def _risk_acknowledgement_state(
+    db: Session,
+    risks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    risk_keys = [risk["key"] for risk in risks]
+    if not risk_keys:
+        return []
+    logs = db.scalars(
+        select(AdminAuditLog)
+        .where(
+            AdminAuditLog.resource_type == "risk",
+            AdminAuditLog.resource_id.in_(risk_keys),
+            AdminAuditLog.action.in_(
+                ("admin.risk.acknowledge", "admin.risk.clear_acknowledgement")
+            ),
+        )
+        .order_by(desc(AdminAuditLog.created_at), desc(AdminAuditLog.id))
+    ).all()
+    latest_by_key: dict[str, AdminAuditLog] = {}
+    for log in logs:
+        if log.resource_id and log.resource_id not in latest_by_key:
+            latest_by_key[log.resource_id] = log
+    enriched = []
+    for risk in risks:
+        latest = latest_by_key.get(risk["key"])
+        acknowledged = bool(latest and latest.action == "admin.risk.acknowledge")
+        enriched.append(
+            {
+                **risk,
+                "acknowledged": acknowledged,
+                "acknowledged_at": _iso(latest.created_at) if acknowledged and latest else None,
+                "acknowledged_by": latest.actor_username if acknowledged and latest else None,
+            }
+        )
+    return enriched
 
 
 def _build_action_items(
@@ -265,7 +313,7 @@ def _build_action_items(
     projects_without_activity: int,
     projects_without_repo: int,
     response_gap: int,
-    risks: list[dict[str, str]],
+    risks: list[dict[str, Any]],
     stale_jobs: int,
 ) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
@@ -330,6 +378,8 @@ def _build_action_items(
             )
         )
     for risk in risks:
+        if risk.get("acknowledged"):
+            continue
         items.append(
             _action_item(
                 area="System",
@@ -744,7 +794,7 @@ def admin_overview_response(db: Session) -> dict[str, Any]:
     projects_without_activity = metrics["projects_without_activity"]
     response_gap = max(total_prompts - total_responses, 0)
     response_gap_24h = max(prompts_24h - responses_24h, 0)
-    risks = _operational_risks()
+    risks = _risk_acknowledgement_state(db, _operational_risks())
     breakdowns = _breakdowns(db)
 
     return {

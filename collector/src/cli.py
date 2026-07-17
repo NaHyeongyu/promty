@@ -52,6 +52,14 @@ from version import COLLECTOR_VERSION
 InstallTarget = Literal["all", "claude-code", "codex-cli"]
 Profile = Literal["dev", "prod"]
 INSTALL_TOOLS: tuple[SupportedTool, ...] = ("codex-cli", "claude-code")
+INSTALL_TOOL_LABELS: dict[SupportedTool, str] = {
+    "codex-cli": "Codex CLI",
+    "claude-code": "Claude Code",
+}
+INSTALL_TOOL_PATHS: dict[SupportedTool, Path] = {
+    "codex-cli": Path(".codex/hooks.json"),
+    "claude-code": Path(".claude/settings.local.json"),
+}
 INSTALL_TOOL_ALIASES: dict[str, InstallTarget] = {
     "all": "all",
     "claude": "claude-code",
@@ -722,6 +730,18 @@ def _is_promty_hook(hook: dict[str, Any], subcommand: str) -> bool:
     )
 
 
+def _is_any_promty_hook(hook: dict[str, Any]) -> bool:
+    command = str(hook.get("command", ""))
+    status_message = str(hook.get("statusMessage", ""))
+    return hook.get("type") == "command" and (
+        "promty" in command.lower()
+        or "prompthub" in command.lower()
+        or "collector/src/cli.py" in command
+        or "promty" in status_message.lower()
+        or "prompthub" in status_message.lower()
+    )
+
+
 def _upsert_command_hook(
     config: dict[str, Any],
     *,
@@ -759,6 +779,48 @@ def _write_hooks_config(path: Path, config: dict[str, Any]) -> None:
     with path.open("w", encoding="utf-8") as file:
         json.dump(config, file, ensure_ascii=False, indent=2, sort_keys=True)
         file.write("\n")
+
+
+def _remove_promty_hooks(path: Path) -> int:
+    if not path.exists():
+        return 0
+
+    config = _read_hooks_config(path)
+    hooks_by_event = config.get("hooks", {})
+    removed = 0
+    empty_events: list[str] = []
+
+    for event, groups in hooks_by_event.items():
+        if not isinstance(groups, list):
+            continue
+        remaining_groups: list[Any] = []
+        for group in groups:
+            if not isinstance(group, dict):
+                remaining_groups.append(group)
+                continue
+            group_hooks = group.get("hooks")
+            if not isinstance(group_hooks, list):
+                remaining_groups.append(group)
+                continue
+            remaining_hooks = [
+                hook
+                for hook in group_hooks
+                if not (isinstance(hook, dict) and _is_any_promty_hook(hook))
+            ]
+            removed += len(group_hooks) - len(remaining_hooks)
+            if remaining_hooks:
+                remaining_groups.append({**group, "hooks": remaining_hooks})
+        if remaining_groups:
+            hooks_by_event[event] = remaining_groups
+        else:
+            empty_events.append(event)
+
+    for event in empty_events:
+        hooks_by_event.pop(event, None)
+
+    if removed:
+        _write_hooks_config(path, config)
+    return removed
 
 
 def _install_codex_hooks(
@@ -845,6 +907,14 @@ def _install_claude_hooks(
 def install_hooks(args: argparse.Namespace) -> int:
     target = _normalize_install_target(args)
     repo_root = _git_root(args.repo_root)
+    selected_tools = _tools_for_install_target(target)
+    selected_labels = ", ".join(INSTALL_TOOL_LABELS[tool] for tool in selected_tools)
+    integration_label = "integration" if len(selected_tools) == 1 else "integrations"
+    print(f"Selected Promty {integration_label}: {selected_labels}")
+    print(f"Repository: {repo_root}")
+    if target != "all":
+        other_tool = next(tool for tool in INSTALL_TOOLS if tool not in selected_tools)
+        print(f"{INSTALL_TOOL_LABELS[other_tool]} settings will not be changed.")
     if args.hook_command:
         command_prefix = args.hook_command
     else:
@@ -863,7 +933,7 @@ def install_hooks(args: argparse.Namespace) -> int:
         queue_paths = [queue_path] if queue_path else []
 
     failures: list[tuple[SupportedTool, Exception]] = []
-    for normalized_tool in _tools_for_install_target(target):
+    for normalized_tool in selected_tools:
         try:
             if normalized_tool == "codex-cli":
                 _install_codex_hooks(
@@ -888,6 +958,34 @@ def install_hooks(args: argparse.Namespace) -> int:
     if failures:
         print("Promty hook installation incomplete", file=sys.stderr)
         return 1
+    print(f"Repository scope: Promty hooks apply only to {repo_root}.")
+    print(
+        "Run the same init command from each additional repository; "
+        "other repositories are not collected automatically."
+    )
+    return 0
+
+
+def uninstall_hooks(args: argparse.Namespace) -> int:
+    target = _normalize_install_target(args)
+    repo_root = _git_root(args.repo_root)
+    selected_tools = _tools_for_install_target(target)
+    print(f"Repository: {repo_root}")
+
+    for tool in selected_tools:
+        settings_path = repo_root / INSTALL_TOOL_PATHS[tool]
+        removed = _remove_promty_hooks(settings_path)
+        if removed:
+            print(
+                f"{INSTALL_TOOL_LABELS[tool]}: removed {removed} Promty hook"
+                f"{'s' if removed != 1 else ''} from {settings_path}"
+            )
+        else:
+            print(f"{INSTALL_TOOL_LABELS[tool]}: no Promty hooks found; no changes made")
+
+    if target != "all":
+        other_tool = next(tool for tool in INSTALL_TOOLS if tool not in selected_tools)
+        print(f"{INSTALL_TOOL_LABELS[other_tool]} settings were not changed.")
     return 0
 
 
@@ -1371,6 +1469,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     install_hooks_parser.set_defaults(func=install_hooks)
 
+    uninstall_hooks_parser = subparsers.add_parser("uninstall-hooks")
+    uninstall_hooks_parser.add_argument(
+        "--tool",
+        choices=sorted(INSTALL_TOOL_ALIASES),
+        default="codex-cli",
+        help="Hook integration to remove (Codex CLI, Claude Code, or all).",
+    )
+    uninstall_hooks_parser.add_argument("--repo-root")
+    uninstall_hooks_parser.set_defaults(func=uninstall_hooks)
+
     start_uploader_parser = subparsers.add_parser("start-uploader")
     start_uploader_parser.add_argument("--api-url")
     start_uploader_parser.add_argument("--config-path")
@@ -1433,8 +1541,8 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument(
         "--tool",
         choices=sorted(INSTALL_TOOL_ALIASES),
-        default="all",
-        help="Hook integration to install (defaults to Codex CLI and Claude Code).",
+        default="codex-cli",
+        help="Hook integration to install (defaults to Codex CLI only).",
     )
     init_parser.add_argument("--username")
     init_parser.add_argument("--upload-interval", type=float, default=2)
