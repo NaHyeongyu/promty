@@ -171,3 +171,34 @@ def test_draft_payload_metadata_stores_generation_summary_not_full_response(
     draft_metadata = payloads[0][1]
     assert "overall_uncertainties" not in draft_metadata
     assert draft_metadata["overall_uncertainty_count"] == 7
+
+
+def test_draft_payload_keeps_complete_generated_detail() -> None:
+    task_details = [f"Task {index}: " + (f"detail-{index} " * 40) for index in range(6)]
+    outcome = "Implemented the complete result. " + ("outcome detail " * 80)
+    summary = "Complete generated summary. " + ("summary detail " * 80)
+    draft = _draft_with_large_semantic_lists()
+    draft["details"]["tasks"] = task_details
+    draft["outcome"] = outcome
+    draft["summary"] = summary
+    context = {
+        "changed_files": [],
+        "commits": [],
+        "event_count": 1,
+        "first_event_id": "event-1",
+        "last_event_id": "event-1",
+        "model": "gpt-test",
+        "tool": "codex",
+    }
+
+    payload = draft_payloads._payload_from_memory_draft(
+        context,
+        draft,
+        generator="openai:test",
+    )
+
+    tasks_section = next(section for section in payload["sections"] if section["title"] == "Tasks")
+    assert payload["outcome"] == outcome.strip()
+    assert payload["summary"] == summary
+    assert tasks_section["summary"] == " / ".join(detail.strip() for detail in task_details)
+    assert not tasks_section["summary"].endswith("...")

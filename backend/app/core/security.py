@@ -153,6 +153,42 @@ def require_ingest_token(
     )
 
 
+def require_collector_user(
+    authorization: str | None = Header(default=None),
+    x_promty_collector_version: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> User:
+    """Authenticate a user-owned collector token for private read APIs.
+
+    Unlike event ingest, this deliberately rejects the global ingest token and
+    anonymous development mode so a shared secret cannot read user context.
+    """
+    token = _bearer_token(authorization)
+    if token is not None:
+        collector_token = db.scalar(
+            select(CollectorToken).where(
+                CollectorToken.token_hash == hash_collector_token(token),
+                CollectorToken.revoked_at.is_(None),
+            )
+        )
+        if collector_token is not None:
+            if collector_token.user.suspended_at is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Promty account is suspended",
+                )
+            collector_token.last_used_at = datetime.now(timezone.utc)
+            if x_promty_collector_version:
+                collector_token.collector_version = x_promty_collector_version.strip()[:64]
+            db.flush()
+            return collector_token.user
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid Promty collector token",
+    )
+
+
 def get_optional_web_user(
     request: Request,
     authorization: str | None = Header(default=None),

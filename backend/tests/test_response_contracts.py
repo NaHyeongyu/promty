@@ -66,6 +66,11 @@ def test_community_endpoints_publish_concrete_response_models() -> None:
     ]["schema"]
     assert list_schema["type"] == "array"
     assert list_schema["items"]["$ref"].endswith("/PublishedFlowSummaryResponse")
+    project_details_schema = paths["/api/published-flows/project/{project_id}/details"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+    assert project_details_schema["type"] == "array"
+    assert project_details_schema["items"]["$ref"].endswith("/PublishedFlowDetailResponse")
     detail_schema = paths["/api/published-flows/{flow_key}"]["get"]["responses"]["200"]["content"][
         "application/json"
     ]["schema"]

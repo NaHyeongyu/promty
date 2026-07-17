@@ -117,6 +117,10 @@ class ProjectBookmarkUpdateRequest(BaseModel):
     is_bookmarked: bool
 
 
+class PublicProjectSaveUpdateRequest(BaseModel):
+    is_saved: bool
+
+
 class ProjectSummaryResponse(BaseModel):
     connected_models: list[str]
     created_at: str

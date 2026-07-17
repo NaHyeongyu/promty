@@ -124,11 +124,19 @@ export function ActivityPanel({
   data,
   onActivityNavigationChange,
   onSharePrompt,
+  notice,
+  providedDataError = null,
+  providedDataLoading = false,
+  useProvidedData = false,
 }: {
   activityNavigation?: ActivityNavigationState;
   data: ProjectDetailData;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onSharePrompt?: (activity: PromptActivityItem) => void;
+  notice?: string;
+  providedDataError?: string | null;
+  providedDataLoading?: boolean;
+  useProvidedData?: boolean;
 }) {
   const { t } = useI18n();
   const [localActivityNavigation, setLocalActivityNavigation] =
@@ -142,8 +150,8 @@ export function ActivityPanel({
   const [promptActivityNextCursor, setPromptActivityNextCursor] =
     useState<string | null>(null);
   const [promptActivityHasMore, setPromptActivityHasMore] = useState(false);
-  const [hasLoadedPromptActivityPage, setHasLoadedPromptActivityPage] = useState(false);
-  const [isPromptActivityLoading, setIsPromptActivityLoading] = useState(false);
+  const [hasLoadedPromptActivityPage, setHasLoadedPromptActivityPage] = useState(useProvidedData);
+  const [isPromptActivityLoading, setIsPromptActivityLoading] = useState(providedDataLoading);
   const [isPromptActivityLoadingMore, setIsPromptActivityLoadingMore] = useState(false);
   const [promptActivityError, setPromptActivityError] = useState<string | null>(null);
   const [promptActivityRequestVersion, setPromptActivityRequestVersion] = useState(0);
@@ -212,7 +220,7 @@ export function ActivityPanel({
   const searchMatchedActivityFeedItems = useMemo(() => {
     const query = promptSearchQuery.trim().toLowerCase();
 
-    if (view === "prompts") {
+    if (view === "prompts" && !useProvidedData) {
       return unfilteredActivityFeedItems;
     }
 
@@ -225,7 +233,7 @@ export function ActivityPanel({
         .toLowerCase()
         .includes(query);
     });
-  }, [promptSearchQuery, unfilteredActivityFeedItems, view]);
+  }, [promptSearchQuery, unfilteredActivityFeedItems, useProvidedData, view]);
   const activityWorkTypeCounts = useMemo(
     () => workTypeCounts(searchMatchedActivityFeedItems.map((item) => item.activity)),
     [searchMatchedActivityFeedItems],
@@ -264,20 +272,21 @@ export function ActivityPanel({
 
   useEffect(() => {
     setPromptActivities(data.promptActivities);
-    setPromptActivityTotal(null);
+    setPromptActivityTotal(useProvidedData ? data.promptActivities.length : null);
     setPromptActivityNextCursor(null);
     setPromptActivityHasMore(false);
-    setHasLoadedPromptActivityPage(false);
-    setPromptActivityError(null);
+    setHasLoadedPromptActivityPage(useProvidedData && !providedDataLoading);
+    setIsPromptActivityLoading(useProvidedData && providedDataLoading);
+    setPromptActivityError(useProvidedData ? providedDataError : null);
     setSessionPrompts([]);
     setSessionPromptTotal(null);
     setSessionPromptNextCursor(null);
     setSessionPromptHasMore(false);
     setSessionPromptError(null);
-  }, [data.project.id, data.promptActivities]);
+  }, [data.project.id, data.promptActivities, providedDataError, providedDataLoading, useProvidedData]);
 
   useEffect(() => {
-    if (view !== "prompts" || !data.project.id) {
+    if (useProvidedData || view !== "prompts" || !data.project.id) {
       return;
     }
 
@@ -319,9 +328,26 @@ export function ActivityPanel({
       });
 
     return () => controller.abort();
-  }, [data.project.id, promptActivityRequestVersion, promptSearchQuery, view]);
+  }, [data.project.id, promptActivityRequestVersion, promptSearchQuery, useProvidedData, view]);
 
   useEffect(() => {
+    if (useProvidedData) {
+      const query = sessionConversationSearchQuery.trim().toLowerCase();
+      const providedSessionPrompts = selectedSessionIdForFetch
+        ? data.promptActivities.filter((activity) =>
+            activity.sessionId === selectedSessionIdForFetch &&
+            (!query || [activity.prompt, activity.response, activity.model]
+              .filter(Boolean)
+              .some((value) => value!.toLowerCase().includes(query))),
+          )
+        : [];
+      setSessionPrompts(providedSessionPrompts);
+      setSessionPromptTotal(providedSessionPrompts.length);
+      setSessionPromptNextCursor(null);
+      setSessionPromptHasMore(false);
+      setSessionPromptError(null);
+      return;
+    }
     if (view !== "sessions" || !data.project.id || !selectedSessionIdForFetch) {
       setSessionPrompts([]);
       setSessionPromptTotal(null);
@@ -372,6 +398,7 @@ export function ActivityPanel({
     selectedSessionIdForFetch,
     sessionConversationSearchQuery,
     sessionPromptRequestVersion,
+    useProvidedData,
     view,
   ]);
 
@@ -526,7 +553,8 @@ export function ActivityPanel({
   ];
 
   return (
-    <div className="bh-activity-layout" data-view={view}>
+    <div className="bh-activity-layout" data-notice={notice ? "true" : undefined} data-view={view}>
+      {notice ? <div className="bh-activity-notice">{notice}</div> : null}
       <div className="bh-activity-view-tabs" role="group" aria-label={t("activity.filters")}>
         {activityViewOptions.map((activityView) => (
           <button

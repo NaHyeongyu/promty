@@ -312,6 +312,11 @@ export PROMPTHUB_AUTH_RATE_LIMIT_WINDOW_SECONDS="60"
 export PROMPTHUB_ADMIN_RATE_LIMIT_REQUESTS="120"
 export PROMPTHUB_ADMIN_RATE_LIMIT_WINDOW_SECONDS="60"
 export PROMPTHUB_ADMIN_AUDIT_RETENTION_DAYS="180"
+export PROMPTHUB_SUPPORT_EMAIL_PROVIDER="ses"
+export PROMPTHUB_SUPPORT_NOTIFICATION_EMAILS="owner@example.com"
+export PROMPTHUB_SUPPORT_FROM_EMAIL="support@promty.org"
+export PROMPTHUB_SUPPORT_RATE_LIMIT_REQUESTS="5"
+export PROMPTHUB_SUPPORT_RATE_LIMIT_WINDOW_SECONDS="300"
 export PROMPTHUB_PROMPT_MAX_CHARS="50000"
 export PROMPTHUB_RESPONSE_MAX_CHARS="50000"
 export PROMPTHUB_EVENT_BATCH_MAX_BODY_BYTES="33554432"
@@ -334,6 +339,11 @@ export PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS="3600"
 ```
 
 Web users sign in through GitHub OAuth. The backend issues a short-lived HS256 JWT in an HttpOnly session cookie and requires it for browser reads such as `GET /api/events`.
+
+Signed-in users can open **Help & support** for searchable FAQs and a support
+inquiry form. Inquiries are stored before notification delivery; subject and
+message text are encrypted at rest. AWS SES configuration and the operational
+flow are documented in [`docs/support-inquiries.md`](docs/support-inquiries.md).
 
 Prompt text, AI response text, and unified diff patch text in raw event storage are encrypted at rest with application-level encryption. Project/session IDs, timestamps, file paths, line counts, and status metadata remain queryable for sorting and filtering. Prompt and response text are capped before encryption and default to 50,000 characters. Derived memory artifacts and artifact-version metadata are not covered by this envelope yet and must not be treated as secret storage.
 

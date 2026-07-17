@@ -17,6 +17,7 @@ import {
   previewPublicProjectDetail,
   previewPublicProfile,
   previewPublicProjects,
+  previewUpdatePublicProjectSave,
 } from "../workspace/communityPreviewData";
 import { requestJson, requestJsonBody, requestVoid } from "./client";
 
@@ -118,6 +119,7 @@ export function fetchPublicProjects(
     limit?: number;
     offset?: number;
     query?: string;
+    savedOnly?: boolean;
     signal?: AbortSignal;
     sort?: "newest" | "recent";
   } = {},
@@ -127,6 +129,7 @@ export function fetchPublicProjects(
       limit: options.limit ?? 24,
       offset: options.offset ?? 0,
       query: options.query,
+      savedOnly: options.savedOnly ?? false,
       sort: options.sort ?? "recent",
     }));
   }
@@ -136,6 +139,7 @@ export function fetchPublicProjects(
     sort: options.sort ?? "recent",
   });
   if (options.query?.trim()) params.set("query", options.query.trim());
+  if (options.savedOnly) params.set("saved_only", "true");
   return requestJson<PublicProjectPage>(
     `/api/projects/public?${params.toString()}`,
     { signal: options.signal },
@@ -162,6 +166,27 @@ export function fetchPublicProjectDetail(
     {
       errorMessage: "Public project request failed",
       unauthorizedMessage: "Sign in again before opening this public project.",
+    },
+  );
+}
+
+export function updatePublicProjectSave(
+  projectId: string,
+  isSaved: boolean,
+): Promise<{ is_saved: boolean; project_id: string }> {
+  if (isCommunityPreview()) {
+    const response = previewUpdatePublicProjectSave(projectId, isSaved);
+    return response
+      ? Promise.resolve(response)
+      : Promise.reject(new Error("Preview project not found"));
+  }
+  return requestJsonBody<{ is_saved: boolean; project_id: string }>(
+    `/api/projects/public/${encodeURIComponent(projectId)}/save`,
+    "PATCH",
+    { is_saved: isSaved },
+    {
+      errorMessage: "Public project save update failed",
+      unauthorizedMessage: "Sign in again before saving public projects.",
     },
   );
 }

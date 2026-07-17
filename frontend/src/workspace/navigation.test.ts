@@ -49,6 +49,14 @@ describe("workspace navigation", () => {
     expect(buildUrlNavigationSearch(state)).toBe("?view=settings");
   });
 
+  it("keeps the support page in a shareable workspace URL", () => {
+    window.location.search = "?view=support";
+    const state = readUrlNavigationState();
+
+    expect(state.activeItem).toBe("support");
+    expect(buildUrlNavigationSearch(state)).toBe("?view=support");
+  });
+
   it("rejects traversal paths from repository navigation", () => {
     const state = normalizeUrlNavigationState({
       activeDetailTab: "files",

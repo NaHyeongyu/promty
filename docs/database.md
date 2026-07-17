@@ -65,6 +65,11 @@ PROMPTHUB_AUTH_RATE_LIMIT_WINDOW_SECONDS
 PROMPTHUB_ADMIN_RATE_LIMIT_REQUESTS
 PROMPTHUB_ADMIN_RATE_LIMIT_WINDOW_SECONDS
 PROMPTHUB_ADMIN_AUDIT_RETENTION_DAYS
+PROMPTHUB_SUPPORT_EMAIL_PROVIDER
+PROMPTHUB_SUPPORT_NOTIFICATION_EMAILS
+PROMPTHUB_SUPPORT_FROM_EMAIL
+PROMPTHUB_SUPPORT_RATE_LIMIT_REQUESTS
+PROMPTHUB_SUPPORT_RATE_LIMIT_WINDOW_SECONDS
 PROMPTHUB_PROMPT_MAX_CHARS
 PROMPTHUB_RESPONSE_MAX_CHARS
 PROMPTHUB_EVENT_BATCH_MAX_BODY_BYTES
@@ -279,6 +284,30 @@ revoked_at timestamptz nullable
 ```
 
 Only token hashes are persisted. Raw collector tokens are returned once to the CLI login callback.
+
+### support_inquiries
+
+```text
+id UUID PK
+user_id UUID FK -> users.id on delete cascade
+requester_username string
+requester_email string
+category string
+subject encrypted text
+message encrypted text
+status new | in_progress | resolved
+notification_status pending | sent | failed | disabled
+notification_message_id string nullable
+notification_error string nullable
+notified_at timestamptz nullable
+created_at timestamptz
+updated_at timestamptz
+```
+
+The inquiry row is committed before email delivery. Subject and message use the
+application text-encryption envelope with dedicated purposes. SES delivery
+results are stored separately so a notification outage never removes the
+submitted inquiry.
 
 ### projects
 

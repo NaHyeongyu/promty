@@ -42,11 +42,13 @@ function PlainDescriptionContent({
 
 export function OverviewPanel({
   data,
+  hidePublicListingLink = false,
   onDeleteProject,
   onSaveDescription,
   onSaveProjectMetadata,
 }: {
   data: ProjectDetailData;
+  hidePublicListingLink?: boolean;
   onDeleteProject?: () => Promise<void>;
   onSaveDescription?: (description: string) => Promise<void>;
   onSaveProjectMetadata?: (metadata: {
@@ -259,7 +261,7 @@ export function OverviewPanel({
                     )}
                     {projectVisibility === "public" ? t("project.workspaceListed") : t("project.private")}
                   </span>
-                  {projectVisibility === "public" ? (
+                  {projectVisibility === "public" && !hidePublicListingLink ? (
                     <a href={publicProjectUrl(data.project.id)}>
                       <ExternalLink aria-hidden="true" size={16} strokeWidth={1.5} />
                       {t("project.viewPublicListing")}

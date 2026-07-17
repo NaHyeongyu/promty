@@ -5,12 +5,14 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.account import router as account_router
+from app.api.agent_context import router as agent_context_router
 from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
 from app.api.events import router as events_router
 from app.api.memory import router as memory_router
 from app.api.projects import router as projects_router
 from app.api.published_flows import router as published_flows_router
+from app.api.support import router as support_router
 from app.core.access_logging import install_sensitive_access_log_filter
 from app.core.config import settings
 from app.core.encryption import EncryptionError
@@ -49,16 +51,20 @@ app.add_middleware(
     auth_window_seconds=settings.auth_rate_limit_window_seconds,
     community_requests=settings.community_rate_limit_requests,
     community_window_seconds=settings.community_rate_limit_window_seconds,
+    support_requests=settings.support_rate_limit_requests,
+    support_window_seconds=settings.support_rate_limit_window_seconds,
 )
 app.add_middleware(AdminAuditMiddleware)
 app.include_router(auth_router)
 app.include_router(account_router)
+app.include_router(agent_context_router)
 app.include_router(admin_router)
 app.include_router(events_router)
 app.include_router(memory_router)
 if settings.published_flows_enabled:
     app.include_router(published_flows_router)
 app.include_router(projects_router)
+app.include_router(support_router)
 
 
 @app.exception_handler(EncryptionError)

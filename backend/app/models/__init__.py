@@ -7,6 +7,7 @@ from app.models.devices import Device
 from app.models.events import Event
 from app.models.github_connections import GitHubConnection
 from app.models.project_files import ProjectFile
+from app.models.public_project_saves import PublicProjectSave
 from app.models.projects import Project
 from app.models.project_memory_batches import (
     ProjectMemoryBatch,
@@ -24,6 +25,7 @@ from app.models.published_flows import (
     PublishedFlowReaction,
 )
 from app.models.sessions import Session
+from app.models.support_inquiries import SupportInquiry
 from app.models.tokens import CollectorToken
 from app.models.users import User
 
@@ -43,6 +45,7 @@ __all__ = [
     "ProjectMemoryBatchRequest",
     "ProjectStats",
     "ProjectFile",
+    "PublicProjectSave",
     "PromptSearchDocument",
     "PublishedFlow",
     "PublishedFlowAsset",
@@ -51,5 +54,6 @@ __all__ = [
     "PublishedFlowItem",
     "PublishedFlowReaction",
     "Session",
+    "SupportInquiry",
     "User",
 ]

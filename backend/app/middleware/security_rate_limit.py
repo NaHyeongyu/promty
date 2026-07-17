@@ -63,6 +63,8 @@ class SecurityRateLimitMiddleware:
         auth_window_seconds: int,
         community_requests: int = 120,
         community_window_seconds: int = 60,
+        support_requests: int = 5,
+        support_window_seconds: int = 300,
         limiter: SlidingWindowRateLimiter | None = None,
     ) -> None:
         for value in (
@@ -72,6 +74,8 @@ class SecurityRateLimitMiddleware:
             auth_window_seconds,
             community_requests,
             community_window_seconds,
+            support_requests,
+            support_window_seconds,
         ):
             if value < 1:
                 raise ValueError("rate limit settings must be positive")
@@ -82,6 +86,8 @@ class SecurityRateLimitMiddleware:
         self.auth_window_seconds = auth_window_seconds
         self.community_requests = community_requests
         self.community_window_seconds = community_window_seconds
+        self.support_requests = support_requests
+        self.support_window_seconds = support_window_seconds
         self.limiter = limiter or SlidingWindowRateLimiter()
 
     def _rule(self, scope: Scope) -> tuple[str, int, int] | None:
@@ -96,6 +102,8 @@ class SecurityRateLimitMiddleware:
             return "community", self.community_requests, self.community_window_seconds
         if path == "/api/projects/public" or path.startswith("/api/projects/public/"):
             return "community", self.community_requests, self.community_window_seconds
+        if path == "/api/support" or path.startswith("/api/support/"):
+            return "support", self.support_requests, self.support_window_seconds
         return None
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:

@@ -43,6 +43,15 @@ Timeline preview
 
 ## Implemented
 
+### Help and support
+
+- authenticated Help & support workspace route
+- searchable FAQ with Collector, hooks, memory, privacy, and sharing guidance
+- validated inquiry form with reply email and category
+- encrypted inquiry subject/message persistence
+- AWS SES operator notification with requester `Reply-To`
+- notification failure persistence and a dedicated submission rate limit
+
 ### Repository Structure
 
 ```text

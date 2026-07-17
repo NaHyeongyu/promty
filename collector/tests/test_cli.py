@@ -29,9 +29,11 @@ def test_parser_exposes_expected_commands() -> None:
     for command in (
         "capture",
         "capture-changes",
+        "context",
         "doctor",
         "init",
         "install-hooks",
+        "mcp",
         "uninstall-hooks",
         "upload",
     ):

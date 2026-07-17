@@ -106,7 +106,7 @@ test("Community preview shows project rows, details, and public profiles", async
   await page.goto("/?view=community&preview=community");
 
   await expect(page.getByRole("heading", { name: "Community" })).toBeVisible();
-  await expect(page.getByText("Preview data", { exact: true })).toBeVisible();
+  await expect(page.getByText("Preview data", { exact: true })).toHaveCount(0);
   const projectCard = page.getByRole("article", { name: "Context Atlas" });
   const projectRow = projectCard.getByRole("button", { name: /Context Atlas/ });
   await expect(projectCard).toBeVisible();
@@ -118,11 +118,32 @@ test("Community preview shows project rows, details, and public profiles", async
 
   await projectRow.click();
   await expect(page.getByRole("heading", { name: "Context Atlas" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Community" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Back to public projects" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Prompt Flows" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Save project" }).click();
+  await expect(page.getByRole("button", { name: "Remove saved project" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "View public listing" })).toHaveCount(0);
+  await expect(page.locator(".bh-overview-stat-card dd").first()).not.toHaveText("0");
+  await page.getByRole("tab", { name: "Memory" }).click();
+  await expect(page.getByText("Latest project memory", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Prompts" }).click();
+  await expect(page.getByText("This view contains only prompts and responses reviewed and published by the project owner.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "By prompt" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "By session" })).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Search activity by text, model, or date" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Prompt detail" })).toBeVisible();
+  await expect(page.getByText("Simplify the review surface", { exact: false }).first()).toBeVisible();
+  await page.getByRole("button", { name: "By session" }).click();
+  await expect(page.getByRole("button", { name: "Focused UI review loop session" })).toBeVisible();
   await page.getByRole("button", { name: "View mina.park's profile" }).click();
 
   await expect(page).toHaveURL(/preview=community.*profile=|profile=.*preview=community/);
   await expect(page.getByRole("heading", { name: "mina.park" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Context Atlas/ })).toBeVisible();
+  await page.getByRole("button", { name: "Back to public projects" }).click();
+  await expect(page.getByRole("heading", { name: "Context Atlas" })).toBeVisible();
+  await page.getByRole("button", { name: "Back to public projects" }).click();
+  await page.getByRole("button", { name: "Saved" }).click();
+  await expect(page.getByRole("article", { name: "Context Atlas" })).toBeVisible();
+  await expect(page.getByLabel("Saved project").first()).toBeVisible();
 });

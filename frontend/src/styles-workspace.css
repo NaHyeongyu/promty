@@ -1088,21 +1088,6 @@ h1 {
   line-height: var(--bh-line-height-body);
 }
 
-.community-preview-label {
-  display: inline-flex;
-  min-height: 26px;
-  align-items: center;
-  border: 1px solid var(--bh-color-primary-border);
-  border-radius: 999px;
-  padding: 0 var(--bh-space-2);
-  color: var(--bh-color-primary);
-  font-family: var(--bh-font-code);
-  font-size: 10px;
-  font-weight: var(--bh-font-weight-label);
-  background: var(--bh-color-primary-subtle);
-  text-transform: uppercase;
-}
-
 .community-hub-content {
   min-width: 0;
 }

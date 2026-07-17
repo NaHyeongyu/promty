@@ -68,3 +68,4 @@ def test_public_project_routes_publish_read_only_contracts() -> None:
 
     assert set(paths["/api/projects/public"]) == {"get"}
     assert set(paths["/api/projects/public/{project_id}"]) == {"get"}
+    assert set(paths["/api/projects/public/{project_id}/save"]) == {"patch"}

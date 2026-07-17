@@ -4,25 +4,26 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
-  BrainCircuit,
-  CalendarDays,
+  Bookmark,
   Check,
+  Clock,
   Compass,
-  Copy,
   ExternalLink,
-  FolderTree,
-  GitBranch,
   Globe2,
   LoaderCircle,
-  MessageSquareText,
   Search,
+  Share2,
   UserRound,
 } from "lucide-react";
 import {
   fetchPublicProfile,
   fetchPublicProjectDetail,
   fetchPublicProjects,
+  updatePublicProjectSave,
 } from "../../api/projects";
+import {
+  fetchPublishedFlowDetailsForProject,
+} from "../../api/publishedFlows";
 import { UnauthorizedError } from "../../api/client";
 import { useI18n } from "../../i18n/I18nProvider";
 import { copyTextToClipboard } from "../../lib/clipboard";
@@ -32,14 +33,26 @@ import {
   formatOptionalTimestamp,
   formatRelativeTimestamp,
 } from "../../lib/formatters";
+import { projectDetailDataFromApi } from "../../workspace/projectDetailMappers";
 import { projectDetailUrl, publicProjectUrl } from "../../workspace/projectUrls";
 import type {
   PublicProjectDetailResponse,
   PublicProjectPage,
   PublicProjectSummary,
   PublicProfileResponse,
+  PublishedFlowDetailResponse,
 } from "../../workspace/types";
-import { AiModelBadge } from "../project-detail";
+import {
+  AiModelBadge,
+  ProjectTabs,
+  type ProjectDetailTab,
+  type ProjectDetailTabId,
+  type PromptActivityItem,
+} from "../project-detail";
+import { ActivityPanel } from "../project-detail/ActivityPanel";
+import { FilesPanel } from "../project-detail/FilesPanel";
+import { MemoryPanel } from "../project-detail/MemoryPanel";
+import { OverviewPanel } from "../project-detail/OverviewPanel";
 
 const PAGE_SIZE = 24;
 const PROFILE_PAGE_SIZE = 24;
@@ -68,6 +81,7 @@ export function PublicProjectsPage({
   });
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<"newest" | "recent">("recent");
+  const [savedOnly, setSavedOnly] = useState(false);
   const [offset, setOffset] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
@@ -81,6 +95,12 @@ export function PublicProjectsPage({
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileReloadKey, setProfileReloadKey] = useState(0);
+  const [profileReturnProjectId, setProfileReturnProjectId] = useState<string | null>(null);
+  const [isSaveUpdating, setIsSaveUpdating] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [projectFlowDetails, setProjectFlowDetails] = useState<PublishedFlowDetailResponse[]>([]);
+  const [isProjectFlowsLoading, setIsProjectFlowsLoading] = useState(false);
+  const [projectFlowsError, setProjectFlowsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!copiedProjectId) return undefined;
@@ -97,6 +117,7 @@ export function PublicProjectsPage({
         limit: PAGE_SIZE,
         offset,
         query,
+        savedOnly,
         signal: controller.signal,
         sort,
       })
@@ -117,7 +138,7 @@ export function PublicProjectsPage({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [offset, query, sort]);
+  }, [offset, query, savedOnly, sort]);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -141,6 +162,30 @@ export function PublicProjectsPage({
       })
       .finally(() => {
         if (!controller.signal.aborted) setIsDetailLoading(false);
+      });
+    return () => controller.abort();
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    setProjectFlowDetails([]);
+    setProjectFlowsError(null);
+    if (!selectedProjectId) return undefined;
+    const controller = new AbortController();
+    setIsProjectFlowsLoading(true);
+    void fetchPublishedFlowDetailsForProject(selectedProjectId, controller.signal)
+      .then(setProjectFlowDetails)
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (error instanceof UnauthorizedError) {
+          onUnauthorized();
+          return;
+        }
+        setProjectFlowsError(
+          error instanceof Error ? error.message : t("community.flowsLoadFailed"),
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsProjectFlowsLoading(false);
       });
     return () => controller.abort();
   }, [selectedProjectId]);
@@ -198,6 +243,30 @@ export function PublicProjectsPage({
       setCopyError(t("explore.copyFailed"));
     }
   };
+  const toggleProjectSave = async () => {
+    if (!detail || isSaveUpdating) return;
+    const nextSaved = !detail.is_saved;
+    setIsSaveUpdating(true);
+    setSaveError(null);
+    try {
+      const response = await updatePublicProjectSave(detail.project.id, nextSaved);
+      setDetail((current) => current ? { ...current, is_saved: response.is_saved } : current);
+      setPage((current) => ({
+        ...current,
+        items: current.items.map((project) => project.id === response.project_id
+          ? { ...project, is_saved: response.is_saved }
+          : project),
+      }));
+    } catch (error) {
+      if (error instanceof UnauthorizedError) {
+        onUnauthorized();
+        return;
+      }
+      setSaveError(error instanceof Error ? error.message : t("community.saveFailed"));
+    } finally {
+      setIsSaveUpdating(false);
+    }
+  };
   const firstVisible = page.total === 0 ? 0 : page.offset + 1;
   const lastVisible = Math.min(page.offset + page.items.length, page.total);
   const pageHeader = !embedded ? (
@@ -218,7 +287,15 @@ export function PublicProjectsPage({
         <PublicProfileDetail
           errorMessage={profileError}
           isLoading={isProfileLoading}
-          onBack={() => onSelectProfile(null)}
+          onBack={() => {
+            if (profileReturnProjectId) {
+              const projectId = profileReturnProjectId;
+              setProfileReturnProjectId(null);
+              onSelectProject(projectId);
+              return;
+            }
+            onSelectProfile(null);
+          }}
           onNext={() => setProfileOffset(profileOffset + PROFILE_PAGE_SIZE)}
           onPrevious={() => setProfileOffset(Math.max(0, profileOffset - PROFILE_PAGE_SIZE))}
           onRetry={() => setProfileReloadKey((value) => value + 1)}
@@ -234,25 +311,29 @@ export function PublicProjectsPage({
       <div className="public-projects-page" data-embedded={embedded || undefined}>
         {pageHeader}
         <section className="public-project-standalone-detail" aria-live="polite">
-          <button
-            className="public-project-back"
-            onClick={() => onSelectProject(null)}
-            type="button"
-          >
-            <ArrowLeft aria-hidden="true" size={15} /> {t("community.backToProjects")}
-          </button>
           <div className="public-project-detail">
             {isDetailLoading ? (
-              <PublicProjectDetailSkeleton />
+              <><button aria-label={t("community.backToProjects")} className="public-project-back public-project-back-fallback" onClick={() => onSelectProject(null)} type="button"><ArrowLeft aria-hidden="true" size={16} /></button><PublicProjectDetailSkeleton /></>
             ) : detailError ? (
-              <PublicProjectError message={detailError} />
+              <><button aria-label={t("community.backToProjects")} className="public-project-back public-project-back-fallback" onClick={() => onSelectProject(null)} type="button"><ArrowLeft aria-hidden="true" size={16} /></button><PublicProjectError message={detailError} /></>
             ) : detail ? (
               <PublicProjectDetail
                 copied={copiedProjectId === detail.project.id}
                 copyError={copyError}
                 detail={detail}
-                onOpenProfile={() => onSelectProfile(detail.owner.id)}
+                flowDetails={projectFlowDetails}
+                flowsError={projectFlowsError}
+                isFlowsLoading={isProjectFlowsLoading}
+                isSaveUpdating={isSaveUpdating}
+                key={detail.project.id}
+                onBack={() => onSelectProject(null)}
+                onOpenProfile={() => {
+                  setProfileReturnProjectId(detail.project.id);
+                  onSelectProfile(detail.owner.id);
+                }}
                 onShare={() => void shareProject()}
+                onToggleSave={() => void toggleProjectSave()}
+                saveError={saveError}
               />
             ) : null}
           </div>
@@ -280,9 +361,21 @@ export function PublicProjectsPage({
               value={query}
             />
           </label>
-          <div className="project-sort-control" role="group" aria-label={t("explore.sort")}>
-            <button aria-pressed={sort === "recent"} data-active={sort === "recent"} onClick={() => { setOffset(0); setSort("recent"); }} type="button">{t("explore.recent")}</button>
-            <button aria-pressed={sort === "newest"} data-active={sort === "newest"} onClick={() => { setOffset(0); setSort("newest"); }} type="button">{t("explore.newest")}</button>
+          <div className="public-project-control-actions">
+            <button
+              aria-pressed={savedOnly}
+              className="public-project-saved-filter"
+              data-active={savedOnly || undefined}
+              onClick={() => { setOffset(0); setSavedOnly((value) => !value); }}
+              type="button"
+            >
+              <Bookmark aria-hidden="true" fill={savedOnly ? "currentColor" : "none"} size={14} />
+              {t("community.savedProjects")}
+            </button>
+            <div className="project-sort-control" role="group" aria-label={t("explore.sort")}>
+              <button aria-pressed={sort === "recent"} data-active={sort === "recent"} onClick={() => { setOffset(0); setSort("recent"); }} type="button">{t("explore.recent")}</button>
+              <button aria-pressed={sort === "newest"} data-active={sort === "newest"} onClick={() => { setOffset(0); setSort("newest"); }} type="button">{t("explore.newest")}</button>
+            </div>
           </div>
         </div>
 
@@ -294,7 +387,7 @@ export function PublicProjectsPage({
           {isLoading && page.items.length === 0 ? <PublicProjectListSkeleton /> : null}
           {listError ? <PublicProjectError message={listError} /> : null}
           {!isLoading && !listError && page.items.length === 0 ? (
-            <div className="public-project-empty"><Compass size={24} /><h2>{t("explore.noProjects")}</h2><p>{t("explore.noProjectsDescription")}</p></div>
+            <div className="public-project-empty"><Compass size={24} /><h2>{savedOnly ? t("community.noSavedProjects") : t("explore.noProjects")}</h2><p>{savedOnly ? t("community.noSavedProjectsDescription") : t("explore.noProjectsDescription")}</p></div>
           ) : null}
           {page.items.length > 0 ? (
             <div className="public-project-directory-list">
@@ -360,7 +453,10 @@ function PublicProjectRow({ onSelect, project }: { onSelect: (id: string) => voi
           {projectMonogram(project.name)}
         </span>
         <span className="public-project-card-summary">
-          <strong>{project.name}</strong>
+          <span className="public-project-card-title">
+            <strong>{project.name}</strong>
+            {project.is_saved ? <Bookmark aria-label={t("community.savedProject")} fill="currentColor" size={12} /> : null}
+          </span>
           <span>{project.description || project.slug}</span>
         </span>
         <span className="public-project-card-byline">
@@ -421,78 +517,197 @@ function PublicProjectRow({ onSelect, project }: { onSelect: (id: string) => voi
   );
 }
 
-function PublicProjectDetail({ copied, copyError, detail, onOpenProfile, onShare }: { copied: boolean; copyError: string | null; detail: PublicProjectDetailResponse; onOpenProfile: () => void; onShare: () => void }) {
+function PublicProjectDetail({
+  copied,
+  copyError,
+  detail,
+  flowDetails,
+  flowsError,
+  isFlowsLoading,
+  isSaveUpdating,
+  onBack,
+  onOpenProfile,
+  onShare,
+  onToggleSave,
+  saveError,
+}: {
+  copied: boolean;
+  copyError: string | null;
+  detail: PublicProjectDetailResponse;
+  flowDetails: PublishedFlowDetailResponse[];
+  flowsError: string | null;
+  isFlowsLoading: boolean;
+  isSaveUpdating: boolean;
+  onBack: () => void;
+  onOpenProfile: () => void;
+  onShare: () => void;
+  onToggleSave: () => void;
+  saveError: string | null;
+}) {
   const { t } = useI18n();
   const project = detail.project;
-  const projectUrl = safeExternalHttpUrl(project.project_url);
   const repositoryUrl = safeExternalHttpUrl(project.repository_url);
-  const memory = detail.memory?.recent_artifacts ?? [];
-  const projectTags = project.tags ?? [];
   const connectedModels = detail.metrics.connected_models ?? [];
-  const visibleModels = connectedModels.slice(0, 3);
+  const visibleModels = connectedModels.slice(0, 2);
   const relativeActivity = formatRelativeTimestamp(detail.metrics.latest_activity_at);
+  const [activeTab, setActiveTab] = useState<ProjectDetailTabId>("overview");
+  const mappedData = projectDetailDataFromApi(detail, null);
+  const publishedPromptActivities: PromptActivityItem[] = flowDetails.flatMap((flow) =>
+    flow.items.map((item) => ({
+      fileChanges: flow.files.map((file) => ({
+        additions: file.additions,
+        deletions: file.deletions,
+        oldPath: null,
+        patch: null,
+        patchOmittedReason: "public_redacted",
+        path: file.file_path,
+        status: file.change_type ?? "modified",
+      })),
+      filesChanged: flow.files.length,
+      id: item.id,
+      model: item.model_name ?? flow.model_name ?? item.tool_name ?? t("project.modelNotCaptured"),
+      prompt: item.prompt_text,
+      response: item.response_text,
+      responseReceivedAt: item.response_received_at
+        ? formatOptionalTimestamp(item.response_received_at, "")
+        : null,
+      responseSource: "published-flow",
+      sequence: item.sequence,
+      sessionId: flow.id,
+      submittedAt: formatOptionalTimestamp(item.submitted_at, t("project.notProvided")),
+    })),
+  );
+  const data = {
+    ...mappedData,
+    activities: flowDetails.map((flow) => ({
+      events: flow.items.length,
+      filesChanged: flow.files.length,
+      id: flow.id,
+      label: flow.title,
+      lastActivity: formatOptionalTimestamp(flow.published_at ?? flow.updated_at, t("project.notProvided")),
+      model: flow.model_name ?? flow.tool_name ?? t("project.modelNotCaptured"),
+      prompts: flow.items.length,
+      responses: flow.items.filter((item) => Boolean(item.response_text)).length,
+      startedAt: formatOptionalTimestamp(flow.created_at, t("project.notProvided")),
+    })),
+    promptActivities: publishedPromptActivities,
+    project: {
+      ...mappedData.project,
+      isBookmarked: detail.is_saved,
+    },
+  };
+  const tabs: ProjectDetailTab[] = [
+    { id: "overview", label: t("project.overview") },
+    { id: "memory", label: t("project.memory") },
+    { id: "ai-activity", label: t("project.prompts") },
+    {
+      externalHref: repositoryUrl ?? undefined,
+      externalIcon: repositoryUrl ? "github" : undefined,
+      id: "files",
+      label: t("project.files"),
+    },
+  ];
+
+  let panel = <OverviewPanel data={data} hidePublicListingLink />;
+  if (activeTab === "memory") {
+    panel = <MemoryPanel data={data} />;
+  } else if (activeTab === "ai-activity") {
+    panel = (
+      <ActivityPanel
+        data={data}
+        notice={t("community.curatedPromptNotice")}
+        providedDataError={flowsError}
+        providedDataLoading={isFlowsLoading}
+        useProvidedData
+      />
+    );
+  } else if (activeTab === "files") {
+    panel = <FilesPanel data={data} />;
+  }
+
   return (
-    <div className="public-project-detail-content">
-      <header className="public-project-detail-hero">
-        <div className="public-project-detail-hero-copy">
-          <div className="public-project-detail-title-row">
-            <h2>{project.name}</h2>
-          </div>
-          <p>{project.description || t("project.notProvided")}</p>
-          <div className="public-project-detail-meta">
-            <span className="public-project-detail-badge"><Globe2 aria-hidden="true" size={13} /> {t("explore.readOnly")}</span>
-            {visibleModels.map((model) => <AiModelBadge className="is-header" key={model} model={model} />)}
-            {connectedModels.length > visibleModels.length ? <span className="public-project-detail-chip">+{connectedModels.length - visibleModels.length}</span> : null}
-            <span className="public-project-detail-chip"><CalendarDays aria-hidden="true" size={13} /> {relativeActivity ?? t("common.noActivity")}</span>
+    <section
+      aria-labelledby="project-detail-title"
+      className="bh-project-detail public-project-detail-content"
+      data-active-tab={activeTab}
+    >
+      <header aria-labelledby="project-detail-title" className="bh-project-header">
+        <div className="bh-project-header-copy">
+          <div className="bh-project-title-row">
             <button
-              aria-label={t("community.viewProfile", { username: detail.owner.username })}
-              className="public-project-detail-owner public-project-profile-trigger"
-              onClick={onOpenProfile}
+              aria-label={t("community.backToProjects")}
+              className="bh-icon-button public-project-title-back"
+              onClick={onBack}
+              title={t("community.backToProjects")}
               type="button"
             >
-              <span className="sidebar-avatar">{detail.owner.avatar_url ? <img alt="" src={detail.owner.avatar_url} /> : detail.owner.username[0]?.toUpperCase()}</span>
-              <span><small>{t("explore.owner")}</small><strong>{detail.owner.username}</strong></span>
-              <ArrowRight aria-hidden="true" size={13} />
+              <ArrowLeft aria-hidden="true" size={17} strokeWidth={1.5} />
             </button>
+            <h1 id="project-detail-title" title={project.name}>{project.name}</h1>
+          </div>
+          <div aria-label={t("project.activity")} className="bh-project-header-meta">
+            <span className="bh-project-header-chip"><Globe2 aria-hidden="true" size={14} strokeWidth={1.5} /> {t("explore.readOnly")}</span>
+            {visibleModels.map((model) => <AiModelBadge className="is-header" key={model} model={model} />)}
+            {connectedModels.length > visibleModels.length ? <span className="bh-project-header-chip">+{connectedModels.length - visibleModels.length}</span> : null}
+            <span className="bh-project-header-chip"><Clock aria-hidden="true" size={14} strokeWidth={1.5} /><span>{relativeActivity ?? t("common.noActivity")}</span></span>
           </div>
         </div>
-        <div className="public-project-detail-actions">
-          <button onClick={onShare} type="button">{copied ? <Check aria-hidden="true" size={14} /> : <Copy aria-hidden="true" size={14} />}{copied ? t("explore.linkCopied") : t("explore.share")}</button>
-          {detail.is_owner ? <a href={projectDetailUrl(project.slug ?? project.id)}>{t("project.overview")} <ArrowRight aria-hidden="true" size={14} /></a> : null}
+        <div className="bh-project-header-actions">
+          <button
+            aria-label={t("community.viewProfile", { username: detail.owner.username })}
+            className="bh-header-action-button public-project-header-profile"
+            onClick={onOpenProfile}
+            type="button"
+          >
+            <span className="sidebar-avatar">{detail.owner.avatar_url ? <img alt="" src={detail.owner.avatar_url} /> : detail.owner.username[0]?.toUpperCase()}</span>
+            <span>{detail.owner.username}</span>
+            <ArrowRight aria-hidden="true" size={14} strokeWidth={1.5} />
+          </button>
+          {!detail.is_owner ? (
+            <button
+              aria-label={detail.is_saved ? t("project.removeSaved") : t("project.saveProject")}
+              aria-pressed={detail.is_saved}
+              className="bh-icon-button"
+              data-active={detail.is_saved || undefined}
+              disabled={isSaveUpdating}
+              onClick={onToggleSave}
+              title={detail.is_saved ? t("project.removeSaved") : t("project.saveProject")}
+              type="button"
+            >
+              {isSaveUpdating ? <LoaderCircle aria-hidden="true" className="is-spinning" size={17} /> : <Bookmark aria-hidden="true" fill={detail.is_saved ? "currentColor" : "none"} size={17} strokeWidth={1.5} />}
+            </button>
+          ) : null}
+          <button
+            aria-label={copied ? t("project.workspaceLinkCopied") : t("project.copyWorkspaceLink")}
+            className="bh-icon-button"
+            data-active={copied || undefined}
+            onClick={onShare}
+            title={copied ? t("project.workspaceLinkCopied") : t("project.copyWorkspaceLink")}
+            type="button"
+          >
+            {copied ? <Check aria-hidden="true" size={17} strokeWidth={1.5} /> : <Share2 aria-hidden="true" size={17} strokeWidth={1.5} />}
+          </button>
+          {detail.is_owner ? <a className="bh-header-action-button" href={projectDetailUrl(project.slug ?? project.id)}>{t("project.overview")} <ArrowRight aria-hidden="true" size={14} /></a> : null}
+          {repositoryUrl ? <a aria-label={t("project.openRepository")} className="bh-icon-button" href={repositoryUrl} rel="noreferrer" target="_blank" title={t("project.openRepository")}><ExternalLink aria-hidden="true" size={17} strokeWidth={1.5} /></a> : null}
         </div>
       </header>
-      {copyError ? <span className="public-project-copy-error" role="alert">{copyError}</span> : null}
+      {copyError || saveError ? <span className="public-project-copy-error" role="alert">{copyError ?? saveError}</span> : null}
 
-      <dl className="public-project-stats">
-        <div><dt><MessageSquareText size={13} /> {t("project.prompts")}</dt><dd>{formatCompactNumber(detail.metrics.total_prompts ?? 0)}</dd></div>
-        <div><dt><Activity size={13} /> {t("explore.events")}</dt><dd>{formatCompactNumber(detail.metrics.total_events)}</dd></div>
-        <div><dt><BrainCircuit size={13} /> {t("explore.generatedMemory")}</dt><dd>{formatCompactNumber(detail.memory?.total_artifacts ?? 0)}</dd></div>
-        <div><dt><FolderTree size={13} /> {t("project.fileUnit")}</dt><dd>{formatCompactNumber(detail.metrics.tracked_files)}</dd></div>
-      </dl>
+      <ProjectTabs
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        tabs={tabs}
+      />
 
-      <section className="public-project-overview">
-        <header><FolderTree aria-hidden="true" size={16} /><h3>{t("project.overview")}</h3></header>
-        <dl className="public-project-facts">
-          <div><dt><CalendarDays aria-hidden="true" size={13} /> {t("project.lastActivity")}</dt><dd>{formatOptionalTimestamp(detail.metrics.latest_activity_at, t("common.noActivity"))}</dd></div>
-          <div><dt><GitBranch aria-hidden="true" size={13} /> {t("project.defaultBranch")}</dt><dd>{project.default_branch}</dd></div>
-          <div><dt><BrainCircuit aria-hidden="true" size={13} /> {t("community.usedAi")}</dt><dd className="public-project-model-list">{connectedModels.length > 0 ? connectedModels.map((model) => <AiModelBadge className="is-compact" key={model} model={model} />) : t("project.modelNotCaptured")}</dd></div>
-          <div><dt><FolderTree aria-hidden="true" size={13} /> {t("project.repository")}</dt><dd>{repositoryUrl ? <a href={repositoryUrl} rel="noreferrer" target="_blank"><span>{compactPublicUrl(project.repository_url)}</span><ExternalLink aria-hidden="true" size={12} /></a> : t("project.notProvided")}</dd></div>
-          <div><dt><Globe2 aria-hidden="true" size={13} /> {t("project.projectUrl")}</dt><dd>{projectUrl ? <a href={projectUrl} rel="noreferrer" target="_blank"><span>{compactPublicUrl(project.project_url)}</span><ExternalLink aria-hidden="true" size={12} /></a> : t("project.notProvided")}</dd></div>
-          <div><dt><Compass aria-hidden="true" size={13} /> {t("common.tags")}</dt><dd className="public-project-detail-tags">{projectTags.length > 0 ? projectTags.map((tag) => <span key={tag}>{tag}</span>) : t("project.notProvided")}</dd></div>
-        </dl>
-      </section>
-
-      <section className="public-project-memory">
-        <header><span><BrainCircuit size={15} /> <strong>{t("explore.generatedMemory")}</strong></span><small>{memory.length} / {detail.memory?.total_artifacts ?? 0}</small></header>
-        {memory.length === 0 ? <div className="public-project-memory-empty">{t("explore.noMemory")}</div> : memory.map((artifact) => (
-          <article key={artifact.id}>
-            <div><strong>{artifact.title}</strong><small>{formatOptionalTimestamp(artifact.updated_at ?? artifact.created_at, "")}</small></div>
-            {artifact.summary ? <p>{artifact.summary}</p> : null}
-            <span>{artifact.model ? <i>{artifact.model}</i> : null}{artifact.tags.slice(0, 4).map((tag) => <i key={tag}>{tag}</i>)}</span>
-          </article>
-        ))}
-      </section>
-    </div>
+      <div
+        aria-labelledby={`project-tab-${activeTab}`}
+        className="bh-project-panel loading-cascade"
+        id={`project-panel-${activeTab}`}
+        role="tabpanel"
+      >
+        {panel}
+      </div>
+    </section>
   );
 }
 

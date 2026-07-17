@@ -1,0 +1,279 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "Promty 사업성 평가",
+    "description": "AI 개발 의사결정 메모리 제품과 공개 콘텐츠 사업의 조건부 사업성 평가",
+    "generatedAt": "2026-07-17T12:00:00+10:00",
+    "cards": [
+      {
+        "id": "core_score",
+        "description": "문제, 시장, 제품, 실행, 수익화, 유통, 방어력을 가중 평균한 조건부 사업성 점수입니다.",
+        "dataset": "headline_scores",
+        "sourceId": "assessment_sql",
+        "metrics": [
+          { "label": "핵심 제품 사업성", "field": "core_score", "format": "number" }
+        ]
+      },
+      {
+        "id": "content_score",
+        "description": "공개 프로젝트와 빌드 스토리를 독립 콘텐츠 사업으로 운영할 때의 점수입니다.",
+        "dataset": "headline_scores",
+        "sourceId": "assessment_sql",
+        "metrics": [
+          { "label": "콘텐츠 사업성", "field": "content_score", "format": "number" }
+        ]
+      },
+      {
+        "id": "execution_score",
+        "description": "현재 저장소의 구현 범위와 운영 준비도를 반영한 점수이며 PMF를 뜻하지는 않습니다.",
+        "dataset": "headline_scores",
+        "sourceId": "assessment_sql",
+        "metrics": [
+          { "label": "실행 준비도", "field": "execution_score", "format": "number" }
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "core_dimensions",
+        "title": "핵심 제품 점수 구성",
+        "subtitle": "0-100 분석가 평가; 가중 종합점수 70",
+        "showDescription": true,
+        "type": "bar",
+        "dataset": "core_dimensions",
+        "sourceId": "assessment_sql",
+        "encodings": {
+          "x": { "field": "dimension", "type": "nominal", "label": "평가 항목" },
+          "y": { "field": "score", "type": "quantitative", "label": "점수", "format": "number" },
+          "tooltip": [
+            { "field": "score", "type": "quantitative", "label": "점수", "format": "number" },
+            { "field": "weight", "type": "quantitative", "label": "가중치", "format": "percent" },
+            { "field": "evidence", "type": "text", "label": "근거" }
+          ]
+        },
+        "yAxisTitle": "점수 (0-100)",
+        "valueFormat": "number",
+        "layout": "full",
+        "maxRows": 7,
+        "surface": { "palette": "blue", "showValues": true, "yDomain": [0, 100] }
+      },
+      {
+        "id": "content_dimensions",
+        "title": "콘텐츠 사업 점수 구성",
+        "subtitle": "0-100 분석가 평가; 가중 종합점수 50",
+        "showDescription": true,
+        "type": "bar",
+        "dataset": "content_dimensions",
+        "sourceId": "assessment_sql",
+        "encodings": {
+          "x": { "field": "dimension", "type": "nominal", "label": "평가 항목" },
+          "y": { "field": "score", "type": "quantitative", "label": "점수", "format": "number" },
+          "tooltip": [
+            { "field": "score", "type": "quantitative", "label": "점수", "format": "number" },
+            { "field": "weight", "type": "quantitative", "label": "가중치", "format": "percent" },
+            { "field": "evidence", "type": "text", "label": "근거" }
+          ]
+        },
+        "yAxisTitle": "점수 (0-100)",
+        "valueFormat": "number",
+        "layout": "full",
+        "maxRows": 6,
+        "surface": { "palette": "gold", "showValues": true, "yDomain": [0, 100] }
+      }
+    ],
+    "tables": [
+      {
+        "id": "competitive_matrix",
+        "title": "메모리·컨텍스트 경쟁 구도",
+        "subtitle": "2026년 7월 공식 제품 문서 기준",
+        "showDescription": true,
+        "dataset": "competitive_matrix",
+        "sourceId": "competitive_matrix_sql",
+        "defaultSort": { "field": "threat_order", "direction": "asc" },
+        "density": "spacious",
+        "layout": "full",
+        "columns": [
+          { "field": "product", "label": "제품", "type": "text" },
+          { "field": "documented_capability", "label": "공식 기능", "type": "text" },
+          { "field": "implication", "label": "Promty에 주는 의미", "type": "text" },
+          { "field": "threat_order", "label": "위협 순위", "format": "number" }
+        ]
+      },
+      {
+        "id": "validation_plan",
+        "title": "90일 검증 기준",
+        "subtitle": "점수를 실제 사용자 증거로 교체하기 위한 최소 게이트",
+        "showDescription": true,
+        "dataset": "validation_plan",
+        "sourceId": "validation_plan_sql",
+        "defaultSort": { "field": "phase", "direction": "asc" },
+        "density": "spacious",
+        "layout": "full",
+        "columns": [
+          { "field": "phase", "label": "기간", "type": "text" },
+          { "field": "experiment", "label": "실험", "type": "text" },
+          { "field": "pass_gate", "label": "통과 기준", "type": "text" },
+          { "field": "decision", "label": "판단", "type": "text" }
+        ]
+      }
+    ],
+    "sources": [
+      { "id": "assessment_sql", "label": "Promty 사업성 평가 루브릭", "path": "reports/promty-business-analysis/scoring.sql" },
+      { "id": "competitive_matrix_sql", "label": "공식 경쟁 제품 문서 비교", "path": "reports/promty-business-analysis/competitive-matrix.sql" },
+      { "id": "validation_plan_sql", "label": "90일 검증 계획", "path": "reports/promty-business-analysis/validation-plan.sql" },
+      { "id": "repo_evidence", "label": "Promty 공개 저장소", "href": "https://github.com/NaHyeongyu/BuildHub" },
+      { "id": "stackoverflow_2025", "label": "Stack Overflow Developer Survey 2025", "href": "https://survey.stackoverflow.co/2025/ai" },
+      { "id": "github_octoverse_2025", "label": "GitHub Octoverse 2025", "href": "https://github.blog/news-insights/octoverse/octoverse-a-new-developer-joins-github-every-second-as-ai-leads-typescript-to-1/" },
+      { "id": "github_copilot_memory", "label": "GitHub Copilot Memory", "href": "https://docs.github.com/en/copilot/concepts/agents/copilot-memory" },
+      { "id": "pieces_memory", "label": "Pieces Long-Term Memory", "href": "https://docs.pieces.app/" },
+      { "id": "cursor_pricing", "label": "Cursor pricing and team capabilities", "href": "https://cursor.com/pricing" },
+      { "id": "windsurf_memory", "label": "Windsurf Cascade Memories", "href": "https://docs.windsurf.com/windsurf/cascade/memories" }
+    ],
+    "blocks": [
+      { "id": "title", "type": "markdown", "body": "# Promty 사업성 평가" },
+      {
+        "id": "executive_summary",
+        "type": "markdown",
+        "body": "## Executive Summary\n\n- **조건부 Go — 핵심 제품 70/100.** AI 코딩 도구가 세션 사이에서 왜 그런 결정을 했는지 잃어버리는 문제는 크고, Promty는 이미 이벤트 수집·근거 보존·검토 가능한 프로젝트 메모리까지 구현해 실행력이 강합니다. 다만 고객이 돈을 낼 핵심 결과와 반복 사용 증거는 아직 없습니다.\n- **콘텐츠 사업은 50/100으로, 당장 주사업으로 삼기에는 이릅니다.** 공개 프로젝트와 플로우는 유입·신뢰·포트폴리오를 만드는 성장 장치로는 좋지만, 독립 마켓플레이스는 공급자·독자 양쪽의 콜드스타트와 낮은 지불의사에 걸립니다.\n- **제품의 한 문장은 ‘모든 AI 코딩 도구가 공유하는, 근거가 남는 프로젝트 의사결정 메모리’가 가장 강합니다.** 원시 프롬프트 저장소나 일반 메모리 앱이 아니라 ‘왜 바뀌었는지’를 복원하고 다음 에이전트에게 안전하게 넘기는 제품이어야 합니다.\n- **다음 90일은 기능 추가보다 PMF 검증이 우선입니다.** 15개 디자인 파트너, 첫 메모리 생성까지의 활성화, 2주차 재사용, 실제 유료 전환을 확인한 뒤 팀 기능과 콘텐츠 투자를 늘리는 것이 맞습니다."
+      },
+      { "id": "score_strip", "type": "metric-strip", "cardIds": ["core_score", "content_score", "execution_score"] },
+      {
+        "id": "score_definition",
+        "type": "markdown",
+        "body": "## 70점은 ‘좋은 아이디어’가 아니라 ‘좁혀서 검증할 가치가 있다’는 뜻입니다\n\n점수는 2026년 7월 17일 현재의 코드, 공개 사용 신호, 공식 시장 자료를 함께 본 가중 평가입니다. **70점 이상은 조건부 Go**, 55-69점은 더 좁은 진입점이 필요하고, 55점 미만은 새로운 사용자 증거 없이는 주사업으로 권하기 어렵다는 기준을 썼습니다. 실제 활성 사용자, 리텐션, 매출 데이터가 없기 때문에 이 점수의 가장 큰 목적은 다음 실험의 우선순위를 정하는 것입니다."
+      },
+      {
+        "id": "core_takeaway",
+        "type": "markdown",
+        "body": "## 핵심 제품은 문제와 실행력이 강하지만 유통과 지불의사가 비어 있습니다\n\n저장소에는 컬렉터, 오프라인 큐, FastAPI/PostgreSQL, 암호화, 프로젝트 메모리 생성, 검토 가능한 메모리, 공개 프로젝트, 운영 콘솔까지 들어 있습니다. 약 **6.6만 줄**, **192개 테스트 파일**, **32개 DB 마이그레이션**, **146개 커밋**은 아이디어를 제품으로 만들 수 있다는 강한 증거입니다. 반면 공개 저장소의 스타·포크·워처는 모두 0이고, 최근 30일 npm 다운로드 468회도 고유 사용자나 반복 사용을 뜻하지는 않습니다. 따라서 현재 병목은 개발이 아니라 유통과 가치 검증입니다."
+      },
+      { "id": "core_chart", "type": "chart", "chartId": "core_dimensions", "layout": "full" },
+      {
+        "id": "market_takeaway",
+        "type": "markdown",
+        "body": "## 시장은 크지만 ‘메모리’ 자체는 빠르게 기본 기능이 되고 있습니다\n\n[Stack Overflow 2025](https://survey.stackoverflow.co/2025/ai)에 따르면 응답자의 **84%**가 개발 과정에서 AI 도구를 쓰거나 도입할 계획이고, 전문 개발자의 **51%**는 매일 사용합니다. 동시에 **66%**는 ‘거의 맞지만 완전히 맞지는 않는 답’을 가장 큰 불만으로 꼽고, 에이전트 관련 응답자의 **81%**는 데이터 보안·프라이버시를 우려했습니다. [GitHub Octoverse 2025](https://github.blog/news-insights/octoverse/octoverse-a-new-developer-joins-github-every-second-as-ai-leads-typescript-to-1/)는 1.8억 명 이상의 개발자와 신규 개발자의 약 80%가 첫 주에 Copilot을 쓴다는 신호를 제시합니다.\n\n그러나 [GitHub Copilot Memory](https://docs.github.com/en/copilot/concepts/agents/copilot-memory)는 저장소 사실과 개인 선호를 이미 기억하고, [Pieces](https://docs.pieces.app/)는 온디바이스 장기 기억을, [Windsurf](https://docs.windsurf.com/windsurf/cascade/memories)는 워크스페이스 메모리를 제공합니다. [Cursor Teams](https://cursor.com/pricing)는 공유 팀 컨텍스트와 내부 규칙·스킬·플러그인 마켓플레이스까지 포함합니다. **따라서 Promty의 차별점은 기억의 존재가 아니라 여러 도구에서 나온 결정의 근거, 검토 이력, 변경 결과를 한곳에 연결하는 provenance여야 합니다.**"
+      },
+      { "id": "competition_table", "type": "table", "tableId": "competitive_matrix", "layout": "full" },
+      {
+        "id": "content_takeaway",
+        "type": "markdown",
+        "body": "## 콘텐츠는 매출원보다 획득 채널로 시작해야 합니다\n\n공개 프로젝트에서 원시 프롬프트·응답·diff를 숨기고 생성·검증된 메모리만 노출하는 구조는 신뢰에 유리합니다. 다만 ‘좋은 프롬프트 모음’은 복제하기 쉽고, 독자는 결과가 검증됐는지 알기 어렵고, 창작자는 정리해서 올릴 보상이 약합니다. 더 강한 콘텐츠 단위는 **검증된 빌드 스토리**입니다: 문제 → 시도 → 결정 이유 → 변경 파일 → 결과 → 재사용 가능한 핸드오프. 이것은 Promty가 자동 수집한 근거와 직접 연결되므로 일반 프롬프트 마켓보다 방어력이 높습니다.\n\n초기에는 공개 콘텐츠에 과금하지 말고, 검색 유입·프로필 신뢰·제품 체험 전환을 만드는 무료 표면으로 쓰는 편이 낫습니다. 수익은 개인 프로젝트 메모리, 팀 공유·권한·감사, 에이전트용 컨텍스트 API에서 먼저 만들어야 합니다."
+      },
+      { "id": "content_chart", "type": "chart", "chartId": "content_dimensions", "layout": "full" },
+      {
+        "id": "recommendation",
+        "type": "markdown",
+        "body": "## 권장 포지셔닝과 상품 구조\n\n1. **진입점:** Codex와 Claude Code를 오가며 장기 프로젝트를 운영하는 1-10인 팀을 먼저 노립니다. ‘다음 세션에서 다시 설명하지 않기’보다 ‘왜 이렇게 바뀌었는지 30초 안에 복원하기’를 약속합니다.\n2. **무료:** 로컬 컬렉터, 1개 프로젝트, 제한된 보존 기간, 공개 빌드 스토리. 설치 후 24시간 안에 첫 검증 메모리를 보여줘야 합니다.\n3. **개인 Pro:** 월 US$12-15 가설. 무제한 프로젝트, 장기 보존, 의미 검색, AI 핸드오프 브리프, 내보내기.\n4. **Team:** 월 US$25-30/좌석 가설. 공유 메모리, 검토·승인, 역할 권한, 감사 로그, 민감정보 정책, 팀 컨텍스트 API.\n5. **콘텐츠:** 별도 마켓플레이스 대신 ‘Verified Build Story’ 배지와 재사용 가능한 핸드오프 템플릿을 제공합니다. 저장·포크·제품 설치 전환을 측정하고, 유료 수요가 생긴 뒤에만 크리에이터 수익화를 검토합니다."
+      },
+      {
+        "id": "validation_intro",
+        "type": "markdown",
+        "body": "## 90일 안에 통과해야 할 검증 게이트\n\n기능 완성도 대신 사용 행동을 봐야 합니다. 특히 다운로드 수가 아니라 ‘첫 가치 도달 → 다시 돌아와 검색/핸드오프 → 돈을 냄’의 연쇄가 확인돼야 70점이 실제 사업 점수로 올라갑니다."
+      },
+      { "id": "validation_table", "type": "table", "tableId": "validation_plan", "layout": "full" },
+      {
+        "id": "further_questions",
+        "type": "markdown",
+        "body": "## 다음 결정을 바꿀 질문\n\n- 가장 강한 사용자는 솔로 빌더인가, 에이전시인가, 3-10인 제품팀인가?\n- 사용자가 다시 찾는 것은 세션 타임라인, ‘왜 바뀌었나’ 답변, 핸드오프 브리프 중 무엇인가?\n- 고객은 모든 프롬프트를 클라우드에 보내는가, 로컬 요약 후 승인된 메모리만 동기화하기를 원하는가?\n- GitHub Copilot Memory나 Cursor 팀 컨텍스트로 해결되지 않는 교차 도구 시나리오가 주당 몇 번 발생하는가?\n- 공개 빌드 스토리를 본 독자가 저장·포크·설치 중 어떤 행동을 하는가?"
+      },
+      {
+        "id": "caveats",
+        "type": "markdown",
+        "body": "## Caveats and assumptions\n\n- 이 평가는 제품 분석 데이터가 아니라 저장소 구현, 공개 배포 신호, 공식 시장 자료를 바탕으로 한 전략 평가입니다.\n- npm 다운로드는 고유 사용자·활성 사용자·리텐션이 아니며 자동 설치나 개발자 본인의 테스트가 포함될 수 있습니다.\n- 192개는 테스트 **파일 수**이며, 이번 평가에서 전체 테스트 스위트를 별도로 실행해 통과율을 검증하지 않았습니다.\n- 공개 저장소는 2026년 6월 26일 생성되어 관찰 기간이 매우 짧습니다. 0 스타는 현재 유통 부재의 신호이지 장기 수요 부재의 증거는 아닙니다.\n- 가격은 경쟁 제품과 예상 가치에 맞춘 가설입니다. 5명 이상의 실제 결제 또는 서면 구매 의향 전에는 확정 가격으로 취급하면 안 됩니다."
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-07-17T12:00:00+10:00",
+    "status": "ready",
+    "datasets": {
+      "headline_scores": [
+        { "core_score": 70, "content_score": 50, "execution_score": 88 }
+      ],
+      "core_dimensions": [
+        { "dimension": "실행 준비도", "score": 88, "weight": 0.15, "weighted_contribution": 13.2, "evidence": "컬렉터, 백엔드, 메모리, 보안, 공개 뷰, 운영 기능 구현" },
+        { "dimension": "문제 강도", "score": 84, "weight": 0.15, "weighted_contribution": 12.6, "evidence": "AI 코딩 연속성·정확성·핸드오프 문제가 반복됨" },
+        { "dimension": "시장 타이밍", "score": 82, "weight": 0.15, "weighted_contribution": 12.3, "evidence": "AI 개발 도구와 에이전트 사용이 빠르게 확대" },
+        { "dimension": "방어력", "score": 72, "weight": 0.10, "weighted_contribution": 7.2, "evidence": "장기 근거 데이터와 검토된 결정 메모리가 누적됨" },
+        { "dimension": "차별성", "score": 70, "weight": 0.15, "weighted_contribution": 10.5, "evidence": "교차 도구 이벤트 기반 provenance는 일반 메모리와 다름" },
+        { "dimension": "수익화 명확성", "score": 56, "weight": 0.15, "weighted_contribution": 8.4, "evidence": "개인·팀 과금 가설은 있으나 지불의사 미검증" },
+        { "dimension": "유통·트랙션", "score": 39, "weight": 0.15, "weighted_contribution": 5.85, "evidence": "다운로드는 있으나 활성 사용자·커뮤니티 증거 부족" }
+      ],
+      "content_dimensions": [
+        { "dimension": "콘텐츠 고유가치", "score": 65, "weight": 0.20, "weighted_contribution": 13.0, "evidence": "검증된 빌드 스토리는 단일 프롬프트보다 유용할 수 있음" },
+        { "dimension": "신뢰·운영", "score": 58, "weight": 0.15, "weighted_contribution": 8.7, "evidence": "안전한 공개 계약은 있으나 품질 랭킹·모더레이션 미성숙" },
+        { "dimension": "공급 루프", "score": 52, "weight": 0.20, "weighted_contribution": 10.4, "evidence": "자동 수집은 되지만 선별·공개의 창작자 보상이 약함" },
+        { "dimension": "수요·발견성", "score": 46, "weight": 0.20, "weighted_contribution": 9.2, "evidence": "반복 방문과 검색 수요가 아직 입증되지 않음" },
+        { "dimension": "수익화", "score": 36, "weight": 0.15, "weighted_contribution": 5.4, "evidence": "트래픽과 신뢰 전에 콘텐츠 직접 과금은 어려움" },
+        { "dimension": "콜드스타트 내성", "score": 31, "weight": 0.10, "weighted_contribution": 3.1, "evidence": "초기에는 콘텐츠와 독자가 동시에 부족한 양면시장" }
+      ],
+      "competitive_matrix": [
+        { "product": "GitHub Copilot Memory", "documented_capability": "저장소 사실·아키텍처 결정·개인 선호를 기억하고 코드 인용으로 검증", "implication": "저장소 메모리 자체는 독립 차별점이 아님", "threat_order": 1 },
+        { "product": "Cursor Teams", "documented_capability": "공유 팀 컨텍스트와 내부 rules·skills·plugins 마켓플레이스", "implication": "팀 컨텍스트와 콘텐츠 허브가 이미 번들됨", "threat_order": 2 },
+        { "product": "Pieces", "documented_capability": "온디바이스 장기 기억과 도구 통합", "implication": "프라이버시와 개인 기억 포지션 경쟁", "threat_order": 3 },
+        { "product": "Windsurf Cascade", "documented_capability": "워크스페이스별 자동 메모리와 규칙", "implication": "단일 IDE 내 연속성은 기본 기능화", "threat_order": 4 }
+      ],
+      "validation_plan": [
+        { "phase_order": 1, "phase": "1-30일", "experiment": "15개 디자인 파트너 설치·인터뷰", "pass_gate": "10개가 첫 24시간 내 검증 메모리 생성; 8개가 핵심 문제를 자발적으로 재진술", "decision": "문제·온보딩 검증" },
+        { "phase_order": 2, "phase": "31-60일", "experiment": "검색·왜 바뀌었나·핸드오프 세 행동 측정", "pass_gate": "활성 프로젝트의 40%가 2주차에 다시 사용; 주간 2회 이상 가치 행동", "decision": "반복 가치 검증" },
+        { "phase_order": 3, "phase": "61-90일", "experiment": "US$12-15 개인 Pro와 US$25-30 팀 좌석 가격 테스트", "pass_gate": "5개 이상 실제 결제 또는 3개 팀의 서면 구매 의향", "decision": "수익화 검증" },
+        { "phase_order": 4, "phase": "병행", "experiment": "검증된 빌드 스토리 20개 공개", "pass_gate": "스토리 방문자의 5% 이상 저장·포크·설치 중 하나 수행", "decision": "콘텐츠는 획득 채널로 유지할지 판단" }
+      ]
+    }
+  },
+  "sources": [
+    {
+      "id": "assessment_sql",
+      "label": "Promty 사업성 평가 루브릭",
+      "path": "reports/promty-business-analysis/scoring.sql",
+      "query": {
+        "engine": "PostgreSQL-compatible assessment model",
+        "language": "sql",
+        "description": "0-100 analyst rubric with explicit domain weights and evidence notes.",
+        "executed_at": "2026-07-17T12:00:00+10:00",
+        "tables_used": ["analyst_assessment.promty_business_scores"],
+        "filters": ["Assessment date: 2026-07-17", "Domains: Core product and Content business"],
+        "metric_definitions": ["Weighted domain score = sum(dimension score * dimension weight), rounded to nearest whole point"],
+        "sql": "WITH scores(domain, dimension, score, weight, evidence) AS (VALUES ('Core product','Problem urgency',84,0.15,'AI coding continuity pain'),('Core product','Market timing',82,0.15,'AI development adoption'),('Core product','Differentiation',70,0.15,'Cross-tool decision provenance'),('Core product','Execution readiness',88,0.15,'Implemented product surface'),('Core product','Monetization clarity',56,0.15,'Untested willingness to pay'),('Core product','Distribution and traction',39,0.15,'Limited verified traction'),('Core product','Defensibility',72,0.10,'Compounding longitudinal evidence'),('Content business','Unique content value',65,0.20,'Verified build stories'),('Content business','Supply loop',52,0.20,'Automatic capture but weak publishing incentive'),('Content business','Demand and discovery',46,0.20,'Unproven discovery loop'),('Content business','Monetization',36,0.15,'Weak early marketplace economics'),('Content business','Trust and operations',58,0.15,'Safe contracts but immature moderation'),('Content business','Cold-start resilience',31,0.10,'Two-sided network cold start')) SELECT domain, dimension, score, weight, ROUND(score * weight, 2) AS weighted_contribution, evidence FROM scores ORDER BY domain, score DESC;"
+      }
+    },
+    {
+      "id": "competitive_matrix_sql",
+      "label": "공식 경쟁 제품 문서 비교",
+      "path": "reports/promty-business-analysis/competitive-matrix.sql",
+      "query": {
+        "engine": "PostgreSQL-compatible evidence matrix",
+        "language": "sql",
+        "description": "Feature comparison transcribed from official GitHub, Cursor, Pieces, and Windsurf product documentation linked in the report.",
+        "executed_at": "2026-07-17T12:00:00+10:00",
+        "tables_used": ["evidence.competitor_official_docs"],
+        "filters": ["Official product documentation only", "Reviewed 2026-07-17"],
+        "metric_definitions": ["Threat order is an analyst ordinal ranking, where 1 is the closest bundled substitute"],
+        "sql": "SELECT * FROM (VALUES ('GitHub Copilot Memory','Repository facts and user preferences','Repository memory alone is not a moat',1),('Cursor Teams','Shared team context and internal marketplace','Team context and content are already bundled',2),('Pieces','On-device long-term memory','Competes on privacy and personal memory',3),('Windsurf Cascade','Workspace memories and rules','Single-IDE continuity is becoming standard',4)) AS competitors(product, documented_capability, implication, threat_order) ORDER BY threat_order;"
+      }
+    },
+    {
+      "id": "validation_plan_sql",
+      "label": "90일 검증 계획",
+      "path": "reports/promty-business-analysis/validation-plan.sql",
+      "query": {
+        "engine": "PostgreSQL-compatible experiment plan",
+        "language": "sql",
+        "description": "Decision gates proposed to replace analyst scores with observed activation, retention, payment, and content-conversion evidence.",
+        "executed_at": "2026-07-17T12:00:00+10:00",
+        "tables_used": ["planning.promty_validation_gates"],
+        "filters": ["90-day validation horizon"],
+        "metric_definitions": ["A gate passes only when the stated observed behavior or purchase condition is met"],
+        "sql": "SELECT * FROM (VALUES (1,'1-30 days','15 design partners','10 create a verified memory within 24 hours','Validate problem and onboarding'),(2,'31-60 days','Measure recall and handoff reuse','40 percent return in week two','Validate repeat value'),(3,'61-90 days','Test paid plans','At least 5 payments or 3 written team intents','Validate monetization'),(4,'Parallel','Publish 20 verified build stories','At least 5 percent save, fork, or install','Validate content as acquisition')) AS gates(phase_order, phase, experiment, pass_gate, decision) ORDER BY phase_order;"
+      }
+    }
+  ],
+  "package_info": {
+    "root": "reports/promty-business-analysis",
+    "manifestPath": "artifact.json",
+    "snapshotPath": "artifact.json"
+  }
+}

@@ -8,7 +8,7 @@ import type { Project } from "./types";
 
 function currentLocation() {
   if (typeof window === "undefined") {
-    return { origin: "http://localhost:3000", pathname: "/" };
+    return { origin: "http://localhost:3000", pathname: "/app" };
   }
   return window.location;
 }
@@ -19,7 +19,7 @@ export function projectDetailUrl(projectKey: string) {
     project: projectKey,
     tab: "overview",
   });
-  return `${location.origin}/?${params.toString()}`;
+  return `${location.origin}/app?${params.toString()}`;
 }
 
 export function externalProjectHref(projectUrl: string) {
@@ -32,7 +32,7 @@ export function externalProjectHref(projectUrl: string) {
 
 export function publicProjectUrl(projectId: string) {
   const location = currentLocation();
-  return `${location.origin}${location.pathname}${buildUrlNavigationSearch(
+  return `${location.origin}/app${buildUrlNavigationSearch(
     normalizeUrlNavigationState({
       ...DEFAULT_URL_NAVIGATION_STATE,
       activeItem: "community",
@@ -52,7 +52,7 @@ export function buildProjectShareUrl(
   }
 
   const location = currentLocation();
-  return `${location.origin}${location.pathname}${buildUrlNavigationSearch(
+  return `${location.origin}/app${buildUrlNavigationSearch(
     normalizeUrlNavigationState({
       ...DEFAULT_URL_NAVIGATION_STATE,
       activeDetailTab: tab,

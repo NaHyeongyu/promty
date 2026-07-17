@@ -374,7 +374,7 @@ def test_batch_chunks_all_sessions_into_one_project_update(monkeypatch) -> None:
     assert memory.storage_key.endswith(f"/batch/{prepared.batch_id}/memory")
 
 
-def test_batch_outcome_keeps_only_recent_concise_results() -> None:
+def test_batch_memory_keeps_complete_chunk_details() -> None:
     project_id = uuid4()
     snapshots = [_snapshot()]
     chunks = [
@@ -382,7 +382,16 @@ def test_batch_outcome_keeps_only_recent_concise_results() -> None:
             first_event_at=None,
             last_event_at=None,
             metadata={},
-            payload={"outcome": f"Result {index}. " + ("detail " * 80)},
+            payload={
+                "outcome": f"Result {index}. " + ("outcome detail " * 80),
+                "sections": [
+                    {
+                        "summary": f"Section {index}. " + ("section detail " * 40),
+                        "title": "Tasks",
+                    }
+                ],
+                "summary": f"Summary {index}. " + ("summary detail " * 80),
+            },
             source_draft_ids=[str(snapshots[0].id)],
             source_draft_version_ids=[str(snapshots[0].version_id)],
             source_session_id=str(uuid4()),
@@ -400,9 +409,18 @@ def test_batch_outcome_keeps_only_recent_concise_results() -> None:
 
     memory = batches._prepare_project_batch_memory(batch=prepared, chunks=chunks)
 
-    assert "Result 0." not in memory.payload["outcome"]
-    assert "Result 2." in memory.payload["outcome"]
-    assert len(memory.payload["outcome"]) <= batches.PROJECT_MEMORY_BATCH_OUTCOME_MAX_CHARS
+    assert memory.payload["outcome"] == " ".join(chunk.payload["outcome"] for chunk in chunks)
+    assert memory.payload["summary"] == " ".join(chunk.payload["summary"] for chunk in chunks)
+    assert memory.payload["sections"] == [
+        {
+            "summary": " / ".join(
+                chunk.payload["sections"][0]["summary"].strip() for chunk in chunks
+            ),
+            "title": "Tasks",
+        }
+    ]
+    assert "Result 0." in memory.payload["outcome"]
+    assert not memory.payload["outcome"].endswith("...")
 
 
 def test_generation_failure_does_not_consume_any_snapshot_draft(monkeypatch) -> None:
