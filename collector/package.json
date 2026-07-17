@@ -1,6 +1,6 @@
 {
   "name": "promty-collector",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Promty local event collector",
   "license": "UNLICENSED",
   "repository": {
