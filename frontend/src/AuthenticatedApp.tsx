@@ -576,6 +576,10 @@ export function AuthenticatedApp() {
 
     setIsReviewQueueOpen(false);
 
+    if ((item === "projects" || item === "pinned") && item !== activeItem) {
+      setProjectSearchQuery("");
+    }
+
     if (item === "projects" && selectedProjectId) {
       closeProjectDetail();
       return;

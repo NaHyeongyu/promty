@@ -11,6 +11,27 @@ type UseProjectCatalogOptions = {
   selectedProjectId: string | null;
 };
 
+function filterAndSortProjects(
+  projects: Project[],
+  query: string,
+  sortMode: ProjectSortMode,
+) {
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredProjects = normalizedQuery
+    ? projects.filter((project) =>
+        project.name.toLowerCase().includes(normalizedQuery),
+      )
+    : projects;
+
+  return [...filteredProjects].sort((left, right) => {
+    const leftTimestamp =
+      sortMode === "added" ? left.createdTimestamp : left.latestTimestamp;
+    const rightTimestamp =
+      sortMode === "added" ? right.createdTimestamp : right.latestTimestamp;
+    return new Date(rightTimestamp).getTime() - new Date(leftTimestamp).getTime();
+  });
+}
+
 export function useProjectCatalog({
   previewEmptyProjects,
   previewGithubUnlinkedProject,
@@ -43,26 +64,20 @@ export function useProjectCatalog({
         ),
     [projectCatalog],
   );
-  const sortAndFilterProjects = (sourceProjects: Project[]) => {
-    const query = projectSearchQuery.trim().toLowerCase();
-    const filteredProjects = query
-      ? sourceProjects.filter((project) => project.name.toLowerCase().includes(query))
-      : sourceProjects;
-
-    return [...filteredProjects].sort((left, right) => {
-      const leftTimestamp =
-        projectSortMode === "added" ? left.createdTimestamp : left.latestTimestamp;
-      const rightTimestamp =
-        projectSortMode === "added" ? right.createdTimestamp : right.latestTimestamp;
-      return new Date(rightTimestamp).getTime() - new Date(leftTimestamp).getTime();
-    });
-  };
-  const visibleProjects = useMemo(() => {
-    return sortAndFilterProjects(displayProjects);
-  }, [displayProjects, projectSearchQuery, projectSortMode]);
-  const visibleBookmarkedProjects = useMemo(() => {
-    return sortAndFilterProjects(bookmarkedProjects);
-  }, [bookmarkedProjects, projectSearchQuery, projectSortMode]);
+  const visibleProjects = useMemo(
+    () =>
+      filterAndSortProjects(displayProjects, projectSearchQuery, projectSortMode),
+    [displayProjects, projectSearchQuery, projectSortMode],
+  );
+  const visibleBookmarkedProjects = useMemo(
+    () =>
+      filterAndSortProjects(
+        bookmarkedProjects,
+        projectSearchQuery,
+        projectSortMode,
+      ),
+    [bookmarkedProjects, projectSearchQuery, projectSortMode],
+  );
   const projectHeaderOptions = useMemo<ProjectHeaderProjectOption[]>(
     () =>
       projectCatalog.map((project) => ({
