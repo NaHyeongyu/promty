@@ -44,6 +44,7 @@ def test_project_summary_exposes_memory_review_status() -> None:
     response = ProjectSummaryResponse.model_validate(summary)
     assert response.latest_memory_at == latest_memory_at.isoformat()
     assert response.memory_count == 4
+    assert response.memory_grouping_mode == "session"
     assert response.pending_memory_count == 2
     assert response.project_url == "www.google.com"
 
@@ -60,6 +61,12 @@ def test_project_metadata_allows_clearing_external_url() -> None:
 
     assert payload.project_url is None
     assert "project_url" in payload.model_fields_set
+
+
+def test_project_metadata_validates_memory_grouping_mode() -> None:
+    payload = ProjectMetadataUpdateRequest(memory_grouping_mode="chronological")
+
+    assert payload.memory_grouping_mode == "chronological"
 
 
 def test_public_project_routes_publish_read_only_contracts() -> None:

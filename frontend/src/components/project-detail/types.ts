@@ -1,5 +1,6 @@
 import type { ComponentType, ReactNode } from "react";
 import type { LucideProps } from "lucide-react";
+import type { MemoryGroupingMode } from "../../workspace/types";
 
 export type ProjectDetailTabId = "overview" | "memory" | "ai-activity" | "files";
 
@@ -43,6 +44,7 @@ export type ProjectDetailProject = ProjectHeaderProps & {
   description: string;
   id: string;
   isBookmarked: boolean;
+  memoryGroupingMode: MemoryGroupingMode;
   projectUrl?: string;
   slug?: string;
   tags: string[];

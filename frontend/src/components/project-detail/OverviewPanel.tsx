@@ -6,6 +6,8 @@ import {
   Globe2,
   Link2,
   LockKeyhole,
+  Rows3,
+  TimerReset,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -18,6 +20,7 @@ import {
   projectVisibilityFromValue,
 } from "./overviewPanelUtils";
 import type { ProjectDetailData } from "./types";
+import type { MemoryGroupingMode } from "../../workspace/types";
 import { useI18n } from "../../i18n/I18nProvider";
 import { publicProjectUrl } from "../../workspace/projectUrls";
 import { useOverviewEditors } from "./useOverviewEditors";
@@ -52,6 +55,7 @@ export function OverviewPanel({
   onDeleteProject?: () => Promise<void>;
   onSaveDescription?: (description: string) => Promise<void>;
   onSaveProjectMetadata?: (metadata: {
+    memoryGroupingMode?: MemoryGroupingMode;
     projectUrl?: string;
     tags?: string[];
     visibility?: "private" | "public";
@@ -72,6 +76,7 @@ export function OverviewPanel({
     isDescriptionSaving,
     isProjectMetadataDrawerVisible,
     isProjectMetadataSaving,
+    memoryGroupingModeDraft,
     openDescriptionEditor,
     openProjectMetadataEditor,
     overviewEditDrawerRef,
@@ -85,6 +90,7 @@ export function OverviewPanel({
     setProjectUrlDraft,
     setProjectTagsDraft,
     setProjectVisibilityDraft,
+    setMemoryGroupingModeDraft,
   } = useOverviewEditors({
     data,
     onSaveDescription,
@@ -281,6 +287,18 @@ export function OverviewPanel({
                     <span className="ai-model-badge is-muted">{t("project.noModels")}</span>
                   )}
                 </div>
+                <p className="bh-project-memory-grouping-summary">
+                  {data.project.memoryGroupingMode === "session" ? (
+                    <Rows3 aria-hidden="true" size={14} strokeWidth={1.5} />
+                  ) : (
+                    <TimerReset aria-hidden="true" size={14} strokeWidth={1.5} />
+                  )}
+                  <span>
+                    {data.project.memoryGroupingMode === "session"
+                      ? t("project.memoryGroupingSession")
+                      : t("project.memoryGroupingChronological")}
+                  </span>
+                </p>
               </section>
 
               <section className="bh-project-context-section" aria-label={t("common.tags")}>
@@ -446,6 +464,40 @@ export function OverviewPanel({
                   {projectVisibilityDraft === "public"
                     ? t("project.publicVisibilityHint")
                     : t("project.privateVisibilityHint")}
+                </p>
+              </fieldset>
+              <fieldset className="bh-overview-edit-field">
+                <legend>{t("project.memoryGrouping")}</legend>
+                <div
+                  aria-label={t("project.memoryGrouping")}
+                  className="bh-project-visibility"
+                  role="radiogroup"
+                >
+                  {(["session", "chronological"] as const).map((option) => (
+                    <button
+                      aria-checked={memoryGroupingModeDraft === option}
+                      className="bh-project-visibility-option"
+                      data-active={memoryGroupingModeDraft === option}
+                      key={option}
+                      onClick={() => setMemoryGroupingModeDraft(option)}
+                      role="radio"
+                      type="button"
+                    >
+                      {option === "session" ? (
+                        <Rows3 aria-hidden="true" size={16} strokeWidth={1.5} />
+                      ) : (
+                        <TimerReset aria-hidden="true" size={16} strokeWidth={1.5} />
+                      )}
+                      {option === "session"
+                        ? t("project.memoryGroupingSession")
+                        : t("project.memoryGroupingChronological")}
+                    </button>
+                  ))}
+                </div>
+                <p className="bh-overview-visibility-hint">
+                  {memoryGroupingModeDraft === "session"
+                    ? t("project.memoryGroupingSessionHint")
+                    : t("project.memoryGroupingChronologicalHint")}
                 </p>
               </fieldset>
               {projectMetadataError ? (

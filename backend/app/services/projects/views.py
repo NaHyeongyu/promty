@@ -919,6 +919,7 @@ def read_project_detail_response(
             "description": project.description,
             "created_at": iso(project.created_at),
             "is_bookmarked": bool(project.is_bookmarked),
+            "memory_grouping_mode": project.memory_grouping_mode or "session",
             "tags": project.tags or [],
             "visibility": project.visibility,
             "repository_status": "Repository connected"

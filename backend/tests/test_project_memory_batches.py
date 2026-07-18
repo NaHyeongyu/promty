@@ -90,13 +90,27 @@ class FakeFailureDB(FakeDB):
         return FakeScalarResult(self.batch)
 
 
+class FakeAttemptDB(FakeDB):
+    def __init__(self, batch, project) -> None:
+        super().__init__()
+        self.batch = batch
+        self.project = project
+
+    def get(self, model, _identifier):
+        return self.batch if model is ProjectMemoryBatch else self.project
+
+
 class FakePrepareDB(FakeDB):
     def __init__(self, drafts) -> None:
         super().__init__()
         self.added = []
         self.claimed_ids = set()
         self.drafts = drafts
+        self.project = SimpleNamespace(memory_grouping_mode="session")
         self.statements = []
+
+    def get(self, _model, _identifier):
+        return self.project
 
     def add(self, value) -> None:
         if isinstance(value, ProjectMemoryBatch) and value.id is None:
@@ -156,6 +170,7 @@ def _batch_rows(*, first_session_count: int, second_session_count: int = 0):
 
 
 def test_project_memory_batch_models_capture_exact_draft_versions() -> None:
+    assert ProjectMemoryBatch.__table__.c.grouping_mode.nullable is False
     assert ProjectMemoryBatch.__table__.c.idempotency_key.nullable is False
     assert ProjectMemoryBatch.__table__.c.idempotency_keys.nullable is False
     assert ProjectMemoryBatch.__table__.c.lease_expires_at.nullable is True
@@ -374,6 +389,112 @@ def test_batch_chunks_all_sessions_into_one_project_update(monkeypatch) -> None:
     assert memory.extra_metadata["internal_chunk_count"] == 3
     assert memory.extra_metadata["source_session_ids"] == prepared.source_session_ids
     assert memory.storage_key.endswith(f"/batch/{prepared.batch_id}/memory")
+
+
+def test_chunk_generation_respects_project_grouping_mode(monkeypatch) -> None:
+    _project_id, rows = _batch_rows(first_session_count=7, second_session_count=2)
+
+    def context_for_drafts(_db, session, drafts):
+        return {
+            "changed_files": [],
+            "commits": [],
+            "ended_at": None,
+            "event_count": len(drafts),
+            "events": [],
+            "first_event_id": None,
+            "last_event_id": None,
+            "model": "gpt-test",
+            "output_locale": "ko",
+            "pending_drafts": [{"id": str(draft.id)} for draft in drafts],
+            "project_id": str(session.project_id),
+            "project_name": "Promty",
+            "prompt_events": [],
+            "response_count": 0,
+            "responses": [],
+            "session_id": str(session.id),
+            "started_at": None,
+            "tool": "codex-cli",
+            "window": {"end_sequence": None, "start_sequence": None},
+        }
+
+    monkeypatch.setattr(batches, "_pending_draft_generation_context", context_for_drafts)
+
+    session_generations = batches._chunk_generations_for_rows(
+        FakeDB(),  # type: ignore[arg-type]
+        rows,
+        grouping_mode="session",
+    )
+    chronological_generations = batches._chunk_generations_for_rows(
+        FakeDB(),  # type: ignore[arg-type]
+        rows,
+        grouping_mode="chronological",
+    )
+
+    assert [len(item.snapshots) for item in session_generations] == [6, 1, 2]
+    assert [len(item.snapshots) for item in chronological_generations] == [6, 3]
+    assert chronological_generations[1].source_session_id == "chronological"
+    assert chronological_generations[1].context["source_session_ids"] == [
+        str(rows[6][3].id),
+        str(rows[7][3].id),
+    ]
+    assert [
+        draft["id"]
+        for generation in chronological_generations
+        for draft in generation.context["pending_drafts"]
+    ] == [str(snapshot.id) for _, _, snapshot, _ in rows]
+
+
+def test_batch_attempt_uses_grouping_mode_captured_when_queued(monkeypatch) -> None:
+    project_id, rows = _batch_rows(first_session_count=7, second_session_count=2)
+    batch = SimpleNamespace(
+        attempt_count=1,
+        chunk_results={},
+        grouping_mode="chronological",
+        id=uuid4(),
+        lease_expires_at=datetime.now(UTC) + timedelta(minutes=5),
+        project_id=project_id,
+        snapshot_manifest=[],
+        source_session_ids=list(dict.fromkeys(str(row[3].id) for row in rows)),
+        status="running",
+    )
+    db = FakeAttemptDB(batch, SimpleNamespace(name="Promty"))
+
+    monkeypatch.setattr(batches, "_load_batch_snapshots", lambda *_args, **_kwargs: rows)
+    monkeypatch.setattr(
+        batches,
+        "_pending_draft_generation_context",
+        lambda _db, session, drafts: {
+            "changed_files": [],
+            "commits": [],
+            "ended_at": None,
+            "event_count": len(drafts),
+            "events": [],
+            "first_event_id": None,
+            "last_event_id": None,
+            "model": "gpt-test",
+            "output_locale": "ko",
+            "pending_drafts": [{"id": str(draft.id)} for draft in drafts],
+            "project_id": str(session.project_id),
+            "project_name": "Promty",
+            "prompt_events": [],
+            "response_count": 0,
+            "responses": [],
+            "session_id": str(session.id),
+            "started_at": None,
+            "tool": "codex-cli",
+            "window": {"end_sequence": None, "start_sequence": None},
+        },
+    )
+
+    prepared = batches._prepare_batch_attempt(
+        db,  # type: ignore[arg-type]
+        batch_id=batch.id,
+        expected_attempt_count=1,
+    )
+
+    assert prepared is not None
+    assert prepared.grouping_mode == "chronological"
+    assert [len(item.snapshots) for item in prepared.chunk_generations] == [6, 3]
 
 
 def test_batch_memory_keeps_complete_chunk_details() -> None:

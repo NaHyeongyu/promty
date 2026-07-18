@@ -16,6 +16,10 @@ class Project(Base):
     __tablename__ = "projects"
     __table_args__ = (
         CheckConstraint("visibility in ('public', 'private')", name="ck_projects_visibility"),
+        CheckConstraint(
+            "memory_grouping_mode in ('session', 'chronological')",
+            name="ck_projects_memory_grouping_mode",
+        ),
         UniqueConstraint("owner_id", "slug", name="uq_projects_owner_slug"),
         Index("ix_projects_owner_git_remote", "owner_id", "git_remote"),
     )
@@ -32,6 +36,11 @@ class Project(Base):
     tags: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
     is_bookmarked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     visibility: Mapped[str] = mapped_column(String(16), default="private")
+    memory_grouping_mode: Mapped[str] = mapped_column(
+        String(16),
+        default="session",
+        nullable=False,
+    )
     project_url: Mapped[str | None] = mapped_column(String(2048))
     git_remote: Mapped[str | None] = mapped_column(String(2048))
     local_path_hash: Mapped[str | None] = mapped_column(String(128), index=True)

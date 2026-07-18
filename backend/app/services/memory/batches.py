@@ -61,6 +61,8 @@ PROJECT_MEMORY_BATCH_CHUNK_SIZE = 6
 PROJECT_MEMORY_BATCH_GENERATOR = "project-memory-batch-v1"
 PROJECT_MEMORY_BATCH_LEASE = timedelta(minutes=10)
 PROJECT_MEMORY_BATCH_TRIGGER = "project_batch"
+MEMORY_GROUPING_SESSION = "session"
+MEMORY_GROUPING_CHRONOLOGICAL = "chronological"
 HTTP_STATUS_PATTERN = re.compile(r"\bHTTP(?: status)?\s+([1-5][0-9]{2})\b")
 
 
@@ -175,6 +177,7 @@ class BatchAttemptSnapshot:
     project_name: str
     snapshot_manifest: list[dict[str, Any]]
     source_session_ids: list[str]
+    grouping_mode: str = MEMORY_GROUPING_SESSION
     chunk_results: dict[str, list[GeneratedChunkPayload]] = field(default_factory=dict)
 
 
@@ -411,6 +414,9 @@ def _prepare_batch(
     user_id: UUID,
 ) -> ProjectMemoryBatch:
     snapshot_at = utc_now()
+    project = db.get(Project, project_id)
+    if project is None:
+        raise ProjectMemoryBatchInvariantError("Project not found")
     drafts = list(db.execute(_pending_draft_claim_statement(project_id, snapshot_at)).scalars())
     versions = _latest_versions_by_artifact(db, [draft.id for draft in drafts])
     missing_versions = [str(draft.id) for draft in drafts if draft.id not in versions]
@@ -425,6 +431,7 @@ def _prepare_batch(
     batch = ProjectMemoryBatch(
         idempotency_key=idempotency_key,
         idempotency_keys=[idempotency_key],
+        grouping_mode=project.memory_grouping_mode,
         project_id=project_id,
         requested_by_user_id=user_id,
         snapshot_at=snapshot_at,
@@ -534,6 +541,8 @@ def preview_project_memory_batch(
     *,
     project_id: UUID,
 ) -> dict[str, Any]:
+    project = db.get(Project, project_id) if hasattr(db, "get") else None
+    grouping_mode = getattr(project, "memory_grouping_mode", MEMORY_GROUPING_SESSION)
     claimed_drafts = select(ProjectMemoryBatchItem.draft_id)
     available_filters = (
         *_pending_draft_filters(project_id),
@@ -554,9 +563,13 @@ def preview_project_memory_batch(
     for draft in selected_drafts:
         session_key = str(draft.session_id or draft.id)
         session_draft_counts[session_key] += 1
-    draft_calls = sum(
-        ceil(count / PROJECT_MEMORY_BATCH_CHUNK_SIZE)
-        for count in session_draft_counts.values()
+    draft_calls = (
+        ceil(len(selected_drafts) / PROJECT_MEMORY_BATCH_CHUNK_SIZE)
+        if grouping_mode == MEMORY_GROUPING_CHRONOLOGICAL
+        else sum(
+            ceil(count / PROJECT_MEMORY_BATCH_CHUNK_SIZE)
+            for count in session_draft_counts.values()
+        )
     )
     ranges = [_pending_draft_range(draft) for draft in selected_drafts]
     draft_estimate = _provider_generation_estimate(
@@ -779,6 +792,128 @@ def _load_batch_snapshots(
 
 def _chunks(values: list[Any], size: int) -> list[list[Any]]:
     return [values[index : index + size] for index in range(0, len(values), size)]
+
+
+def _multiple_or_single(values: list[Any], *, fallback: str) -> str:
+    unique = list(dict.fromkeys(value for value in values if isinstance(value, str) and value))
+    if not unique:
+        return fallback
+    return unique[0] if len(unique) == 1 else "multiple"
+
+
+def _merge_chronological_contexts(contexts: list[dict[str, Any]]) -> dict[str, Any]:
+    if not contexts:
+        raise ProjectMemoryBatchInvariantError("Chronological memory chunk has no context")
+
+    def items(key: str) -> list[Any]:
+        return [
+            item
+            for context in contexts
+            for item in (context.get(key) if isinstance(context.get(key), list) else [])
+        ]
+
+    started_at = [context.get("started_at") for context in contexts if context.get("started_at")]
+    ended_at = [context.get("ended_at") for context in contexts if context.get("ended_at")]
+    first_event_ids = [context.get("first_event_id") for context in contexts]
+    last_event_ids = [context.get("last_event_id") for context in contexts]
+    source_session_ids = list(
+        dict.fromkeys(
+            context["session_id"]
+            for context in contexts
+            if isinstance(context.get("session_id"), str) and context["session_id"]
+        )
+    )
+    first = contexts[0]
+    return {
+        "changed_files": dedupe_files(items("changed_files")),
+        "commits": items("commits"),
+        "ended_at": max(ended_at) if ended_at else None,
+        "event_count": sum(
+            value
+            for context in contexts
+            if isinstance((value := context.get("event_count")), int)
+        ),
+        "events": items("events"),
+        "first_event_id": next(
+            (value for value in first_event_ids if isinstance(value, str) and value),
+            None,
+        ),
+        "last_event_id": next(
+            (
+                value
+                for value in reversed(last_event_ids)
+                if isinstance(value, str) and value
+            ),
+            None,
+        ),
+        "model": _multiple_or_single(
+            [context.get("model") for context in contexts],
+            fallback="unknown",
+        ),
+        "output_locale": first.get("output_locale") or "en",
+        "pending_drafts": items("pending_drafts"),
+        "project_id": first["project_id"],
+        "project_name": first["project_name"],
+        "prompt_events": items("prompt_events"),
+        "response_count": sum(
+            value
+            for context in contexts
+            if isinstance((value := context.get("response_count")), int)
+        ),
+        "responses": items("responses"),
+        "session_id": "chronological",
+        "source_session_ids": source_session_ids,
+        "started_at": min(started_at) if started_at else None,
+        "tool": _multiple_or_single(
+            [context.get("tool") for context in contexts],
+            fallback="promty",
+        ),
+        "window": {"end_sequence": None, "start_sequence": None},
+    }
+
+
+def _chunk_generations_for_rows(
+    db: DBSession,
+    rows: list[tuple[ProjectMemoryBatchItem, Artifact, PendingDraftSnapshot, Session]],
+    *,
+    grouping_mode: str,
+) -> list[PendingChunkGeneration]:
+    chunk_generations: list[PendingChunkGeneration] = []
+    if grouping_mode == MEMORY_GROUPING_CHRONOLOGICAL:
+        for chunk_rows in _chunks(rows, PROJECT_MEMORY_BATCH_CHUNK_SIZE):
+            contexts = [
+                _pending_draft_generation_context(db, session, [snapshot])  # type: ignore[list-item]
+                for _item, _draft, snapshot, session in chunk_rows
+            ]
+            chunk_generations.append(
+                PendingChunkGeneration(
+                    context=_merge_chronological_contexts(contexts),
+                    snapshots=[snapshot for _, _, snapshot, _ in chunk_rows],
+                    source_session_id="chronological",
+                )
+            )
+        return chunk_generations
+
+    grouped: dict[UUID, list[tuple[Artifact, PendingDraftSnapshot, Session]]] = defaultdict(list)
+    for _item, draft, snapshot, session in rows:
+        grouped[session.id].append((draft, snapshot, session))
+    for session_rows in grouped.values():
+        for chunk_rows in _chunks(session_rows, PROJECT_MEMORY_BATCH_CHUNK_SIZE):
+            snapshots = [snapshot for _, snapshot, _ in chunk_rows]
+            session = chunk_rows[0][2]
+            context = _pending_draft_generation_context(
+                db,
+                session,
+                snapshots,  # type: ignore[arg-type]
+            )
+            chunk_generations.append(
+                PendingChunkGeneration(
+                    context=context,
+                    snapshots=snapshots,
+                    source_session_id=str(session.id),
+                )
+            )
+    return chunk_generations
 
 
 def _coverage_bounds(snapshots: list[PendingDraftSnapshot]) -> tuple[str | None, str | None]:
@@ -1013,27 +1148,11 @@ def _prepare_batch_attempt(
         }
         draft.updated_at = utc_now()
     db.flush()
-    grouped: dict[UUID, list[tuple[Artifact, PendingDraftSnapshot, Session]]] = defaultdict(list)
-    for _item, draft, snapshot, session in rows:
-        grouped[session.id].append((draft, snapshot, session))
-
-    chunk_generations: list[PendingChunkGeneration] = []
-    for session_rows in grouped.values():
-        for chunk_rows in _chunks(session_rows, PROJECT_MEMORY_BATCH_CHUNK_SIZE):
-            snapshots = [snapshot for _, snapshot, _ in chunk_rows]
-            session = chunk_rows[0][2]
-            context = _pending_draft_generation_context(
-                db,
-                session,
-                snapshots,  # type: ignore[arg-type]
-            )
-            chunk_generations.append(
-                PendingChunkGeneration(
-                    context=context,
-                    snapshots=snapshots,
-                    source_session_id=str(session.id),
-                )
-            )
+    chunk_generations = _chunk_generations_for_rows(
+        db,
+        rows,
+        grouping_mode=batch.grouping_mode or MEMORY_GROUPING_SESSION,
+    )
 
     project = db.get(Project, batch.project_id)
     if project is None:
@@ -1052,6 +1171,7 @@ def _prepare_batch_attempt(
         project_name=project.name,
         snapshot_manifest=list(batch.snapshot_manifest or []),
         source_session_ids=list(batch.source_session_ids or []),
+        grouping_mode=batch.grouping_mode or MEMORY_GROUPING_SESSION,
     )
     db.commit()
     return prepared
@@ -1280,6 +1400,7 @@ def _prepare_project_batch_memory(
             "draft_generator": PROJECT_MEMORY_BATCH_GENERATOR,
             "draft_type": "work_log",
             "first_event_at": first_event_at,
+            "grouping_mode": batch.grouping_mode,
             "internal_chunk_count": len(chunks),
             "last_event_at": last_event_at,
             "memory_batch_id": str(batch.batch_id),

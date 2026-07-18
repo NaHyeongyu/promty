@@ -446,6 +446,19 @@
   white-space: nowrap;
 }
 
+.bh-project-context-section .bh-project-memory-grouping-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--bh-space-1);
+  color: var(--bh-color-text-muted);
+  font-size: var(--bh-font-size-caption);
+  font-weight: var(--bh-font-weight-label);
+}
+
+.bh-project-memory-grouping-summary svg {
+  flex: 0 0 auto;
+}
+
 .bh-project-summary-strip,
 .bh-overview-model-badge-list {
   display: flex;

@@ -2,7 +2,7 @@ import {
   formatRelativeTimestamp,
   formatTimestamp,
 } from "../lib/formatters";
-import type { EventRecord, Project, ProjectSummary } from "./types";
+import type { EventRecord, MemoryGroupingMode, Project, ProjectSummary } from "./types";
 
 function getStringPayloadValue(
   payload: Record<string, unknown>,
@@ -93,6 +93,7 @@ export function projectsFromEvents(
       latestTimestamp: string;
       latestMemoryAt?: string;
       memoryCount: number;
+      memoryGroupingMode: MemoryGroupingMode;
       models: Set<string>;
       name: string;
       summaryEventCount?: number;
@@ -120,6 +121,7 @@ export function projectsFromEvents(
       latestTimestamp: summary.latest_event_at ?? summary.updated_at,
       latestMemoryAt: summary.latest_memory_at ?? undefined,
       memoryCount: summary.memory_count ?? 0,
+      memoryGroupingMode: summary.memory_grouping_mode ?? "session",
       models: new Set<string>(summary.connected_models ?? []),
       name: summary.name,
       summaryEventCount: summary.events,
@@ -148,6 +150,7 @@ export function projectsFromEvents(
         isBookmarked: false,
         latestTimestamp: event.timestamp,
         memoryCount: 0,
+        memoryGroupingMode: "session" as const,
         models: new Set<string>(),
         name: projectNameFromEvent(event),
         prompts: 0,
@@ -199,6 +202,7 @@ export function projectsFromEvents(
     isBookmarked: value.isBookmarked,
     latestMemoryAt: value.latestMemoryAt,
     memoryCount: value.memoryCount,
+    memoryGroupingMode: value.memoryGroupingMode,
     pendingMemoryCount: value.pendingMemoryCount,
     projectUrl: value.projectUrl,
     tags: value.tags,

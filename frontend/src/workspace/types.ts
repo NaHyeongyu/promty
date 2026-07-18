@@ -14,6 +14,7 @@ export type SidebarItemId =
   | "profile";
 
 export type CommunityContentType = "projects" | "flows";
+export type MemoryGroupingMode = "session" | "chronological";
 
 export type Project = {
   defaultBranch?: string;
@@ -36,6 +37,7 @@ export type Project = {
   isBookmarked: boolean;
   latestMemoryAt?: string;
   memoryCount: number;
+  memoryGroupingMode: MemoryGroupingMode;
   pendingMemoryCount: number;
   projectUrl?: string;
 };
@@ -122,6 +124,7 @@ export type ProjectSummary = {
   latest_event_at: string | null;
   latest_memory_at: string | null;
   memory_count: number;
+  memory_grouping_mode: MemoryGroupingMode;
   pending_memory_count: number;
   project_url: string | null;
   updated_at: string;
@@ -368,6 +371,7 @@ export type ProjectDetailApiResponse = {
     description: string | null;
     id: string;
     is_bookmarked?: boolean;
+    memory_grouping_mode?: MemoryGroupingMode;
     name: string;
     project_url: string | null;
     repository_status: string;

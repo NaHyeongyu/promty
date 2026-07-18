@@ -12,6 +12,7 @@ const project: Project = {
   latestTimestamp: "",
   latestUpdatedAt: "2026-07-16T00:00:00Z",
   memoryCount: 0,
+  memoryGroupingMode: "session",
   models: [],
   name: "Public demo",
   pendingMemoryCount: 0,

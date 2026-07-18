@@ -58,6 +58,7 @@ class ProjectDetailProjectResponse(StrictResponse):
     description: str | None
     id: str
     is_bookmarked: bool
+    memory_grouping_mode: Literal["session", "chronological"]
     name: str
     project_url: str | None
     repository_status: str

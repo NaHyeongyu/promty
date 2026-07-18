@@ -48,6 +48,7 @@ class ProjectDescriptionUpdateRequest(BaseModel):
 
 
 class ProjectMetadataUpdateRequest(BaseModel):
+    memory_grouping_mode: Literal["session", "chronological"] | None = None
     slug: str | None = Field(default=None, min_length=1, max_length=255)
     project_url: str | None = Field(default=None, max_length=2048)
     tags: list[str] | None = None
@@ -133,6 +134,7 @@ class ProjectSummaryResponse(BaseModel):
     latest_event_at: str | None
     latest_memory_at: str | None
     memory_count: int
+    memory_grouping_mode: Literal["session", "chronological"]
     name: str
     prompts: int
     pending_memory_count: int

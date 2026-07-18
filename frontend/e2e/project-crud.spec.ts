@@ -28,12 +28,16 @@ test("project CRUD works through the authenticated browser workspace", async ({ 
   const editor = page.getByRole("dialog", { name: "Edit project" });
   await editor.getByLabel("Project URL").fill("https://example.com/e2e-project");
   await editor.getByLabel("Tags").fill("e2e, crud");
+  await editor.getByRole("radio", { name: "Chronological" }).click();
   await editor.getByRole("radio", { name: "Public in Community" }).click();
   await editor.getByRole("button", { name: "Save", exact: true }).click();
 
   await expect(page.getByRole("link", { name: "https://example.com/e2e-project" })).toBeVisible();
   await expect(page.getByText("e2e", { exact: true })).toBeVisible();
   await expect(page.getByText("crud", { exact: true })).toBeVisible();
+  await expect(page.locator(".bh-project-memory-grouping-summary")).toContainText(
+    "Chronological",
+  );
 
   await page.getByRole("link", { name: "View public listing" }).click();
   await expect(page.getByRole("heading", { name: repositoryName })).toBeVisible();
@@ -48,6 +52,9 @@ test("project CRUD works through the authenticated browser workspace", async ({ 
   await page.getByRole("link", { name: "Overview" }).click();
   await page.getByRole("button", { name: "Edit", exact: true }).first().click();
   const privacyEditor = page.getByRole("dialog", { name: "Edit project" });
+  await expect(
+    privacyEditor.getByRole("radio", { name: "Chronological" }),
+  ).toHaveAttribute("aria-checked", "true");
   await privacyEditor.getByRole("radio", { name: "Private" }).click();
   await privacyEditor.getByRole("button", { name: "Save", exact: true }).click();
 

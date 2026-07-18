@@ -57,6 +57,7 @@ export function emptyProjectDetailData(project: Project | null): ProjectDetailDa
       description: "",
       id: project?.id ?? "",
       isBookmarked: project?.isBookmarked ?? false,
+      memoryGroupingMode: project?.memoryGroupingMode ?? "session",
       name: project?.name ?? "Project",
       repositoryStatus: project?.githubUrl
         ? "Repository connected"
@@ -380,6 +381,7 @@ export function projectDetailDataFromApi(
       description: projectDescription,
       id: payload.project.id,
       isBookmarked: payload.project.is_bookmarked === true,
+      memoryGroupingMode: payload.project.memory_grouping_mode ?? "session",
       name: payload.project.name || fallbackProject?.name || "Project",
       repositoryStatus: payload.project.repository_status,
       repositoryUrl: repositoryUrl ?? undefined,

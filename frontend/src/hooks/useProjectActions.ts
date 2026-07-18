@@ -292,6 +292,7 @@ export function useProjectActions({
         selectedProject
           ? {
               ...selectedProject,
+              memoryGroupingMode: updatedProject.memory_grouping_mode,
               projectUrl: updatedProject.project_url ?? undefined,
               slug: updatedProject.slug,
               tags: updatedProject.tags ?? [],

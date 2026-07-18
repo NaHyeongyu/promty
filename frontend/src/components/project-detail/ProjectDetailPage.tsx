@@ -21,6 +21,7 @@ import type {
   ProjectDetailTabId,
   ProjectHeaderProjectOption,
 } from "./types";
+import type { MemoryGroupingMode } from "../../workspace/types";
 import "./project-detail.css";
 
 type ProjectDetailPageProps = {
@@ -49,6 +50,7 @@ type ProjectDetailPageProps = {
   onShareProject?: () => void;
   onSharePrompt?: (activity: PromptActivityItem) => void;
   onSaveProjectMetadata?: (metadata: {
+    memoryGroupingMode?: MemoryGroupingMode;
     slug?: string;
     tags?: string[];
     visibility?: "private" | "public";
@@ -139,6 +141,7 @@ function ProjectPanel({
   onRetryTrackedFiles?: () => void;
   onRetry?: () => void;
   onSaveProjectMetadata?: (metadata: {
+    memoryGroupingMode?: MemoryGroupingMode;
     slug?: string;
     tags?: string[];
     visibility?: "private" | "public";

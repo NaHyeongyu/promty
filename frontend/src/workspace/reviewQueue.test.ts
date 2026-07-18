@@ -43,6 +43,7 @@ function project(id: string, pendingMemoryCount: number): Project {
     latestTimestamp: "2026-07-10T09:30:00Z",
     latestUpdatedAt: "Jul 10, 2026",
     memoryCount: 0,
+    memoryGroupingMode: "session",
     models: [],
     name: id,
     pendingMemoryCount,

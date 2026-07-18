@@ -55,6 +55,7 @@ def project_summary(
         "default_branch": project.default_branch,
         "created_at": project.created_at.isoformat(),
         "is_bookmarked": bool(project.is_bookmarked),
+        "memory_grouping_mode": project.memory_grouping_mode or "session",
         "tags": project.tags or [],
         "visibility": project.visibility,
         "connected_models": sorted(connected_models),
@@ -363,6 +364,7 @@ def update_project_metadata_summary(
     db: Session,
     *,
     project_id: UUID,
+    memory_grouping_mode: str | None,
     project_url: str | None,
     project_url_is_set: bool,
     slug: str | None,
@@ -387,6 +389,8 @@ def update_project_metadata_summary(
         project.slug = slug
     if tags is not None:
         project.tags = tags
+    if memory_grouping_mode is not None:
+        project.memory_grouping_mode = memory_grouping_mode
     if project_url_is_set:
         project.project_url = project_url
     if visibility is not None:

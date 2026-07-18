@@ -29,6 +29,10 @@ class ProjectMemoryBatch(Base):
             "status in ('pending', 'running', 'succeeded', 'failed', 'superseded')",
             name="ck_project_memory_batches_status",
         ),
+        CheckConstraint(
+            "grouping_mode in ('session', 'chronological')",
+            name="ck_project_memory_batches_grouping_mode",
+        ),
         UniqueConstraint(
             "project_id",
             "idempotency_key",
@@ -73,6 +77,7 @@ class ProjectMemoryBatch(Base):
     idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
     idempotency_keys: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
+    grouping_mode: Mapped[str] = mapped_column(String(16), default="session", nullable=False)
     result_status: Mapped[str | None] = mapped_column(String(32))
     attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     chunk_results: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)

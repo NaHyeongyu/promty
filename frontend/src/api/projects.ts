@@ -563,6 +563,7 @@ export function updateProjectDescription(
 }
 
 export type ProjectMetadataPatch = {
+  memoryGroupingMode?: "session" | "chronological";
   projectUrl?: string;
   slug?: string;
   tags?: string[];
@@ -577,6 +578,9 @@ export function updateProjectMetadata(
     `/api/projects/${encodeURIComponent(projectId)}/metadata`,
     "PATCH",
     {
+      ...(metadata.memoryGroupingMode !== undefined
+        ? { memory_grouping_mode: metadata.memoryGroupingMode }
+        : {}),
       ...(metadata.projectUrl !== undefined ? { project_url: metadata.projectUrl } : {}),
       ...(metadata.slug !== undefined ? { slug: metadata.slug } : {}),
       ...(metadata.tags !== undefined ? { tags: metadata.tags } : {}),

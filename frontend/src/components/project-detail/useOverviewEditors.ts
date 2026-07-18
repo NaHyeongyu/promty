@@ -5,6 +5,7 @@ import {
   projectVisibilityFromValue,
 } from "./overviewPanelUtils";
 import type { ProjectDetailData } from "./types";
+import type { MemoryGroupingMode } from "../../workspace/types";
 import { useI18n } from "../../i18n/I18nProvider";
 
 type ProjectVisibility = "private" | "public";
@@ -17,6 +18,7 @@ type UseOverviewEditorsOptions = {
   rawDescriptionValue: string;
   onSaveDescription?: (description: string) => Promise<void>;
   onSaveProjectMetadata?: (metadata: {
+    memoryGroupingMode?: MemoryGroupingMode;
     projectUrl?: string;
     tags?: string[];
     visibility?: ProjectVisibility;
@@ -45,6 +47,8 @@ export function useOverviewEditors({
   );
   const [projectVisibilityDraft, setProjectVisibilityDraft] =
     useState<ProjectVisibility>(projectVisibilityFromValue(data.project.visibility));
+  const [memoryGroupingModeDraft, setMemoryGroupingModeDraft] =
+    useState<MemoryGroupingMode>(data.project.memoryGroupingMode);
   const [closingOverviewEditor, setClosingOverviewEditor] =
     useState<OverviewEditorKind | null>(null);
   const isProjectMetadataDrawerVisible =
@@ -65,6 +69,7 @@ export function useOverviewEditors({
     setProjectUrlDraft(data.project.projectUrl ?? "");
     setProjectTagsDraft(data.project.tags.join(", "));
     setProjectVisibilityDraft(projectVisibilityFromValue(data.project.visibility));
+    setMemoryGroupingModeDraft(data.project.memoryGroupingMode);
     setProjectMetadataError(null);
   };
 
@@ -147,6 +152,7 @@ export function useOverviewEditors({
     setIsProjectMetadataSaving(true);
     try {
       await onSaveProjectMetadata({
+        memoryGroupingMode: memoryGroupingModeDraft,
         projectUrl: projectUrlDraft,
         tags: projectTagsFromInput(tagInput),
         visibility: projectVisibilityDraft,
@@ -217,8 +223,15 @@ export function useOverviewEditors({
     setProjectUrlDraft(data.project.projectUrl ?? "");
     setProjectTagsDraft(data.project.tags.join(", "));
     setProjectVisibilityDraft(projectVisibilityFromValue(data.project.visibility));
+    setMemoryGroupingModeDraft(data.project.memoryGroupingMode);
     setProjectMetadataError(null);
-  }, [data.project.id, data.project.projectUrl, data.project.tags, data.project.visibility]);
+  }, [
+    data.project.id,
+    data.project.memoryGroupingMode,
+    data.project.projectUrl,
+    data.project.tags,
+    data.project.visibility,
+  ]);
 
   useEffect(() => {
     clearOverviewEditCloseTimer();
@@ -270,6 +283,7 @@ export function useOverviewEditors({
     isDescriptionSaving,
     isProjectMetadataDrawerVisible,
     isProjectMetadataSaving,
+    memoryGroupingModeDraft,
     openDescriptionEditor,
     openProjectMetadataEditor,
     overviewEditDrawerRef,
@@ -283,5 +297,6 @@ export function useOverviewEditors({
     setProjectUrlDraft,
     setProjectTagsDraft,
     setProjectVisibilityDraft,
+    setMemoryGroupingModeDraft,
   };
 }
