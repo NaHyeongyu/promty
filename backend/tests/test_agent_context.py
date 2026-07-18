@@ -131,7 +131,10 @@ def test_agent_context_reuses_latest_project_memory(
     updated_at = datetime(2026, 7, 17, 8, 0, tzinfo=UTC)
     artifact = SimpleNamespace(
         id=uuid4(),
-        metadata_={"project_memory_snapshot": _snapshot()},
+        metadata_={
+            "project_memory_snapshot": _snapshot(),
+            "review_state": "verified",
+        },
         updated_at=updated_at,
     )
     monkeypatch.setattr(
@@ -145,10 +148,41 @@ def test_agent_context_reuses_latest_project_memory(
     )
 
     assert result["available"] is True
+    assert result["review_required"] is False
+    assert "reference data" in result["safety_notice"]
     assert result["memory_id"] == artifact.id
     assert result["updated_at"] == updated_at
     assert result["memory"] == _snapshot()
     assert result["project"]["id"] == project.id
+
+
+def test_agent_context_withholds_generated_memory_until_user_approval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = _user()
+    project = _project(owner)
+    artifact = SimpleNamespace(
+        id=uuid4(),
+        metadata_={
+            "project_memory_snapshot": _snapshot(),
+            "review_state": "generated",
+        },
+        updated_at=datetime(2026, 7, 17, 8, 0, tzinfo=UTC),
+    )
+    monkeypatch.setattr(
+        agent_context, "get_latest_project_memory", lambda *_args, **_kwargs: artifact
+    )
+
+    result = agent_context.read_agent_project_context(
+        ProjectDatabaseStub(project),  # type: ignore[arg-type]
+        project_id=project.id,
+        user=owner,
+    )
+
+    assert result["available"] is False
+    assert result["review_required"] is True
+    assert result["memory"] is None
+    assert result["memory_id"] is None
 
 
 def test_agent_context_is_owner_only(monkeypatch: pytest.MonkeyPatch) -> None:

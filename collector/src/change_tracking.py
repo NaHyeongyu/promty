@@ -11,12 +11,12 @@ import os
 from pathlib import Path
 import subprocess
 from typing import Any
-from uuid import uuid4
 
 from events import BaseEvent
 from file_lock import locked_file
 from git_context import normalize_github_url
 from payloads import TURN_ID_KEYS, get_first_value
+from secure_storage import open_private_text, write_private_text_atomic
 
 DEFAULT_CHANGE_BASELINE_PATH = Path(
     os.environ.get("PROMPTHUB_CHANGE_BASELINE_PATH", "~/.prompthub/change-baselines.json")
@@ -29,9 +29,7 @@ UNTRACKED_LINE_COUNT_MAX_BYTES = int(
     os.environ.get("PROMPTHUB_UNTRACKED_LINE_COUNT_MAX_BYTES", "1048576")
 )
 BASELINE_TTL_HOURS = float(os.environ.get("PROMPTHUB_BASELINE_TTL_HOURS", "24"))
-CONSUMED_BASELINE_TTL_HOURS = float(
-    os.environ.get("PROMPTHUB_CONSUMED_BASELINE_TTL_HOURS", "1")
-)
+CONSUMED_BASELINE_TTL_HOURS = float(os.environ.get("PROMPTHUB_CONSUMED_BASELINE_TTL_HOURS", "1"))
 BASELINE_MAX_RECORDS = int(os.environ.get("PROMPTHUB_BASELINE_MAX_RECORDS", "500"))
 PATCH_EXCLUDED_DIRS = {
     ".git",
@@ -353,12 +351,18 @@ def _before_text(
     old_path: str | None,
 ) -> str | None:
     baseline_status = baseline_snapshot.get("status") or {}
-    baseline_entry = baseline_status.get(path) or (baseline_status.get(old_path) if old_path else None)
+    baseline_entry = baseline_status.get(path) or (
+        baseline_status.get(old_path) if old_path else None
+    )
     baseline_code = (baseline_entry or {}).get("code")
     if baseline_code and ("A" in baseline_code or baseline_code == "??"):
-        return _snapshot_content(baseline_snapshot, path) or _snapshot_content(baseline_snapshot, old_path)
+        return _snapshot_content(baseline_snapshot, path) or _snapshot_content(
+            baseline_snapshot, old_path
+        )
 
-    snapshot_text = _snapshot_content(baseline_snapshot, path) or _snapshot_content(baseline_snapshot, old_path)
+    snapshot_text = _snapshot_content(baseline_snapshot, path) or _snapshot_content(
+        baseline_snapshot, old_path
+    )
     if snapshot_text is not None:
         return snapshot_text
 
@@ -528,12 +532,16 @@ def _summarize_changes(changes: list[dict[str, Any]]) -> dict[str, Any]:
     return summary
 
 
-def detect_changes(record: dict[str, Any], cwd: str | Path | None = None) -> ChangeDetectionResult | None:
+def detect_changes(
+    record: dict[str, Any], cwd: str | Path | None = None
+) -> ChangeDetectionResult | None:
     baseline_snapshot = record.get("snapshot")
     if not isinstance(baseline_snapshot, dict):
         return None
 
-    current_snapshot = capture_git_snapshot(cwd or record.get("cwd") or baseline_snapshot.get("git_root"))
+    current_snapshot = capture_git_snapshot(
+        cwd or record.get("cwd") or baseline_snapshot.get("git_root")
+    )
     if current_snapshot is None:
         return None
 
@@ -627,7 +635,7 @@ class ChangeBaselineStore:
             if external_session_id and record.get("external_session_id") == external_session_id:
                 candidates.append(record)
                 continue
-            record_git_root = ((record.get("snapshot") or {}).get("git_root"))
+            record_git_root = (record.get("snapshot") or {}).get("git_root")
             if git_root and record_git_root == git_root:
                 candidates.append(record)
 
@@ -679,7 +687,7 @@ class ChangeBaselineStore:
         if not self.path.exists():
             return {"records": {}}
         try:
-            with self.path.open("r", encoding="utf-8") as file:
+            with open_private_text(self.path, "r") as file:
                 data = json.load(file)
         except (OSError, json.JSONDecodeError):
             return {"records": {}}
@@ -689,8 +697,7 @@ class ChangeBaselineStore:
         return data
 
     def _write(self, data: dict[str, Any]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = self.path.with_suffix(f"{self.path.suffix}.{uuid4()}.tmp")
-        with tmp_path.open("w", encoding="utf-8") as file:
-            json.dump(data, file, ensure_ascii=False)
-        tmp_path.replace(self.path)
+        write_private_text_atomic(
+            self.path,
+            json.dumps(data, ensure_ascii=False),
+        )

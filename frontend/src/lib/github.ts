@@ -22,11 +22,21 @@ export function githubRepositoryUrl(repositoryUrl: string | null | undefined) {
     const parsedRepositoryUrl = new URL(normalizedRepositoryUrl);
     if (
       parsedRepositoryUrl.protocol !== "https:" ||
-      parsedRepositoryUrl.hostname.toLowerCase() !== "github.com"
+      parsedRepositoryUrl.hostname.toLowerCase() !== "github.com" ||
+      parsedRepositoryUrl.username ||
+      parsedRepositoryUrl.password
     ) {
       return null;
     }
-    return parsedRepositoryUrl.toString().replace(/\/$/, "");
+    const pathParts = parsedRepositoryUrl.pathname.split("/").filter(Boolean);
+    if (
+      pathParts.length !== 2 ||
+      pathParts.some((part) => !/^[A-Za-z0-9_.-]+$/.test(part.replace(/\.git$/i, "")))
+    ) {
+      return null;
+    }
+    const repository = pathParts[1].replace(/\.git$/i, "");
+    return `https://github.com/${pathParts[0]}/${repository}`;
   } catch {
     return null;
   }
@@ -41,24 +51,12 @@ export function githubFileUrl(
     return null;
   }
 
-  const normalizedRepositoryUrl = repositoryUrl
-    .trim()
-    .replace(/^git@github\.com:/i, "https://github.com/")
-    .replace(/^ssh:\/\/git@github\.com\//i, "https://github.com/")
-    .replace(/\.git\/?$/i, "")
-    .replace(/\/$/, "");
-
-  let parsedRepositoryUrl: URL;
-  try {
-    parsedRepositoryUrl = new URL(normalizedRepositoryUrl);
-  } catch {
-    return null;
-  }
-  if (!['http:', 'https:'].includes(parsedRepositoryUrl.protocol)) {
+  const normalizedRepositoryUrl = githubRepositoryUrl(repositoryUrl);
+  if (!normalizedRepositoryUrl) {
     return null;
   }
 
   const encodedBranch = encodeGithubPath(branch?.trim() || "main");
   const encodedPath = encodeGithubPath(path.trim());
-  return `${parsedRepositoryUrl.toString().replace(/\/$/, "")}/blob/${encodedBranch}/${encodedPath}`;
+  return `${normalizedRepositoryUrl}/blob/${encodedBranch}/${encodedPath}`;
 }

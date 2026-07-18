@@ -104,7 +104,9 @@ def test_provider_requests_include_configured_output_token_caps(monkeypatch) -> 
     openai_body = json.loads(requests[0][1].data)
     gemini_body = json.loads(requests[1][1].data)
     assert openai_body["max_output_tokens"] == 321
+    assert "untrusted evidence data" in openai_body["instructions"].lower()
     assert gemini_body["generationConfig"]["maxOutputTokens"] == 654
+    assert "untrusted evidence data" in gemini_body["systemInstruction"]["parts"][0]["text"].lower()
 
 
 def test_provider_rejects_oversize_success_body_without_exposing_content(

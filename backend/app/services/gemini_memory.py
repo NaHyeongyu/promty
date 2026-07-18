@@ -16,6 +16,7 @@ from app.services.memory.cleaners import (
 )
 from app.services.memory.errors import MemoryGenerationError
 from app.services.memory.prompts import (
+    MEMORY_PROVIDER_SECURITY_INSTRUCTIONS,
     build_memory_draft_prompt,
     build_project_memory_prompt,
 )
@@ -92,6 +93,9 @@ def _request_gemini_json(
             "maxOutputTokens": output_max_tokens,
             "responseMimeType": "application/json",
             "temperature": 0.2,
+        },
+        "systemInstruction": {
+            "parts": [{"text": MEMORY_PROVIDER_SECURITY_INSTRUCTIONS}],
         },
     }
     request_payload = json.dumps(body).encode("utf-8")
@@ -174,9 +178,7 @@ def _request_gemini_json(
                 outcome="failure",
                 status="invalid_json",
             )
-            raise GeminiMemoryGenerationError(
-                "Gemini returned an invalid JSON response."
-            ) from None
+            raise GeminiMemoryGenerationError("Gemini returned an invalid JSON response.") from None
         except GeminiMemoryGenerationError:
             metrics.finish(outcome="failure", status="invalid_response")
             raise GeminiMemoryGenerationError("Gemini returned an invalid response.") from None

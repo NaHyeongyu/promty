@@ -24,6 +24,8 @@ import {
   LoaderCircle,
   LogOut,
   Menu,
+  MessageSquareText,
+  Megaphone,
   Pencil,
   Plus,
   RefreshCw,
@@ -53,18 +55,22 @@ import {
   fetchAdminOverview,
   fetchAdminProjects,
   fetchAdminSystem,
+  fetchAdminSupportInquiries,
   fetchAdminUsers,
   restoreAdminUser,
   retryAdminJob,
   revokeAdminCollectorToken,
   revokeAllAdminCollectorTokens,
   suspendAdminUser,
+  updateAdminAlertState,
+  updateAdminSupportInquiry,
   updateAdminProject,
 } from "./api/admin";
 import type { AdminProjectMutation } from "./api/admin";
 import { fetchCurrentUser, logoutSession } from "./api/auth";
 import { ForbiddenError, UnauthorizedError } from "./api/client";
 import { AdminDashboard } from "./components/app/AdminDashboard";
+import { MarketingContentStudio } from "./components/app/MarketingContentStudio";
 import { AuthLoadingPage, WebLoginPage } from "./components/app/AuthScreens";
 import { BrandLogo } from "./components/app/Branding";
 import {
@@ -81,6 +87,7 @@ import type {
   AdminPage,
   AdminProject,
   AdminSystem,
+  AdminSupportInquiry,
   AdminUser,
   AuthStatus,
   AuthUser,
@@ -89,8 +96,10 @@ import "./styles-admin.css";
 
 type AdminSection =
   | "overview"
+  | "marketing"
   | "users"
   | "projects"
+  | "support"
   | "operations"
   | "activity"
   | "system"
@@ -103,6 +112,7 @@ type AdminData = {
   jobs: AdminPage<AdminJob>;
   overview: AdminOverview;
   projects: AdminPage<AdminProject>;
+  support: AdminPage<AdminSupportInquiry>;
   system: AdminSystem;
   users: AdminPage<AdminUser>;
 };
@@ -128,15 +138,18 @@ type ProjectEditorState =
   | { mode: "edit"; project: AdminProject };
 
 type IssuedToken = { name: string; token: string; username: string };
+type AdminProjectSort = "popularity" | "recent" | "saves" | "views" | "views_7d";
+type AdminProjectVisibility = "all" | "private" | "public";
 
 const ADMIN_PAGE_SIZE = 25;
-type PagedAdminSection = "activity" | "audit" | "operations" | "projects" | "security" | "users";
+type PagedAdminSection = "activity" | "audit" | "operations" | "projects" | "security" | "support" | "users";
 const INITIAL_PAGE_OFFSETS: Record<PagedAdminSection, number> = {
   activity: 0,
   audit: 0,
   operations: 0,
   projects: 0,
   security: 0,
+  support: 0,
   users: 0,
 };
 
@@ -145,8 +158,10 @@ const SECTION_META: Array<{
   id: AdminSection;
 }> = [
   { icon: LayoutDashboard, id: "overview" },
+  { icon: Megaphone, id: "marketing" },
   { icon: Users, id: "users" },
   { icon: FolderKanban, id: "projects" },
+  { icon: MessageSquareText, id: "support" },
   { icon: Bot, id: "operations" },
   { icon: Activity, id: "activity" },
   { icon: Server, id: "system" },
@@ -208,8 +223,10 @@ export function AdminApp() {
   const sectionMeta = useMemo(() => {
     const copy: Record<AdminSection, { description: string; label: string }> = {
       overview: { description: text("System-wide operational picture", "시스템 전체 운영 현황"), label: text("Overview", "개요") },
+      marketing: { description: text("Bilingual social content and distribution", "한국어·영어 SNS 콘텐츠 및 배포"), label: text("Marketing", "마케팅") },
       users: { description: text("Identity and access control", "사용자 계정 및 접근 제어"), label: text("Users", "사용자") },
       projects: { description: text("Repository and activity inventory", "프로젝트·저장소·활동 현황"), label: text("Projects", "프로젝트") },
+      support: { description: text("User inquiries and delivery failures", "사용자 문의 및 알림 전송 관리"), label: text("Support", "고객 문의") },
       operations: { description: text("Memory generation and pipelines", "메모리 생성 작업 및 파이프라인"), label: text("Operations", "작업 관리") },
       activity: { description: text("Decrypted event intelligence", "복호화된 이벤트 활동 내역"), label: text("Event stream", "이벤트") },
       system: { description: text("Runtime and database telemetry", "런타임 및 데이터베이스 상태"), label: text("System", "시스템") },
@@ -227,6 +244,8 @@ export function AdminApp() {
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [jobFilter, setJobFilter] = useState("all");
+  const [projectSort, setProjectSort] = useState<AdminProjectSort>("popularity");
+  const [projectVisibility, setProjectVisibility] = useState<AdminProjectVisibility>("all");
   const [auditOutcome, setAuditOutcome] = useState<"all" | "error" | "success">("all");
   const [auditResourceType, setAuditResourceType] = useState("all");
   const [pageOffsets, setPageOffsets] = useState(INITIAL_PAGE_OFFSETS);
@@ -245,7 +264,7 @@ export function AdminApp() {
     setErrorMessage(null);
     try {
       const userSection = section === "security" ? "security" : "users";
-      const [overview, users, projects, jobs, events, system, audit] = await Promise.all([
+      const [overview, users, projects, support, jobs, events, system, audit] = await Promise.all([
         fetchAdminOverview(signal),
         fetchAdminUsers({
           limit: ADMIN_PAGE_SIZE,
@@ -256,6 +275,12 @@ export function AdminApp() {
           limit: ADMIN_PAGE_SIZE,
           offset: pageOffsets.projects,
           query: section === "projects" ? searchQuery : undefined,
+          sort: projectSort,
+          visibility: projectVisibility,
+        }, signal),
+        fetchAdminSupportInquiries({
+          limit: ADMIN_PAGE_SIZE,
+          offset: pageOffsets.support,
         }, signal),
         fetchAdminJobs({
           limit: ADMIN_PAGE_SIZE,
@@ -277,7 +302,7 @@ export function AdminApp() {
           resourceType: section === "audit" && auditResourceType !== "all" ? auditResourceType : undefined,
         }, signal),
       ]);
-      setData({ audit, events, jobs, overview, projects, system, users });
+      setData({ audit, events, jobs, overview, projects, support, system, users });
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       if (error instanceof UnauthorizedError) {
@@ -321,6 +346,22 @@ export function AdminApp() {
   }, [authStatus]);
 
   useEffect(() => {
+    if (authStatus !== "authenticated") return;
+    const refreshOverview = () => {
+      if (document.visibilityState !== "visible") return;
+      void fetchAdminOverview()
+        .then((overview) => setData((current) => current ? { ...current, overview } : current))
+        .catch(() => undefined);
+    };
+    const interval = window.setInterval(refreshOverview, 60_000);
+    document.addEventListener("visibilitychange", refreshOverview);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshOverview);
+    };
+  }, [authStatus]);
+
+  useEffect(() => {
     const onPopState = () => setSection(sectionFromUrl());
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "/" && document.activeElement?.tagName !== "INPUT") {
@@ -358,7 +399,9 @@ export function AdminApp() {
       const request = pagedSection === "users" || pagedSection === "security"
         ? fetchAdminUsers(options, controller.signal).then((users) => ({ users }))
         : pagedSection === "projects"
-          ? fetchAdminProjects(options, controller.signal).then((projects) => ({ projects }))
+          ? fetchAdminProjects({ ...options, sort: projectSort, visibility: projectVisibility }, controller.signal).then((projects) => ({ projects }))
+          : pagedSection === "support"
+            ? fetchAdminSupportInquiries(options, controller.signal).then((support) => ({ support }))
           : pagedSection === "operations"
             ? fetchAdminJobs({ ...options, status: jobFilter }, controller.signal).then((jobs) => ({ jobs }))
             : pagedSection === "activity"
@@ -393,6 +436,8 @@ export function AdminApp() {
     data !== null,
     jobFilter,
     pageOffsets,
+    projectSort,
+    projectVisibility,
     searchQuery,
     section,
     text,
@@ -412,26 +457,59 @@ export function AdminApp() {
   };
 
   const openActionItem = (item: AdminOverview["action_items"][number]) => {
-    if (item.title === "Generation jobs failed") {
+    if (item.target === "support" || item.area === "Support") {
+      selectSection("support");
+      return;
+    }
+    if (item.target === "operations:failed" || item.title === "Generation jobs failed") {
       setJobFilter("failed");
       selectSection("operations");
       return;
     }
-    if (item.title === "Generation jobs may be stuck") {
+    if (item.target === "operations:stale" || item.title === "Generation jobs may be stuck") {
       setJobFilter("stale");
       selectSection("operations");
       return;
     }
-    if (item.area === "AI activity") {
+    if (item.target === "activity" || item.area === "AI activity") {
       selectSection("activity");
       return;
     }
-    if (item.area === "Memory" || item.area === "AI generation") {
+    if (item.target?.startsWith("operations") || item.area === "Memory" || item.area === "AI generation") {
       setJobFilter("all");
       selectSection("operations");
       return;
     }
-    selectSection(item.area === "Projects" ? "projects" : "security");
+    selectSection(item.target === "projects" || item.area === "Projects" ? "projects" : "security");
+  };
+
+  const updateActionItem = async (
+    item: AdminOverview["action_items"][number],
+    state: "read" | "resolved" | "snoozed",
+  ) => {
+    if (!item.key || !item.condition_hash) return;
+    try {
+      await updateAdminAlertState(item.key, item.condition_hash, state);
+      const overview = await fetchAdminOverview();
+      setData((current) => current ? { ...current, overview } : current);
+      if (state === "resolved") setNotice(text("Alert resolved until the condition changes.", "조건이 바뀔 때까지 알림을 해결 처리했습니다."));
+      if (state === "snoozed") setNotice(text("Alert snoozed for 24 hours.", "알림을 24시간 보류했습니다."));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : text("Alert state could not be saved.", "알림 상태를 저장하지 못했습니다."));
+    }
+  };
+
+  const updateSupportStatus = async (
+    inquiry: AdminSupportInquiry,
+    status: AdminSupportInquiry["status"],
+  ) => {
+    try {
+      await updateAdminSupportInquiry(inquiry.id, status);
+      await loadData();
+      setNotice(text("Inquiry status updated.", "문의 상태를 업데이트했습니다."));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : text("Inquiry could not be updated.", "문의 상태를 업데이트하지 못했습니다."));
+    }
   };
 
   const closeConfirmation = () => {
@@ -544,6 +622,7 @@ export function AdminApp() {
   const activeMeta = sectionMeta.find((item) => item.id === section) ?? sectionMeta[0];
   const systemHealthy = data
     ? data.overview.metrics.failed_jobs === 0 && data.overview.metrics.stale_jobs === 0 &&
+      (data.overview.metrics.failed_support_notifications ?? 0) === 0 &&
       !data.overview.risks.some((risk) => risk.severity === "high")
     : null;
 
@@ -570,6 +649,9 @@ export function AdminApp() {
               <button aria-current={section === item.id ? "page" : undefined} data-active={section === item.id} key={item.id} onClick={() => selectSection(item.id)} type="button">
                 <Icon size={17} strokeWidth={1.4} />
                 <span><strong>{item.label}</strong><small>{item.description}</small></span>
+                {item.id === "overview" && (data?.overview.action_summary?.unread ?? data?.overview.action_items.length ?? 0) > 0 ? (
+                  <em className="ops-nav-alert-count">{data?.overview.action_summary?.unread ?? data?.overview.action_items.length}</em>
+                ) : null}
                 <ChevronRight size={14} />
               </button>
             );
@@ -652,12 +734,24 @@ export function AdminApp() {
                 setPageOffsets((current) => ({ ...current, operations: 0 }));
               }}
               onOpenActionItem={openActionItem}
+              onUpdateActionItem={updateActionItem}
+              onUpdateSupportInquiry={(inquiry, status) => void updateSupportStatus(inquiry, status)}
               onPageChange={(pagedSection, offset) => {
                 setPageOffsets((current) => ({ ...current, [pagedSection]: offset }));
+              }}
+              onProjectSort={(value) => {
+                setProjectSort(value);
+                setPageOffsets((current) => ({ ...current, projects: 0 }));
+              }}
+              onProjectVisibility={(value) => {
+                setProjectVisibility(value);
+                setPageOffsets((current) => ({ ...current, projects: 0 }));
               }}
               onRefresh={() => void loadData()}
               searchQuery={searchQuery}
               section={section}
+              projectSort={projectSort}
+              projectVisibility={projectVisibility}
             />
           )}
         </div>
@@ -703,10 +797,16 @@ function AdminSectionContent({
   onExpandUser,
   onJobFilter,
   onOpenActionItem,
+  onUpdateActionItem,
+  onUpdateSupportInquiry,
   onPageChange,
+  onProjectSort,
+  onProjectVisibility,
   onRefresh,
   searchQuery,
   section,
+  projectSort,
+  projectVisibility,
 }: {
   auditOutcome: "all" | "error" | "success";
   auditResourceType: string;
@@ -721,10 +821,22 @@ function AdminSectionContent({
   onExpandUser: (id: string) => void;
   onJobFilter: (status: string) => void;
   onOpenActionItem: (item: AdminOverview["action_items"][number]) => void;
+  onUpdateActionItem: (
+    item: AdminOverview["action_items"][number],
+    state: "read" | "resolved" | "snoozed",
+  ) => Promise<void> | void;
+  onUpdateSupportInquiry: (
+    inquiry: AdminSupportInquiry,
+    status: AdminSupportInquiry["status"],
+  ) => void;
   onPageChange: (section: PagedAdminSection, offset: number) => void;
+  onProjectSort: (value: AdminProjectSort) => void;
+  onProjectVisibility: (value: AdminProjectVisibility) => void;
   onRefresh: () => void;
   searchQuery: string;
   section: AdminSection;
+  projectSort: AdminProjectSort;
+  projectVisibility: AdminProjectVisibility;
 }) {
   const { serverText, text } = useAdminLocale();
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
@@ -736,7 +848,11 @@ function AdminSectionContent({
   const audit = data.audit.items;
 
   if (section === "overview") {
-    return <AdminDashboard errorMessage={null} isLoading={false} onOpenActionItem={onOpenActionItem} onOpenProject={(projectId) => window.location.assign(projectHref({ id: projectId }))} onRefresh={onRefresh} overview={data.overview} />;
+    return <AdminDashboard errorMessage={null} isLoading={false} onOpenActionItem={onOpenActionItem} onOpenProject={(projectId) => window.location.assign(projectHref({ id: projectId }))} onRefresh={onRefresh} onUpdateActionItem={onUpdateActionItem} overview={data.overview} />;
+  }
+
+  if (section === "marketing") {
+    return <MarketingContentStudio />;
   }
 
   if (section === "users") {
@@ -768,14 +884,20 @@ function AdminSectionContent({
     return (
       <section className="ops-panel">
         <div className="ops-section-toolbar"><PanelHeader detail={text(`${projects.length} shown · ${data.projects.total} total`, `${projects.length}개 표시 · 전체 ${data.projects.total}개`)} icon={FolderKanban} title={text("Project inventory", "프로젝트 현황")} /><button onClick={() => onEditProject({ mode: "create" })} type="button"><Plus size={14} /> {text("Create project", "프로젝트 생성")}</button></div>
+        <div className="ops-project-filters">
+          <label>{text("Visibility", "공개 범위")}<select onChange={(event) => onProjectVisibility(event.target.value as AdminProjectVisibility)} value={projectVisibility}><option value="all">{text("All projects", "전체 프로젝트")}</option><option value="public">{text("Public only", "공개만")}</option><option value="private">{text("Private only", "비공개만")}</option></select></label>
+          <label>{text("Sort", "정렬")}<select onChange={(event) => onProjectSort(event.target.value as AdminProjectSort)} value={projectSort}><option value="popularity">{text("Weekly popularity", "주간 인기 점수")}</option><option value="views_7d">{text("Views · 7 days", "7일 조회수")}</option><option value="views">{text("Views · all time", "전체 조회수")}</option><option value="saves">{text("Saves", "저장수")}</option><option value="recent">{text("Recent activity", "최근 활동")}</option></select></label>
+          <span>{text("Popularity = unique views × 2 + repeat views × 0.25 + new saves × 8", "인기 점수 = 고유 조회 × 2 + 반복 조회 × 0.25 + 신규 저장 × 8")}</span>
+        </div>
         <div className="ops-data-table ops-project-table">
-          <div className="ops-data-row is-head"><span>{text("Project", "프로젝트")}</span><span>{text("Owner", "소유자")}</span><span>{text("Telemetry", "활동 데이터")}</span><span>{text("Memory", "메모리")}</span><span>{text("State", "상태")}</span><span>{text("Controls", "관리")}</span></div>
+          <div className="ops-data-row is-head"><span>{text("Project", "프로젝트")}</span><span>{text("Owner", "소유자")}</span><span>{text("Reach", "조회")}</span><span>{text("Saves & popularity", "저장·인기")}</span><span>{text("AI activity", "AI 활동")}</span><span>{text("State", "상태")}</span><span>{text("Controls", "관리")}</span></div>
           {projects.map((project) => (
             <div className="ops-data-row" key={project.id}>
               <span><a className="ops-primary-link" href={projectHref(project)}><strong>{project.name}</strong><ExternalLink size={12} /></a><small>{project.slug}</small></span>
               <span><strong>{project.owner.username}</strong><small>{project.visibility}</small></span>
-              <span><strong>{text(`${formatCompactNumber(project.prompt_count)} prompts`, `프롬프트 ${formatCompactNumber(project.prompt_count)}개`)}</strong><small>{text(`${formatCompactNumber(project.event_count)} events`, `이벤트 ${formatCompactNumber(project.event_count)}개`)}</small></span>
-              <span><strong>{text(`${formatCompactNumber(project.memory_count)} summaries`, `요약 ${formatCompactNumber(project.memory_count)}개`)}</strong><small>{project.latest_memory_at ? formatRelativeTimestamp(project.latest_memory_at) : text("None", "없음")}</small></span>
+              <span><strong>{text(`${formatCompactNumber(project.view_count ?? 0)} total views`, `전체 조회 ${formatCompactNumber(project.view_count ?? 0)}회`)}</strong><small>{text(`${formatCompactNumber(project.views_7d ?? 0)} / 7d · ${formatCompactNumber(project.unique_viewers_7d ?? 0)} unique`, `7일 ${formatCompactNumber(project.views_7d ?? 0)}회 · 고유 ${formatCompactNumber(project.unique_viewers_7d ?? 0)}명`)}</small></span>
+              <span><strong>{text(`${formatCompactNumber(project.save_count ?? 0)} saves`, `저장 ${formatCompactNumber(project.save_count ?? 0)}회`)}</strong><small>{text(`+${formatCompactNumber(project.saves_7d ?? 0)} / 7d · score ${formatCompactNumber(project.weekly_popularity_score ?? 0)}`, `7일 +${formatCompactNumber(project.saves_7d ?? 0)} · 점수 ${formatCompactNumber(project.weekly_popularity_score ?? 0)}`)}</small></span>
+              <span><strong>{text(`${formatCompactNumber(project.prompt_count)} prompts · ${formatCompactNumber(project.memory_count)} summaries`, `프롬프트 ${formatCompactNumber(project.prompt_count)}개 · 요약 ${formatCompactNumber(project.memory_count)}개`)}</strong><small>{text(`${formatCompactNumber(project.event_count)} events`, `이벤트 ${formatCompactNumber(project.event_count)}개`)}</small></span>
               <span><StatusBadge tone={project.failed_jobs > 0 ? "danger" : project.github_connected ? "success" : "warning"}>{project.failed_jobs > 0 ? text(`${project.failed_jobs} FAILED`, `${project.failed_jobs}개 실패`) : project.github_connected ? text("CONNECTED", "연결됨") : text("NO REPO", "저장소 없음")}</StatusBadge></span>
               <span className="ops-row-actions">
                 <button aria-label={text(`Edit ${project.name}`, `${project.name} 수정`)} onClick={() => onEditProject({ mode: "edit", project })} title={text("Edit", "수정")} type="button"><Pencil size={13} /></button>
@@ -787,6 +909,43 @@ function AdminSectionContent({
           {projects.length === 0 ? <EmptyData label={text("No projects match this query.", "검색 조건에 맞는 프로젝트가 없습니다.")} /> : null}
         </div>
         <PaginationControls onPageChange={(offset) => onPageChange("projects", offset)} page={data.projects} />
+      </section>
+    );
+  }
+
+  if (section === "support") {
+    return (
+      <section className="ops-panel">
+        <PanelHeader
+          detail={text(`${data.support.total} inquiries`, `문의 ${data.support.total}개`)}
+          icon={MessageSquareText}
+          title={text("Support inbox", "고객 문의함")}
+        />
+        <div className="ops-support-list">
+          {data.support.items.map((inquiry) => (
+            <article className="ops-support-card" data-status={inquiry.status} key={inquiry.id}>
+              <header>
+                <div>
+                  <span>{inquiry.category} · {formatOptionalTimestamp(inquiry.created_at, text("Unknown", "알 수 없음"))}</span>
+                  <h3>{inquiry.subject}</h3>
+                  <small>{inquiry.requester_username} · <a href={`mailto:${inquiry.requester_email}`}>{inquiry.requester_email}</a></small>
+                </div>
+                <StatusBadge tone={inquiry.status === "resolved" ? "success" : inquiry.status === "in_progress" ? "warning" : "danger"}>
+                  {inquiry.status === "in_progress" ? text("IN PROGRESS", "처리 중") : inquiry.status === "resolved" ? text("RESOLVED", "해결") : text("NEW", "신규")}
+                </StatusBadge>
+              </header>
+              <p>{inquiry.message}</p>
+              {inquiry.notification_status === "failed" ? <div className="ops-support-delivery-error"><AlertTriangle size={14} /> {inquiry.notification_error ?? text("Email notification failed.", "이메일 알림 전송에 실패했습니다.")}</div> : null}
+              <footer>
+                <a href={`mailto:${inquiry.requester_email}?subject=${encodeURIComponent(`[Promty] ${inquiry.subject}`)}`}>{text("Reply by email", "이메일 답장")}</a>
+                {inquiry.status !== "in_progress" ? <button onClick={() => onUpdateSupportInquiry(inquiry, "in_progress")} type="button">{text("Start work", "처리 시작")}</button> : null}
+                {inquiry.status !== "resolved" ? <button className="is-primary" onClick={() => onUpdateSupportInquiry(inquiry, "resolved")} type="button">{text("Mark resolved", "해결 처리")}</button> : <button onClick={() => onUpdateSupportInquiry(inquiry, "new")} type="button">{text("Reopen", "다시 열기")}</button>}
+              </footer>
+            </article>
+          ))}
+          {data.support.items.length === 0 ? <EmptyData label={text("No support inquiries yet.", "아직 접수된 문의가 없습니다.")} /> : null}
+        </div>
+        <PaginationControls onPageChange={(offset) => onPageChange("support", offset)} page={data.support} />
       </section>
     );
   }

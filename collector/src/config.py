@@ -5,7 +5,8 @@ import json
 import os
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+
+from secure_storage import open_private_text, write_private_text_atomic
 
 DEFAULT_CONFIG_PATH = Path(
     os.environ.get("PROMPTHUB_CONFIG_PATH", "~/.prompthub/config.json")
@@ -34,7 +35,7 @@ def read_config(path: str | Path | None = None) -> dict[str, Any]:
         return {}
 
     try:
-        with target.open("r", encoding="utf-8") as file:
+        with open_private_text(target, "r") as file:
             payload = json.load(file)
     except (OSError, json.JSONDecodeError):
         return {}
@@ -46,16 +47,8 @@ def write_config(values: dict[str, Any], path: str | Path | None = None) -> dict
     target = config_path(path)
     existing = read_config(target)
     merged = {**existing, **values, "updated_at": utc_now_iso()}
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = target.with_suffix(f"{target.suffix}.{uuid4()}.tmp")
-    with tmp_path.open("w", encoding="utf-8") as file:
-        json.dump(merged, file, ensure_ascii=False, indent=2, sort_keys=True)
-        file.write("\n")
-    tmp_path.replace(target)
-    try:
-        target.chmod(0o600)
-    except OSError:
-        pass
+    serialized = json.dumps(merged, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    write_private_text_atomic(target, serialized)
     return merged
 
 

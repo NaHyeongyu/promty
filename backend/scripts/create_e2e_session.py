@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timedelta, timezone
 import json
 
 from sqlalchemy import select
@@ -9,6 +10,7 @@ from app.core.config import settings
 from app.core.security import issue_web_access_token
 from app.db.session import SessionLocal
 from app.models.users import User
+from app.models.web_sessions import WebSession
 
 
 E2E_GITHUB_ID = "promty-e2e-browser"
@@ -38,13 +40,19 @@ def main() -> None:
             preferred_locale="en",
         )
         db.add(user)
+        web_session = WebSession(
+            user=user,
+            expires_at=datetime.now(timezone.utc)
+            + timedelta(seconds=settings.access_token_ttl_seconds),
+        )
+        db.add(web_session)
         db.commit()
         db.refresh(user)
         print(
             json.dumps(
                 {
                     "cookie_name": settings.session_cookie_name,
-                    "token": issue_web_access_token(user),
+                    "token": issue_web_access_token(user, session_id=web_session.id),
                 }
             )
         )

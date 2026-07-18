@@ -16,9 +16,10 @@ EventType = Literal[
     "SessionEnded",
 ]
 
-EVENT_FILES_MAX_ITEMS = 5_000
-EVENT_CHANGES_MAX_ITEMS = 5_000
-EVENT_RESOURCE_ENTRIES_MAX_PER_BATCH = 10_000
+EVENT_FILES_MAX_ITEMS = 2_000
+EVENT_CHANGES_MAX_ITEMS = 2_000
+EVENT_RESOURCE_ENTRIES_MAX_PER_BATCH = 2_000
+EVENT_BATCH_MAX_ITEMS = 100
 EVENT_FILE_PATH_MAX_CHARS = 2_048
 EVENT_CHANGE_PATCH_MAX_CHARS = 524_288
 
@@ -192,7 +193,7 @@ class EventRead(EventCreate):
 
 
 class EventBatchCreate(BaseModel):
-    events: list[EventCreate] = Field(..., min_length=1, max_length=500)
+    events: list[EventCreate] = Field(..., min_length=1, max_length=EVENT_BATCH_MAX_ITEMS)
 
     @model_validator(mode="after")
     def limit_resource_entries(self) -> EventBatchCreate:

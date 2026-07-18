@@ -49,6 +49,28 @@
   transform: translateY(0);
 }
 
+.marketing-scroll-progress {
+  position: fixed;
+  z-index: 80;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  pointer-events: none;
+}
+
+.marketing-scroll-progress i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, #8ea4c7, #d7e2f3);
+  box-shadow: 0 0 14px rgb(142 164 199 / 55%);
+  transform: scaleX(0);
+  transform-origin: left center;
+  animation: marketing-scroll-progress linear both;
+  animation-timeline: scroll(root block);
+}
+
 .marketing-header {
   position: relative;
   z-index: 20;
@@ -154,6 +176,7 @@
     linear-gradient(90deg, var(--marketing-line) 1px, transparent 1px);
   background-size: 54px 54px;
   mask-image: radial-gradient(ellipse 60% 64% at 76% 46%, #000 12%, transparent 76%);
+  animation: marketing-grid-drift 18s ease-in-out infinite alternate;
 }
 
 .marketing-hero-copy,
@@ -287,6 +310,255 @@
   cursor: pointer;
 }
 
+.hero-assurance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 18px 0 0;
+  padding: 0;
+  color: #7f8998;
+  list-style: none;
+}
+
+.hero-assurance li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+}
+
+.hero-assurance svg {
+  color: #83b796;
+}
+
+.hero-product-empty {
+  min-width: 0;
+  min-height: 470px;
+}
+
+.hero-product {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgb(157 180 215 / 24%);
+  border-radius: 18px;
+  background: #090b0e;
+  box-shadow: 0 38px 100px rgb(0 0 0 / 48%), 0 0 64px rgb(105 134 179 / 8%);
+  transform: perspective(1200px) rotateX(.5deg) rotateY(-1deg);
+  transform-style: preserve-3d;
+  transition: transform 420ms cubic-bezier(.2,.8,.2,1), border-color 240ms ease, box-shadow 420ms ease;
+}
+
+.hero-product:hover {
+  border-color: rgb(176 198 230 / 38%);
+  box-shadow: 0 48px 120px rgb(0 0 0 / 58%), 0 0 74px rgb(105 134 179 / 12%);
+  transform: perspective(1200px) translateY(-6px) rotateX(1deg) rotateY(-1.5deg);
+}
+
+.hero-product::before {
+  position: absolute;
+  z-index: -1;
+  inset: 15% -12%;
+  border-radius: 50%;
+  background: rgb(105 134 179 / 17%);
+  filter: blur(58px);
+  content: "";
+}
+
+.hero-product-topbar {
+  display: grid;
+  min-height: 42px;
+  grid-template-columns: 60px 1fr 88px;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid rgb(180 199 228 / 14%);
+  padding: 0 13px;
+  color: #687385;
+  background: linear-gradient(180deg, #171a20, #111318);
+}
+
+.hero-product-topbar > span {
+  display: flex;
+  gap: 5px;
+}
+
+.hero-product-topbar i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4b5360;
+}
+
+.hero-product-topbar i:first-child { background: #806162; }
+.hero-product-topbar i:nth-child(2) { background: #806f54; }
+.hero-product-topbar i:last-child { background: #557362; }
+
+.hero-product-topbar code {
+  justify-self: center;
+  width: min(260px, 100%);
+  overflow: hidden;
+  border: 1px solid rgb(180 199 228 / 12%);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: #8792a2;
+  background: rgb(3 5 8 / 45%);
+  font-size: 8px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hero-product-topbar small {
+  color: #8ea4c7;
+  font-family: var(--bh-font-code);
+  font-size: 7px;
+  letter-spacing: .08em;
+  text-align: right;
+}
+
+.hero-product-screen {
+  position: relative;
+  aspect-ratio: 3 / 2;
+  overflow: hidden;
+  background: #080a0d;
+}
+
+.hero-product-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  animation: hero-product-camera 4.6s cubic-bezier(.22,.75,.18,1) both;
+  will-change: transform;
+}
+
+.hero-product-shade {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, transparent 54%, rgb(4 6 9 / 44%)),
+    linear-gradient(90deg, rgb(4 6 9 / 8%), transparent 24%, transparent 82%, rgb(4 6 9 / 12%));
+  pointer-events: none;
+}
+
+.hero-product-cursor {
+  position: absolute;
+  z-index: 4;
+  top: var(--hero-cursor-y);
+  left: var(--hero-cursor-x);
+  color: #f5f8fc;
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 86%));
+  animation: hero-product-cursor 4.6s cubic-bezier(.2,.72,.2,1) both;
+  pointer-events: none;
+}
+
+.hero-product-cursor i {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 17px;
+  height: 17px;
+  border: 1px solid #d4e2f7;
+  border-radius: 50%;
+  animation: hero-product-click 4.6s ease both;
+}
+
+.hero-product-callout {
+  position: absolute;
+  z-index: 3;
+  bottom: 15px;
+  left: 15px;
+  display: grid;
+  width: min(310px, calc(100% - 30px));
+  gap: 3px;
+  overflow: hidden;
+  border: 1px solid rgb(185 205 235 / 28%);
+  border-radius: 11px;
+  padding: 12px 14px;
+  color: #eef3fb;
+  background: rgb(9 12 17 / 86%);
+  box-shadow: 0 16px 44px rgb(0 0 0 / 52%);
+  backdrop-filter: blur(14px) saturate(1.1);
+  animation: hero-product-callout-in 440ms 520ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+.hero-product-callout span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #a9bddc;
+  font-family: var(--bh-font-code);
+  font-size: 8px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.hero-product-callout strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hero-product-callout small {
+  color: #8490a1;
+  font-size: 9px;
+}
+
+.hero-product-footer {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-top: 1px solid rgb(180 199 228 / 12%);
+  background: #0c0e12;
+}
+
+.hero-product-footer button {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-right: 1px solid rgb(180 199 228 / 10%);
+  color: #727d8d;
+  background: transparent;
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.hero-product-footer button:last-of-type { border-right: 0; }
+
+.hero-product-footer button[aria-current="step"] {
+  color: #dce5f2;
+  background: rgb(142 164 199 / 9%);
+}
+
+.hero-product-footer button span {
+  color: #8ea4c7;
+  font-family: var(--bh-font-code);
+  font-size: 8px;
+}
+
+.hero-product-progress {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: rgb(160 180 211 / 12%);
+}
+
+.hero-product-progress i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #a7bbda;
+  animation: product-tour-progress 4.6s linear both;
+  transform-origin: left;
+}
+
 .memory-relay,
 .product-architecture {
   position: relative;
@@ -297,6 +569,16 @@
     linear-gradient(145deg, rgb(30 36 48 / 92%), rgb(11 13 17 / 94%)),
     #101319;
   box-shadow: 0 38px 100px rgb(0 0 0 / 42%);
+  transform: perspective(1200px) rotateX(0.01deg) rotateY(0.01deg);
+  transform-style: preserve-3d;
+  transition: transform 420ms cubic-bezier(.2,.8,.2,1), border-color 240ms ease, box-shadow 420ms ease;
+}
+
+.memory-relay:hover,
+.product-architecture:hover {
+  border-color: rgb(176 198 230 / 36%);
+  box-shadow: 0 48px 120px rgb(0 0 0 / 52%), 0 0 56px rgb(105 134 179 / 10%);
+  transform: perspective(1200px) translateY(-6px) rotateX(1.2deg) rotateY(-1.2deg);
 }
 
 .memory-relay::before,
@@ -601,6 +883,10 @@
   overflow: hidden;
 }
 
+.workflow-section {
+  overflow-anchor: none;
+}
+
 .workflow-selector {
   border-right: 1px solid var(--marketing-line);
 }
@@ -710,6 +996,279 @@
   height: 100%;
   background: var(--marketing-accent);
   transition: width 260ms ease;
+}
+
+.product-tour-layout {
+  grid-template-columns: 292px minmax(0, 1fr);
+  background: #0b0d10;
+}
+
+.product-tour-layout .workflow-selector {
+  position: relative;
+  z-index: 3;
+  background: linear-gradient(180deg, rgb(17 19 24 / 97%), rgb(10 12 15 / 98%));
+}
+
+.workflow-selector .workflow-playback {
+  min-height: 74px;
+  border-top: 1px solid var(--marketing-line);
+  border-bottom: 0;
+  color: #9eabc0;
+  background: rgb(142 164 199 / 5%);
+}
+
+.workflow-selector .workflow-playback:hover {
+  color: #edf3fc;
+  background: rgb(142 164 199 / 10%);
+}
+
+.product-tour {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  margin: 0;
+  flex-direction: column;
+  overflow: hidden;
+  isolation: isolate;
+  background: #0a0c0f;
+}
+
+.product-tour-chrome {
+  display: grid;
+  min-height: 42px;
+  grid-template-columns: 72px 1fr 92px;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid rgb(180 199 228 / 14%);
+  padding: 0 16px;
+  color: #687385;
+  background: linear-gradient(180deg, #171a20, #111318);
+}
+
+.product-tour-chrome > span {
+  display: flex;
+  gap: 6px;
+}
+
+.product-tour-chrome i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4b5360;
+}
+
+.product-tour-chrome i:first-child { background: #806162; }
+.product-tour-chrome i:nth-child(2) { background: #806f54; }
+.product-tour-chrome i:last-child { background: #557362; }
+
+.product-tour-chrome code {
+  justify-self: center;
+  width: min(330px, 100%);
+  overflow: hidden;
+  border: 1px solid rgb(180 199 228 / 12%);
+  border-radius: 6px;
+  padding: 6px 12px;
+  color: #8792a2;
+  background: rgb(3 5 8 / 45%);
+  font-size: 9px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-tour-chrome small {
+  color: #8ea4c7;
+  font-family: var(--bh-font-code);
+  font-size: 8px;
+  letter-spacing: .08em;
+  text-align: right;
+}
+
+.product-tour-viewport {
+  position: relative;
+  aspect-ratio: 3 / 2;
+  min-height: 0;
+  overflow: hidden;
+  background: #080a0d;
+}
+
+.product-tour-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  transform: translate3d(var(--tour-camera-x), var(--tour-camera-y), 0) scale(var(--tour-camera-scale));
+  transform-origin: center;
+  will-change: transform;
+}
+
+.product-tour.is-playing .product-tour-image {
+  animation: product-tour-camera 5.2s cubic-bezier(.22,.75,.18,1) both;
+}
+
+.product-tour-sheen {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgb(5 7 10 / 3%), transparent 58%, rgb(5 7 10 / 36%)),
+    linear-gradient(90deg, rgb(5 7 10 / 12%), transparent 18%, transparent 82%, rgb(5 7 10 / 16%));
+  pointer-events: none;
+}
+
+.product-tour-focus {
+  position: absolute;
+  top: var(--tour-focus-y);
+  left: var(--tour-focus-x);
+  width: 92px;
+  height: 48px;
+  border: 1px solid rgb(182 205 239 / 54%);
+  border-radius: 10px;
+  box-shadow: 0 0 0 7px rgb(142 164 199 / 7%), 0 0 34px rgb(142 164 199 / 24%);
+  opacity: .75;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.product-tour.is-playing .product-tour-focus {
+  animation: product-tour-focus 5.2s ease both;
+}
+
+.product-tour-cursor {
+  position: absolute;
+  z-index: 5;
+  top: var(--tour-cursor-y);
+  left: var(--tour-cursor-x);
+  color: #f4f7fb;
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 80%));
+  transform: translate(-4px, -3px);
+  pointer-events: none;
+}
+
+.product-tour.is-playing .product-tour-cursor {
+  animation: product-tour-cursor 5.2s cubic-bezier(.2,.72,.2,1) both;
+}
+
+.product-tour-cursor i {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 18px;
+  height: 18px;
+  border: 1px solid #d4e2f7;
+  border-radius: 50%;
+  opacity: 0;
+  transform: scale(.2);
+}
+
+.product-tour.is-playing .product-tour-cursor i {
+  animation: product-tour-click 5.2s ease both;
+}
+
+.product-tour-caption {
+  position: absolute;
+  z-index: 4;
+  bottom: 18px;
+  left: 18px;
+  display: grid;
+  width: min(370px, calc(100% - 36px));
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+  border: 1px solid rgb(185 205 235 / 25%);
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: #eef3fb;
+  background: rgb(10 13 18 / 84%);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 46%);
+  backdrop-filter: blur(16px) saturate(1.1);
+  animation: product-tour-caption-in 460ms 500ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+.product-tour-caption-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid rgb(174 197 231 / 28%);
+  border-radius: 9px;
+  color: #bfd0eb;
+  background: rgb(142 164 199 / 12%);
+}
+
+.product-tour-caption > div:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.product-tour-caption span {
+  color: #9eafd0;
+  font-family: var(--bh-font-code);
+  font-size: 8px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.product-tour-caption strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-tour-caption small {
+  color: #8993a1;
+  font-size: 9px;
+}
+
+.product-tour-footer {
+  position: relative;
+  display: grid;
+  min-height: 72px;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 14px;
+  border-top: 1px solid rgb(180 199 228 / 12%);
+  padding: 13px 18px 15px;
+  background: #0c0e12;
+}
+
+.product-tour-footer > span {
+  color: #a7b8d2;
+  font-family: var(--bh-font-code);
+  font-size: 9px;
+}
+
+.product-tour-footer p {
+  margin: 0;
+  color: #8993a1;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.product-tour-progress {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: rgb(160 180 211 / 12%);
+}
+
+.product-tour-progress i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #a7bbda;
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+.product-tour.is-playing .product-tour-progress i {
+  animation: product-tour-progress 5.2s linear both;
 }
 
 .product-proof {
@@ -1366,6 +1925,99 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes marketing-scroll-progress {
+  to { transform: scaleX(1); }
+}
+
+@keyframes marketing-grid-drift {
+  from { background-position: 0 0, 0 0; transform: translate3d(-8px, -5px, 0); }
+  to { background-position: 54px 27px, 27px 54px; transform: translate3d(8px, 5px, 0); }
+}
+
+@keyframes hero-product-camera {
+  0%, 10% { transform: translate3d(0, 0, 0) scale(1.005); }
+  44%, 100% { transform: translate3d(var(--hero-camera-x), var(--hero-camera-y), 0) scale(var(--hero-camera-scale)); }
+}
+
+@keyframes hero-product-cursor {
+  0%, 12% {
+    top: var(--hero-cursor-from-y);
+    left: var(--hero-cursor-from-x);
+    opacity: 0;
+  }
+  18% {
+    top: var(--hero-cursor-from-y);
+    left: var(--hero-cursor-from-x);
+    opacity: 1;
+  }
+  44%, 100% {
+    top: var(--hero-cursor-y);
+    left: var(--hero-cursor-x);
+    opacity: 1;
+  }
+}
+
+@keyframes hero-product-click {
+  0%, 42% { opacity: 0; transform: scale(.2); }
+  47% { opacity: .9; transform: scale(1.8); }
+  54%, 100% { opacity: 0; transform: scale(2.5); }
+}
+
+@keyframes hero-product-callout-in {
+  from { opacity: 0; transform: translate3d(0, 13px, 0) scale(.98); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes product-tour-camera {
+  0%, 10% { transform: translate3d(0, 0, 0) scale(1.005); }
+  42%, 100% { transform: translate3d(var(--tour-camera-x), var(--tour-camera-y), 0) scale(var(--tour-camera-scale)); }
+}
+
+@keyframes product-tour-cursor {
+  0%, 12% {
+    top: var(--tour-cursor-from-y);
+    left: var(--tour-cursor-from-x);
+    opacity: 0;
+  }
+  18% {
+    top: var(--tour-cursor-from-y);
+    left: var(--tour-cursor-from-x);
+    opacity: 1;
+  }
+  42%, 100% {
+    top: var(--tour-cursor-y);
+    left: var(--tour-cursor-x);
+    opacity: 1;
+  }
+}
+
+@keyframes product-tour-click {
+  0%, 41% { opacity: 0; transform: scale(.2); }
+  45% { opacity: .9; transform: scale(1.8); }
+  51%, 100% { opacity: 0; transform: scale(2.5); }
+}
+
+@keyframes product-tour-focus {
+  0%, 36% { opacity: 0; transform: translate(-50%, -50%) scale(.75); }
+  48%, 88% { opacity: .8; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: .46; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes product-tour-caption-in {
+  from { opacity: 0; transform: translate3d(0, 16px, 0) scale(.98); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes product-tour-progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes product-tour-camera-mobile {
+  from { transform: scale(1); }
+  to { transform: scale(1.035); }
+}
+
 @media (max-width: 960px) {
   .marketing-nav { display: none; }
   .marketing-header { grid-template-columns: 1fr auto; }
@@ -1381,6 +2033,8 @@
     gap: 58px;
     padding-top: 70px;
   }
+  .hero-product-empty { display: none; }
+  .hero-product,
   .memory-relay,
   .product-architecture { width: min(620px, 100%); margin: 0 auto; }
   .marketing-signal-strip { flex-wrap: wrap; padding: 18px 20px; }
@@ -1395,9 +2049,12 @@
   .marketing-final-cta { grid-template-columns: 1fr; align-items: start; }
   .memory-map { grid-template-columns: repeat(2, 1fr); }
   .control-panel { grid-template-columns: 1fr; }
+  .product-tour-layout { grid-template-columns: 250px minmax(0, 1fr); }
+  .product-tour-caption { width: min(390px, 64%); }
 }
 
 @media (max-width: 700px) {
+  .marketing-site { width: 100%; max-width: 100vw; overflow-x: clip; }
   .marketing-header,
   .marketing-hero,
   .product-hero,
@@ -1413,10 +2070,18 @@
   .product-hero h1 { font-size: clamp(42px, 14vw, 58px); }
   .marketing-hero-copy > p,
   .product-hero-copy > p { font-size: 15px; }
+  .marketing-command { width: 100%; min-width: 0; }
+  .marketing-command button { padding: 0 12px; }
   .marketing-command button span { display: none; }
-  .marketing-command code { font-size: 10px; }
+  .marketing-command code { min-width: 0; font-size: 10px; }
+  .hero-product,
   .memory-relay,
   .product-architecture { min-width: 0; max-width: 100%; }
+  .hero-product-topbar { grid-template-columns: 52px 1fr; padding: 0 10px; }
+  .hero-product-topbar small { display: none; }
+  .hero-product-callout { right: 10px; bottom: 10px; left: 10px; width: auto; padding: 10px 12px; }
+  .hero-product-footer button { min-height: 52px; gap: 5px; font-size: 8px; }
+  .hero-product-cursor { display: none; }
   .memory-relay-stage { min-height: 235px; padding: 28px 20px; }
   .memory-relay-trace button { min-height: 55px; gap: 5px; font-size: 9px; }
   .memory-relay-log { align-items: flex-start; flex-direction: column; justify-content: center; gap: 4px; }
@@ -1430,6 +2095,22 @@
   .workflow-selector button { grid-template-columns: 1fr; min-height: 82px; justify-items: center; gap: 5px; padding: 10px 5px; text-align: center; }
   .workflow-selector button svg,
   .workflow-selector button small { display: none; }
+  .workflow-selector .workflow-playback { display: none; }
+  .product-tour-chrome { grid-template-columns: 54px 1fr; padding: 0 10px; }
+  .product-tour-chrome small { display: none; }
+  .product-tour-viewport { aspect-ratio: 3 / 2; }
+  .product-tour-image { transform: none; }
+  .product-tour.is-playing .product-tour-image { animation-name: product-tour-camera-mobile; }
+  .product-tour-focus { display: none; }
+  .product-tour-cursor { display: none; }
+  .product-tour-caption {
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    width: auto;
+    padding: 10px;
+  }
+  .product-tour-footer { align-items: start; grid-template-columns: auto 1fr; }
   .workflow-preview-body { padding: 42px 24px; }
   .workflow-number { right: 20px; font-size: 64px; }
   .product-proof { grid-template-columns: 1fr; }
@@ -1462,13 +2143,29 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .workflow-selector .workflow-playback {
+    display: none;
+  }
+
   [data-marketing-reveal] {
     opacity: 1;
     transform: none;
     transition: none;
   }
+  .hero-product-image,
+  .hero-product-cursor,
+  .hero-product-cursor i,
+  .hero-product-callout,
+  .hero-product-progress i,
   .memory-relay-stage,
-  .workflow-preview {
+  .workflow-preview,
+  .product-tour-image,
+  .product-tour-cursor,
+  .product-tour-focus,
+  .product-tour-caption,
+  .product-tour-progress i,
+  .marketing-hero-grid,
+  .marketing-scroll-progress i {
     animation: none;
   }
   .marketing-site *,
@@ -1478,5 +2175,1516 @@
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+}
+
+/* Figma landing — isolated from the existing product page. */
+.marketing-site--figma-home {
+  --figma-bg: #090a0d;
+  --figma-surface: #101217;
+  --figma-panel: #13161c;
+  --figma-primary: #f6f8fb;
+  --figma-secondary: #aeb5c1;
+  --figma-muted: #7f8998;
+  --figma-accent: #8ea4c7;
+  --figma-accent-strong: #bfd0eb;
+  --figma-line: rgb(164 180 207 / 18%);
+  --figma-line-strong: rgb(164 180 207 / 30%);
+  width: 100%;
+  max-width: none;
+  overflow-x: clip;
+  color: var(--figma-primary);
+  background: var(--figma-bg);
+  font-family: var(--bh-font-ui);
+}
+
+.marketing-site--figma-home .marketing-header {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  width: min(1440px, 100%);
+  min-height: 80px;
+  margin: 0 auto;
+  padding: 0 96px;
+  border-bottom: 1px solid var(--figma-line);
+}
+
+.marketing-site--figma-home .marketing-brand {
+  gap: 10px;
+  color: var(--figma-primary);
+}
+
+.marketing-site--figma-home .marketing-brand .figma-brand-mark {
+  width: 28px;
+  height: 28px;
+}
+
+.figma-brand-word {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.marketing-site--figma-home .marketing-nav {
+  gap: 36px;
+}
+
+.marketing-site--figma-home .marketing-nav a,
+.marketing-site--figma-home .marketing-footer-links a {
+  color: var(--figma-secondary);
+  font-size: 13px;
+  font-weight: 450;
+}
+
+.marketing-site--figma-home .marketing-nav a:hover,
+.marketing-site--figma-home .marketing-footer-links a:hover {
+  color: var(--figma-primary);
+}
+
+.marketing-site--figma-home .marketing-header-cta {
+  min-height: 38px;
+  border: 1px solid var(--figma-line-strong);
+  border-radius: 0;
+  padding: 0 17px;
+  color: var(--figma-primary);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 560;
+  letter-spacing: 0.01em;
+}
+
+.marketing-site--figma-home .marketing-header-cta:hover {
+  border-color: var(--figma-accent);
+  background: rgb(142 164 199 / 8%);
+}
+
+.figma-landing-page {
+  width: 100%;
+}
+
+.figma-landing-page h1,
+.figma-landing-page h2,
+.figma-landing-page h3,
+.figma-landing-page p {
+  margin: 0;
+}
+
+.figma-landing-page h1,
+.figma-landing-page h2,
+.figma-landing-page h3 {
+  color: var(--figma-primary);
+  text-wrap: balance;
+}
+
+.figma-landing-page p {
+  color: var(--figma-secondary);
+}
+
+.figma-landing-page section {
+  scroll-margin-top: 24px;
+}
+
+.figma-landing-eyebrow {
+  display: block;
+  color: var(--figma-accent);
+  font-family: var(--bh-font-code);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  letter-spacing: 0.12em;
+}
+
+.figma-landing-hero,
+.figma-problem-section,
+.figma-workflow-section,
+.figma-memory-section,
+.figma-audience-section,
+.figma-trust-section,
+.figma-faq-section,
+.figma-final-cta {
+  width: min(1440px, 100%);
+  margin: 0 auto;
+}
+
+.figma-landing-hero {
+  display: grid;
+  grid-template-columns: 660px 500px;
+  min-height: 760px;
+  align-items: center;
+  gap: 88px;
+  padding: 88px 96px;
+}
+
+.figma-landing-hero-copy {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.figma-landing-hero-copy h1 {
+  max-width: 660px;
+  margin-top: 25px;
+  font-size: 72px;
+  font-weight: 570;
+  line-height: 74px;
+  letter-spacing: -0.031em;
+}
+
+.figma-landing-hero-copy > p {
+  max-width: 610px;
+  margin-top: 28px;
+  color: var(--figma-secondary);
+  font-size: 18px;
+  line-height: 30px;
+}
+
+.figma-landing-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 35px;
+}
+
+.figma-button {
+  display: inline-flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 0;
+  padding: 0 18px;
+  font-size: 13px;
+  font-weight: 580;
+  line-height: 1;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease,
+    transform 160ms ease;
+}
+
+.figma-button:hover {
+  transform: translateY(-1px);
+}
+
+.figma-button.is-primary {
+  color: #0c0d10;
+  background: var(--figma-primary);
+}
+
+.figma-button.is-primary:hover {
+  background: var(--figma-accent-strong);
+}
+
+.figma-button.is-secondary {
+  border-color: var(--figma-line-strong);
+  color: var(--figma-primary);
+  background: transparent;
+}
+
+.figma-button.is-secondary:hover {
+  border-color: var(--figma-accent);
+  background: rgb(142 164 199 / 7%);
+}
+
+.figma-command {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  width: 462px;
+  min-height: 42px;
+  margin-top: 18px;
+  align-items: center;
+  border: 1px solid var(--figma-line);
+  border-radius: 0;
+  padding: 0;
+  color: var(--figma-secondary);
+  background: rgb(16 18 23 / 70%);
+  text-align: left;
+  cursor: pointer;
+}
+
+.figma-command code {
+  overflow: hidden;
+  padding: 0 14px;
+  color: var(--figma-secondary);
+  font-family: var(--bh-font-code);
+  font-size: 11px;
+  line-height: 40px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.figma-command > span {
+  display: inline-flex;
+  min-width: 76px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-left: 1px solid var(--figma-line);
+  color: var(--figma-muted);
+  font-family: var(--bh-font-code);
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.figma-command:hover > span {
+  color: var(--figma-primary);
+}
+
+.figma-hero-demo {
+  width: 500px;
+  height: 520px;
+  overflow: hidden;
+  border: 1px solid var(--figma-line-strong);
+  background: #0d0f13;
+  box-shadow: 0 28px 80px rgb(0 0 0 / 30%);
+}
+
+.figma-hero-demo-header {
+  display: flex;
+  height: 72px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--figma-line);
+  padding: 0 24px;
+}
+
+.figma-hero-demo-header > div {
+  display: grid;
+  gap: 4px;
+}
+
+.figma-hero-demo-header span,
+.figma-hero-demo-viewport article > span,
+.figma-memory-header span,
+.figma-memory-entries button > span {
+  color: var(--figma-accent);
+  font-family: var(--bh-font-code);
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 13px;
+  letter-spacing: 0.11em;
+}
+
+.figma-hero-demo-header strong {
+  color: var(--figma-primary);
+  font-family: var(--bh-font-code);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.figma-hero-demo-header > small {
+  border: 1px solid var(--figma-line);
+  padding: 5px 8px;
+  color: var(--figma-secondary);
+  font-family: var(--bh-font-code);
+  font-size: 9px;
+}
+
+.figma-hero-demo-viewport {
+  position: relative;
+  height: 378px;
+  background:
+    linear-gradient(var(--figma-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--figma-line) 1px, transparent 1px),
+    #0d0f13;
+  background-size: 40px 40px;
+  box-shadow: inset 0 0 100px #0d0f13;
+}
+
+.figma-hero-demo-viewport::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  background: radial-gradient(circle, transparent 18%, #0d0f13 82%);
+}
+
+.figma-hero-demo-viewport article {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  visibility: hidden;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: 42px;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 280ms ease, transform 360ms ease, visibility 280ms;
+}
+
+.figma-hero-demo-viewport article.is-active {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.figma-session-complete-mark {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 28px;
+  place-items: center;
+  border: 1px solid rgb(191 208 235 / 46%);
+  color: var(--figma-accent-strong);
+  background: rgb(142 164 199 / 10%);
+}
+
+.figma-hero-demo-viewport h3 {
+  margin-top: 15px;
+  font-size: 22px;
+  font-weight: 550;
+  line-height: 30px;
+  text-align: center;
+}
+
+.figma-hero-demo-viewport article > p {
+  margin-top: 11px;
+  color: var(--figma-muted);
+  font-family: var(--bh-font-code);
+  font-size: 10px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.figma-context-fragments,
+.figma-review-state {
+  display: grid;
+  width: 100%;
+  gap: 8px;
+  margin-top: 25px;
+}
+
+.figma-context-fragments > div,
+.figma-review-state > div {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 5px;
+  border: 1px solid var(--figma-line);
+  padding: 12px 14px;
+  background: rgb(16 18 23 / 92%);
+}
+
+.figma-context-fragments small,
+.figma-compiled-memory small,
+.figma-agent-ready small {
+  color: var(--figma-accent);
+  font-family: var(--bh-font-code);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+}
+
+.figma-context-fragments strong {
+  color: var(--figma-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.figma-compiled-memory,
+.figma-agent-ready {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  flex-direction: column;
+  border: 1px solid var(--figma-line-strong);
+  padding: 25px;
+  background: var(--figma-panel);
+}
+
+.figma-compiled-memory {
+  margin-top: 22px;
+}
+
+.figma-compiled-memory strong,
+.figma-agent-ready strong {
+  margin-top: 10px;
+  color: var(--figma-primary);
+  font-size: 18px;
+  font-weight: 530;
+  line-height: 26px;
+}
+
+.figma-compiled-memory p,
+.figma-agent-ready p {
+  margin-top: 8px;
+  color: var(--figma-secondary);
+  font-size: 12px;
+  line-height: 19px;
+}
+
+.figma-compiled-memory i,
+.figma-agent-ready i {
+  margin-top: 20px;
+  color: var(--figma-muted);
+  font-family: var(--bh-font-code);
+  font-size: 9px;
+  font-style: normal;
+}
+
+.figma-review-state > div {
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  color: var(--figma-accent-strong);
+}
+
+.figma-review-state span {
+  color: var(--figma-secondary);
+  font-size: 12px;
+}
+
+.figma-review-state small {
+  color: var(--figma-muted);
+  font-family: var(--bh-font-code);
+  font-size: 8px;
+}
+
+.figma-agent-ready i {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--figma-accent-strong);
+}
+
+.figma-hero-demo-footer {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  height: 68px;
+  align-items: center;
+  gap: 18px;
+  border-top: 1px solid var(--figma-line);
+  padding: 0 18px 0 24px;
+}
+
+.figma-demo-progress {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+
+.figma-demo-progress i {
+  height: 2px;
+  background: var(--figma-line-strong);
+  transition: background 220ms ease;
+}
+
+.figma-demo-progress i.is-complete {
+  background: var(--figma-accent-strong);
+}
+
+.figma-hero-demo-footer > span {
+  color: var(--figma-muted);
+  font-family: var(--bh-font-code);
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.figma-hero-demo-footer > div:last-child {
+  display: flex;
+  gap: 5px;
+}
+
+.figma-hero-demo-footer button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--figma-line);
+  border-radius: 0;
+  padding: 0;
+  color: var(--figma-secondary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.figma-hero-demo-footer button:hover {
+  border-color: var(--figma-accent);
+  color: var(--figma-primary);
+}
+
+.figma-problem-section {
+  display: grid;
+  grid-template-columns: 540px 560px;
+  min-height: 620px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 80px 96px;
+  background: var(--figma-surface);
+}
+
+.figma-section-copy h2,
+.figma-workflow-intro h2,
+.figma-memory-copy h2,
+.figma-audience-intro h2,
+.figma-trust-intro h2,
+.figma-faq-section h2,
+.figma-final-cta-panel h2 {
+  margin-top: 20px;
+  font-size: 48px;
+  font-weight: 560;
+  line-height: 54px;
+  letter-spacing: -0.026em;
+}
+
+.figma-section-copy > p {
+  max-width: 500px;
+  margin-top: 26px;
+  font-size: 16px;
+  line-height: 27px;
+}
+
+.figma-problem-costs {
+  border-top: 1px solid var(--figma-line);
+}
+
+.figma-problem-costs article {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  min-height: 132px;
+  align-items: start;
+  gap: 22px;
+  border-bottom: 1px solid var(--figma-line);
+  padding: 27px 0;
+}
+
+.figma-problem-costs article > span,
+.figma-workflow-steps article > div span,
+.figma-audience-cards article > div span,
+.figma-trust-flow article > div span {
+  color: var(--figma-muted);
+  font-family: var(--bh-font-code);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.figma-problem-costs article > div {
+  display: grid;
+  gap: 8px;
+}
+
+.figma-problem-costs h3 {
+  font-size: 18px;
+  font-weight: 540;
+  line-height: 25px;
+}
+
+.figma-problem-costs p {
+  color: var(--figma-muted);
+  font-size: 13px;
+  line-height: 21px;
+}
+
+.figma-workflow-section {
+  min-height: 680px;
+  padding: 74px 96px 80px;
+}
+
+.figma-workflow-intro,
+.figma-audience-intro {
+  display: grid;
+  grid-template-columns: 720px 420px;
+  align-items: end;
+  justify-content: space-between;
+}
+
+.figma-workflow-intro > p,
+.figma-audience-intro > p {
+  padding-bottom: 4px;
+  font-size: 15px;
+  line-height: 25px;
+}
+
+.figma-workflow-steps,
+.figma-audience-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 54px;
+}
+
+.figma-workflow-steps article {
+  position: relative;
+  display: flex;
+  min-height: 260px;
+  align-items: flex-start;
+  flex-direction: column;
+  border: 1px solid var(--figma-line);
+  padding: 27px 27px 25px;
+  background: var(--figma-surface);
+  outline: 0;
+  transition: border-color 180ms ease, background 180ms ease,
+    transform 180ms ease;
+}
+
+.figma-workflow-steps article:hover,
+.figma-workflow-steps article:focus-visible,
+.figma-workflow-steps article[aria-current="step"] {
+  border-color: rgb(191 208 235 / 45%);
+  background: #14171d;
+  transform: translateY(-4px);
+}
+
+.figma-workflow-steps article::after {
+  position: absolute;
+  right: -17px;
+  bottom: 36px;
+  left: calc(100% + 1px);
+  z-index: 2;
+  height: 1px;
+  content: "";
+  background: var(--figma-line-strong);
+}
+
+.figma-workflow-steps article:last-child::after {
+  display: none;
+}
+
+.figma-workflow-steps article > div,
+.figma-audience-cards article > div,
+.figma-trust-flow article > div {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.figma-workflow-steps article > div small,
+.figma-audience-cards article > div small,
+.figma-trust-flow article > div small {
+  color: var(--figma-accent);
+  font-family: var(--bh-font-code);
+  font-size: 9px;
+  line-height: 14px;
+  letter-spacing: 0.1em;
+}
+
+.figma-workflow-steps h3,
+.figma-audience-cards h3,
+.figma-trust-flow h3 {
+  margin-top: 32px;
+  font-size: 23px;
+  font-weight: 540;
+  line-height: 31px;
+  letter-spacing: -0.018em;
+}
+
+.figma-workflow-steps p,
+.figma-audience-cards p,
+.figma-trust-flow p {
+  margin-top: 13px;
+  color: var(--figma-muted);
+  font-size: 13px;
+  line-height: 21px;
+}
+
+.figma-workflow-steps article > strong {
+  margin-top: auto;
+  color: var(--figma-secondary);
+  font-family: var(--bh-font-code);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.figma-memory-section {
+  display: grid;
+  grid-template-columns: 500px 640px;
+  min-height: 780px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 84px 96px 86px;
+  background: var(--figma-surface);
+}
+
+.figma-memory-copy > p {
+  margin-top: 27px;
+  font-size: 15px;
+  line-height: 26px;
+}
+
+.figma-memory-copy ul {
+  display: grid;
+  gap: 12px;
+  margin: 30px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.figma-memory-copy li {
+  position: relative;
+  padding-left: 22px;
+  color: var(--figma-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.figma-memory-copy li::before {
+  position: absolute;
+  top: 8px;
+  left: 1px;
+  width: 5px;
+  height: 5px;
+  content: "";
+  background: var(--figma-accent);
+}
+
+.figma-memory-panel {
+  height: 610px;
+  overflow: hidden;
+  border: 1px solid var(--figma-line-strong);
+  background: #0d0f13;
+  box-shadow: 0 28px 80px rgb(0 0 0 / 24%);
+}
+
+.figma-memory-header {
+  display: flex;
+  height: 78px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--figma-line);
+  padding: 0 24px;
+}
+
+.figma-memory-header > div {
+  display: grid;
+  gap: 6px;
+}
+
+.figma-memory-header h3 {
+  font-family: var(--bh-font-code);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.figma-memory-header > strong {
+  border: 1px solid rgb(142 164 199 / 34%);
+  padding: 5px 8px;
+  color: var(--figma-accent-strong);
+  font-family: var(--bh-font-code);
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+}
+
+.figma-memory-entries {
+  display: grid;
+  height: 474px;
+  grid-template-rows: repeat(4, 1fr);
+}
+
+.figma-memory-entries button {
+  position: relative;
+  display: grid;
+  grid-template-columns: 128px 1fr;
+  grid-template-rows: auto auto;
+  min-width: 0;
+  align-content: center;
+  align-items: start;
+  column-gap: 20px;
+  border: 0;
+  border-bottom: 1px solid var(--figma-line);
+  border-radius: 0;
+  padding: 16px 24px;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.figma-memory-entries button:hover,
+.figma-memory-entries button[aria-pressed="true"] {
+  background: rgb(142 164 199 / 7%);
+}
+
+.figma-memory-entries button[aria-pressed="true"]::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  content: "";
+  background: var(--figma-accent-strong);
+}
+
+.figma-memory-entries button > span {
+  grid-row: 1 / span 2;
+  padding-top: 3px;
+}
+
+.figma-memory-entries button p {
+  display: block;
+  overflow: visible;
+  color: var(--figma-primary);
+  font-size: 13px;
+  font-weight: 450;
+  line-height: 19px;
+  text-overflow: clip;
+  white-space: normal;
+  -webkit-line-clamp: unset;
+}
+
+.figma-memory-entries button.is-mono p {
+  font-family: var(--bh-font-code);
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.figma-memory-entries button small {
+  margin-top: 6px;
+  color: var(--figma-muted);
+  font-family: var(--bh-font-code);
+  font-size: 8px;
+  line-height: 13px;
+}
+
+.figma-memory-footer {
+  display: flex;
+  height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+}
+
+.figma-memory-footer span,
+.figma-memory-footer small {
+  color: var(--figma-muted);
+  font-family: var(--bh-font-code);
+  font-size: 8px;
+  letter-spacing: 0.05em;
+}
+
+.figma-memory-footer span::before {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 8px;
+  content: "";
+  background: var(--figma-accent);
+}
+
+.figma-audience-section {
+  min-height: 620px;
+  padding: 78px 96px 80px;
+}
+
+.figma-audience-cards article {
+  min-height: 238px;
+  border-top: 1px solid var(--figma-line-strong);
+  padding: 24px 0 0;
+}
+
+.figma-audience-cards h3 {
+  max-width: 360px;
+  margin-top: 30px;
+}
+
+.figma-audience-cards p {
+  max-width: 355px;
+}
+
+.figma-trust-section {
+  min-height: 560px;
+  padding: 74px 96px 80px;
+  background: var(--figma-surface);
+}
+
+.figma-trust-intro {
+  display: grid;
+  grid-template-columns: 600px 1fr;
+  align-items: end;
+}
+
+.figma-trust-intro > span {
+  grid-column: 1;
+}
+
+.figma-trust-intro h2 {
+  grid-column: 1;
+}
+
+.figma-trust-intro > p {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: end;
+  max-width: 420px;
+  padding-bottom: 4px;
+  font-size: 15px;
+  line-height: 25px;
+}
+
+.figma-trust-flow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 52px;
+}
+
+.figma-trust-flow article {
+  position: relative;
+  min-height: 170px;
+  border: 1px solid var(--figma-line);
+  padding: 22px 23px;
+  background: #0d0f13;
+  outline: 0;
+  transition: border-color 180ms ease, transform 180ms ease;
+}
+
+.figma-trust-flow article:hover,
+.figma-trust-flow article:focus-visible {
+  border-color: rgb(191 208 235 / 45%);
+  transform: translateY(-3px);
+}
+
+.figma-trust-flow article::after {
+  position: absolute;
+  top: 50%;
+  right: -17px;
+  width: 16px;
+  height: 1px;
+  content: "";
+  background: var(--figma-accent);
+}
+
+.figma-trust-flow article:last-child::after {
+  display: none;
+}
+
+.figma-trust-flow h3 {
+  margin-top: 23px;
+  font-size: 18px;
+  line-height: 25px;
+}
+
+.figma-trust-flow p {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 19px;
+}
+
+.figma-faq-section {
+  display: grid;
+  grid-template-columns: 480px 640px;
+  min-height: 620px;
+  align-items: start;
+  justify-content: space-between;
+  padding: 84px 96px;
+}
+
+.figma-faq-section > div:first-child > p {
+  margin-top: 24px;
+  font-size: 15px;
+  line-height: 25px;
+}
+
+.figma-faq-list {
+  border-top: 1px solid var(--figma-line);
+}
+
+.figma-faq-list details {
+  border-bottom: 1px solid var(--figma-line);
+}
+
+.figma-faq-list summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  min-height: 82px;
+  align-items: center;
+  gap: 20px;
+  padding: 0 2px;
+  color: var(--figma-primary);
+  font-size: 15px;
+  font-weight: 510;
+  line-height: 22px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.figma-faq-list summary::-webkit-details-marker {
+  display: none;
+}
+
+.figma-faq-list summary svg {
+  color: var(--figma-muted);
+  transition: color 180ms ease, transform 240ms ease;
+}
+
+.figma-faq-list details[open] summary svg {
+  color: var(--figma-accent-strong);
+  transform: rotate(180deg);
+}
+
+.figma-faq-list details p {
+  max-width: 600px;
+  padding: 0 42px 24px 2px;
+  color: var(--figma-secondary);
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.figma-final-cta {
+  min-height: 420px;
+  padding: 48px 96px;
+  background: var(--figma-bg);
+}
+
+.figma-final-cta-panel {
+  display: grid;
+  grid-template-columns: 720px 360px;
+  min-height: 324px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--figma-line-strong);
+  padding: 55px 64px;
+  background:
+    linear-gradient(115deg, transparent 45%, rgb(142 164 199 / 7%)),
+    var(--figma-surface);
+}
+
+.figma-final-cta-panel > div:last-child {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.figma-final-cta-panel > div:last-child p {
+  max-width: 330px;
+  font-size: 14px;
+  line-height: 23px;
+}
+
+.figma-final-cta-panel .figma-button {
+  margin-top: 24px;
+}
+
+.marketing-site--figma-home .figma-footer {
+  display: grid;
+  grid-template-columns: 1fr;
+  width: min(1440px, 100%);
+  min-height: 180px;
+  margin: 0 auto;
+  align-content: center;
+  gap: 27px;
+  border-top: 1px solid var(--figma-line);
+  padding: 30px 96px;
+}
+
+.marketing-site--figma-home .figma-footer > div {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.marketing-site--figma-home .figma-footer-main {
+  padding-bottom: 25px;
+  border-bottom: 1px solid var(--figma-line);
+}
+
+.marketing-site--figma-home .figma-footer-meta p {
+  color: var(--figma-muted);
+  font-family: var(--bh-font-code);
+  font-size: 9px;
+  letter-spacing: 0.03em;
+}
+
+@media (max-width: 1199px) {
+  .marketing-site--figma-home .marketing-header,
+  .figma-landing-hero,
+  .figma-problem-section,
+  .figma-workflow-section,
+  .figma-memory-section,
+  .figma-audience-section,
+  .figma-trust-section,
+  .figma-faq-section,
+  .figma-final-cta,
+  .marketing-site--figma-home .figma-footer {
+    padding-right: 48px;
+    padding-left: 48px;
+  }
+
+  .figma-landing-hero {
+    grid-template-columns: minmax(0, 1fr) minmax(400px, 0.82fr);
+    gap: 46px;
+  }
+
+  .figma-landing-hero-copy h1 {
+    font-size: clamp(54px, 6vw, 68px);
+    line-height: 1.04;
+  }
+
+  .figma-hero-demo {
+    width: 100%;
+  }
+
+  .figma-problem-section,
+  .figma-memory-section,
+  .figma-faq-section {
+    gap: 64px;
+  }
+
+  .figma-problem-section {
+    grid-template-columns: minmax(0, 1fr) minmax(430px, 1fr);
+  }
+
+  .figma-workflow-intro,
+  .figma-audience-intro {
+    grid-template-columns: minmax(0, 1.5fr) minmax(300px, 0.8fr);
+    gap: 64px;
+  }
+
+  .figma-memory-section {
+    grid-template-columns: minmax(340px, 0.8fr) minmax(540px, 1.15fr);
+  }
+
+  .figma-trust-intro {
+    grid-template-columns: 1fr minmax(300px, 0.7fr);
+    gap: 64px;
+  }
+
+  .figma-faq-section {
+    grid-template-columns: minmax(340px, 0.75fr) minmax(500px, 1fr);
+  }
+
+  .figma-final-cta-panel {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 64px;
+  }
+}
+
+@media (max-width: 920px) {
+  .marketing-site--figma-home .marketing-header {
+    grid-template-columns: 1fr auto;
+    padding-right: 30px;
+    padding-left: 30px;
+  }
+
+  .marketing-site--figma-home .marketing-nav {
+    display: none;
+  }
+
+  .figma-landing-hero,
+  .figma-problem-section,
+  .figma-memory-section,
+  .figma-faq-section {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .figma-landing-hero,
+  .figma-problem-section,
+  .figma-workflow-section,
+  .figma-memory-section,
+  .figma-audience-section,
+  .figma-trust-section,
+  .figma-faq-section,
+  .figma-final-cta,
+  .marketing-site--figma-home .figma-footer {
+    padding-right: 30px;
+    padding-left: 30px;
+  }
+
+  .figma-landing-hero {
+    gap: 64px;
+    padding-top: 82px;
+    padding-bottom: 82px;
+  }
+
+  .figma-landing-hero-copy h1 {
+    max-width: 720px;
+    font-size: clamp(56px, 9vw, 74px);
+  }
+
+  .figma-hero-demo {
+    width: min(100%, 640px);
+    justify-self: center;
+  }
+
+  .figma-problem-section,
+  .figma-memory-section,
+  .figma-faq-section {
+    gap: 60px;
+    padding-top: 84px;
+    padding-bottom: 84px;
+  }
+
+  .figma-workflow-intro,
+  .figma-audience-intro,
+  .figma-trust-intro,
+  .figma-final-cta-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .figma-workflow-intro > p,
+  .figma-audience-intro > p,
+  .figma-trust-intro > p {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: auto;
+    max-width: 620px;
+    margin-top: 24px;
+  }
+
+  .figma-workflow-steps,
+  .figma-audience-cards,
+  .figma-trust-flow {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .figma-workflow-steps article,
+  .figma-audience-cards article,
+  .figma-trust-flow article {
+    min-height: auto;
+  }
+
+  .figma-workflow-steps article {
+    min-height: 230px;
+  }
+
+  .figma-workflow-steps article::after,
+  .figma-trust-flow article::after {
+    display: none;
+  }
+
+  .figma-audience-cards article {
+    padding-bottom: 34px;
+  }
+
+  .figma-memory-panel {
+    width: min(100%, 640px);
+    justify-self: center;
+  }
+
+  .figma-final-cta-panel {
+    gap: 32px;
+    padding: 48px;
+  }
+}
+
+@media (max-width: 600px) {
+  .marketing-site--figma-home .marketing-header {
+    min-height: 68px;
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+
+  .marketing-site--figma-home .marketing-header-cta {
+    min-height: 36px;
+    padding: 0 12px;
+  }
+
+  .figma-landing-hero,
+  .figma-problem-section,
+  .figma-workflow-section,
+  .figma-memory-section,
+  .figma-audience-section,
+  .figma-trust-section,
+  .figma-faq-section,
+  .figma-final-cta,
+  .marketing-site--figma-home .figma-footer {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+
+  .figma-landing-hero {
+    gap: 48px;
+    padding-top: 64px;
+    padding-bottom: 64px;
+  }
+
+  .figma-landing-hero-copy h1 {
+    margin-top: 20px;
+    font-size: clamp(43px, 13vw, 58px);
+    line-height: 1.02;
+    letter-spacing: -0.04em;
+  }
+
+  .figma-landing-hero-copy > p {
+    margin-top: 22px;
+    font-size: 16px;
+    line-height: 26px;
+  }
+
+  .figma-landing-actions {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+    margin-top: 29px;
+  }
+
+  .figma-button {
+    width: 100%;
+  }
+
+  .figma-command {
+    width: 100%;
+  }
+
+  .figma-command code {
+    font-size: 9px;
+  }
+
+  .figma-command > span {
+    min-width: 56px;
+    font-size: 0;
+  }
+
+  .figma-hero-demo {
+    height: 480px;
+  }
+
+  .figma-hero-demo-viewport {
+    height: 338px;
+  }
+
+  .figma-hero-demo-viewport article {
+    padding: 28px 22px;
+  }
+
+  .figma-hero-demo-footer {
+    grid-template-columns: 1fr auto;
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .figma-hero-demo-footer > span {
+    display: none;
+  }
+
+  .figma-section-copy h2,
+  .figma-workflow-intro h2,
+  .figma-memory-copy h2,
+  .figma-audience-intro h2,
+  .figma-trust-intro h2,
+  .figma-faq-section h2,
+  .figma-final-cta-panel h2 {
+    margin-top: 17px;
+    font-size: 38px;
+    line-height: 43px;
+    letter-spacing: -0.035em;
+  }
+
+  .figma-problem-section,
+  .figma-memory-section,
+  .figma-faq-section {
+    gap: 48px;
+    padding-top: 70px;
+    padding-bottom: 70px;
+  }
+
+  .figma-problem-costs article {
+    grid-template-columns: 28px 1fr;
+    gap: 14px;
+  }
+
+  .figma-workflow-section,
+  .figma-audience-section,
+  .figma-trust-section {
+    padding-top: 70px;
+    padding-bottom: 70px;
+  }
+
+  .figma-workflow-steps,
+  .figma-audience-cards,
+  .figma-trust-flow {
+    margin-top: 42px;
+  }
+
+  .figma-workflow-steps article {
+    min-height: 238px;
+    padding: 24px;
+  }
+
+  .figma-memory-panel {
+    height: auto;
+    overflow: visible;
+  }
+
+  .figma-memory-header {
+    height: 72px;
+    padding: 0 16px;
+  }
+
+  .figma-memory-entries {
+    height: auto;
+    grid-template-rows: none;
+  }
+
+  .figma-memory-entries button {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    gap: 9px;
+    padding: 20px 16px;
+  }
+
+  .figma-memory-entries button > span {
+    grid-row: auto;
+    padding: 0;
+  }
+
+  .figma-memory-entries button p,
+  .figma-memory-entries button.is-mono p {
+    font-size: 12px;
+    line-height: 19px;
+  }
+
+  .figma-memory-footer {
+    height: auto;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 7px;
+    padding: 16px;
+  }
+
+  .figma-faq-list summary {
+    min-height: 76px;
+    font-size: 14px;
+  }
+
+  .figma-final-cta {
+    min-height: 0;
+    padding-top: 24px;
+    padding-bottom: 24px;
+  }
+
+  .figma-final-cta-panel {
+    min-height: 0;
+    padding: 42px 24px;
+  }
+
+  .marketing-site--figma-home .figma-footer {
+    min-height: 0;
+    gap: 22px;
+    padding-top: 40px;
+    padding-bottom: 32px;
+  }
+
+  .marketing-site--figma-home .figma-footer-main,
+  .marketing-site--figma-home .figma-footer-meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  .marketing-site--figma-home .figma-footer-links {
+    justify-content: flex-start;
+    gap: 16px 20px;
+  }
+
+  .marketing-site--figma-home .figma-footer-meta {
+    gap: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marketing-site--figma-home [data-marketing-reveal].is-visible,
+  .figma-hero-demo-viewport article,
+  .figma-demo-progress i,
+  .figma-faq-list summary svg {
+    animation: none;
+    transition: none;
   }
 }

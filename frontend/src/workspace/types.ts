@@ -155,6 +155,11 @@ export type PublicProjectSummary = {
   tags: string[];
   tracked_files: number;
   updated_at: string;
+  view_count?: number;
+  weekly_popularity_score?: number;
+  weekly_saves?: number;
+  weekly_unique_viewers?: number;
+  weekly_views?: number;
   visibility: "public";
 };
 
@@ -167,6 +172,15 @@ export type PublicProjectPage = {
 
 export type PublicProfileResponse = PublicProjectPage & {
   profile: PublicProjectOwner;
+};
+
+export type PublicProjectViewAnalytics = {
+  project_id: string;
+  recorded: boolean;
+  unique_viewers: number;
+  view_count: number;
+  view_history: Array<{ date: string; views: number }>;
+  views_7d: number;
 };
 
 export type ProjectSortMode = "recent" | "added";
@@ -236,7 +250,7 @@ export type ProjectDetailApiResponse = {
         summary: string;
         title: string;
       }>;
-      session_id: string | null;
+      session_id?: string | null;
       source_draft_ids?: string[];
       source_session_ids?: string[];
       slice_index?: number | null;
@@ -293,6 +307,7 @@ export type ProjectDetailApiResponse = {
       additions: number | null;
       binary?: boolean;
       deletions: number | null;
+      event_id?: string | null;
       old_path?: string | null;
       patch?: string | null;
       patch_omitted_reason?: string | null;
@@ -357,10 +372,55 @@ export type ProjectDetailApiResponse = {
   };
 };
 
-export type PublicProjectDetailResponse = ProjectDetailApiResponse & {
+export type ProjectMemoryArtifactApiResponse =
+  NonNullable<ProjectDetailApiResponse["memory"]>["recent_artifacts"][number];
+
+export type PublicProjectMemoryArtifactApiResponse = Omit<
+  ProjectMemoryArtifactApiResponse,
+  | "changed_files"
+  | "commit_sha"
+  | "draft_confidence"
+  | "draft_generator"
+  | "draft_type"
+  | "end_sequence"
+  | "fallback_reason"
+  | "memory_batch_id"
+  | "memory_batch_ids"
+  | "needs_user_verification"
+  | "requested_generator"
+  | "review_state"
+  | "session_id"
+  | "slice_index"
+  | "source_draft_ids"
+  | "source_session_ids"
+  | "start_sequence"
+  | "suggested_user_action"
+  | "trigger_reason"
+  | "versions"
+  | "window_reason"
+> & {
+  review_state: "edited" | "verified";
+};
+
+export type PublicProjectDetailResponse = Omit<
+  ProjectDetailApiResponse,
+  "activities" | "files" | "memory" | "prompt_activities"
+> & {
+  activities: [];
+  files: [];
   is_owner: boolean;
   is_saved: boolean;
+  memory: {
+    latest_artifact_at: string | null;
+    recent_artifacts: PublicProjectMemoryArtifactApiResponse[];
+    total_artifacts: number;
+  };
   owner: PublicProjectOwner;
+  prompt_activities: [];
+  unique_viewers?: number;
+  view_count?: number;
+  view_history?: Array<{ date: string; views: number }>;
+  views_7d?: number;
 };
 
 export type ProjectPromptActivityApiItem = NonNullable<
@@ -385,9 +445,6 @@ export type ProjectFilesApiResponse = {
   total: number;
   truncated: boolean;
 };
-
-export type ProjectMemoryArtifactApiResponse =
-  NonNullable<ProjectDetailApiResponse["memory"]>["recent_artifacts"][number];
 
 export type ProjectMemoryPendingRangeApiResponse = {
   can_checkpoint: boolean;
@@ -505,11 +562,24 @@ export type PublishedFlowDetailResponse = PublishedFlowSummary & {
 export type AdminOverview = {
   action_items: Array<{
     area: string;
+    condition_hash?: string;
     count: number | null;
     detail: string;
+    key?: string;
     severity: string;
+    snoozed_until?: string | null;
+    state?: "read" | "snoozed" | "unread";
+    target?: string;
     title: string;
+    window?: string;
   }>;
+  action_summary?: {
+    active: number;
+    read: number;
+    resolved: number;
+    snoozed: number;
+    unread: number;
+  };
   ai_activity: {
     prompts_24h: number;
     response_gap: number;
@@ -545,14 +615,19 @@ export type AdminOverview = {
     events_24h: number;
     events_7d: number;
     failed_jobs: number;
+    failed_support_notifications?: number;
     github_connections: number;
     memory_artifacts: number;
     memory_artifacts_24h: number;
     pending_jobs: number;
     pending_memory_drafts: number;
+    open_support_inquiries?: number;
     projects: number;
     projects_without_activity: number;
     projects_without_repo: number;
+    public_project_views?: number;
+    public_project_views_24h?: number;
+    public_project_views_7d?: number;
     prompts: number;
     prompts_24h: number;
     responses: number;
@@ -561,6 +636,7 @@ export type AdminOverview = {
     sessions: number;
     stale_jobs: number;
     tracked_files: number;
+    unique_public_viewers_7d?: number;
     users: number;
   };
   memory_monitor: {
@@ -618,6 +694,7 @@ export type AdminOverview = {
       memory: number;
       prompts: number;
       sessions: number;
+      views?: number;
     };
     default_branch: string;
     failed_jobs: number;
@@ -678,6 +755,19 @@ export type AdminOverview = {
     session_cookie_secure: boolean;
     session_cookie_samesite: string;
   };
+  view_analytics?: {
+    top_projects: Array<{
+      id: string;
+      name: string;
+      owner_username: string;
+      view_count: number;
+      views_7d: number;
+    }>;
+    total_views: number;
+    unique_viewers_7d: number;
+    views_24h: number;
+    views_7d: number;
+  };
 };
 
 export type AdminPage<T> = {
@@ -685,6 +775,20 @@ export type AdminPage<T> = {
   limit: number;
   offset: number;
   total: number;
+};
+
+export type AdminSupportInquiry = {
+  category: string;
+  created_at: string | null;
+  id: string;
+  message: string;
+  notification_error: string | null;
+  notification_status: string;
+  requester_email: string;
+  requester_username: string;
+  status: "new" | "in_progress" | "resolved";
+  subject: string;
+  updated_at: string | null;
 };
 
 export type AdminUser = {
@@ -735,9 +839,15 @@ export type AdminProject = {
   };
   project_url: string | null;
   prompt_count: number;
+  save_count?: number;
+  saves_7d?: number;
   slug: string;
   tags: string[];
   updated_at: string | null;
+  view_count?: number;
+  views_7d?: number;
+  unique_viewers_7d?: number;
+  weekly_popularity_score?: number;
   visibility: "private" | "public";
 };
 

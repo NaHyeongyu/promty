@@ -18,10 +18,14 @@ from app.core.encoding import base64_urldecode, base64_urlencode
 from app.db.session import get_db
 from app.models.tokens import CollectorToken
 from app.models.users import User
+from app.models.web_sessions import WebSession
 
 
 class JWTError(ValueError):
     pass
+
+
+WEB_ACCESS_TOKEN_MAX_CHARS = 8_192
 
 
 def hash_collector_token(token: str) -> str:
@@ -33,7 +37,7 @@ def issue_collector_token() -> str:
 
 
 def _jwt_secret() -> bytes:
-    secret = settings.jwt_secret or settings.oauth_state_secret or settings.api_token
+    secret = settings.jwt_secret
     if not secret:
         raise RuntimeError("PROMPTHUB_JWT_SECRET is not configured")
     return secret.encode("utf-8")
@@ -52,7 +56,7 @@ def _sign_jwt(header: str, payload: str) -> str:
     return base64_urlencode(signature)
 
 
-def issue_web_access_token(user: User) -> str:
+def issue_web_access_token(user: User, *, session_id: UUID) -> str:
     now = int(time.time())
     header = base64_urlencode(_json_bytes({"alg": "HS256", "typ": "JWT"}))
     payload = base64_urlencode(
@@ -62,6 +66,7 @@ def issue_web_access_token(user: User) -> str:
                 "exp": now + settings.access_token_ttl_seconds,
                 "iat": now,
                 "iss": settings.jwt_issuer,
+                "sid": str(session_id),
                 "sub": str(user.id),
                 "typ": "access",
             }
@@ -70,7 +75,9 @@ def issue_web_access_token(user: User) -> str:
     return f"{header}.{payload}.{_sign_jwt(header, payload)}"
 
 
-def verify_web_access_token(token: str) -> UUID:
+def verify_web_access_token_claims(token: str) -> tuple[UUID, UUID]:
+    if len(token) > WEB_ACCESS_TOKEN_MAX_CHARS:
+        raise JWTError("Invalid JWT")
     try:
         header_part, payload_part, signature_part = token.split(".", 2)
         header = json.loads(base64_urldecode(header_part))
@@ -94,16 +101,53 @@ def verify_web_access_token(token: str) -> UUID:
         raise JWTError("Invalid JWT audience")
 
     exp = payload.get("exp")
-    if not isinstance(exp, int) or exp <= int(time.time()):
+    now = int(time.time())
+    if not isinstance(exp, int) or exp <= now:
         raise JWTError("Expired JWT")
+    issued_at = payload.get("iat")
+    if not isinstance(issued_at, int) or issued_at > now + 60:
+        raise JWTError("Invalid JWT issued-at time")
 
     subject = payload.get("sub")
-    if not isinstance(subject, str):
-        raise JWTError("Missing JWT subject")
+    session_id = payload.get("sid")
+    if not isinstance(subject, str) or not isinstance(session_id, str):
+        raise JWTError("Missing JWT subject or session")
     try:
-        return UUID(subject)
+        return UUID(subject), UUID(session_id)
     except ValueError as exc:
-        raise JWTError("Invalid JWT subject") from exc
+        raise JWTError("Invalid JWT subject or session") from exc
+
+
+def verify_web_access_token(token: str) -> UUID:
+    user_id, _ = verify_web_access_token_claims(token)
+    return user_id
+
+
+def _active_web_session(db: Session, token: str) -> WebSession | None:
+    try:
+        user_id, session_id = verify_web_access_token_claims(token)
+    except (JWTError, RuntimeError):
+        return None
+    web_session = db.get(WebSession, session_id)
+    if web_session is None or web_session.user_id != user_id:
+        return None
+    expires_at = web_session.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if web_session.revoked_at is not None or expires_at <= datetime.now(timezone.utc):
+        return None
+    return web_session
+
+
+def revoke_web_session_token(db: Session, token: str | None) -> bool:
+    if not token:
+        return False
+    web_session = _active_web_session(db, token)
+    if web_session is None:
+        return False
+    web_session.revoked_at = datetime.now(timezone.utc)
+    db.flush()
+    return True
 
 
 def _bearer_token(authorization: str | None) -> str | None:
@@ -198,13 +242,8 @@ def get_optional_web_user(
     if not token:
         return None
 
-    try:
-        user_id = verify_web_access_token(token)
-    except (JWTError, RuntimeError):
-        return None
-
-    user = db.get(User, user_id)
-    return user
+    web_session = _active_web_session(db, token)
+    return web_session.user if web_session is not None else None
 
 
 def is_admin_user(user: User) -> bool:

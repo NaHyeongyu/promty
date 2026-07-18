@@ -7,6 +7,7 @@ import type {
   AdminPage,
   AdminProject,
   AdminSystem,
+  AdminSupportInquiry,
   AdminUser,
 } from "../workspace/types";
 import { requestJson, requestJsonBody } from "./client";
@@ -19,6 +20,25 @@ export function fetchAdminOverview(signal?: AbortSignal): Promise<AdminOverview>
       errorMessage: "Admin overview request failed",
       forbiddenMessage: "Admin access is not enabled for this GitHub account.",
     },
+  );
+}
+
+export function updateAdminAlertState(
+  alertKey: string,
+  conditionHash: string,
+  state: "read" | "resolved" | "snoozed",
+  snoozeHours = 24,
+): Promise<{
+  condition_hash: string;
+  key: string;
+  snoozed_until: string | null;
+  state: "read" | "resolved" | "snoozed";
+}> {
+  return requestJsonBody(
+    `/api/admin/alerts/${encodeURIComponent(alertKey)}/state`,
+    "PUT",
+    { condition_hash: conditionHash, snooze_hours: snoozeHours, state },
+    adminMessages,
   );
 }
 
@@ -54,12 +74,43 @@ export function fetchAdminUsers(
 }
 
 export function fetchAdminProjects(
-  options: AdminListOptions = {},
+  options: AdminListOptions & {
+    sort?: "popularity" | "recent" | "saves" | "views" | "views_7d";
+    visibility?: "all" | "private" | "public";
+  } = {},
   signal?: AbortSignal,
 ): Promise<AdminPage<AdminProject>> {
+  const params = adminListParams(options);
+  if (options.sort) params.set("sort", options.sort);
+  if (options.visibility && options.visibility !== "all") params.set("visibility", options.visibility);
   return requestJson<AdminPage<AdminProject>>(
-    `/api/admin/projects?${adminListParams(options).toString()}`,
+    `/api/admin/projects?${params.toString()}`,
     { signal },
+    adminMessages,
+  );
+}
+
+export function fetchAdminSupportInquiries(
+  options: AdminListOptions & { status?: string } = {},
+  signal?: AbortSignal,
+): Promise<AdminPage<AdminSupportInquiry>> {
+  const params = adminListParams(options);
+  if (options.status && options.status !== "all") params.set("status", options.status);
+  return requestJson<AdminPage<AdminSupportInquiry>>(
+    `/api/admin/support-inquiries?${params.toString()}`,
+    { signal },
+    adminMessages,
+  );
+}
+
+export function updateAdminSupportInquiry(
+  inquiryId: string,
+  status: AdminSupportInquiry["status"],
+): Promise<AdminSupportInquiry> {
+  return requestJsonBody(
+    `/api/admin/support-inquiries/${inquiryId}`,
+    "PATCH",
+    { status },
     adminMessages,
   );
 }

@@ -36,6 +36,7 @@ from events import (
     normalize_event_type,
     normalize_tool,
 )
+from file_lock import locked_file
 from payloads import (
     PROJECT_CONTEXT_KEYS,
     SESSION_ID_KEYS,
@@ -46,6 +47,7 @@ from runtime_install import install_runtime, launcher_path, quote_command_path
 from mcp_server import PromtyMCPServer, run_mcp_server
 from sequence import SequenceStore
 from session_index import SessionIndex
+from secure_storage import ensure_private_parent, open_private_text, write_private_text_atomic
 from uploader.client import PromptHubUploader
 from uploader.queue import JSONLQueue
 from updater import auto_update
@@ -75,6 +77,7 @@ PROFILE_URLS: dict[Profile, tuple[str, str]] = {
 }
 PROFILE_NAMES: tuple[Profile, ...] = tuple(PROFILE_URLS)
 AUTO_UPDATE_INTERVAL_SECONDS = 6 * 60 * 60
+HEARTBEAT_INTERVAL_SECONDS = 60
 CODEX_HOOKS: tuple[dict[str, Any], ...] = (
     {
         "event": "UserPromptSubmit",
@@ -354,7 +357,8 @@ def _capture_queue_paths(args: argparse.Namespace) -> list[str | Path | None]:
 
 def _push_captured_event(args: argparse.Namespace, event: BaseEvent) -> None:
     errors: list[str] = []
-    for path in _capture_queue_paths(args):
+    queue_paths = _capture_queue_paths(args)
+    for path in queue_paths:
         queue = JSONLQueue(path)
         try:
             queue.push(event)
@@ -362,6 +366,43 @@ def _push_captured_event(args: argparse.Namespace, event: BaseEvent) -> None:
             errors.append(f"{queue.path}: {exc}")
     if errors:
         raise RuntimeError("Failed to persist one or more Promty queues: " + "; ".join(errors))
+    for path in queue_paths:
+        _ensure_uploader_for_capture_queue(path)
+
+
+def _ensure_uploader_for_capture_queue(queue_path: str | Path | None) -> None:
+    """Restart a profile uploader after reboot without risking event capture."""
+    if queue_path is None:
+        return
+    queue = JSONLQueue(queue_path)
+    profile_root = queue.path.parent
+    config_path = profile_root / "config.json"
+    if queue.path.name != "events" or not config_path.is_file():
+        return
+
+    pid_path = profile_root / "uploader.pid"
+    pid = _read_pid(pid_path)
+    if pid is not None and _pid_is_running(pid):
+        return
+
+    try:
+        start_uploader(
+            argparse.Namespace(
+                api_url=None,
+                config_path=str(config_path),
+                interval=2,
+                log_path=str(profile_root / "uploader.log"),
+                no_auto_update=True,
+                pid_path=str(pid_path),
+                queue_path=str(queue.path),
+                token=None,
+            )
+        )
+    except Exception as exc:
+        print(
+            f"Promty uploader could not restart for {queue.path}: {exc}",
+            file=sys.stderr,
+        )
 
 
 def capture(args: argparse.Namespace) -> int:
@@ -485,6 +526,14 @@ def _upload_queued_events(args: argparse.Namespace) -> int:
     return len(uploaded_ids)
 
 
+def _send_heartbeat(args: argparse.Namespace) -> None:
+    PromptHubUploader(
+        api_url=resolve_api_url(args.api_url, args.config_path),
+        token=resolve_token(args.token, args.config_path),
+        timeout=args.timeout,
+    ).heartbeat()
+
+
 def upload(args: argparse.Namespace) -> int:
     api_url = resolve_api_url(args.api_url, args.config_path)
     if not args.watch:
@@ -498,6 +547,7 @@ def upload(args: argparse.Namespace) -> int:
     interval = max(args.interval, 0.25)
     print(f"Watching queue {JSONLQueue(args.queue_path).path} -> {api_url} every {interval:g}s")
     next_update_check = 0.0
+    next_heartbeat = 0.0
     while True:
         try:
             now = time.monotonic()
@@ -511,6 +561,9 @@ def upload(args: argparse.Namespace) -> int:
                     )
                     launcher = launcher_path()
                     os.execv(str(launcher), [str(launcher), *sys.argv[1:]])
+            if now >= next_heartbeat:
+                next_heartbeat = now + HEARTBEAT_INTERVAL_SECONDS
+                _send_heartbeat(args)
             uploaded_count = _upload_queued_events(args)
             if uploaded_count:
                 print(f"Uploaded {uploaded_count} events", flush=True)
@@ -1001,7 +1054,8 @@ def _pid_is_running(pid: int) -> bool:
 
 def _read_pid(path: Path) -> int | None:
     try:
-        return int(path.read_text(encoding="utf-8").strip())
+        with open_private_text(path, "r") as file:
+            return int(file.read().strip())
     except (OSError, ValueError):
         return None
 
@@ -1011,43 +1065,44 @@ def start_uploader(args: argparse.Namespace) -> int:
     token = resolve_token(args.token, args.config_path)
     pid_path = Path(args.pid_path).expanduser() if args.pid_path else DEFAULT_UPLOADER_PID_PATH
     log_path = Path(args.log_path).expanduser() if args.log_path else DEFAULT_UPLOADER_LOG_PATH
-    existing_pid = _read_pid(pid_path)
-    if existing_pid is not None and _pid_is_running(existing_pid):
-        print(f"Promty uploader already running: pid {existing_pid}")
-        return 0
+    with locked_file(pid_path.with_name(f"{pid_path.name}.start.lock")):
+        existing_pid = _read_pid(pid_path)
+        if existing_pid is not None and _pid_is_running(existing_pid):
+            print(f"Promty uploader already running: pid {existing_pid}")
+            return 0
 
-    env = os.environ.copy()
-    env["PROMPTHUB_API_URL"] = api_url
-    if token:
-        env["PROMPTHUB_API_TOKEN"] = token
-    if args.config_path:
-        env["PROMPTHUB_CONFIG_PATH"] = str(Path(args.config_path).expanduser())
+        env = os.environ.copy()
+        env["PROMPTHUB_API_URL"] = api_url
+        if token:
+            env["PROMPTHUB_API_TOKEN"] = token
+        if args.config_path:
+            env["PROMPTHUB_CONFIG_PATH"] = str(Path(args.config_path).expanduser())
 
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    pid_path.parent.mkdir(parents=True, exist_ok=True)
-    log_file = log_path.open("a", encoding="utf-8")
-    command = [
-        sys.executable,
-        str(Path(__file__).resolve()),
-        "upload",
-        "--watch",
-        "--interval",
-        str(max(args.interval, 0.25)),
-    ]
-    if getattr(args, "queue_path", None):
-        command.extend(["--queue-path", str(Path(args.queue_path).expanduser())])
-    if getattr(args, "no_auto_update", False):
-        command.append("--no-auto-update")
-    process = subprocess.Popen(
-        command,
-        stdout=log_file,
-        stderr=log_file,
-        stdin=subprocess.DEVNULL,
-        start_new_session=True,
-        env=env,
-    )
-    log_file.close()
-    pid_path.write_text(f"{process.pid}\n", encoding="utf-8")
+        ensure_private_parent(log_path)
+        ensure_private_parent(pid_path)
+        log_file = open_private_text(log_path, "a")
+        command = [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            "upload",
+            "--watch",
+            "--interval",
+            str(max(args.interval, 0.25)),
+        ]
+        if getattr(args, "queue_path", None):
+            command.extend(["--queue-path", str(Path(args.queue_path).expanduser())])
+        if not getattr(args, "no_auto_update", True):
+            command.append("--auto-update")
+        process = subprocess.Popen(
+            command,
+            stdout=log_file,
+            stderr=log_file,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            env=env,
+        )
+        log_file.close()
+        write_private_text_atomic(pid_path, f"{process.pid}\n")
     print(f"Promty uploader started: pid {process.pid}")
     print(f"Uploader log: {log_path}")
     return 0
@@ -1107,9 +1162,13 @@ def _hook_status(
                     break
         if found_command is None:
             return False, f"missing {spec['event']} {tool} hook"
+        expanded_command = found_command.replace("${HOME}", str(Path.home())).replace(
+            "$HOME",
+            str(Path.home()),
+        )
         for queue_path in expected_queue_paths:
             expanded_path = str(Path(queue_path).expanduser())
-            if expanded_path not in found_command:
+            if expanded_path not in expanded_command:
                 return False, f"{spec['event']} hook missing queue {expanded_path}"
     return True, success
 
@@ -1443,7 +1502,19 @@ def build_parser() -> argparse.ArgumentParser:
     upload_parser.add_argument("--config-path")
     upload_parser.add_argument("--queue-path")
     upload_parser.add_argument("--profile", choices=sorted(PROFILE_URLS))
-    upload_parser.add_argument("--no-auto-update", action="store_true")
+    upload_updates = upload_parser.add_mutually_exclusive_group()
+    upload_updates.add_argument(
+        "--auto-update",
+        action="store_false",
+        dest="no_auto_update",
+        help="Allow the background uploader to install newer npm releases.",
+    )
+    upload_updates.add_argument(
+        "--no-auto-update",
+        action="store_true",
+        dest="no_auto_update",
+        help=argparse.SUPPRESS,
+    )
     upload_parser.add_argument("--limit", type=int, default=100)
     upload_parser.add_argument("--timeout", type=float, default=10)
     upload_parser.add_argument(
@@ -1457,7 +1528,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=float(os.environ.get("PROMPTHUB_UPLOAD_INTERVAL", "2")),
         help="Seconds between queue checks in watch mode.",
     )
-    upload_parser.set_defaults(func=upload)
+    upload_parser.set_defaults(func=upload, no_auto_update=True)
 
     login_parser = subparsers.add_parser("login")
     login_parser.add_argument("--app-url")
@@ -1517,9 +1588,21 @@ def build_parser() -> argparse.ArgumentParser:
     start_uploader_parser.add_argument("--pid-path")
     start_uploader_parser.add_argument("--profile", choices=sorted(PROFILE_URLS))
     start_uploader_parser.add_argument("--queue-path")
-    start_uploader_parser.add_argument("--no-auto-update", action="store_true")
+    start_uploader_updates = start_uploader_parser.add_mutually_exclusive_group()
+    start_uploader_updates.add_argument(
+        "--auto-update",
+        action="store_false",
+        dest="no_auto_update",
+        help="Allow the background uploader to install newer npm releases.",
+    )
+    start_uploader_updates.add_argument(
+        "--no-auto-update",
+        action="store_true",
+        dest="no_auto_update",
+        help=argparse.SUPPRESS,
+    )
     start_uploader_parser.add_argument("--token")
-    start_uploader_parser.set_defaults(func=start_uploader)
+    start_uploader_parser.set_defaults(func=start_uploader, no_auto_update=True)
 
     doctor_parser = subparsers.add_parser("doctor")
     doctor_parser.add_argument("--api-url")
@@ -1563,7 +1646,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Persist every captured event to each listed profile independently.",
     )
     init_parser.add_argument("--queue-path")
-    init_parser.add_argument("--no-auto-update", action="store_true")
+    init_updates = init_parser.add_mutually_exclusive_group()
+    init_updates.add_argument(
+        "--auto-update",
+        action="store_false",
+        dest="no_auto_update",
+        help="Allow the background uploader to install newer npm releases.",
+    )
+    init_updates.add_argument(
+        "--no-auto-update",
+        action="store_true",
+        dest="no_auto_update",
+        help=argparse.SUPPRESS,
+    )
     init_parser.add_argument("--repo-root")
     init_parser.add_argument("--skip-login", action="store_true")
     init_parser.add_argument("--skip-uploader", action="store_true")
@@ -1576,7 +1671,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     init_parser.add_argument("--username")
     init_parser.add_argument("--upload-interval", type=float, default=2)
-    init_parser.set_defaults(func=init)
+    init_parser.set_defaults(func=init, no_auto_update=True)
 
     update_runtime_parser = subparsers.add_parser("update-runtime")
     update_runtime_parser.set_defaults(func=lambda _: _update_runtime())

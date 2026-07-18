@@ -3,7 +3,8 @@ import { appRouteFromPathname, isLegacyWorkspaceSearch } from "./routing";
 
 describe("appRouteFromPathname", () => {
   it("matches supported application routes", () => {
-    expect(appRouteFromPathname("/")).toBe("landing");
+    expect(appRouteFromPathname("/")).toBe("workspace");
+    expect(appRouteFromPathname("/about/")).toBe("landing");
     expect(appRouteFromPathname("/product/")).toBe("product");
     expect(appRouteFromPathname("/app")).toBe("workspace");
     expect(appRouteFromPathname("/admin/")).toBe("admin");

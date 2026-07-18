@@ -279,7 +279,7 @@ def test_admin_system_telemetry_and_user_owned_data_cascade(db: Session) -> None
     telemetry = admin_system_response(db)
     AdminSystemResponse.model_validate(telemetry)
     assert telemetry["database"]["dialect"] == "postgresql"
-    assert telemetry["database"]["migration"] == "0033_support_inquiries"
+    assert telemetry["database"]["migration"] == "0037_weekly_project_popularity"
     assert telemetry["runtime"]["uptime_seconds"] >= 0
 
     deleted = delete_admin_user_response(

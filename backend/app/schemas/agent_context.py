@@ -24,6 +24,8 @@ class AgentContextProjectResponse(StrictResponse):
 
 class AgentProjectContextResponse(StrictResponse):
     available: bool
+    review_required: bool
+    safety_notice: str
     project: AgentContextProjectResponse
     memory_id: UUID | None
     updated_at: datetime | None

@@ -48,6 +48,11 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    web_sessions = relationship(
+        "WebSession",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
     github_connection = relationship(
         "GitHubConnection",
         back_populates="user",

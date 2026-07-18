@@ -94,12 +94,11 @@ profile queues, and uploads each queue separately. A backend outage therefore
 does not block or remove the other profile's pending events. Verify all targets
 with `npx promty-collector doctor --profiles dev,prod --tool codex-cli`.
 
-The background uploader checks npm for a newer collector every six hours. When
-an update is available, it installs the content-addressed runtime and restarts
-itself with the same profile and queue. Pass `--no-auto-update` to `init` or
-`start-uploader` to opt out. Installations older than `0.1.2` require one manual
-`npx promty-collector@latest init --tool codex-cli --profile <dev|prod>` upgrade before automatic
-updates become available.
+Automatic updates are disabled by default. Pass `--auto-update` to `init` or
+`start-uploader` only when you want the background uploader to check npm every
+six hours, install a newer release, and restart with the same profile and queue.
+Without that explicit opt-in, update manually with
+`npx promty-collector@latest init --tool codex-cli --profile <dev|prod>`.
 
 The npm package includes the Python collector and uses `python3` by default. Set
 `PROMTY_PYTHON` when a different Python executable is required.
@@ -127,6 +126,9 @@ Cursor and Gemini CLI adapters remain experimental and are not exposed by
 `init` installs a content-addressed runtime under `~/.promty/runtime` and writes
 the durable `~/.promty/bin/promty` launcher into repository hooks. Hooks do not
 depend on the npm cache, the source checkout, or the directory where setup ran.
+The uploader sends a one-minute heartbeat so the web app can report connection
+loss even when no new events are produced. After a reboot, the first captured
+event safely restarts a stopped profile uploader before draining its disk queue.
 
 Supported event types:
 
@@ -311,6 +313,11 @@ export PROMPTHUB_AUTH_RATE_LIMIT_REQUESTS="30"
 export PROMPTHUB_AUTH_RATE_LIMIT_WINDOW_SECONDS="60"
 export PROMPTHUB_ADMIN_RATE_LIMIT_REQUESTS="120"
 export PROMPTHUB_ADMIN_RATE_LIMIT_WINDOW_SECONDS="60"
+export PROMPTHUB_COMMUNITY_RATE_LIMIT_REQUESTS="120"
+export PROMPTHUB_COMMUNITY_RATE_LIMIT_WINDOW_SECONDS="60"
+export PROMPTHUB_INGEST_RATE_LIMIT_REQUESTS="120"
+export PROMPTHUB_INGEST_RATE_LIMIT_WINDOW_SECONDS="60"
+export PROMPTHUB_TRUSTED_PROXY_CIDRS="127.0.0.0/8,::1/128,172.16.0.0/12"
 export PROMPTHUB_ADMIN_AUDIT_RETENTION_DAYS="180"
 export PROMPTHUB_SUPPORT_EMAIL_PROVIDER="ses"
 export PROMPTHUB_SUPPORT_NOTIFICATION_EMAILS="owner@example.com"
@@ -319,7 +326,7 @@ export PROMPTHUB_SUPPORT_RATE_LIMIT_REQUESTS="5"
 export PROMPTHUB_SUPPORT_RATE_LIMIT_WINDOW_SECONDS="300"
 export PROMPTHUB_PROMPT_MAX_CHARS="50000"
 export PROMPTHUB_RESPONSE_MAX_CHARS="50000"
-export PROMPTHUB_EVENT_BATCH_MAX_BODY_BYTES="33554432"
+export PROMPTHUB_EVENT_BATCH_MAX_BODY_BYTES="8388608"
 export PROMPTHUB_MEMORY_SLICE_EVENT_MAX_ROWS="500"
 export PROMPTHUB_MEMORY_SLICE_MAX_SLICES_PER_CALL="4"
 export PROMPTHUB_MEMORY_DRAFT_PROMPT_MAX_BYTES="131072"
@@ -335,8 +342,12 @@ export PROMPTHUB_MEMORY_WORKER_CHUNK_CONCURRENCY="2"
 export PROMPTHUB_OAUTH_STATE_SECRET="replace-with-oauth-state-secret"
 export PROMPTHUB_JWT_SECRET="replace-with-jwt-secret"
 export PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS="3600"
-# export PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS="15552000" # 180-day web sessions
+# Production may use up to 28800 (8 hours); sessions are revocable server-side.
 ```
+
+Use independent random values for `PROMPTHUB_OAUTH_STATE_SECRET`,
+`PROMPTHUB_JWT_SECRET`, and `PROMPTHUB_API_TOKEN`; the backend does not reuse one
+secret as a fallback for another security boundary.
 
 Web users sign in through GitHub OAuth. The backend issues a short-lived HS256 JWT in an HttpOnly session cookie and requires it for browser reads such as `GET /api/events`.
 
@@ -367,6 +378,13 @@ jobs. Destructive and sensitive actions require typing the target username or pr
 slug, are authorized again by the API, and are written to the audit trail. Raw events and
 administrator audit entries remain append-only from the console to preserve provenance.
 
+The console also includes a bilingual Marketing studio. One verified source story can
+generate side-by-side Korean and English variants for X, Threads, Bluesky, LinkedIn,
+DEV.to, GitHub Discussions, Reddit, and Hacker News. Approved social variants can be
+sent to Buffer as drafts, queued, or scheduled; DEV.to receives unpublished drafts;
+GitHub Discussions can be published directly; Reddit and Hacker News remain manual
+copy-only channels. See [`docs/marketing-content-studio.md`](docs/marketing-content-studio.md).
+
 Administrator control endpoints:
 
 ```text
@@ -377,6 +395,13 @@ GET  /api/admin/jobs
 GET  /api/admin/events
 GET  /api/admin/system
 GET  /api/admin/audit-logs
+GET  /api/admin/marketing-content
+GET  /api/admin/marketing-content/integrations
+POST /api/admin/marketing-content
+PATCH /api/admin/marketing-content/{content_id}
+POST /api/admin/marketing-content/{content_id}/generate
+POST /api/admin/marketing-content/{content_id}/approve
+POST /api/admin/marketing-content/{content_id}/deliver
 POST /api/admin/users/{user_id}/suspend
 POST /api/admin/users/{user_id}/restore
 DELETE /api/admin/users/{user_id}

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { UnauthorizedError } from "../api/client";
 import {
+  approveProjectMemory as requestProjectMemoryApproval,
   createProject,
   deleteProject,
   fetchProjectSummaries,
@@ -232,6 +233,17 @@ export function useProjectActions({
     return trackedRequest;
   };
 
+  const approveProjectMemoryForAgents = async (projectId: string) => {
+    try {
+      await requestProjectMemoryApproval(projectId);
+      if (selectedProjectIdRef.current === projectId) {
+        await loadProjectDetail(projectId, selectedProjectRef.current);
+      }
+    } catch (error) {
+      return rethrowAfterUnauthorized(error);
+    }
+  };
+
   const saveRepositoryConnection = async (
     projectId: string,
     githubUrl: string,
@@ -294,6 +306,7 @@ export function useProjectActions({
 
   return {
     activeProjectMemoryGenerationIds,
+    approveProjectMemoryForAgents,
     bookmarkUpdatingProjectId,
     createProjectFromRepository,
     deleteSelectedProject,

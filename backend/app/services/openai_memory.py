@@ -16,6 +16,7 @@ from app.services.memory.cleaners import (
 )
 from app.services.memory.errors import MemoryGenerationError
 from app.services.memory.prompts import (
+    MEMORY_PROVIDER_SECURITY_INSTRUCTIONS,
     build_memory_draft_prompt,
     build_project_memory_prompt,
 )
@@ -91,6 +92,7 @@ def _request_openai_json(
     )
     body = {
         "input": prompt,
+        "instructions": MEMORY_PROVIDER_SECURITY_INSTRUCTIONS,
         "max_output_tokens": output_max_tokens,
         "model": model,
         "store": False,
@@ -185,9 +187,7 @@ def _request_openai_json(
                 outcome="failure",
                 status="invalid_json",
             )
-            raise OpenAIMemoryGenerationError(
-                "OpenAI returned an invalid JSON response."
-            ) from None
+            raise OpenAIMemoryGenerationError("OpenAI returned an invalid JSON response.") from None
         except OpenAIMemoryGenerationError:
             metrics.finish(outcome="failure", status="invalid_response")
             raise OpenAIMemoryGenerationError("OpenAI returned an invalid response.") from None

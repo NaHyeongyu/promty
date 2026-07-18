@@ -5,21 +5,21 @@ import json
 import os
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 from events import BaseEvent
 from file_lock import locked_file
+from secure_storage import (
+    append_private_text,
+    open_private_text,
+    write_private_text_atomic,
+)
 
-DEFAULT_QUEUE_ROOT = Path(
-    os.environ.get("PROMPTHUB_QUEUE_DIR", "~/.prompthub/events")
-).expanduser()
+DEFAULT_QUEUE_ROOT = Path(os.environ.get("PROMPTHUB_QUEUE_DIR", "~/.prompthub/events")).expanduser()
 LEGACY_QUEUE_PATH = Path("~/.prompthub/events.jsonl").expanduser()
 
 
 def _safe_path_part(value: Any) -> str:
-    safe_value = "".join(
-        char for char in str(value) if char.isalnum() or char in ("-", "_")
-    )
+    safe_value = "".join(char for char in str(value) if char.isalnum() or char in ("-", "_"))
     return safe_value or "unknown"
 
 
@@ -37,16 +37,16 @@ class JSONLQueue:
     def push(self, event: BaseEvent) -> None:
         with self._locked():
             queue_file = self._event_path(event)
-            queue_file.parent.mkdir(parents=True, exist_ok=True)
-            with queue_file.open("a", encoding="utf-8") as file:
-                file.write(json.dumps(event.to_dict(), ensure_ascii=False))
-                file.write("\n")
+            append_private_text(
+                queue_file,
+                json.dumps(event.to_dict(), ensure_ascii=False) + "\n",
+            )
 
     def read_batch(self, limit: int = 100) -> list[dict[str, Any]]:
         with self._locked():
             events: list[dict[str, Any]] = []
             for queue_file in self._queue_files():
-                with queue_file.open("r", encoding="utf-8") as file:
+                with open_private_text(queue_file, "r") as file:
                     for line in file:
                         if len(events) >= limit:
                             return events
@@ -94,7 +94,7 @@ class JSONLQueue:
             return
 
         remaining: list[str] = []
-        with queue_file.open("r", encoding="utf-8") as file:
+        with open_private_text(queue_file, "r") as file:
             for line in file:
                 if not line.strip():
                     continue
@@ -107,22 +107,14 @@ class JSONLQueue:
                 if event.get("id") not in event_ids:
                     remaining.append(line)
 
-        tmp_path = queue_file.with_suffix(f"{queue_file.suffix}.{uuid4()}.tmp")
         if remaining:
-            with tmp_path.open("w", encoding="utf-8") as file:
-                file.writelines(remaining)
-            tmp_path.replace(queue_file)
+            write_private_text_atomic(queue_file, "".join(remaining))
             return
 
         try:
             queue_file.unlink()
         except OSError:
             pass
-        if tmp_path.exists():
-            try:
-                tmp_path.unlink()
-            except OSError:
-                pass
 
     @contextmanager
     def _locked(self):

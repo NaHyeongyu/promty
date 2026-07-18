@@ -64,12 +64,24 @@ PROMPTHUB_AUTH_RATE_LIMIT_REQUESTS
 PROMPTHUB_AUTH_RATE_LIMIT_WINDOW_SECONDS
 PROMPTHUB_ADMIN_RATE_LIMIT_REQUESTS
 PROMPTHUB_ADMIN_RATE_LIMIT_WINDOW_SECONDS
+PROMPTHUB_COMMUNITY_RATE_LIMIT_REQUESTS
+PROMPTHUB_COMMUNITY_RATE_LIMIT_WINDOW_SECONDS
+PROMPTHUB_INGEST_RATE_LIMIT_REQUESTS
+PROMPTHUB_INGEST_RATE_LIMIT_WINDOW_SECONDS
+PROMPTHUB_TRUSTED_PROXY_CIDRS
 PROMPTHUB_ADMIN_AUDIT_RETENTION_DAYS
 PROMPTHUB_SUPPORT_EMAIL_PROVIDER
 PROMPTHUB_SUPPORT_NOTIFICATION_EMAILS
 PROMPTHUB_SUPPORT_FROM_EMAIL
 PROMPTHUB_SUPPORT_RATE_LIMIT_REQUESTS
 PROMPTHUB_SUPPORT_RATE_LIMIT_WINDOW_SECONDS
+PROMPTHUB_BUFFER_API_KEY
+PROMPTHUB_BUFFER_CHANNEL_IDS
+PROMPTHUB_DEVTO_API_KEY
+PROMPTHUB_DEVTO_ORGANIZATION_ID
+PROMPTHUB_GITHUB_MARKETING_TOKEN
+PROMPTHUB_GITHUB_MARKETING_REPOSITORY_ID
+PROMPTHUB_GITHUB_MARKETING_DISCUSSION_CATEGORY_ID
 PROMPTHUB_PROMPT_MAX_CHARS
 PROMPTHUB_RESPONSE_MAX_CHARS
 PROMPTHUB_EVENT_BATCH_MAX_BODY_BYTES
@@ -199,7 +211,13 @@ GET /health/live   process liveness; does not query PostgreSQL
 GET /health/ready  readiness; returns 503 when SELECT 1 fails
 ```
 
-Browser reads require GitHub login and a valid PromptHub JWT session cookie. The session cookie is HttpOnly; JavaScript does not read the token directly. Set `PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS=15552000` for 180-day web sessions.
+Browser reads require GitHub login and a valid PromptHub JWT session cookie. The session cookie is HttpOnly; JavaScript does not read the token directly. JWTs include a server-side session identifier, logout revokes that session immediately, and production sessions are capped at eight hours.
+
+The administrator-only bilingual marketing studio stores source briefs, Korean and
+English channel variants, approval state, schedules, and external delivery results
+in `marketing_content`. Publisher credentials remain server-side. See
+`docs/marketing-content-studio.md` for the Buffer, DEV.to, GitHub Discussions, and
+manual community-posting boundaries.
 
 Gemini-backed memory generation reads `PROMTY_GEMINI_API_KEY` from `.env.local`, `backend/.env.local`, or the process environment. The backend must be restarted after changing this key. `GET /api/projects/_memory/generator` reports whether Gemini is configured without exposing the key.
 
@@ -332,6 +350,29 @@ visibility in ('public', 'private')
 unique(owner_id, slug)
 ```
 
+### public_project_saves
+
+```text
+user_id UUID PK/FK -> users.id on delete cascade
+project_id UUID PK/FK -> projects.id on delete cascade
+created_at timestamptz
+```
+
+### public_project_views
+
+```text
+id UUID PK
+project_id UUID FK -> projects.id on delete cascade
+viewer_id UUID nullable FK -> users.id on delete set null
+source string
+viewed_at timestamptz
+```
+
+Public community detail opens are counted for non-owners. Repeated opens by the
+same signed-in viewer within 30 minutes are collapsed into one view. The viewer
+reference enables unique-viewer analytics without storing an IP address or raw
+browser fingerprint.
+
 ### project_stats
 
 ```text
@@ -394,7 +435,9 @@ ResponseReceived.payload.response is encrypted before persistence.
 Response text is capped by PROMPTHUB_RESPONSE_MAX_CHARS, default 50000 characters.
 Response truncation metadata is stored as response_truncated, response_original_length, and response_storage_limit.
 FilesChanged.payload.changes[].patch is encrypted before persistence.
-Event batch request bodies are capped by PROMPTHUB_EVENT_BATCH_MAX_BODY_BYTES, default 33554432 bytes.
+Event batch request bodies are capped by PROMPTHUB_EVENT_BATCH_MAX_BODY_BYTES, default 8388608 bytes.
+Event batches accept at most 100 events and 2000 aggregate file-change entries.
+POST /api/events/batch is rate limited by a SHA-256 credential fingerprint and by source address; raw bearer tokens are never used as limiter keys.
 Queryable metadata such as project_id, session_id, event_type, timestamps, file paths, and line counts remains plaintext.
 ```
 
@@ -562,3 +605,24 @@ to write to PostgreSQL.
 `0029_admin_user_lifecycle` adds `users.suspended_at` and `users.suspension_reason`.
 Suspended users are rejected by both browser-session and collector-token authentication;
 the sole configured administrator cannot suspend or delete their own account.
+
+`0032_public_project_saves` adds per-user saved public projects.
+
+`0033_support_inquiries` stores encrypted support inquiries and notification delivery state.
+
+`0034_public_project_views` adds privacy-conscious public project view events and time-series indexes.
+### `admin_alert_states`
+
+관리자별 운영 알림 처리 상태를 저장합니다. `alert_key`와 현재 조건의 해시를 함께 기록해 읽음, 24시간 보류, 해결 상태를 유지하며 조건이 달라지면 다시 읽지 않은 알림으로 노출합니다.
+
+## Weekly project popularity
+
+커뮤니티의 `이번 주 인기` 정렬은 최근 7일의 사용자 행동을 요청 시점에 집계합니다.
+
+```text
+score = unique_viewers × 2
+      + repeat_views × 0.25
+      + new_active_saves × 8
+```
+
+프로젝트 소유자의 조회와 저장은 점수에서 제외됩니다. 조회는 사용자·프로젝트별 30분 중복 방지를 적용하고, 저장은 사용자·프로젝트별 활성 저장 한 건만 인정합니다. 동점이면 신규 저장, 고유 조회자, 최근 프로젝트 활동 순으로 정렬합니다.

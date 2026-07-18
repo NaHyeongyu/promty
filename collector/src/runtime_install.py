@@ -25,6 +25,7 @@ RUNTIME_MODULES: tuple[str, ...] = (
     "payloads.py",
     "response_capture.py",
     "runtime_install.py",
+    "secure_storage.py",
     "sequence.py",
     "session_index.py",
     "updater.py",

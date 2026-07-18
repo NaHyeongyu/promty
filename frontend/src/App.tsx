@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { AppLoadingPage, NotFoundPage } from "./components/app/AppStatusPages";
-import { appRouteFromPathname, isLegacyWorkspaceSearch } from "./routing";
+import { appRouteFromPathname } from "./routing";
 import "./App.css";
 
 const AdminApp = lazy(() =>
@@ -41,13 +41,8 @@ function App() {
   else if (route === "collector-docs-ai") page = <CollectorDocsPage audience="ai" />;
   else if (route === "cli-login") page = <CliLoginPage />;
   else if (route === "workspace") page = <AuthenticatedApp />;
-  else if (route === "landing") {
-    page = isLegacyWorkspaceSearch(window.location.search) ? (
-      <AuthenticatedApp />
-    ) : (
-      <LandingPage />
-    );
-  } else if (route === "product") page = <ProductPage />;
+  else if (route === "landing") page = <LandingPage />;
+  else if (route === "product") page = <ProductPage />;
   else page = <NotFoundPage />;
 
   return <Suspense fallback={<AppLoadingPage />}>{page}</Suspense>;

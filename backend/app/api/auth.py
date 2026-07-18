@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import secrets
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib import parse
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -17,10 +19,12 @@ from app.core.security import (
     issue_web_access_token,
     is_admin_user,
     require_web_user,
+    revoke_web_session_token,
 )
 from app.db.session import get_db
 from app.models.tokens import CollectorToken
 from app.models.users import User
+from app.models.web_sessions import WebSession
 from app.schemas.auth import CurrentUserResponse, LogoutResponse
 from app.services.github_oauth import (
     GITHUB_CLI_SCOPE,
@@ -239,12 +243,19 @@ def finish_github_login(
         )
 
     if mode == "web":
+        web_session = WebSession(
+            id=uuid4(),
+            user_id=user.id,
+            expires_at=datetime.now(timezone.utc)
+            + timedelta(seconds=settings.access_token_ttl_seconds),
+        )
+        db.add(web_session)
         db.commit()
         return_to = validate_web_return_to(str(payload.get("return_to", "")))
         response = RedirectResponse(return_to, status_code=status.HTTP_302_FOUND)
         response.set_cookie(
             key=settings.session_cookie_name,
-            value=issue_web_access_token(user),
+            value=issue_web_access_token(user, session_id=web_session.id),
             httponly=True,
             secure=settings.session_cookie_secure,
             samesite=settings.session_cookie_samesite,
@@ -297,7 +308,20 @@ def read_current_user(user: User = Depends(require_web_user)) -> dict[str, Any]:
 
 
 @router.post("/logout", response_model=LogoutResponse)
-def logout(response: Response) -> dict[str, str]:
+def logout(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    authorization = request.headers.get("authorization")
+    scheme, _, bearer_token = authorization.partition(" ") if authorization else ("", "", "")
+    token = (
+        bearer_token
+        if scheme.lower() == "bearer" and bearer_token
+        else request.cookies.get(settings.session_cookie_name)
+    )
+    revoke_web_session_token(db, token)
+    db.commit()
     response.delete_cookie(
         key=settings.session_cookie_name,
         path="/",

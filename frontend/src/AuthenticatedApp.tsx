@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { fetchCurrentUser, logoutSession } from "./api/auth";
+import { updateAdminAlertState } from "./api/admin";
 import { UnauthorizedError } from "./api/client";
 import { AdminDashboard } from "./components/app/AdminDashboard";
 import { AccountWorkspaceRoute } from "./components/app/AccountWorkspaceRoute";
 import { AuthLoadingPage, WebLoginPage } from "./components/app/AuthScreens";
 import { ProjectsPage } from "./components/app/ProjectsPage";
 import { CommunityHubPage } from "./components/app/CommunityHubPage";
+import { CollectorUpdateModal } from "./components/app/CollectorUpdateModal";
 import { PublicProjectsPage } from "./components/app/PublicProjectsPage";
 import { ReviewQueueDrawer } from "./components/app/ReviewQueueDrawer";
 import { RepositoryConnector } from "./components/app/RepositoryConnector";
@@ -19,6 +21,8 @@ import {
 } from "./components/project-detail";
 import { API_URL } from "./config";
 import { formatRelativeTimestamp } from "./lib/formatters";
+import { getCollectorHealth } from "./lib/collectorHealth";
+import { isCollectorUpdateAvailable } from "./lib/collectorVersion";
 import { githubFileUrl } from "./lib/github";
 import { useI18n } from "./i18n/I18nProvider";
 import { useAccountSettings } from "./hooks/useAccountSettings";
@@ -90,6 +94,11 @@ export function AuthenticatedApp() {
   const [isReviewQueueOpen, setIsReviewQueueOpen] = useState(
     () => new URLSearchParams(window.location.search).get("view") === "reviews",
   );
+  const [isCollectorUpdateOpen, setIsCollectorUpdateOpen] = useState(false);
+  const [collectorVerificationStartedAt, setCollectorVerificationStartedAt] =
+    useState<number | null>(null);
+  const [collectorUpdateTargetVersion, setCollectorUpdateTargetVersion] =
+    useState<string | null>(null);
   const [reviewQueueProjectId, setReviewQueueProjectId] = useState<string | null>(null);
   const [unresolvedProjectRouteKey, setUnresolvedProjectRouteKey] =
     useState<string | null>(null);
@@ -188,6 +197,63 @@ export function AuthenticatedApp() {
     loadAdminOverview,
   } = useAdminOverview({ onUnauthorized: handleUnauthorized });
   const accountSettings = useAccountSettings({ onUnauthorized: handleUnauthorized });
+  const refreshAccountOverviewRef = useRef(accountSettings.refreshAccountOverview);
+  useEffect(() => {
+    refreshAccountOverviewRef.current = accountSettings.refreshAccountOverview;
+  }, [accountSettings.refreshAccountOverview]);
+  const activeCollectorTokens = useMemo(
+    () =>
+      accountSettings.accountOverview?.collector_tokens.filter(
+        (token) => token.status === "active",
+      ) ?? [],
+    [accountSettings.accountOverview],
+  );
+  const latestCollectorToken = [...activeCollectorTokens]
+    .filter((token) => token.last_used_at)
+    .sort(
+      (first, second) =>
+        Date.parse(second.last_used_at ?? "") - Date.parse(first.last_used_at ?? ""),
+    )[0];
+  const currentCollectorVersion = latestCollectorToken?.collector_version ?? null;
+  const latestCollectorVersion =
+    accountSettings.accountOverview?.latest_collector_version ?? "";
+  const collectorUpdateComplete = Boolean(
+    collectorVerificationStartedAt &&
+      collectorUpdateTargetVersion &&
+      activeCollectorTokens.some(
+        (token) =>
+          token.last_used_at &&
+          Date.parse(token.last_used_at) >= collectorVerificationStartedAt &&
+          !isCollectorUpdateAvailable(
+            token.collector_version,
+            collectorUpdateTargetVersion,
+          ),
+      ),
+  );
+  const closeCollectorUpdate = useCallback(() => {
+    setIsCollectorUpdateOpen(false);
+    setCollectorVerificationStartedAt(null);
+  }, []);
+  useEffect(() => {
+    if (
+      !isCollectorUpdateOpen ||
+      collectorVerificationStartedAt === null ||
+      collectorUpdateComplete
+    ) {
+      return;
+    }
+    void refreshAccountOverviewRef.current();
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refreshAccountOverviewRef.current();
+      }
+    }, 5_000);
+    return () => window.clearInterval(intervalId);
+  }, [
+    collectorUpdateComplete,
+    collectorVerificationStartedAt,
+    isCollectorUpdateOpen,
+  ]);
   const previewMode = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("preview");
@@ -195,6 +261,7 @@ export function AuthenticatedApp() {
   const previewEmptyProjects = previewMode === "empty-projects";
   const previewGithubUnlinkedProject = previewMode === "github-unlinked-project";
   const previewProjectLoading = previewMode === "project-loading";
+  const previewCommunity = previewMode === "community";
   const {
     bookmarkedProjects,
     displayProjects,
@@ -233,6 +300,7 @@ export function AuthenticatedApp() {
     projectRouteKey(project) === routeKey || project.id === routeKey;
   const {
     activeProjectMemoryGenerationIds,
+    approveProjectMemoryForAgents,
     bookmarkUpdatingProjectId,
     createProjectFromRepository,
     deleteSelectedProject,
@@ -315,6 +383,20 @@ export function AuthenticatedApp() {
     clearWorkspaceData();
     accountSettings.clearAccountSettings();
     setErrorMessage(null);
+    if (previewCommunity) {
+      setCurrentUser({
+        avatar_url: null,
+        email: "preview@promty.dev",
+        github_repository_access: false,
+        id: "community-preview-user",
+        is_admin: false,
+        preferred_locale: "en",
+        username: "promty.preview",
+      });
+      setLocale("en");
+      setAuthStatus("authenticated");
+      return;
+    }
     try {
       const user = await fetchCurrentUser();
       setCurrentUser(user);
@@ -351,6 +433,25 @@ export function AuthenticatedApp() {
   useEffect(() => {
     void loadSession();
   }, []);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated" || previewCommunity) {
+      return;
+    }
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        void refreshAccountOverviewRef.current();
+      }
+    };
+    const intervalId = window.setInterval(refreshWhenVisible, 5 * 60 * 1000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [authStatus, previewCommunity]);
 
   useWorkspaceAdminEffect({
     activeItem,
@@ -649,51 +750,70 @@ export function AuthenticatedApp() {
   const projectDetailRenderData =
     selectedProjectDetailData ?? emptyProjectDetailData(selectedProject);
   const reviewProjectCount = pendingReviewProjectCount(projectCatalog);
-  const activeCollectorTokens =
-    accountSettings.accountOverview?.collector_tokens.filter(
-      (token) => token.status === "active",
-    ) ?? [];
-  const latestCollectorToken = activeCollectorTokens
-    .filter((token) => token.last_used_at)
-    .sort(
-      (first, second) =>
-        Date.parse(second.last_used_at ?? "") - Date.parse(first.last_used_at ?? ""),
-    )[0];
-  const latestCollectorUsedAt = latestCollectorToken?.last_used_at ?? null;
-  const latestCollectorAge = latestCollectorUsedAt
-    ? Date.now() - Date.parse(latestCollectorUsedAt)
-    : null;
-  const collectorNeedsUpdate = Boolean(
-    latestCollectorToken &&
-      latestCollectorUsedAt &&
-      latestCollectorToken.collector_version !==
-        accountSettings.accountOverview?.latest_collector_version,
-  );
-  const collectorStatus = !accountSettings.accountOverview
-    ? { detail: t("collector.checkingStatus"), tone: "muted" as const }
-    : activeCollectorTokens.length === 0
-      ? { detail: t("collector.notSetUp"), tone: "attention" as const }
-      : collectorNeedsUpdate
-        ? {
-            detail: t("collector.updateTo", { version: accountSettings.accountOverview.latest_collector_version }),
-            tone: "attention" as const,
-          }
-      : latestCollectorUsedAt === null
-        ? { detail: t("settings.statusWaitingSync"), tone: "attention" as const }
-        : {
-            detail: t("collector.synced", {
-              time: formatRelativeTimestamp(latestCollectorUsedAt) ?? t("common.recently"),
-            }),
-            tone:
-              latestCollectorAge !== null && latestCollectorAge <= 24 * 60 * 60 * 1000
-                ? ("connected" as const)
-                : ("attention" as const),
-          };
+  const collectorHealth = getCollectorHealth(accountSettings.accountOverview);
+  const openCollectorUpdate = () => {
+    if (!latestCollectorVersion) return;
+    setCollectorUpdateTargetVersion(latestCollectorVersion);
+    setCollectorVerificationStartedAt(null);
+    setIsCollectorUpdateOpen(true);
+  };
+  const collectorLastSeen = collectorHealth.latestUsedAt
+    ? formatRelativeTimestamp(collectorHealth.latestUsedAt) ?? t("common.recently")
+    : t("common.recently");
+  const collectorStatus = (() => {
+    switch (collectorHealth.state) {
+      case "checking":
+        return {
+          detail: t("collector.checkingStatus"),
+          tone: "muted" as const,
+          updateAvailable: false,
+        };
+      case "not-configured":
+        return {
+          detail: t("collector.notSetUp"),
+          tone: "attention" as const,
+          updateAvailable: false,
+        };
+      case "waiting":
+        return {
+          detail: t("settings.statusWaitingSync"),
+          tone: "attention" as const,
+          updateAvailable: false,
+        };
+      case "update-required":
+        return {
+          detail: t("collector.updateTo", {
+            version: accountSettings.accountOverview?.latest_collector_version ?? "",
+          }),
+          tone: "attention" as const,
+          updateAvailable: true,
+        };
+      case "delayed":
+        return {
+          detail: t("collector.delayed", { time: collectorLastSeen }),
+          tone: "attention" as const,
+          updateAvailable: collectorHealth.updateAvailable,
+        };
+      case "disconnected":
+        return {
+          detail: t("collector.disconnected", { time: collectorLastSeen }),
+          tone: "danger" as const,
+          updateAvailable: collectorHealth.updateAvailable,
+        };
+      default:
+        return {
+          detail: t("collector.synced", { time: collectorLastSeen }),
+          tone: "connected" as const,
+          updateAvailable: false,
+        };
+    }
+  })();
 
   return (
     <div className="app-shell">
       <WorkspaceSidebar
         activeItem={activeItem}
+        adminAlertCount={adminOverview?.action_summary?.unread ?? adminOverview?.action_items.length ?? 0}
         canUseAdmin={canUseAdmin}
         collectorStatus={collectorStatus}
         currentUser={currentUser}
@@ -701,11 +821,27 @@ export function AuthenticatedApp() {
         onLogout={logout}
         onOpenProject={openProjectDetail}
         onOpenReviewQueue={openReviewQueue}
+        onOpenCollectorUpdate={openCollectorUpdate}
         onSelectItem={selectSidebarItem}
         pendingReviewProjectCount={reviewProjectCount}
         savedProjectCount={bookmarkedProjects.length}
         savedProjects={sidebarBookmarkedProjects}
         selectedProjectId={selectedProjectId}
+      />
+
+      <CollectorUpdateModal
+        currentVersion={currentCollectorVersion}
+        defaultEnvironment={
+          ["promty.org", "www.promty.org"].includes(window.location.hostname)
+            ? "prod"
+            : "dev"
+        }
+        isComplete={collectorUpdateComplete}
+        isOpen={isCollectorUpdateOpen}
+        isVerifying={collectorVerificationStartedAt !== null}
+        latestVersion={collectorUpdateTargetVersion ?? latestCollectorVersion}
+        onBeginVerification={() => setCollectorVerificationStartedAt(Date.now())}
+        onClose={closeCollectorUpdate}
       />
 
       <main className={`page${isShowingProjectDetail ? " page-project-detail" : ""}`}>
@@ -723,6 +859,19 @@ export function AuthenticatedApp() {
               type="button"
             >
               <X aria-hidden="true" size={16} strokeWidth={1.5} />
+            </button>
+          </div>
+        ) : null}
+        {collectorHealth.state === "disconnected" ? (
+          <div className="collector-disconnected-notice" role="alert">
+            <span>
+              <strong>{t("collector.alertTitle")}</strong>
+              <small>
+                {t("collector.alertDescription", { time: collectorLastSeen })}
+              </small>
+            </span>
+            <button onClick={() => selectSidebarItem("settings")} type="button">
+              {t("collector.openSettings")}
             </button>
           </div>
         ) : null}
@@ -766,6 +915,11 @@ export function AuthenticatedApp() {
                 selectedProject ? copiedProjectId === selectedProject.id : false
               }
               onActivityNavigationChange={selectActivityNavigation}
+              onApproveProjectMemory={
+                selectedProject
+                  ? () => approveProjectMemoryForAgents(selectedProject.id)
+                  : undefined
+              }
               onGenerateProjectMemory={
                 selectedProject
                   ? () => generateProjectMemory(selectedProject.id)
@@ -916,8 +1070,17 @@ export function AuthenticatedApp() {
               errorMessage={adminError}
               isLoading={isAdminLoading}
               onOpenProject={openProjectDetail}
+              onOpenActionItem={(item) => {
+                const section = item.target?.split(":", 1)[0] || "overview";
+                window.location.assign(`/admin?section=${encodeURIComponent(section)}`);
+              }}
               onRefresh={() => {
                 void loadAdminOverview();
+              }}
+              onUpdateActionItem={async (item, state) => {
+                if (!item.key || !item.condition_hash) return;
+                await updateAdminAlertState(item.key, item.condition_hash, state);
+                await loadAdminOverview();
               }}
               overview={adminOverview}
             />

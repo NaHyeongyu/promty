@@ -14,9 +14,12 @@ from app.models.events import Event
 from app.models.github_connections import GitHubConnection
 from app.models.projects import Project
 from app.models.project_memory_batches import ProjectMemoryBatch
+from app.models.public_project_saves import PublicProjectSave
+from app.models.public_project_views import PublicProjectView
 from app.models.sessions import Session as PromptSession
 from app.models.tokens import CollectorToken
 from app.models.users import User
+from app.schemas.admin_responses import AdminPageResponse, AdminProjectResponse
 from app.services.admin.control_center import (
     admin_audit_logs_response,
     admin_projects_response,
@@ -53,11 +56,18 @@ def test_control_center_inventory_and_security_actions(db: Session) -> None:
         created_at=now,
         updated_at=now,
     )
+    viewer = User(
+        github_id=f"control-center-viewer-{marker}",
+        email=f"control-center-viewer-{marker}@example.com",
+        username=f"control-center-viewer-{marker}",
+        created_at=now,
+        updated_at=now,
+    )
     project = Project(
         owner=user,
         name="Control center project",
         slug=f"control-center-{marker}",
-        visibility="private",
+        visibility="public",
         git_remote="https://github.com/promty/control-center",
         created_at=now,
         updated_at=now,
@@ -68,7 +78,7 @@ def test_control_center_inventory_and_security_actions(db: Session) -> None:
         started_at=now,
         tool="codex-cli",
     )
-    db.add_all((user, project, prompt_session))
+    db.add_all((user, viewer, project, prompt_session))
     db.flush()
     token = CollectorToken(
         name="Control center collector",
@@ -125,12 +135,35 @@ def test_control_center_inventory_and_security_actions(db: Session) -> None:
                 status_code=200,
                 created_at=now,
             ),
+            PublicProjectView(
+                project_id=project.id,
+                viewer_id=viewer.id,
+                viewed_at=now - timedelta(hours=2),
+            ),
+            PublicProjectView(
+                project_id=project.id,
+                viewer_id=viewer.id,
+                viewed_at=now - timedelta(hours=1),
+            ),
+            PublicProjectSave(
+                project_id=project.id,
+                user_id=viewer.id,
+                created_at=now,
+            ),
         )
     )
     db.flush()
 
     users = admin_users_response(db, limit=200, offset=0, query=marker)
-    projects = admin_projects_response(db, limit=200, offset=0, query=marker)
+    projects = admin_projects_response(
+        db,
+        limit=200,
+        offset=0,
+        query=marker,
+        sort="popularity",
+        visibility="public",
+    )
+    AdminPageResponse[AdminProjectResponse].model_validate(projects)
     jobs = admin_memory_jobs_response(db, job_status="stale", limit=200, offset=0)
     audit = admin_audit_logs_response(db, limit=200, offset=0)
     searched_jobs = admin_memory_jobs_response(
@@ -158,6 +191,12 @@ def test_control_center_inventory_and_security_actions(db: Session) -> None:
     assert managed_user["counts"]["prompts"] == 1
     assert managed_project["memory_count"] == 1
     assert managed_project["prompt_count"] == 1
+    assert managed_project["view_count"] == 2
+    assert managed_project["views_7d"] == 2
+    assert managed_project["unique_viewers_7d"] == 1
+    assert managed_project["save_count"] == 1
+    assert managed_project["saves_7d"] == 1
+    assert managed_project["weekly_popularity_score"] == 10.25
     assert managed_job["stale"] is True
     assert any(item["action"] == "admin.control_center.test" for item in audit["items"])
     assert searched_jobs["total"] == 1

@@ -110,8 +110,10 @@ def test_project_cleaner_caps_utf8_body_sections_and_source_ids() -> None:
     assert len(cleaned["sections"]["important_decisions"]) == MAX_SEMANTIC_LIST_ITEMS
     assert len(cleaned["sections"]["current_direction"]) <= MAX_PROJECT_SECTION_TEXT_CHARS
     assert len(cleaned["sections"]["product_goal"]) <= MAX_PROJECT_SECTION_TEXT_CHARS
+    assert cleaned["sections"]["instructions_for_future_ai_agents"] == []
     assert len(cleaned["source_memory_ids"]) == MAX_SOURCE_IDS
     assert len(cleaned["warnings"]) == MAX_SEMANTIC_LIST_ITEMS
+    assert "removed pending user review" in cleaned["warnings"][-1]
 
 
 def test_draft_payload_metadata_stores_generation_summary_not_full_response(

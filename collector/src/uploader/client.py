@@ -38,3 +38,20 @@ class PromptHubUploader:
         if isinstance(event_ids, list):
             return [event_id for event_id in event_ids if isinstance(event_id, str)]
         return [event["id"] for event in events if isinstance(event.get("id"), str)]
+
+    def heartbeat(self) -> None:
+        headers = {
+            "Content-Type": "application/json",
+            "X-Promty-Collector-Version": COLLECTOR_VERSION,
+        }
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+
+        req = request.Request(
+            f"{self.api_url}/api/events/heartbeat",
+            data=b"{}",
+            headers=headers,
+            method="POST",
+        )
+        with request.urlopen(req, timeout=self.timeout) as response:
+            response.read()

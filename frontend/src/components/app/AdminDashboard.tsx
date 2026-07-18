@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Clock3,
   Database,
+  Eye,
   Folder,
   RefreshCw,
   ServerCog,
@@ -35,6 +36,7 @@ export function AdminDashboard({
   onOpenActionItem,
   onOpenProject,
   onRefresh,
+  onUpdateActionItem,
   overview,
 }: {
   errorMessage: string | null;
@@ -42,10 +44,21 @@ export function AdminDashboard({
   onOpenActionItem?: (item: AdminOverview["action_items"][number]) => void;
   onOpenProject?: (projectId: string) => void;
   onRefresh: () => void;
+  onUpdateActionItem?: (
+    item: AdminOverview["action_items"][number],
+    state: "read" | "resolved" | "snoozed",
+  ) => Promise<void> | void;
   overview: AdminOverview | null;
 }) {
   const { locale, serverText, text } = useAdminLocale();
   const metrics = overview?.metrics;
+  const viewAnalytics = overview?.view_analytics ?? {
+    top_projects: [],
+    total_views: metrics?.public_project_views ?? 0,
+    unique_viewers_7d: metrics?.unique_public_viewers_7d ?? 0,
+    views_24h: metrics?.public_project_views_24h ?? 0,
+    views_7d: metrics?.public_project_views_7d ?? 0,
+  };
   const metricCards = [
     {
       icon: User,
@@ -85,8 +98,24 @@ export function AdminDashboard({
         (metrics?.pending_jobs ?? 0) + (metrics?.running_jobs ?? 0),
       ),
     },
+    {
+      icon: Eye,
+      label: text("Project Views", "프로젝트 조회"),
+      sublabel: text(
+        `${formatCompactNumber(metrics?.public_project_views_24h ?? 0)} last 24h`,
+        `최근 24시간 ${formatCompactNumber(metrics?.public_project_views_24h ?? 0)}회`,
+      ),
+      value: formatCompactNumber(metrics?.public_project_views ?? 0),
+    },
   ];
   const actionItems = overview?.action_items ?? [];
+  const actionSummary = overview?.action_summary ?? {
+    active: actionItems.length,
+    read: 0,
+    resolved: 0,
+    snoozed: 0,
+    unread: actionItems.length,
+  };
   const sessionGaps = overview?.ai_activity.session_gaps ?? [];
   const recentMemory = overview?.memory_monitor.recent_artifacts ?? [];
   const recentAdminAuditLogs = overview?.recent_admin_audit_logs ?? [];
@@ -162,38 +191,92 @@ export function AdminDashboard({
         <section className="admin-panel is-span-2" aria-label={text("Action items", "조치 항목")}>
           <div className="admin-panel-header">
             <h3>{text("Needs Attention", "확인 필요")}</h3>
-            <span>{actionItems.length}</span>
+            <span>{text(`${actionSummary.unread} unread · ${actionSummary.snoozed} later`, `읽지 않음 ${actionSummary.unread}개 · 보류 ${actionSummary.snoozed}개`)}</span>
           </div>
           <div className="admin-action-list">
             {actionItems.length > 0 ? (
-              actionItems.map((item) => (
-                <button
-                  className="admin-action-item"
-                  data-severity={item.severity}
-                  key={`${item.area}-${item.title}`}
-                  onClick={() => onOpenActionItem?.(item)}
-                  type="button"
-                >
-                  <AlertTriangle aria-hidden="true" size={17} strokeWidth={1.5} />
-                  <div>
-                    <span>
-                      {severityLabel(item.severity, locale === "ko")} · {serverText(item.area)}
-                    </span>
-                    <strong>{serverText(item.title)}</strong>
-                    <small>{serverText(item.detail)}</small>
+              actionItems.map((item) => {
+                const canUpdate = Boolean(item.key && item.condition_hash && onUpdateActionItem);
+                return (
+                  <div className="admin-alert-row" data-severity={item.severity} data-state={item.state ?? "unread"} key={item.key ?? `${item.area}-${item.title}`}>
+                    <button
+                      className="admin-action-item"
+                      onClick={async () => {
+                        if ((item.state ?? "unread") === "unread" && canUpdate) await onUpdateActionItem?.(item, "read");
+                        onOpenActionItem?.(item);
+                      }}
+                      type="button"
+                    >
+                      <AlertTriangle aria-hidden="true" size={17} strokeWidth={1.5} />
+                      <div>
+                        <span>
+                          {severityLabel(item.severity, locale === "ko")} · {serverText(item.area)}
+                          {item.state === "snoozed" ? text(" · Snoozed", " · 보류됨") : null}
+                        </span>
+                        <strong>{serverText(item.title)}</strong>
+                        <small>{serverText(item.detail)}</small>
+                      </div>
+                      {item.count !== null ? <strong className="admin-action-count">{formatCompactNumber(item.count)}</strong> : null}
+                    </button>
+                    {canUpdate ? (
+                      <div className="admin-alert-actions">
+                        <button onClick={() => onUpdateActionItem?.(item, "snoozed")} title={text("Remind me in 24 hours", "24시간 뒤 다시 알림")} type="button">
+                          <Clock3 aria-hidden="true" size={14} /> {text("24h later", "24시간 보류")}
+                        </button>
+                        <button onClick={() => onUpdateActionItem?.(item, "resolved")} title={text("Hide until this condition changes", "조건이 바뀔 때까지 숨기기")} type="button">
+                          <CheckCircle2 aria-hidden="true" size={14} /> {text("Resolve", "해결 처리")}
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
-                  {item.count !== null ? (
-                    <strong className="admin-action-count">
-                      {formatCompactNumber(item.count)}
-                    </strong>
-                  ) : null}
-                </button>
-              ))
+                );
+              })
             ) : (
               <div className="admin-empty-line">
                 <CheckCircle2 aria-hidden="true" size={16} strokeWidth={1.5} />
                 {text("No urgent admin actions.", "긴급한 관리자 조치가 없습니다.")}
               </div>
+            )}
+          </div>
+        </section>
+
+        <section className="admin-panel is-span-2" aria-label={text("Public project view analytics", "공개 프로젝트 조회 분석")}>
+          <div className="admin-panel-header">
+            <h3>{text("Public Project Reach", "공개 프로젝트 도달")}</h3>
+            <span>{text(
+              `${formatCompactNumber(viewAnalytics.unique_viewers_7d)} unique viewers / 7d`,
+              `7일 고유 조회자 ${formatCompactNumber(viewAnalytics.unique_viewers_7d)}명`,
+            )}</span>
+          </div>
+          <div className="admin-monitor-list">
+            <div className="admin-monitor-summary">
+              <div>
+                <span>{text("Views 24h", "24시간 조회")}</span>
+                <strong>{formatCompactNumber(viewAnalytics.views_24h)}</strong>
+              </div>
+              <div>
+                <span>{text("Views 7d", "7일 조회")}</span>
+                <strong>{formatCompactNumber(viewAnalytics.views_7d)}</strong>
+              </div>
+            </div>
+            {viewAnalytics.top_projects.length > 0 ? (
+              viewAnalytics.top_projects.map((project) => (
+                <button
+                  className="admin-feed-item admin-view-project-row"
+                  key={project.id}
+                  onClick={() => onOpenProject?.(project.id)}
+                  type="button"
+                >
+                  <span>{project.owner_username}</span>
+                  <strong>{project.name}</strong>
+                  <small>{text(
+                    `${formatCompactNumber(project.views_7d)} views / 7d · ${formatCompactNumber(project.view_count)} total`,
+                    `7일 ${formatCompactNumber(project.views_7d)}회 · 전체 ${formatCompactNumber(project.view_count)}회`,
+                  )}</small>
+                </button>
+              ))
+            ) : (
+              <div className="admin-empty-line">{text("No public project views yet.", "아직 공개 프로젝트 조회가 없습니다.")}</div>
             )}
           </div>
         </section>
@@ -303,7 +386,7 @@ export function AdminDashboard({
                 <span>{project.owner.username}</span>
                 <span>
                   <strong>{text(`${formatCompactNumber(project.counts.prompts)} prompts`, `프롬프트 ${formatCompactNumber(project.counts.prompts)}개`)}</strong>
-                  <small>{text(`${formatCompactNumber(project.counts.memory)} summaries`, `요약 ${formatCompactNumber(project.counts.memory)}개`)}</small>
+                  <small>{text(`${formatCompactNumber(project.counts.memory)} summaries · ${formatCompactNumber(project.counts.views ?? 0)} views`, `요약 ${formatCompactNumber(project.counts.memory)}개 · 조회 ${formatCompactNumber(project.counts.views ?? 0)}회`)}</small>
                 </span>
                 <span>
                   <span className="admin-state-dot" data-on={project.github_connected} />

@@ -6,15 +6,20 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 import pytest
+from starlette.requests import Request
 
 import app.core.security as security
 from app.core.security import (
     JWTError,
+    get_optional_web_user,
     issue_web_access_token,
     require_ingest_token,
     require_web_user,
+    revoke_web_session_token,
     verify_web_access_token,
+    verify_web_access_token_claims,
 )
+from app.models.web_sessions import WebSession
 
 
 class UserStub:
@@ -42,24 +47,118 @@ class DatabaseStub:
         self.flushed = True
 
 
+class WebSessionDatabaseStub:
+    def __init__(self, web_session: object | None) -> None:
+        self.web_session = web_session
+        self.flushed = False
+
+    def get(self, model: type[object], _session_id: object) -> object | None:
+        return self.web_session if model is WebSession else None
+
+    def flush(self) -> None:
+        self.flushed = True
+
+
+def _request_with_session(token: str) -> Request:
+    return Request(
+        {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "https",
+            "path": "/api/auth/me",
+            "raw_path": b"/api/auth/me",
+            "query_string": b"",
+            "headers": [(b"cookie", f"prompthub_session={token}".encode("ascii"))],
+            "client": ("127.0.0.1", 1234),
+            "server": ("testserver", 443),
+        }
+    )
+
+
 def test_web_access_token_round_trip() -> None:
     user = UserStub()
+    session_id = uuid4()
 
-    token = issue_web_access_token(user)
+    token = issue_web_access_token(user, session_id=session_id)
 
     assert verify_web_access_token(token) == user.id
+    assert verify_web_access_token_claims(token) == (user.id, session_id)
     assert all("=" not in part for part in token.split("."))
 
 
 def test_web_access_token_rejects_tampered_signature() -> None:
     user = UserStub()
-    token = issue_web_access_token(user)
+    token = issue_web_access_token(user, session_id=uuid4())
     header, payload, signature = token.split(".")
 
     tampered_token = f"{header}.{payload}.{signature[:-1]}x"
 
     with pytest.raises(JWTError):
         verify_web_access_token(tampered_token)
+
+
+def test_web_access_token_rejects_oversized_input() -> None:
+    with pytest.raises(JWTError):
+        verify_web_access_token_claims("x" * (security.WEB_ACCESS_TOKEN_MAX_CHARS + 1))
+
+
+def test_web_token_does_not_reuse_other_application_secrets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = UserStub()
+    monkeypatch.setattr(
+        security,
+        "settings",
+        replace(
+            security.settings,
+            api_token="shared-ingest-secret",
+            jwt_secret=None,
+            oauth_state_secret="shared-oauth-secret",
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="PROMPTHUB_JWT_SECRET"):
+        issue_web_access_token(user, session_id=uuid4())
+
+
+def test_web_auth_requires_an_active_server_side_session() -> None:
+    user = UserStub()
+    session_id = uuid4()
+    token = issue_web_access_token(user, session_id=session_id)
+    web_session = type(
+        "WebSessionStub",
+        (),
+        {
+            "expires_at": datetime.now(timezone.utc).replace(year=2099),
+            "id": session_id,
+            "revoked_at": None,
+            "user": user,
+            "user_id": user.id,
+        },
+    )()
+    db = WebSessionDatabaseStub(web_session)
+
+    assert (
+        get_optional_web_user(
+            _request_with_session(token),
+            authorization=None,
+            db=db,  # type: ignore[arg-type]
+        )
+        is user
+    )
+
+    assert revoke_web_session_token(db, token) is True  # type: ignore[arg-type]
+    assert web_session.revoked_at is not None
+    assert db.flushed is True
+    assert (
+        get_optional_web_user(
+            _request_with_session(token),
+            authorization=None,
+            db=db,  # type: ignore[arg-type]
+        )
+        is None
+    )
 
 
 def test_ingest_requires_authorization_by_default(monkeypatch: pytest.MonkeyPatch) -> None:

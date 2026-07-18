@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import settings
 from app.core.locales import normalize_app_locale
+from app.core.time import utc_now
 from app.core.text_limits import (
     PROJECT_MEMORY_BODY_MAX_BYTES,
     PROJECT_MEMORY_WARNING_MAX_ITEMS,
@@ -287,10 +288,7 @@ def _local_project_memory_snapshot_from_context(
         for memory in source_memory_contexts
         if isinstance((memory_id := memory.get("id")), str) and memory_id
     ]
-    product_goal = (
-        project_context.get("description")
-        or localized["default_goal"]
-    )
+    product_goal = project_context.get("description") or localized["default_goal"]
     current_direction = (
         source_memory_contexts[0].get("summary")
         if source_memory_contexts and source_memory_contexts[0].get("summary")
@@ -390,7 +388,8 @@ def _local_project_memory_snapshot_from_context(
                 if important_decisions
                 else f"- {localized['no_decisions']}"
             ),
-            f"## {localized['assumptions']}\n" + "\n".join(f"- {item}" for item in technical_assumptions),
+            f"## {localized['assumptions']}\n"
+            + "\n".join(f"- {item}" for item in technical_assumptions),
             f"## {localized['instructions']}\n"
             + "\n".join(f"- {item}" for item in future_instructions),
         ]
@@ -764,6 +763,7 @@ def compile_project_memory(
 def update_project_memory_snapshot(
     db: DBSession,
     *,
+    approved_by: UUID | None = None,
     body_markdown: str,
     project_id: UUID,
 ) -> Artifact:
@@ -817,6 +817,7 @@ def update_project_memory_snapshot(
             edit_warning,
         ],
     }
+    approved_at = utc_now()
     payload = _project_memory_payload(
         generator=existing.generator if existing and existing.generator else LOCAL_MEMORY_GENERATOR,
         project_context=_project_context(project),
@@ -831,6 +832,8 @@ def update_project_memory_snapshot(
             "memory_scope": "project",
             "project_memory_snapshot": snapshot,
             "review_state": REVIEW_STATE_EDITED,
+            "agent_context_approved_at": iso(approved_at),
+            "agent_context_approved_by": str(approved_by) if approved_by else None,
             "source_memory_ids": snapshot.get("source_memory_ids") or [],
             "user_edited": True,
         },
@@ -839,6 +842,40 @@ def update_project_memory_snapshot(
         session_id=None,
         storage_key=f"memory/project/{project_id}/latest",
     )
+
+
+def approve_project_memory_snapshot(
+    db: DBSession,
+    *,
+    approved_by: UUID,
+    project_id: UUID,
+) -> Artifact:
+    artifact = db.execute(
+        select(Artifact)
+        .where(
+            Artifact.project_id == project_id,
+            Artifact.type == PROJECT_MEMORY_ARTIFACT_TYPE,
+        )
+        .order_by(desc(Artifact.updated_at), desc(Artifact.created_at), desc(Artifact.id))
+        .with_for_update()
+        .limit(1)
+    ).scalar_one_or_none()
+    if artifact is None:
+        raise ValueError("Project Memory not found")
+    metadata = artifact.metadata_ if isinstance(artifact.metadata_, dict) else {}
+    snapshot = metadata.get("project_memory_snapshot")
+    if not isinstance(snapshot, dict):
+        raise ValueError("Project Memory snapshot is unavailable")
+    approved_at = utc_now()
+    artifact.metadata_ = {
+        **metadata,
+        "agent_context_approved_at": iso(approved_at),
+        "agent_context_approved_by": str(approved_by),
+        "review_state": REVIEW_STATE_VERIFIED,
+    }
+    artifact.updated_at = approved_at
+    db.flush()
+    return artifact
 
 
 def get_latest_project_memory(db: DBSession, *, project_id: UUID) -> Artifact | None:

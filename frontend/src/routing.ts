@@ -12,6 +12,9 @@ export function appRouteFromPathname(pathname: string): AppRoute {
   const normalizedPathname = pathname.replace(/\/+$/, "") || "/";
 
   if (normalizedPathname === "/") {
+    return "workspace";
+  }
+  if (normalizedPathname === "/about") {
     return "landing";
   }
   if (normalizedPathname === "/product") {

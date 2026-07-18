@@ -23,6 +23,7 @@ from app.services.memory.serializers import (
     serialize_memory_artifact_summary,
 )
 from app.services.memory.artifacts import (
+    approve_project_memory_snapshot,
     list_project_memory_artifacts,
     generate_due_memory_artifacts_for_session,
     get_latest_project_memory,
@@ -298,7 +299,24 @@ def update_project_memory_response(
     lock_project_memory(db, project.id)
     artifact = update_project_memory_snapshot(
         db,
+        approved_by=user.id,
         body_markdown=body_markdown,
+        project_id=project.id,
+    )
+    return serialize_project_memory_snapshot(artifact) or {"artifact": None, "snapshot": None}
+
+
+def approve_project_memory_response(
+    db: DBSession,
+    *,
+    project_id: UUID,
+    user: User,
+) -> dict[str, Any]:
+    project = project_for_user(db, project_id, user)
+    lock_project_memory(db, project.id)
+    artifact = approve_project_memory_snapshot(
+        db,
+        approved_by=user.id,
         project_id=project.id,
     )
     return serialize_project_memory_snapshot(artifact) or {"artifact": None, "snapshot": None}

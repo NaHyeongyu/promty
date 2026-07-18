@@ -4,6 +4,7 @@ import {
   previewPublicProjectDetail,
   previewPublicProfile,
   previewPublicProjects,
+  previewRecordPublicProjectView,
   previewPublishedFlowDetail,
   previewPublishedFlows,
 } from "./communityPreviewData";
@@ -41,6 +42,9 @@ describe("community preview data", () => {
     expect(profile?.items.some((item) => item.id === project.id)).toBe(true);
     expect(detail?.owner.id).toBe(project.owner.id);
     expect(detail?.project.visibility).toBe("public");
+    const initialViews = detail?.view_count ?? 0;
+    expect(previewRecordPublicProjectView(project.id)?.view_count).toBe(initialViews + 1);
+    expect(previewRecordPublicProjectView(project.id)?.recorded).toBe(false);
   });
 
   it("provides prompt-flow list and detail previews", () => {

@@ -10,6 +10,7 @@ import type {
   ProjectSummary,
   PublicProjectDetailResponse,
   PublicProjectPage,
+  PublicProjectViewAnalytics,
   PublicProfileResponse,
 } from "../workspace/types";
 import {
@@ -17,6 +18,7 @@ import {
   previewPublicProjectDetail,
   previewPublicProfile,
   previewPublicProjects,
+  previewRecordPublicProjectView,
   previewUpdatePublicProjectSave,
 } from "../workspace/communityPreviewData";
 import { requestJson, requestJsonBody, requestVoid } from "./client";
@@ -121,7 +123,7 @@ export function fetchPublicProjects(
     query?: string;
     savedOnly?: boolean;
     signal?: AbortSignal;
-    sort?: "newest" | "recent";
+    sort?: "newest" | "popular" | "recent";
   } = {},
 ): Promise<PublicProjectPage> {
   if (isCommunityPreview()) {
@@ -130,13 +132,13 @@ export function fetchPublicProjects(
       offset: options.offset ?? 0,
       query: options.query,
       savedOnly: options.savedOnly ?? false,
-      sort: options.sort ?? "recent",
+      sort: options.sort ?? "popular",
     }));
   }
   const params = new URLSearchParams({
     limit: String(options.limit ?? 24),
     offset: String(options.offset ?? 0),
-    sort: options.sort ?? "recent",
+    sort: options.sort ?? "popular",
   });
   if (options.query?.trim()) params.set("query", options.query.trim());
   if (options.savedOnly) params.set("saved_only", "true");
@@ -165,6 +167,26 @@ export function fetchPublicProjectDetail(
     { signal },
     {
       errorMessage: "Public project request failed",
+      unauthorizedMessage: "Sign in again before opening this public project.",
+    },
+  );
+}
+
+export function recordPublicProjectView(
+  projectId: string,
+): Promise<PublicProjectViewAnalytics> {
+  if (isCommunityPreview()) {
+    const response = previewRecordPublicProjectView(projectId);
+    return response
+      ? Promise.resolve(response)
+      : Promise.reject(new Error("Preview project not found"));
+  }
+  return requestJsonBody<PublicProjectViewAnalytics>(
+    `/api/projects/public/${encodeURIComponent(projectId)}/view`,
+    "POST",
+    {},
+    {
+      errorMessage: "Public project view could not be recorded",
       unauthorizedMessage: "Sign in again before opening this public project.",
     },
   );
@@ -382,6 +404,17 @@ export async function generateProjectMemory(
     clearProjectMemoryIdempotencyKey(projectId);
   }
   return response;
+}
+
+export function approveProjectMemory(projectId: string): Promise<unknown> {
+  return requestJson(
+    `/api/projects/${encodeURIComponent(projectId)}/memory/project/approve`,
+    { method: "POST" },
+    {
+      errorMessage: "Project memory approval failed",
+      unauthorizedMessage: "Sign in again before approving project memory.",
+    },
+  );
 }
 
 export function fetchProjectMemoryArtifacts(

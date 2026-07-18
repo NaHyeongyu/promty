@@ -60,6 +60,20 @@ export function useAccountSettings({ onUnauthorized }: UseAccountSettingsOptions
     }
   };
 
+  const refreshAccountOverview = async (signal?: AbortSignal) => {
+    try {
+      setAccountOverview(await fetchAccountOverview(signal));
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+      if (error instanceof UnauthorizedError) {
+        onUnauthorized();
+        setAccountOverview(null);
+      }
+    }
+  };
+
   const createCollectorToken = async (
     name?: string,
   ): Promise<AccountCollectorTokenCreateResponse | null> => {
@@ -181,6 +195,7 @@ export function useAccountSettings({ onUnauthorized }: UseAccountSettingsOptions
     isAccountLoading,
     isAccountSaving,
     loadAccountOverview,
+    refreshAccountOverview,
     renameCollectorToken,
     revokeCollectorToken,
     setCreatedCollectorToken,

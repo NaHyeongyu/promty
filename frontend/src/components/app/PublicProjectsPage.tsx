@@ -9,16 +9,19 @@ import {
   Clock,
   Compass,
   ExternalLink,
+  Eye,
   Globe2,
   LoaderCircle,
   Search,
   Share2,
+  TrendingUp,
   UserRound,
 } from "lucide-react";
 import {
   fetchPublicProfile,
   fetchPublicProjectDetail,
   fetchPublicProjects,
+  recordPublicProjectView,
   updatePublicProjectSave,
 } from "../../api/projects";
 import {
@@ -80,7 +83,7 @@ export function PublicProjectsPage({
     total: 0,
   });
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<"newest" | "recent">("recent");
+  const [sort, setSort] = useState<"newest" | "popular" | "recent">("popular");
   const [savedOnly, setSavedOnly] = useState(false);
   const [offset, setOffset] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -150,7 +153,29 @@ export function PublicProjectsPage({
     setIsDetailLoading(true);
     setDetailError(null);
     void fetchPublicProjectDetail(selectedProjectId, controller.signal)
-      .then(setDetail)
+      .then((projectDetail) => {
+        setDetail(projectDetail);
+        void recordPublicProjectView(selectedProjectId)
+          .then((analytics) => {
+            if (controller.signal.aborted) return;
+            setDetail((current) => current?.project.id === selectedProjectId
+              ? {
+                  ...current,
+                  unique_viewers: analytics.unique_viewers,
+                  view_count: analytics.view_count,
+                  view_history: analytics.view_history,
+                  views_7d: analytics.views_7d,
+                }
+              : current);
+            setPage((current) => ({
+              ...current,
+              items: current.items.map((project) => project.id === selectedProjectId
+                ? { ...project, view_count: analytics.view_count }
+                : project),
+            }));
+          })
+          .catch(() => undefined);
+      })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
         if (error instanceof UnauthorizedError) {
@@ -373,6 +398,7 @@ export function PublicProjectsPage({
               {t("community.savedProjects")}
             </button>
             <div className="project-sort-control" role="group" aria-label={t("explore.sort")}>
+              <button aria-pressed={sort === "popular"} data-active={sort === "popular"} onClick={() => { setOffset(0); setSort("popular"); }} type="button">{t("explore.popularWeek")}</button>
               <button aria-pressed={sort === "recent"} data-active={sort === "recent"} onClick={() => { setOffset(0); setSort("recent"); }} type="button">{t("explore.recent")}</button>
               <button aria-pressed={sort === "newest"} data-active={sort === "newest"} onClick={() => { setOffset(0); setSort("newest"); }} type="button">{t("explore.newest")}</button>
             </div>
@@ -391,11 +417,12 @@ export function PublicProjectsPage({
           ) : null}
           {page.items.length > 0 ? (
             <div className="public-project-directory-list">
-              {page.items.map((project) => (
+              {page.items.map((project, index) => (
                 <PublicProjectRow
                   key={project.id}
                   onSelect={selectProject}
                   project={project}
+                  weeklyRank={sort === "popular" ? offset + index + 1 : undefined}
                 />
               ))}
             </div>
@@ -431,7 +458,7 @@ function projectMonogram(name: string) {
   return initials || "P";
 }
 
-function PublicProjectRow({ onSelect, project }: { onSelect: (id: string) => void; project: PublicProjectSummary }) {
+function PublicProjectRow({ onSelect, project, weeklyRank }: { onSelect: (id: string) => void; project: PublicProjectSummary; weeklyRank?: number }) {
   const { t } = useI18n();
   const homepageUrl = safeExternalHttpUrl(project.project_url);
   const homepage = compactPublicUrl(project.project_url);
@@ -460,6 +487,13 @@ function PublicProjectRow({ onSelect, project }: { onSelect: (id: string) => voi
           <span>{project.description || project.slug}</span>
         </span>
         <span className="public-project-card-byline">
+          {weeklyRank ? (
+            <span className="public-project-weekly-rank" title={t("explore.popularityScore")}>
+              <TrendingUp aria-hidden="true" size={12} />
+              <b>#{weeklyRank}</b>
+              <small>{formatCompactNumber(project.weekly_popularity_score ?? 0)}</small>
+            </span>
+          ) : null}
           <span
             aria-label={`${t("explore.owner")}: ${project.owner.username}`}
             className="public-project-card-owner"
@@ -476,6 +510,14 @@ function PublicProjectRow({ onSelect, project }: { onSelect: (id: string) => voi
           >
             <Activity aria-hidden="true" size={12} />
             <b>{activity}</b>
+          </span>
+          <span aria-hidden="true" className="public-project-card-divider">·</span>
+          <span
+            aria-label={`${t("community.projectViews")}: ${project.view_count ?? 0}`}
+            className="public-project-card-views"
+          >
+            <Eye aria-hidden="true" size={12} />
+            <b>{formatCompactNumber(project.view_count ?? 0)}</b>
           </span>
         </span>
         <ArrowRight aria-hidden="true" className="public-project-card-arrow" size={17} />
@@ -551,6 +593,11 @@ function PublicProjectDetail({
   const visibleModels = connectedModels.slice(0, 2);
   const relativeActivity = formatRelativeTimestamp(detail.metrics.latest_activity_at);
   const [activeTab, setActiveTab] = useState<ProjectDetailTabId>("overview");
+  const viewCount = detail.view_count ?? 0;
+  const viewsLast7Days = detail.views_7d ?? 0;
+  const uniqueViewers = detail.unique_viewers ?? 0;
+  const viewHistory = detail.view_history ?? [];
+  const maxViewHistory = Math.max(...viewHistory.map((item) => item.views), 1);
   const mappedData = projectDetailDataFromApi(detail, null);
   const publishedPromptActivities: PromptActivityItem[] = flowDetails.flatMap((flow) =>
     flow.items.map((item) => ({
@@ -650,6 +697,7 @@ function PublicProjectDetail({
             {visibleModels.map((model) => <AiModelBadge className="is-header" key={model} model={model} />)}
             {connectedModels.length > visibleModels.length ? <span className="bh-project-header-chip">+{connectedModels.length - visibleModels.length}</span> : null}
             <span className="bh-project-header-chip"><Clock aria-hidden="true" size={14} strokeWidth={1.5} /><span>{relativeActivity ?? t("common.noActivity")}</span></span>
+            <span className="bh-project-header-chip"><Eye aria-hidden="true" size={14} strokeWidth={1.5} /><span>{t("community.viewsCount", { count: formatCompactNumber(viewCount) })}</span></span>
           </div>
         </div>
         <div className="bh-project-header-actions">
@@ -692,6 +740,35 @@ function PublicProjectDetail({
         </div>
       </header>
       {copyError || saveError ? <span className="public-project-copy-error" role="alert">{copyError ?? saveError}</span> : null}
+
+      <dl className="public-project-view-metrics" aria-label={t("community.viewAnalytics")}>
+        <div>
+          <Eye aria-hidden="true" size={16} strokeWidth={1.5} />
+          <dt>{t("community.totalViews")}</dt>
+          <dd>{formatCompactNumber(viewCount)}</dd>
+        </div>
+        <div>
+          <TrendingUp aria-hidden="true" size={16} strokeWidth={1.5} />
+          <dt>{t("community.viewsLast7Days")}</dt>
+          <dd>{formatCompactNumber(viewsLast7Days)}</dd>
+        </div>
+        <div>
+          <UserRound aria-hidden="true" size={16} strokeWidth={1.5} />
+          <dt>{t("community.uniqueViewers")}</dt>
+          <dd>{formatCompactNumber(uniqueViewers)}</dd>
+        </div>
+        <div className="public-project-view-trend" aria-label={t("community.viewsLast14Days")}>
+          {viewHistory.map((day) => {
+            return (
+              <i
+                key={day.date}
+                style={{ height: `${Math.max(12, (day.views / maxViewHistory) * 100)}%` }}
+                title={`${day.date}: ${day.views}`}
+              />
+            );
+          })}
+        </div>
+      </dl>
 
       <ProjectTabs
         activeTab={activeTab}

@@ -6,6 +6,7 @@ from uuid import uuid4
 from app.models.projects import Project
 from app.schemas.projects import ProjectMetadataUpdateRequest, ProjectSummaryResponse
 from app.services.projects.management import project_summary
+from app.services.projects.views import normalize_github_url
 
 
 def test_project_summary_exposes_memory_review_status() -> None:
@@ -69,3 +70,14 @@ def test_public_project_routes_publish_read_only_contracts() -> None:
     assert set(paths["/api/projects/public"]) == {"get"}
     assert set(paths["/api/projects/public/{project_id}"]) == {"get"}
     assert set(paths["/api/projects/public/{project_id}/save"]) == {"patch"}
+    assert set(paths["/api/projects/public/{project_id}/view"]) == {"post"}
+
+
+def test_github_remote_normalization_removes_url_credentials_and_query_data() -> None:
+    assert (
+        normalize_github_url("https://github.com/promty/example.git?token=private#fragment")
+        == "https://github.com/promty/example"
+    )
+    assert normalize_github_url("https://user:secret@github.com/promty/example") is None
+    assert normalize_github_url("https://example.com/promty/example") is None
+    assert normalize_github_url("https://github.com/promty/example/issues") is None

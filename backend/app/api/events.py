@@ -39,6 +39,16 @@ def create_events(
     return EventBatchResponse(accepted=len(event_ids), event_ids=event_ids)
 
 
+@router.post("/heartbeat")
+def collector_heartbeat(
+    _ingest_owner: User | None = Depends(require_ingest_token),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Persist collector liveness even when there are no events to upload."""
+    db.commit()
+    return {"status": "ok"}
+
+
 @router.get("", response_model=list[EventRead])
 def list_events(
     project_id: UUID | None = None,
