@@ -217,6 +217,12 @@ export type ProjectDetailApiResponse = {
   };
   memory?: {
     latest_artifact_at: string | null;
+    latest_batch?: {
+      batch_id: string;
+      message: string;
+      retryable?: boolean;
+      status: string | null;
+    } | null;
     recent_artifacts: Array<{
       artifact_stage?: string | null;
       changed_file_count: number;

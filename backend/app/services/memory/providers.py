@@ -50,6 +50,15 @@ def configured_generator_for_provider(provider: str, *, stage: GenerationStage) 
     return LOCAL_MEMORY_GENERATOR
 
 
+def provider_is_configured(provider: str | None) -> bool:
+    provider = provider_name(provider)
+    if provider == "openai":
+        return bool(settings.openai_api_key)
+    if provider == "gemini":
+        return bool(settings.gemini_api_key)
+    return False
+
+
 def model_metadata_for_provider(provider: str) -> dict[str, str]:
     if provider == "openai":
         return {"openai_model": settings.openai_model}

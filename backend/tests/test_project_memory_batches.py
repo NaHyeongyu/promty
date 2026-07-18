@@ -83,8 +83,10 @@ class FakeFailureDB(FakeDB):
     def __init__(self, batch) -> None:
         super().__init__()
         self.batch = batch
+        self.statements = []
 
-    def execute(self, _statement):
+    def execute(self, statement):
+        self.statements.append(statement)
         return FakeScalarResult(self.batch)
 
 
@@ -502,6 +504,26 @@ def test_provider_failure_is_not_treated_as_successful_empty_generation(monkeypa
         )
 
 
+def test_unconfigured_provider_has_a_safe_actionable_failure(monkeypatch) -> None:
+    snapshot = _snapshot()
+
+    monkeypatch.setattr(
+        batches,
+        "build_memory_draft_payloads_from_context",
+        lambda *_args, **_kwargs: ([], {"fallback_reason": "local_disabled"}),
+    )
+
+    with pytest.raises(
+        batches.ProjectMemoryBatchProviderUnavailableError,
+        match="not configured",
+    ):
+        batches._generate_chunk_payloads(
+            context={"last_event_id": None},
+            snapshots=[snapshot],
+            source_session_id=str(uuid4()),
+        )
+
+
 def test_generate_request_enqueues_without_running_provider(monkeypatch) -> None:
     project_id = uuid4()
     batch = SimpleNamespace(id=uuid4(), project_id=project_id, status="pending")
@@ -658,8 +680,22 @@ def test_batch_failure_message_persists_http_status_without_secret_detail() -> N
     assert batch.error_code == "generation_failed"
     assert batch.error_message == "Memory provider request failed with HTTP status 503."
     assert secret not in batch.error_message
+    assert len(db.statements) == 3
+    compiled_update = str(db.statements[1].compile(dialect=postgresql.dialect()))
+    compiled_release = str(db.statements[2].compile(dialect=postgresql.dialect()))
+    assert "UPDATE artifacts" in compiled_update
+    assert "DELETE FROM project_memory_batch_items" in compiled_release
     assert db.flush_count == 1
     assert db.commit_count == 1
+
+
+def test_provider_unavailable_failure_message_is_safe_and_retryable() -> None:
+    error = batches.ProjectMemoryBatchProviderUnavailableError("secret provider detail")
+
+    assert batches._batch_failure_code(error) == "provider_unavailable"
+    assert batches._safe_batch_failure_message(error) == (
+        "AI generation is not configured. Captured work is safe; try again shortly."
+    )
 
 
 def test_batch_failure_log_does_not_render_exception_or_secret(

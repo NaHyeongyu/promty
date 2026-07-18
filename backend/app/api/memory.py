@@ -30,6 +30,7 @@ from app.services.memory.workflows import (
     memory_generator_status,
     preview_project_memory_generation_response,
     read_project_memory_batch_response,
+    read_latest_project_memory_batch_response,
     read_project_memory_response,
     refresh_memory_review_queue_response,
     update_project_memory_response,
@@ -136,6 +137,22 @@ def preview_project_memory_generation(
     db: DBSession = Depends(get_db),
 ) -> dict[str, Any]:
     return preview_project_memory_generation_response(
+        db,
+        project_id=project_id,
+        user=current_user,
+    )
+
+
+@router.get(
+    "/{project_id}/memory/batches/latest",
+    response_model=MemoryBatchResponse | None,
+)
+def read_latest_project_memory_batch(
+    project_id: UUID,
+    current_user: User = Depends(require_web_user),
+    db: DBSession = Depends(get_db),
+) -> dict[str, Any] | None:
+    return read_latest_project_memory_batch_response(
         db,
         project_id=project_id,
         user=current_user,

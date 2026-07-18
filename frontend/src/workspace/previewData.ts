@@ -95,6 +95,7 @@ export function mockGithubUnlinkedProjectDetail(project: Project): ProjectDetail
     memory: {
       drafts: [],
       latestArtifactAt: null,
+      latestBatch: null,
       pendingRanges: [],
       recentArtifacts: [],
       totalArtifacts: 0,

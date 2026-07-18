@@ -17,7 +17,10 @@ from app.services.memory.constants import (
     LOCAL_MEMORY_GENERATOR,
     PENDING_MEMORY_DRAFT_GENERATOR,
 )
-from app.services.memory.providers import configured_generator_for_provider
+from app.services.memory.providers import (
+    configured_generator_for_provider,
+    provider_is_configured,
+)
 from app.services.memory.serializers import (
     serialize_memory_artifact,
     serialize_memory_artifact_summary,
@@ -35,6 +38,7 @@ from app.services.memory.batches import (
     lock_project_memory,
     preview_project_memory_batch,
     read_project_memory_batch,
+    read_latest_project_memory_batch,
     serialize_project_memory_batch,
 )
 from app.services.memory.session_completion import complete_session_if_ready
@@ -239,12 +243,32 @@ def generate_project_memory_response(
     user: User,
 ) -> dict[str, Any]:
     project = project_for_user(db, project_id, user)
+    if not provider_is_configured(
+        settings.memory_draft_generator
+    ) or not provider_is_configured(settings.project_memory_generator):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI generation is not configured. Captured work is safe; try again shortly.",
+        )
     return generate_project_memory_batch(
         db,
         idempotency_key=idempotency_key,
         project_id=project.id,
         user_id=user.id,
     )
+
+
+def read_latest_project_memory_batch_response(
+    db: DBSession,
+    *,
+    project_id: UUID,
+    user: User,
+) -> dict[str, Any] | None:
+    project = project_for_user(db, project_id, user)
+    batch = read_latest_project_memory_batch(db, project_id=project.id)
+    if batch is None:
+        return None
+    return serialize_project_memory_batch(db, batch, replayed=True)
 
 
 def preview_project_memory_generation_response(

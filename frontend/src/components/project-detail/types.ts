@@ -196,6 +196,12 @@ export type ProjectMemoryArtifact = {
 export type ProjectMemoryStatus = {
   drafts: ProjectMemoryArtifact[];
   latestArtifactAt: string | null;
+  latestBatch: {
+    batchId: string;
+    message: string;
+    retryable: boolean;
+    status: string | null;
+  } | null;
   pendingRanges: ProjectMemoryPendingRange[];
   recentArtifacts: ProjectMemoryArtifact[];
   totalArtifacts: number;

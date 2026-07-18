@@ -239,6 +239,7 @@ promty/prod/github-token-encryption-key
 promty/prod/oauth-state-secret
 promty/prod/jwt-secret
 promty/prod/global-ingest-token
+promty/prod/openai-api-key
 ```
 
 `promty/prod/database-url` is the previous RDS URL and was used for one-time

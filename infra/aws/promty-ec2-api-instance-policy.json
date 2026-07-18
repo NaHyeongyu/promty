@@ -15,6 +15,7 @@
         "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/jwt-secret-*",
         "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/ec2-postgres-password-*",
         "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/global-ingest-token-*",
+        "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/openai-api-key-*",
         "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/support-notification-email-*"
       ]
     },

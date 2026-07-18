@@ -138,11 +138,15 @@ PROMPTHUB_AWS_REGION=${AWS_REGION}
 PROMPTHUB_AWS_S3_BUCKET=${BACKUP_BUCKET}
 PROMPTHUB_AWS_S3_PREFIX=published-flow-assets
 PROMPTHUB_APP_ENCRYPTION_KEY_ID=aws-prod
-PROMTY_MEMORY_GENERATOR=local
-PROMTY_MEMORY_DRAFT_GENERATOR=local
-PROMTY_PROJECT_MEMORY_GENERATOR=local
+PROMTY_MEMORY_GENERATOR=openai
+PROMTY_MEMORY_DRAFT_GENERATOR=openai
+PROMTY_PROJECT_MEMORY_GENERATOR=openai
 EOF
 
+OPENAI_API_KEY="$(fetch_optional_secret promty/prod/openai-api-key)"
+if [ -n "${OPENAI_API_KEY}" ]; then
+  write_env "PROMTY_OPENAI_API_KEY" "${OPENAI_API_KEY}"
+fi
 write_env "PROMPTHUB_APP_ENCRYPTION_KEY" "$(fetch_secret promty/prod/app-encryption-key)"
 APP_ENCRYPTION_PREVIOUS_KEY="$(fetch_previous_secret promty/prod/app-encryption-key)"
 if [ -n "${APP_ENCRYPTION_PREVIOUS_KEY}" ]; then

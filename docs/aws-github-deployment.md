@@ -546,9 +546,10 @@ PROMPTHUB_AWS_REGION=ap-southeast-2
 PROMPTHUB_AWS_S3_BUCKET=promty-prod-assets-435917083683
 PROMPTHUB_AWS_S3_PREFIX=published-flow-assets
 PROMPTHUB_APP_ENCRYPTION_KEY_ID=aws-prod
-PROMTY_MEMORY_GENERATOR=local
-PROMTY_MEMORY_DRAFT_GENERATOR=local
-PROMTY_PROJECT_MEMORY_GENERATOR=local
+PROMTY_MEMORY_GENERATOR=openai
+PROMTY_MEMORY_DRAFT_GENERATOR=openai
+PROMTY_PROJECT_MEMORY_GENERATOR=openai
+PROMTY_OPENAI_API_KEY=stored in Secrets Manager
 ```
 
 Secret values come from AWS Secrets Manager during EC2 bootstrap:
@@ -565,6 +566,7 @@ promty/prod/buffer-api-key (optional)
 promty/prod/devto-api-key (optional)
 promty/prod/github-marketing-token (optional)
 promty/prod/global-ingest-token
+promty/prod/openai-api-key
 ```
 
 The old `promty/prod/database-url` secret was used for the one-time RDS to EC2

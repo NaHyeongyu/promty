@@ -44,6 +44,7 @@ export function emptyProjectDetailData(project: Project | null): ProjectDetailDa
     memory: {
       drafts: [],
       latestArtifactAt: null,
+      latestBatch: null,
       pendingRanges: [],
       recentArtifacts: [],
       totalArtifacts: 0,
@@ -236,6 +237,7 @@ export function projectDetailDataFromApi(
     ((memory as
       | (typeof memory & { pending_ranges?: ProjectMemoryPendingRangeApiResponse[] })
       | undefined)?.pending_ranges ?? []);
+  const latestBatch = memory?.latest_batch ?? null;
   const totalPrompts =
     payload.metrics.total_prompts ?? payload.prompt_activities?.length ?? 0;
   const projectDescription = payload.project.description?.trim() ?? "";
@@ -285,6 +287,14 @@ export function projectDetailDataFromApi(
       drafts: memoryDrafts.map(projectMemoryArtifactFromApi),
       latestArtifactAt: memory?.latest_artifact_at
         ? formatOptionalTimestamp(memory.latest_artifact_at, "Unknown")
+        : null,
+      latestBatch: latestBatch
+        ? {
+            batchId: latestBatch.batch_id,
+            message: latestBatch.message,
+            retryable: latestBatch.retryable !== false,
+            status: latestBatch.status,
+          }
         : null,
       pendingRanges: pendingRanges.map(projectMemoryPendingRangeFromApi),
       recentArtifacts: (memory?.recent_artifacts ?? []).map(projectMemoryArtifactFromApi),

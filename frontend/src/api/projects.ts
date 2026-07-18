@@ -26,6 +26,7 @@ import { requestJson, requestJsonBody, requestVoid } from "./client";
 export type ProjectDetailResourcesResponse = ProjectDetailApiResponse & {
   memory: NonNullable<ProjectDetailApiResponse["memory"]> & {
     drafts: [];
+    latest_batch: ProjectMemoryGenerationResponse | null;
     pending_ranges: ProjectMemoryPendingRangeApiResponse[];
   };
 };
@@ -294,25 +295,42 @@ export async function fetchProjectDetailResources(
   signal?: AbortSignal,
 ): Promise<ProjectDetailResourcesResponse> {
   const encodedProjectId = encodeURIComponent(projectId);
-  const detail = await requestJson<ProjectDetailApiResponse>(
-    `/api/projects/${encodedProjectId}/detail`,
-    { signal },
-    {
-      errorMessage: "Project detail request failed",
-    },
-  );
-  const pendingRanges = await fetchProjectMemoryPendingRanges(projectId, signal);
+  const [detail, pendingRanges, latestBatch] = await Promise.all([
+    requestJson<ProjectDetailApiResponse>(
+      `/api/projects/${encodedProjectId}/detail`,
+      { signal },
+      {
+        errorMessage: "Project detail request failed",
+      },
+    ),
+    fetchProjectMemoryPendingRanges(projectId, signal),
+    fetchLatestProjectMemoryBatch(projectId, signal),
+  ]);
 
   return {
     ...detail,
     memory: {
       latest_artifact_at: detail.memory?.latest_artifact_at ?? null,
+      latest_batch: latestBatch,
       recent_artifacts: detail.memory?.recent_artifacts ?? [],
       total_artifacts: detail.memory?.total_artifacts ?? 0,
       drafts: [],
       pending_ranges: pendingRanges,
     },
   };
+}
+
+export function fetchLatestProjectMemoryBatch(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<ProjectMemoryGenerationResponse | null> {
+  return requestJson<ProjectMemoryGenerationResponse | null>(
+    `/api/projects/${encodeURIComponent(projectId)}/memory/batches/latest`,
+    { signal },
+    {
+      errorMessage: "Project memory status request failed",
+    },
+  );
 }
 
 export function fetchProjectMemoryPendingRanges(
@@ -399,7 +417,7 @@ export async function generateProjectMemory(
   }
   if (
     ["memory_generated", "no_memory", "no_pending"].includes(response.status) ||
-    (response.status === "generation_failed" && response.retryable === false)
+    response.status === "generation_failed"
   ) {
     clearProjectMemoryIdempotencyKey(projectId);
   }

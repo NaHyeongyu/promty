@@ -615,6 +615,14 @@ export function MemoryPanel({
   const generationRequestRef = useRef(0);
   const projectIdRef = useRef(data.project.id);
   const previousSharedDelayedRef = useRef(isProjectMemoryGenerationDelayed);
+  const persistedGenerationError =
+    data.memory.latestBatch?.status === "generation_failed"
+      ? data.memory.latestBatch.message
+      : null;
+  const visibleGenerationError = generationError ?? persistedGenerationError;
+  const visibleGenerationRetryable = generationError
+    ? generationRetryable
+    : (data.memory.latestBatch?.retryable ?? true);
   const isGenerationActive =
     isGenerating ||
     isRemoteGenerationActive ||
@@ -686,7 +694,7 @@ export function MemoryPanel({
       !onGenerateProjectMemory ||
       !hasPendingDocumentation ||
       isGenerationActive ||
-      (generationError !== null && !generationRetryable)
+      (visibleGenerationError !== null && !visibleGenerationRetryable)
     ) {
       return;
     }
@@ -825,14 +833,14 @@ export function MemoryPanel({
                     !hasPendingDocumentation ||
                     !onGenerateProjectMemory ||
                     isGenerationActive ||
-                    (generationError !== null && !generationRetryable)
+                    (visibleGenerationError !== null && !visibleGenerationRetryable)
                   }
                   className="bh-memory-primary-action"
                   onClick={() => void createProjectMemory()}
                   disabled={
                     !onGenerateProjectMemory ||
                     isGenerationActive ||
-                    (generationError !== null && !generationRetryable)
+                    (visibleGenerationError !== null && !visibleGenerationRetryable)
                   }
                   type="button"
                 >
@@ -842,8 +850,8 @@ export function MemoryPanel({
                       ? t("memory.updating")
                       : isProjectMemoryGenerationDelayed
                         ? t("memory.updateStatus")
-                      : generationError
-                        ? generationRetryable
+                      : visibleGenerationError
+                        ? visibleGenerationRetryable
                           ? t("memory.retryUpdate")
                           : t("memory.failed")
                         : t("memory.create")}
@@ -863,11 +871,11 @@ export function MemoryPanel({
                     <span>{t("memory.creatingDescription")}</span>
                   </div>
                 </div>
-              ) : generationError ? (
+              ) : visibleGenerationError ? (
                 <div className="bh-memory-generation-status" data-error="true" role="alert">
                   <div>
                     <strong>{t("memory.failed")}</strong>
-                    <span>{generationError}</span>
+                    <span>{visibleGenerationError}</span>
                   </div>
                 </div>
               ) : null}

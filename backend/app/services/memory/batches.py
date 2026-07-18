@@ -72,6 +72,10 @@ class ProjectMemoryBatchGenerationError(ProjectMemoryBatchError):
     code = "generation_failed"
 
 
+class ProjectMemoryBatchProviderUnavailableError(ProjectMemoryBatchGenerationError):
+    code = "provider_unavailable"
+
+
 class ProjectMemoryBatchInvariantError(ProjectMemoryBatchError):
     code = "snapshot_invalid"
 
@@ -607,10 +611,10 @@ def serialize_project_memory_batch(
         result_status = "generation_in_progress"
     elif batch.status in {"failed", "superseded"}:
         result_status = "generation_failed"
-    retryable = False
+    retryable = batch.status == "failed" and batch.error_code != "snapshot_invalid"
     messages = {
         "generation_failed": (
-            "Project Memory was not updated. This captured work will not be sent to AI again."
+            "Project Memory was not updated. Captured work is still available; try again."
         ),
         "generation_in_progress": "Project Memory is being updated.",
         "memory_generated": "Project Memory was updated from the captured project work.",
@@ -620,6 +624,8 @@ def serialize_project_memory_batch(
     message = messages.get(result_status or "", "Project Memory batch completed.")
     if batch.error_code == "snapshot_invalid":
         message = "Captured work changed before generation. Refresh and try again."
+    elif batch.status == "failed" and batch.error_message:
+        message = batch.error_message
     return {
         "batch_id": str(batch.id),
         "batch_status": batch.status,
@@ -630,7 +636,7 @@ def serialize_project_memory_batch(
                 "message": (
                     "Captured work changed before generation. Refresh and try again."
                     if batch.error_code == "snapshot_invalid"
-                    else messages["generation_failed"]
+                    else message
                 ),
                 "retryable": retryable,
             }
@@ -666,6 +672,19 @@ def read_project_memory_batch(
             ProjectMemoryBatch.id == batch_id,
             ProjectMemoryBatch.project_id == project_id,
         )
+    ).scalar_one_or_none()
+
+
+def read_latest_project_memory_batch(
+    db: DBSession,
+    *,
+    project_id: UUID,
+) -> ProjectMemoryBatch | None:
+    return db.execute(
+        select(ProjectMemoryBatch)
+        .where(ProjectMemoryBatch.project_id == project_id)
+        .order_by(desc(ProjectMemoryBatch.created_at), desc(ProjectMemoryBatch.id))
+        .limit(1)
     ).scalar_one_or_none()
 
 
@@ -807,8 +826,15 @@ def _generate_chunk_payloads(
     if not payloads:
         if "draft_generation" in generation_metadata:
             return []
+        fallback_reason = str(
+            generation_metadata.get("fallback_reason") or "Memory generation failed"
+        )
+        if fallback_reason.endswith("_disabled") or "API key is not configured" in fallback_reason:
+            raise ProjectMemoryBatchProviderUnavailableError(
+                "AI generation provider is not configured"
+            )
         raise ProjectMemoryBatchGenerationError(
-            str(generation_metadata.get("fallback_reason") or "Memory generation failed")
+            fallback_reason
         )
 
     source_draft_ids = [str(snapshot.id) for snapshot in snapshots]
@@ -1457,13 +1483,18 @@ def _record_batch_failure(
                 metadata_=Artifact.metadata_.op("||")(
                     cast(
                         {
-                            "review_state": REVIEW_STATE_GENERATION_FAILED,
-                            "sent_to_ai_at": now.isoformat(),
+                            "review_state": REVIEW_STATE_DRAFT,
+                            "sent_to_ai_at": None,
                         },
                         JSONB,
                     )
                 ),
                 updated_at=now,
+            )
+        )
+        db.execute(
+            delete(ProjectMemoryBatchItem).where(
+                ProjectMemoryBatchItem.batch_id == batch.id
             )
         )
     db.flush()
@@ -1476,6 +1507,8 @@ def _batch_failure_code(error: Exception) -> str:
 
 
 def _safe_batch_failure_message(error: Exception) -> str:
+    if isinstance(error, ProjectMemoryBatchProviderUnavailableError):
+        return "AI generation is not configured. Captured work is safe; try again shortly."
     if isinstance(error, ProjectMemoryBatchLeaseLostError):
         return "Project Memory batch lease was lost."
     if isinstance(error, ProjectMemoryBatchInvariantError):
@@ -1533,9 +1566,10 @@ def _execute_claimed_batch(
     except Exception as exc:
         db.rollback()
         logger.error(
-            "Project Memory batch %s failed error_code=%s",
+            "Project Memory batch %s failed error_code=%s error_type=%s",
             batch_id,
             _batch_failure_code(exc),
+            type(exc).__name__,
         )
         batch = _record_batch_failure(
             db,
