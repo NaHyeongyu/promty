@@ -1,5 +1,5 @@
 {
-  "cwd": "/Users/local-user/development/PromptHub",
+  "cwd": "/Users/local-user/development/promty",
   "hook_event_name": "UserPromptSubmit",
   "model": "gpt-5.5",
   "permission_mode": "default",

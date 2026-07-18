@@ -30,13 +30,13 @@ language, and channel so Korean and English activation can be compared separatel
 ## Configuration
 
 ```text
-PROMPTHUB_BUFFER_API_KEY=
-PROMPTHUB_BUFFER_CHANNEL_IDS={"x":"buffer-channel-id","linkedin.ko":"korean-linkedin-channel-id","linkedin.en":"english-linkedin-channel-id"}
-PROMPTHUB_DEVTO_API_KEY=
-PROMPTHUB_DEVTO_ORGANIZATION_ID=
-PROMPTHUB_GITHUB_MARKETING_TOKEN=
-PROMPTHUB_GITHUB_MARKETING_REPOSITORY_ID=
-PROMPTHUB_GITHUB_MARKETING_DISCUSSION_CATEGORY_ID=
+PROMTY_BUFFER_API_KEY=
+PROMTY_BUFFER_CHANNEL_IDS={"x":"buffer-channel-id","linkedin.ko":"korean-linkedin-channel-id","linkedin.en":"english-linkedin-channel-id"}
+PROMTY_DEVTO_API_KEY=
+PROMTY_DEVTO_ORGANIZATION_ID=
+PROMTY_GITHUB_MARKETING_TOKEN=
+PROMTY_GITHUB_MARKETING_REPOSITORY_ID=
+PROMTY_GITHUB_MARKETING_DISCUSSION_CATEGORY_ID=
 ```
 
 Buffer channel keys may be a base channel (`x`) or locale-specific

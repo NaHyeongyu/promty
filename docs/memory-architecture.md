@@ -63,7 +63,7 @@ PROMTY_GEMINI_MODEL=gemini-2.5-flash
 PROMTY_GEMINI_TIMEOUT_SECONDS=30
 ```
 
-`PROMTY_MEMORY_GENERATOR` remains accepted as a shared default for draft and project memory generators. Legacy `PROMPTHUB_*` names are still accepted for compatibility.
+`PROMTY_MEMORY_GENERATOR` remains accepted as a shared default for draft and project memory generators. Legacy `PROMTY_*` names are still accepted for compatibility.
 
 Use [promty.env.example](promty.env.example) as the copy source for `.env.local` or `backend/.env.local`. After setting the key, restart the backend process so the setting is loaded.
 

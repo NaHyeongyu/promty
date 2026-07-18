@@ -22,7 +22,7 @@ def _storage_backend() -> str:
     if backend not in {"local", "s3"}:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="PROMPTHUB_PUBLISHED_FLOW_ASSET_STORAGE must be local or s3",
+            detail="PROMTY_PUBLISHED_FLOW_ASSET_STORAGE must be local or s3",
         )
     return backend
 
@@ -61,7 +61,7 @@ def _s3_bucket() -> str:
     if not bucket:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="PROMPTHUB_AWS_S3_BUCKET is required for S3 asset storage",
+            detail="PROMTY_AWS_S3_BUCKET is required for S3 asset storage",
         )
     return bucket
 

@@ -3,7 +3,7 @@ from app.main import app
 
 
 def test_published_flow_feature_defaults_to_disabled(monkeypatch) -> None:
-    monkeypatch.delenv("PROMPTHUB_PUBLISHED_FLOWS_ENABLED", raising=False)
+    monkeypatch.delenv("PROMTY_PUBLISHED_FLOWS_ENABLED", raising=False)
     assert Settings().published_flows_enabled is False
 
 

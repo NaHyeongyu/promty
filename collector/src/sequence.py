@@ -10,7 +10,7 @@ from file_lock import locked_file
 from secure_storage import open_private_text, write_private_text_atomic
 
 DEFAULT_SEQUENCE_PATH = Path(
-    os.environ.get("PROMPTHUB_SEQUENCE_PATH", "~/.prompthub/sequences.json")
+    os.environ.get("PROMTY_SEQUENCE_PATH", "~/.promty/sequences.json")
 ).expanduser()
 
 

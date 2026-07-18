@@ -76,7 +76,7 @@ def _ensure_system_user(db: DBSession) -> User:
     user = User(
         id=SYSTEM_USER_ID,
         github_id="system",
-        email="system@prompthub.local",
+        email="system@promty.local",
         username="system",
         avatar_url=None,
     )

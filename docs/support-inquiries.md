@@ -26,22 +26,22 @@ in the product UI.
 ## Runtime configuration
 
 ```text
-PROMPTHUB_SUPPORT_EMAIL_PROVIDER=ses
-PROMPTHUB_SUPPORT_NOTIFICATION_EMAILS=owner@example.com
-PROMPTHUB_SUPPORT_FROM_EMAIL=support@promty.org
-PROMPTHUB_SUPPORT_RATE_LIMIT_REQUESTS=5
-PROMPTHUB_SUPPORT_RATE_LIMIT_WINDOW_SECONDS=300
-PROMPTHUB_AWS_REGION=ap-southeast-2
+PROMTY_SUPPORT_EMAIL_PROVIDER=ses
+PROMTY_SUPPORT_NOTIFICATION_EMAILS=owner@example.com
+PROMTY_SUPPORT_FROM_EMAIL=support@promty.org
+PROMTY_SUPPORT_RATE_LIMIT_REQUESTS=5
+PROMTY_SUPPORT_RATE_LIMIT_WINDOW_SECONDS=300
+PROMTY_AWS_REGION=ap-southeast-2
 ```
 
-`PROMPTHUB_SUPPORT_NOTIFICATION_EMAILS` accepts a comma-separated list. When it
+`PROMTY_SUPPORT_NOTIFICATION_EMAILS` accepts a comma-separated list. When it
 is empty, inquiries are still stored and their notification status is
 `disabled`.
 
 For production SES delivery:
 
 1. Verify `promty.org` (or the configured sender address) as an SES identity in
-   the same AWS region as `PROMPTHUB_AWS_REGION`.
+   the same AWS region as `PROMTY_AWS_REGION`.
 2. Grant the backend instance role `ses:SendEmail` for that identity.
 3. Create the `promty/prod/support-notification-email` Secrets Manager value
    containing the private operator recipient address.

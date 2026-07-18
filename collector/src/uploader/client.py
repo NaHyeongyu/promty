@@ -7,7 +7,7 @@ from urllib import request
 from version import COLLECTOR_VERSION
 
 
-class PromptHubUploader:
+class PromtyUploader:
     def __init__(self, api_url: str, token: str | None = None, timeout: float = 10) -> None:
         self.api_url = api_url.rstrip("/")
         self.token = token

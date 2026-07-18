@@ -18,7 +18,7 @@ from app.schemas.project_responses import ProjectDetailResponse
 from app.services.projects.views import read_project_detail_response
 
 pytestmark = pytest.mark.skipif(
-    os.environ.get("PROMPTHUB_RUN_POSTGRES_TESTS") != "1",
+    os.environ.get("PROMTY_RUN_POSTGRES_TESTS") != "1",
     reason="PostgreSQL integration tests are disabled",
 )
 

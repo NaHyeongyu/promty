@@ -19,6 +19,7 @@ py-modules = [
   "config",
   "context_client",
   "events",
+  "environment",
   "file_lock",
   "git_context",
   "mcp_server",

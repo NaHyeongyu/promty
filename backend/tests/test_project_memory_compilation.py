@@ -21,8 +21,8 @@ def _base_state(project_id):
                 "description": "Compilation boundary test",
                 "git_remote": None,
                 "id": str(project_id),
-                "name": "PromptHub",
-                "slug": "prompthub",
+                "name": "Promty",
+                "slug": "promty",
                 "tags": ["memory"],
                 "visibility": "private",
             }
@@ -140,7 +140,7 @@ def test_write_compilation_only_persists_prepared_values(monkeypatch) -> None:
                 "summary": "Current direction",
                 "tags": ["project-memory"],
                 "technologies": [],
-                "title": "PromptHub Project Memory",
+                "title": "Promty Project Memory",
                 "tool": "promty",
             }
         ),

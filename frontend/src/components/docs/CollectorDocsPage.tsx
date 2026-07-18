@@ -296,15 +296,15 @@ function HumanCollectorGuide() {
               <FileItem path=".codex/hooks.json" text="Codex repository hooks" />
               <FileItem path=".claude/settings.local.json" text="Claude Code local hooks" />
               <FileItem
-                path="~/.prompthub/profiles/&lt;profile&gt;/config.json"
+                path="~/.promty/profiles/&lt;profile&gt;/config.json"
                 text="Profile-specific login and API configuration"
               />
               <FileItem
-                path="~/.prompthub/profiles/&lt;profile&gt;/events"
+                path="~/.promty/profiles/&lt;profile&gt;/events"
                 text="Profile-specific pending event queue"
               />
               <FileItem
-                path="~/.prompthub/profiles/&lt;profile&gt;/uploader.log"
+                path="~/.promty/profiles/&lt;profile&gt;/uploader.log"
                 text="Profile-specific background uploader log"
               />
             </div>
@@ -334,7 +334,7 @@ Follow these instructions from the repository root.
   - API URL: ${API_URL}
 - Connect only the AI tool handling this task unless the user explicitly asks for both.
 - Run exactly one init command for the selected tool and environment.
-- Do not display, read aloud, commit, or paste collector tokens, ~/.prompthub/config.json, raw event queues, or private uploader logs.
+- Do not display, read aloud, commit, or paste collector tokens, ~/.promty/config.json, raw event queues, or private uploader logs.
 - Preserve existing hooks and unrelated repository changes.
 - Browser-based GitHub authorization and hook trust require the user's confirmation.
 
@@ -576,7 +576,7 @@ function TroubleshootingList() {
     ],
     [
       "Backend or uploader needs action",
-      <>Check <InlineCode>~/.prompthub/uploader.log</InlineCode> locally. Confirm the selected API is reachable, then run <InlineCode>npx promty-collector start-uploader</InlineCode>.</>,
+      <>Check <InlineCode>~/.promty/uploader.log</InlineCode> locally. Confirm the selected API is reachable, then run <InlineCode>npx promty-collector start-uploader</InlineCode>.</>,
     ],
     [
       "The wrong environment receives events",

@@ -33,19 +33,19 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: prompthub_test
-          POSTGRES_PASSWORD: prompthub
-          POSTGRES_USER: prompthub
+          POSTGRES_DB: promty_test
+          POSTGRES_PASSWORD: promty
+          POSTGRES_USER: promty
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U prompthub -d prompthub_test"
+          --health-cmd "pg_isready -U promty -d promty_test"
           --health-interval 2s
           --health-timeout 3s
           --health-retries 20
     env:
-      DATABASE_URL: postgresql+psycopg://prompthub:prompthub@127.0.0.1:5432/prompthub_test
-      PROMPTHUB_RUN_POSTGRES_TESTS: "1"
+      DATABASE_URL: postgresql+psycopg://promty:promty@127.0.0.1:5432/promty_test
+      PROMTY_RUN_POSTGRES_TESTS: "1"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

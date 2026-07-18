@@ -34,7 +34,7 @@ Frontend: https://promty.org
 Frontend alias: https://www.promty.org
 API: https://api.promty.org
 API readiness: https://api.promty.org/health/ready
-Repository: https://github.com/NaHyeongyu/BuildHub
+Repository: https://github.com/NaHyeongyu/promty
 Production branch: master
 AWS region: ap-southeast-2
 AWS deployment profile: promty-prod
@@ -177,7 +177,7 @@ Verify:
 
 ```bash
 gh auth status
-gh repo view NaHyeongyu/BuildHub
+gh repo view NaHyeongyu/promty
 ```
 
 The local remote is:
@@ -189,8 +189,8 @@ git remote -v
 Expected:
 
 ```text
-origin  https://github.com/NaHyeongyu/BuildHub.git (fetch)
-origin  https://github.com/NaHyeongyu/BuildHub.git (push)
+origin  https://github.com/NaHyeongyu/promty.git (fetch)
+origin  https://github.com/NaHyeongyu/promty.git (push)
 ```
 
 ## Local Development Runbook
@@ -433,14 +433,14 @@ GitHub repo
 Run deploy from CLI:
 
 ```bash
-gh workflow run "AWS Deploy" --repo NaHyeongyu/BuildHub --ref master
+gh workflow run "AWS Deploy" --repo NaHyeongyu/promty --ref master
 ```
 
 Optional custom backend image tag:
 
 ```bash
 gh workflow run "AWS Deploy" \
-  --repo NaHyeongyu/BuildHub \
+  --repo NaHyeongyu/promty \
   --ref master \
   -f image_tag="$(git rev-parse HEAD)"
 ```
@@ -448,8 +448,8 @@ gh workflow run "AWS Deploy" \
 Watch the run:
 
 ```bash
-gh run list --repo NaHyeongyu/BuildHub --workflow "AWS Deploy"
-gh run watch --repo NaHyeongyu/BuildHub
+gh run list --repo NaHyeongyu/promty --workflow "AWS Deploy"
+gh run watch --repo NaHyeongyu/promty
 ```
 
 ## What AWS Deploy Does
@@ -458,7 +458,7 @@ The deploy workflow:
 
 1. assumes the AWS IAM role through GitHub OIDC
 2. installs frontend dependencies
-3. builds the frontend with `VITE_PROMPTHUB_API_URL`
+3. builds the frontend with `VITE_PROMTY_API_URL`
 4. syncs `frontend/dist` to the private S3 frontend bucket
 5. creates a CloudFront invalidation for `/*`
 6. logs in to ECR
@@ -479,31 +479,31 @@ AWS_EC2_INSTANCE_ID
 ECR_REPOSITORY
 FRONTEND_S3_BUCKET
 CLOUDFRONT_DISTRIBUTION_ID
-VITE_PROMPTHUB_API_URL
+VITE_PROMTY_API_URL
 ```
 
 Current values are documented in
 [aws-resource-inventory.md](aws-resource-inventory.md). They are stored in
-GitHub repo `NaHyeongyu/BuildHub`.
+GitHub repo `NaHyeongyu/promty`.
 
 List GitHub secrets:
 
 ```bash
-gh secret list --repo NaHyeongyu/BuildHub
+gh secret list --repo NaHyeongyu/promty
 ```
 
 Set or update a GitHub secret:
 
 ```bash
-gh secret set AWS_REGION --repo NaHyeongyu/BuildHub --body "ap-southeast-2"
-gh secret set AWS_EC2_INSTANCE_ID --repo NaHyeongyu/BuildHub --body "i-066ab5e01b9685b6a"
+gh secret set AWS_REGION --repo NaHyeongyu/promty --body "ap-southeast-2"
+gh secret set AWS_EC2_INSTANCE_ID --repo NaHyeongyu/promty --body "i-066ab5e01b9685b6a"
 ```
 
 For sensitive values, prefer interactive input instead of putting values in shell
 history:
 
 ```bash
-gh secret set SOME_SECRET --repo NaHyeongyu/BuildHub
+gh secret set SOME_SECRET --repo NaHyeongyu/promty
 ```
 
 ## Production Runtime Environment
@@ -517,35 +517,35 @@ EC2 backend runtime variables live in:
 Non-secret values:
 
 ```text
-PROMPTHUB_API_PUBLIC_URL=https://api.promty.org
-PROMPTHUB_APP_URL=https://promty.org
-PROMPTHUB_CORS_ORIGINS=https://promty.org,https://www.promty.org
-PROMPTHUB_SESSION_COOKIE_SECURE=true
-PROMPTHUB_SESSION_COOKIE_SAMESITE=lax
-PROMPTHUB_ADMIN_GITHUB_IDS=191438254
-PROMPTHUB_AUTH_RATE_LIMIT_REQUESTS=30
-PROMPTHUB_AUTH_RATE_LIMIT_WINDOW_SECONDS=60
-PROMPTHUB_ADMIN_RATE_LIMIT_REQUESTS=120
-PROMPTHUB_ADMIN_RATE_LIMIT_WINDOW_SECONDS=60
-PROMPTHUB_COMMUNITY_RATE_LIMIT_REQUESTS=120
-PROMPTHUB_COMMUNITY_RATE_LIMIT_WINDOW_SECONDS=60
-PROMPTHUB_INGEST_RATE_LIMIT_REQUESTS=120
-PROMPTHUB_INGEST_RATE_LIMIT_WINDOW_SECONDS=60
-PROMPTHUB_TRUSTED_PROXY_CIDRS=127.0.0.0/8,::1/128,172.16.0.0/12
-PROMPTHUB_EVENT_BATCH_MAX_BODY_BYTES=8388608
-PROMPTHUB_ADMIN_AUDIT_RETENTION_DAYS=180
-PROMPTHUB_SUPPORT_EMAIL_PROVIDER=ses
-PROMPTHUB_SUPPORT_FROM_EMAIL=support@promty.org
-PROMPTHUB_SUPPORT_NOTIFICATION_EMAILS=stored in Secrets Manager
-PROMPTHUB_SUPPORT_RATE_LIMIT_REQUESTS=5
-PROMPTHUB_SUPPORT_RATE_LIMIT_WINDOW_SECONDS=300
-PROMPTHUB_BUFFER_CHANNEL_IDS={} # optional; use base or locale-specific channel keys
-PROMPTHUB_DEVTO_ORGANIZATION_ID= # optional
-PROMPTHUB_PUBLISHED_FLOW_ASSET_STORAGE=s3
-PROMPTHUB_AWS_REGION=ap-southeast-2
-PROMPTHUB_AWS_S3_BUCKET=promty-prod-assets-435917083683
-PROMPTHUB_AWS_S3_PREFIX=published-flow-assets
-PROMPTHUB_APP_ENCRYPTION_KEY_ID=aws-prod
+PROMTY_API_PUBLIC_URL=https://api.promty.org
+PROMTY_APP_URL=https://promty.org
+PROMTY_CORS_ORIGINS=https://promty.org,https://www.promty.org
+PROMTY_SESSION_COOKIE_SECURE=true
+PROMTY_SESSION_COOKIE_SAMESITE=lax
+PROMTY_ADMIN_GITHUB_IDS=191438254
+PROMTY_AUTH_RATE_LIMIT_REQUESTS=30
+PROMTY_AUTH_RATE_LIMIT_WINDOW_SECONDS=60
+PROMTY_ADMIN_RATE_LIMIT_REQUESTS=120
+PROMTY_ADMIN_RATE_LIMIT_WINDOW_SECONDS=60
+PROMTY_COMMUNITY_RATE_LIMIT_REQUESTS=120
+PROMTY_COMMUNITY_RATE_LIMIT_WINDOW_SECONDS=60
+PROMTY_INGEST_RATE_LIMIT_REQUESTS=120
+PROMTY_INGEST_RATE_LIMIT_WINDOW_SECONDS=60
+PROMTY_TRUSTED_PROXY_CIDRS=127.0.0.0/8,::1/128,172.16.0.0/12
+PROMTY_EVENT_BATCH_MAX_BODY_BYTES=8388608
+PROMTY_ADMIN_AUDIT_RETENTION_DAYS=180
+PROMTY_SUPPORT_EMAIL_PROVIDER=ses
+PROMTY_SUPPORT_FROM_EMAIL=support@promty.org
+PROMTY_SUPPORT_NOTIFICATION_EMAILS=stored in Secrets Manager
+PROMTY_SUPPORT_RATE_LIMIT_REQUESTS=5
+PROMTY_SUPPORT_RATE_LIMIT_WINDOW_SECONDS=300
+PROMTY_BUFFER_CHANNEL_IDS={} # optional; use base or locale-specific channel keys
+PROMTY_DEVTO_ORGANIZATION_ID= # optional
+PROMTY_PUBLISHED_FLOW_ASSET_STORAGE=s3
+PROMTY_AWS_REGION=ap-southeast-2
+PROMTY_AWS_S3_BUCKET=promty-prod-assets-435917083683
+PROMTY_AWS_S3_PREFIX=published-flow-assets
+PROMTY_APP_ENCRYPTION_KEY_ID=aws-prod
 PROMTY_MEMORY_GENERATOR=openai
 PROMTY_MEMORY_DRAFT_GENERATOR=openai
 PROMTY_PROJECT_MEMORY_GENERATOR=openai
@@ -759,7 +759,7 @@ Manual frontend deploy:
 ```bash
 cd frontend
 npm ci
-VITE_PROMPTHUB_API_URL=https://api.promty.org npm run build
+VITE_PROMTY_API_URL=https://api.promty.org npm run build
 aws s3 sync dist/assets s3://promty-prod-frontend-435917083683/assets --delete --profile promty-prod
 aws s3 cp dist/assets s3://promty-prod-frontend-435917083683/assets \
   --recursive \
@@ -824,10 +824,10 @@ aws ssm send-command \
     "docker pull 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com/promty/backend:latest",
     "docker rm -f promty-memory-worker || true",
     "docker rm -f promty-backend || true",
-    "docker run -d --name promty-backend --restart unless-stopped --network promty --env-file /opt/promty/backend.env -e PROMPTHUB_ADMIN_GITHUB_IDS=191438254 -e PROMPTHUB_DATABASE_POOL_SIZE=5 -e PROMPTHUB_DATABASE_MAX_OVERFLOW=2 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com/promty/backend:latest",
+    "docker run -d --name promty-backend --restart unless-stopped --network promty --env-file /opt/promty/backend.env -e PROMTY_ADMIN_GITHUB_IDS=191438254 -e PROMTY_DATABASE_POOL_SIZE=5 -e PROMTY_DATABASE_MAX_OVERFLOW=2 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com/promty/backend:latest",
     "sleep 8",
     "docker exec promty-backend python -c \"import urllib.request; print(urllib.request.urlopen('\''http://127.0.0.1:8011/health/ready'\'', timeout=5).read().decode())\"",
-    "docker run -d --name promty-memory-worker --restart unless-stopped --network promty --env-file /opt/promty/backend.env -e PROMPTHUB_DATABASE_POOL_SIZE=2 -e PROMPTHUB_DATABASE_MAX_OVERFLOW=1 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com/promty/backend:latest python -m app.workers.project_memory"
+    "docker run -d --name promty-memory-worker --restart unless-stopped --network promty --env-file /opt/promty/backend.env -e PROMTY_DATABASE_POOL_SIZE=2 -e PROMTY_DATABASE_MAX_OVERFLOW=1 435917083683.dkr.ecr.ap-southeast-2.amazonaws.com/promty/backend:latest python -m app.workers.project_memory"
   ]'
 ```
 
@@ -878,13 +878,13 @@ Authorization callback URL: https://api.promty.org/api/auth/github/callback
 Production OAuth environment:
 
 ```text
-PROMPTHUB_GITHUB_CLIENT_ID=stored in Secrets Manager
-PROMPTHUB_GITHUB_CLIENT_SECRET=stored in Secrets Manager
-PROMPTHUB_API_PUBLIC_URL=https://api.promty.org
-PROMPTHUB_APP_URL=https://promty.org
-PROMPTHUB_CORS_ORIGINS=https://promty.org,https://www.promty.org
-PROMPTHUB_SESSION_COOKIE_SECURE=true
-PROMPTHUB_SESSION_COOKIE_SAMESITE=lax
+PROMTY_GITHUB_CLIENT_ID=stored in Secrets Manager
+PROMTY_GITHUB_CLIENT_SECRET=stored in Secrets Manager
+PROMTY_API_PUBLIC_URL=https://api.promty.org
+PROMTY_APP_URL=https://promty.org
+PROMTY_CORS_ORIGINS=https://promty.org,https://www.promty.org
+PROMTY_SESSION_COOKIE_SECURE=true
+PROMTY_SESSION_COOKIE_SAMESITE=lax
 ```
 
 If GitHub login returns:
@@ -976,9 +976,9 @@ API health check fails:
 
 Login redirects or loops:
 
-- check `PROMPTHUB_APP_URL`
-- check `PROMPTHUB_API_PUBLIC_URL`
-- check `PROMPTHUB_CORS_ORIGINS`
+- check `PROMTY_APP_URL`
+- check `PROMTY_API_PUBLIC_URL`
+- check `PROMTY_CORS_ORIGINS`
 - check cookie settings
 - check GitHub OAuth callback URL
 
@@ -997,7 +997,7 @@ Database connection fails:
 
 S3 asset upload fails:
 
-- verify `PROMPTHUB_PUBLISHED_FLOW_ASSET_STORAGE=s3`
+- verify `PROMTY_PUBLISHED_FLOW_ASSET_STORAGE=s3`
 - verify bucket name and region
 - verify the EC2 instance role can access the private asset bucket
 

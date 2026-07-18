@@ -19,6 +19,7 @@ RUNTIME_MODULES: tuple[str, ...] = (
     "config.py",
     "context_client.py",
     "events.py",
+    "environment.py",
     "file_lock.py",
     "git_context.py",
     "mcp_server.py",
@@ -39,7 +40,7 @@ def runtime_home() -> Path:
 
 
 def _runtime_python_command() -> str:
-    configured = os.environ.get("PROMPTHUB_HOOK_PYTHON")
+    configured = os.environ.get("PROMTY_HOOK_PYTHON")
     if configured:
         return configured
     promty_python = os.environ.get("PROMTY_PYTHON")

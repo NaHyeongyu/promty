@@ -22,7 +22,7 @@ from app.services.memory.constants import (
 )
 
 pytestmark = pytest.mark.skipif(
-    os.environ.get("PROMPTHUB_RUN_POSTGRES_TESTS") != "1",
+    os.environ.get("PROMTY_RUN_POSTGRES_TESTS") != "1",
     reason="PostgreSQL integration tests are disabled",
 )
 

@@ -25,7 +25,7 @@ def upgrade() -> None:
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
         sa.Column("user_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("token_hash", sa.String(length=128), nullable=False),
-        sa.Column("name", sa.String(length=255), nullable=False, server_default="PromptHub CLI"),
+        sa.Column("name", sa.String(length=255), nullable=False, server_default="Promty CLI"),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=UTC_NOW, nullable=False),
         sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),

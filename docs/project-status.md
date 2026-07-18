@@ -1,4 +1,4 @@
-# PromptHub Project Status
+# Promty Project Status
 
 Snapshot date: 2026-06-27
 
@@ -6,7 +6,7 @@ This document summarizes the current implementation state after the initial coll
 
 ## Current Goal
 
-PromptHub records AI development events from local tools and renders them as a timeline.
+Promty records AI development events from local tools and renders them as a timeline.
 
 The current validated path is:
 
@@ -23,10 +23,10 @@ v
 collector capture
 |
 v
-PromptHub Event v1
+Promty Event v1
 |
 v
-~/.prompthub/events/<project_id>/<session_id>/events.jsonl
+~/.promty/events/<project_id>/<session_id>/events.jsonl
 |
 v
 collector upload --watch
@@ -67,7 +67,7 @@ README.md
 
 ### Event Architecture
 
-PromptHub Event v1 is the boundary between collector and backend.
+Promty Event v1 is the boundary between collector and backend.
 
 Base fields:
 
@@ -139,7 +139,7 @@ Collector responsibilities currently implemented:
 
 ```text
 read hook JSON from stdin
-normalize tool-specific payloads into PromptHub Events
+normalize tool-specific payloads into Promty Events
 assign per-session sequence numbers
 detect projects from cwd, preferring the enclosing git root
 remember tool session ids for later events without cwd
@@ -149,8 +149,8 @@ persist events to a local JSONL queue
 upload queued events outside the hook path
 ack uploaded events from the queue
 retry uploads in watch mode without blocking hooks
-open PromptHub login from the terminal
-store local API URL/token config at ~/.prompthub/config.json
+open Promty login from the terminal
+store local API URL/token config at ~/.promty/config.json
 install or repair repo-local Codex and Claude Code hooks
 start the uploader as a background process
 diagnose login, hooks, queue, backend, and uploader status
@@ -159,16 +159,16 @@ diagnose login, hooks, queue, backend, and uploader status
 Default local files:
 
 ```text
-~/.prompthub/config.json
-~/.prompthub/events/<project_id>/<session_id>/events.jsonl
-~/.prompthub/sequences.json
-~/.prompthub/session-index.json
-~/.prompthub/change-baselines.json
-~/.prompthub/uploader.pid
-~/.prompthub/uploader.log
+~/.promty/config.json
+~/.promty/events/<project_id>/<session_id>/events.jsonl
+~/.promty/sequences.json
+~/.promty/session-index.json
+~/.promty/change-baselines.json
+~/.promty/uploader.pid
+~/.promty/uploader.log
 ```
 
-The session index lets later events that only include a tool session id reuse the already detected PromptHub project and session.
+The session index lets later events that only include a tool session id reuse the already detected Promty project and session.
 
 ### Codex Hook Validation
 
@@ -222,7 +222,7 @@ GET  /health/live
 GET  /health/ready
 ```
 
-The backend validates PromptHub Event v1 models and persists events to PostgreSQL.
+The backend validates Promty Event v1 models and persists events to PostgreSQL.
 
 Current ingest behavior:
 
@@ -235,7 +235,7 @@ stores payloads as PostgreSQL JSONB
 stores project git_remote/github_url metadata when collector payloads include it
 requires Bearer auth by default
 accepts per-user collector tokens issued through GitHub OAuth
-optionally accepts a global PROMPTHUB_API_TOKEN
+optionally accepts a global PROMTY_API_TOKEN
 issues HttpOnly JWT session cookies for web users
 requires web JWT auth for GET /api/events
 filters event reads by the authenticated project owner
@@ -386,19 +386,19 @@ curl -sS 'http://127.0.0.1:8011/api/events?event_type=FilesChanged&limit=5'
 Check database migration:
 
 ```bash
-docker compose exec -T postgres psql -U prompthub -d prompthub -c "select version_num from alembic_version;"
+docker compose exec -T postgres psql -U promty -d promty -c "select version_num from alembic_version;"
 ```
 
 Check event count:
 
 ```bash
-docker compose exec -T postgres psql -U prompthub -d prompthub -c "select count(*) from events;"
+docker compose exec -T postgres psql -U promty -d promty -c "select count(*) from events;"
 ```
 
 Check local queue:
 
 ```bash
-find ~/.prompthub/events -name events.jsonl -print
+find ~/.promty/events -name events.jsonl -print
 ```
 
 Compile Python code:

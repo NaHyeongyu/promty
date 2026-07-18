@@ -1,9 +1,9 @@
 # Claude Code Hook Verification
 
-Goal: validate PromptHub Collector with Claude Code official hooks.
+Goal: validate Promty Collector with Claude Code official hooks.
 
 Claude Code hooks are configured through Claude settings JSON. For repo-local
-PromptHub development, use `.claude/settings.local.json` so local hook commands
+Promty development, use `.claude/settings.local.json` so local hook commands
 and machine paths are not shared by default.
 
 Official reference:
@@ -18,7 +18,7 @@ From the repository root:
 python3 collector/src/cli.py install-hooks --tool claude-code
 ```
 
-This writes PromptHub command hooks to:
+This writes Promty command hooks to:
 
 ```text
 .claude/settings.local.json
@@ -91,5 +91,5 @@ hooks: ok - installed in .claude/settings.local.json
    FilesChanged
    ```
 
-6. Confirm the PromptHub project detail page shows a Claude Code session and the
+6. Confirm the Promty project detail page shows a Claude Code session and the
    prompt/file changes.

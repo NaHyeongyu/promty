@@ -81,7 +81,7 @@ def test_profile_uses_isolated_config_queue_and_uploader_files(
 
     _apply_profile_defaults(args)
 
-    profile_root = Path.home() / ".prompthub" / "profiles" / profile
+    profile_root = Path.home() / ".promty" / "profiles" / profile
     assert args.app_url == app_url
     assert args.api_url == api_url
     assert args.config_path == str(profile_root / "config.json")
@@ -144,7 +144,7 @@ def test_profile_queue_path_is_written_into_hooks(
 
     config = json.loads((repo_root / ".codex" / "hooks.json").read_text())
     command = config["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
-    expected_queue = Path.home() / ".prompthub" / "profiles" / "dev" / "events"
+    expected_queue = Path.home() / ".promty" / "profiles" / "dev" / "events"
     assert command == f"promty capture --tool codex-cli --queue-path {expected_queue}"
 
 
@@ -177,8 +177,8 @@ def test_profiles_write_primary_and_mirror_queues_into_hooks(
 
     config = json.loads((repo_root / ".codex" / "hooks.json").read_text())
     command = config["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
-    dev_queue = Path.home() / ".prompthub" / "profiles" / "dev" / "events"
-    prod_queue = Path.home() / ".prompthub" / "profiles" / "prod" / "events"
+    dev_queue = Path.home() / ".promty" / "profiles" / "dev" / "events"
+    prod_queue = Path.home() / ".promty" / "profiles" / "prod" / "events"
     assert command == (
         f"promty capture --tool codex-cli --queue-path {dev_queue} --mirror-queue-path {prod_queue}"
     )
@@ -216,13 +216,13 @@ def test_doctor_profiles_checks_each_profile_independently(
     assert checked_profiles == [
         (
             "dev/",
-            Path.home() / ".prompthub" / "profiles" / "dev" / "events",
-            Path.home() / ".prompthub" / "profiles" / "dev" / "uploader.pid",
+            Path.home() / ".promty" / "profiles" / "dev" / "events",
+            Path.home() / ".promty" / "profiles" / "dev" / "uploader.pid",
         ),
         (
             "prod/",
-            Path.home() / ".prompthub" / "profiles" / "prod" / "events",
-            Path.home() / ".prompthub" / "profiles" / "prod" / "uploader.pid",
+            Path.home() / ".promty" / "profiles" / "prod" / "events",
+            Path.home() / ".promty" / "profiles" / "prod" / "uploader.pid",
         ),
     ]
     output = capsys.readouterr().out
@@ -294,7 +294,7 @@ def test_runtime_launcher_uses_a_durable_copy(
     promty_home = tmp_path / "home with spaces" / ".promty"
     monkeypatch.setenv("PROMTY_HOME", str(promty_home))
     monkeypatch.delenv("PROMTY_PYTHON", raising=False)
-    monkeypatch.delenv("PROMPTHUB_HOOK_PYTHON", raising=False)
+    monkeypatch.delenv("PROMTY_HOOK_PYTHON", raising=False)
 
     launcher_path = install_runtime()
     launcher_text = launcher_path.read_text(encoding="utf-8")
@@ -468,12 +468,12 @@ def test_init_profiles_install_one_mirrored_hook_and_start_two_uploaders(
     assert installed_hooks[0].profiles == ("dev", "prod")
     assert installed_hooks[0].queue_path is None
     assert [Path(item.queue_path) for item in started_uploaders] == [
-        Path.home() / ".prompthub" / "profiles" / "dev" / "events",
-        Path.home() / ".prompthub" / "profiles" / "prod" / "events",
+        Path.home() / ".promty" / "profiles" / "dev" / "events",
+        Path.home() / ".promty" / "profiles" / "prod" / "events",
     ]
     assert [Path(item.pid_path) for item in started_uploaders] == [
-        Path.home() / ".prompthub" / "profiles" / "dev" / "uploader.pid",
-        Path.home() / ".prompthub" / "profiles" / "prod" / "uploader.pid",
+        Path.home() / ".promty" / "profiles" / "dev" / "uploader.pid",
+        Path.home() / ".promty" / "profiles" / "prod" / "uploader.pid",
     ]
 
 
@@ -688,7 +688,7 @@ def test_install_hooks_migrates_legacy_prompthub_command(
                                     "command": (
                                         "python3 collector/src/cli.py capture --tool codex-cli"
                                     ),
-                                    "statusMessage": "Capturing PromptHub event",
+                                    "statusMessage": "Capturing Promty event",
                                 }
                             ]
                         }
@@ -717,4 +717,6 @@ def test_install_hooks_migrates_legacy_prompthub_command(
 
 def test_user_facing_brand_is_promty() -> None:
     assert "PromptHub" not in LOGIN_CALLBACK_HTML
+    assert "Promty" in LOGIN_CALLBACK_HTML
     assert all("PromptHub" not in spec.get("statusMessage", "") for spec in CODEX_HOOKS)
+    assert all("Promty" in spec.get("statusMessage", "") for spec in CODEX_HOOKS)

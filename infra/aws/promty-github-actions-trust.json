@@ -10,7 +10,7 @@
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:NaHyeongyu/BuildHub:ref:refs/heads/master"
+          "token.actions.githubusercontent.com:sub": "repo:NaHyeongyu/promty:ref:refs/heads/master"
         }
       }
     }

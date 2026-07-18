@@ -309,10 +309,10 @@ def test_memory_slice_event_limit_env_aliases_and_prompt_target_clamp(
     monkeypatch,
 ) -> None:
     monkeypatch.delenv("PROMTY_MEMORY_SLICE_EVENT_MAX_ROWS", raising=False)
-    monkeypatch.delenv("PROMPTHUB_MEMORY_SLICE_EVENT_MAX_ROWS", raising=False)
+    monkeypatch.delenv("PROMTY_MEMORY_SLICE_EVENT_MAX_ROWS", raising=False)
     assert Settings().memory_slice_event_max_rows == 500
 
-    monkeypatch.setenv("PROMPTHUB_MEMORY_SLICE_EVENT_MAX_ROWS", "7")
+    monkeypatch.setenv("PROMTY_MEMORY_SLICE_EVENT_MAX_ROWS", "7")
     assert Settings().memory_slice_event_max_rows == 7
 
     monkeypatch.setenv("PROMTY_MEMORY_SLICE_EVENT_MAX_ROWS", "1")
@@ -322,7 +322,7 @@ def test_memory_slice_event_limit_env_aliases_and_prompt_target_clamp(
     assert windows.memory_slice_prompt_target() == 1
 
     monkeypatch.delenv("PROMTY_MEMORY_SLICE_MAX_SLICES_PER_CALL", raising=False)
-    monkeypatch.setenv("PROMPTHUB_MEMORY_SLICE_MAX_SLICES_PER_CALL", "6")
+    monkeypatch.setenv("PROMTY_MEMORY_SLICE_MAX_SLICES_PER_CALL", "6")
     assert Settings().memory_slice_max_slices_per_call == 6
 
 
@@ -592,7 +592,7 @@ def test_preloaded_event_rows_build_the_same_session_context_without_query(
         ended_at=None,
         id=uuid4(),
         model="gpt-5",
-        project=SimpleNamespace(name="PromptHub"),
+        project=SimpleNamespace(name="Promty"),
         project_id=project_id,
         started_at=datetime(2026, 7, 13, 12, 0, tzinfo=UTC),
         tool="codex-cli",
@@ -635,7 +635,7 @@ def test_context_only_anchor_does_not_duplicate_coverage_or_source_ids(monkeypat
         ended_at=None,
         id=uuid4(),
         model="gpt-5",
-        project=SimpleNamespace(name="PromptHub"),
+        project=SimpleNamespace(name="Promty"),
         project_id=project_id,
         started_at=datetime(2026, 7, 13, 12, 0, tzinfo=UTC),
         tool="codex-cli",

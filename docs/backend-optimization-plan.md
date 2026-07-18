@@ -115,7 +115,7 @@ settings. Provider success bodies are read incrementally with a `1048576`-byte
 default ceiling, generation requests ask for at most `8192` output tokens, and
 each single provider attempt has a monotonic `120`-second deadline.
 Each event materialization slice reads at most `500` rows by default. The
-`PROMPTHUB_MEMORY_SLICE_EVENT_MAX_ROWS`/`PROMTY_MEMORY_SLICE_EVENT_MAX_ROWS`
+`PROMTY_MEMORY_SLICE_EVENT_MAX_ROWS`/`PROMTY_MEMORY_SLICE_EVENT_MAX_ROWS`
 setting controls this ceiling, while persisted continuation progress provides
 eventual, non-overlapping coverage for longer logical prompt windows.
 Each call persists at most four slices. The worker resumes unfinished groups

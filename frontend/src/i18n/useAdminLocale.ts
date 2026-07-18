@@ -27,7 +27,7 @@ const KOREAN_SERVER_COPY: Record<string, string> = {
   "Support inquiries need review": "확인이 필요한 문의",
   "New or in-progress user inquiries are waiting for an administrator.": "신규 또는 처리 중인 사용자 문의가 관리자의 확인을 기다리고 있습니다.",
   "Session cookie is not marked secure": "세션 쿠키에 보안 속성이 없음",
-  "PROMPTHUB_SESSION_COOKIE_SECURE is false.": "PROMPTHUB_SESSION_COOKIE_SECURE가 false입니다.",
+  "PROMTY_SESSION_COOKIE_SECURE is false.": "PROMTY_SESSION_COOKIE_SECURE가 false입니다.",
   "Dedicated GitHub token key is not configured": "GitHub 토큰 전용 키가 설정되지 않음",
   "GitHub token encryption falls back to another application secret.": "GitHub 토큰 암호화가 다른 애플리케이션 비밀값을 대신 사용합니다.",
   "Dedicated app encryption key is not configured": "앱 전용 암호화 키가 설정되지 않음",

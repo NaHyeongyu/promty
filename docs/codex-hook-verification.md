@@ -1,6 +1,6 @@
 # Codex Integration Validation
 
-Goal: validate PromptHub Collector using a real Codex CLI `UserPromptSubmit` hook.
+Goal: validate Promty Collector using a real Codex CLI `UserPromptSubmit` hook.
 
 Do not use mock payloads for this validation path.
 
@@ -75,7 +75,7 @@ Captured example:
 docs/real-codex-payload.json
 ```
 
-## Step 3: Compare With PromptHub Event Schema
+## Step 3: Compare With Promty Event Schema
 
 Compare `docs/real-codex-payload.json` with `docs/event-spec-v1.md`.
 
@@ -121,8 +121,8 @@ Notes:
 
 ```text
 turn_id is a Codex UUID, not a numeric sequence
-sequence is assigned by PromptHub's local sequence store
-session_id is stable and can be used directly as the PromptHub session_id
+sequence is assigned by Promty's local sequence store
+session_id is stable and can be used directly as the Promty session_id
 project_id is derived from the git root for cwd when no explicit project_id is provided
 ```
 
@@ -153,25 +153,25 @@ No backend upload yet.
 Default queue path:
 
 ```text
-~/.prompthub/events/<project_id>/<session_id>/events.jsonl
+~/.promty/events/<project_id>/<session_id>/events.jsonl
 ```
 
 Default sequence path:
 
 ```text
-~/.prompthub/sequences.json
+~/.promty/sequences.json
 ```
 
 Default session index path:
 
 ```text
-~/.prompthub/session-index.json
+~/.promty/session-index.json
 ```
 
 Default change baseline path:
 
 ```text
-~/.prompthub/change-baselines.json
+~/.promty/change-baselines.json
 ```
 
 ## Step 5: Multiple Prompt Validation
@@ -196,10 +196,10 @@ A real Codex CLI prompt generates:
 Real Hook
 |
 v
-PromptHub Event
+Promty Event
 |
 v
-~/.prompthub/events/<project_id>/<session_id>/events.jsonl
+~/.promty/events/<project_id>/<session_id>/events.jsonl
 ```
 
 No mock data is used for the final validation.

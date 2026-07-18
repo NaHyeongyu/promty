@@ -7,7 +7,7 @@ import tempfile
 
 PRIVATE_DIRECTORY_MODE = 0o700
 PRIVATE_FILE_MODE = 0o600
-PROMTY_DATA_ROOT = Path("~/.prompthub").expanduser()
+PROMTY_DATA_ROOT = Path("~/.promty").expanduser()
 
 
 class UnsafeStoragePathError(RuntimeError):

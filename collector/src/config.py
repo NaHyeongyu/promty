@@ -9,15 +9,15 @@ from typing import Any
 from secure_storage import open_private_text, write_private_text_atomic
 
 DEFAULT_CONFIG_PATH = Path(
-    os.environ.get("PROMPTHUB_CONFIG_PATH", "~/.prompthub/config.json")
+    os.environ.get("PROMTY_CONFIG_PATH", "~/.promty/config.json")
 ).expanduser()
-DEFAULT_APP_URL = os.environ.get("PROMPTHUB_APP_URL", "http://127.0.0.1:5173")
-DEFAULT_API_URL = os.environ.get("PROMPTHUB_API_URL", "http://127.0.0.1:8011")
+DEFAULT_APP_URL = os.environ.get("PROMTY_APP_URL", "http://127.0.0.1:5173")
+DEFAULT_API_URL = os.environ.get("PROMTY_API_URL", "http://127.0.0.1:8011")
 DEFAULT_UPLOADER_PID_PATH = Path(
-    os.environ.get("PROMPTHUB_UPLOADER_PID_PATH", "~/.prompthub/uploader.pid")
+    os.environ.get("PROMTY_UPLOADER_PID_PATH", "~/.promty/uploader.pid")
 ).expanduser()
 DEFAULT_UPLOADER_LOG_PATH = Path(
-    os.environ.get("PROMPTHUB_UPLOADER_LOG_PATH", "~/.prompthub/uploader.log")
+    os.environ.get("PROMTY_UPLOADER_LOG_PATH", "~/.promty/uploader.log")
 ).expanduser()
 
 
@@ -55,8 +55,8 @@ def write_config(values: dict[str, Any], path: str | Path | None = None) -> dict
 def resolve_app_url(value: str | None = None, path: str | Path | None = None) -> str:
     if value:
         return value.rstrip("/")
-    if os.environ.get("PROMPTHUB_APP_URL"):
-        return os.environ["PROMPTHUB_APP_URL"].rstrip("/")
+    if os.environ.get("PROMTY_APP_URL"):
+        return os.environ["PROMTY_APP_URL"].rstrip("/")
     configured = read_config(path).get("app_url")
     if isinstance(configured, str) and configured.strip():
         return configured.rstrip("/")
@@ -66,8 +66,8 @@ def resolve_app_url(value: str | None = None, path: str | Path | None = None) ->
 def resolve_api_url(value: str | None = None, path: str | Path | None = None) -> str:
     if value:
         return value.rstrip("/")
-    if os.environ.get("PROMPTHUB_API_URL"):
-        return os.environ["PROMPTHUB_API_URL"].rstrip("/")
+    if os.environ.get("PROMTY_API_URL"):
+        return os.environ["PROMTY_API_URL"].rstrip("/")
     configured = read_config(path).get("api_url")
     if isinstance(configured, str) and configured.strip():
         return configured.rstrip("/")
@@ -77,7 +77,7 @@ def resolve_api_url(value: str | None = None, path: str | Path | None = None) ->
 def resolve_token(value: str | None = None, path: str | Path | None = None) -> str | None:
     if value:
         return value
-    if os.environ.get("PROMPTHUB_API_TOKEN"):
-        return os.environ["PROMPTHUB_API_TOKEN"]
+    if os.environ.get("PROMTY_API_TOKEN"):
+        return os.environ["PROMTY_API_TOKEN"]
     configured = read_config(path).get("token")
     return configured if isinstance(configured, str) and configured.strip() else None

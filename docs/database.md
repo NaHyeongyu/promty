@@ -1,6 +1,6 @@
-# PromptHub Database
+# Promty Database
 
-PromptHub uses PostgreSQL with SQLAlchemy 2.x models and Alembic migrations.
+Promty uses PostgreSQL with SQLAlchemy 2.x models and Alembic migrations.
 
 ## Stack
 
@@ -36,81 +36,81 @@ Run migrations:
 The backend reads `DATABASE_URL` and falls back to:
 
 ```text
-postgresql+psycopg://prompthub:prompthub@localhost:5432/prompthub
+postgresql+psycopg://promty:promty@localhost:5432/promty
 ```
 
 Optional security environment variables:
 
 ```text
-PROMPTHUB_API_TOKEN
-PROMPTHUB_CORS_ORIGINS
-PROMPTHUB_API_PUBLIC_URL
-PROMPTHUB_APP_URL
-PROMPTHUB_DATABASE_POOL_SIZE
-PROMPTHUB_DATABASE_MAX_OVERFLOW
-PROMPTHUB_DATABASE_POOL_TIMEOUT_SECONDS
-PROMPTHUB_DATABASE_POOL_RECYCLE_SECONDS
-PROMPTHUB_DATABASE_STATEMENT_TIMEOUT_MS
-PROMPTHUB_DATABASE_LOCK_TIMEOUT_MS
-PROMPTHUB_GITHUB_CLIENT_ID
-PROMPTHUB_GITHUB_CLIENT_SECRET
-PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_KEY
-PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_PREVIOUS_KEYS
-PROMPTHUB_APP_ENCRYPTION_KEY
-PROMPTHUB_APP_ENCRYPTION_PREVIOUS_KEYS
-PROMPTHUB_APP_ENCRYPTION_KEY_ID
-PROMPTHUB_ADMIN_GITHUB_IDS
-PROMPTHUB_AUTH_RATE_LIMIT_REQUESTS
-PROMPTHUB_AUTH_RATE_LIMIT_WINDOW_SECONDS
-PROMPTHUB_ADMIN_RATE_LIMIT_REQUESTS
-PROMPTHUB_ADMIN_RATE_LIMIT_WINDOW_SECONDS
-PROMPTHUB_COMMUNITY_RATE_LIMIT_REQUESTS
-PROMPTHUB_COMMUNITY_RATE_LIMIT_WINDOW_SECONDS
-PROMPTHUB_INGEST_RATE_LIMIT_REQUESTS
-PROMPTHUB_INGEST_RATE_LIMIT_WINDOW_SECONDS
-PROMPTHUB_TRUSTED_PROXY_CIDRS
-PROMPTHUB_ADMIN_AUDIT_RETENTION_DAYS
-PROMPTHUB_SUPPORT_EMAIL_PROVIDER
-PROMPTHUB_SUPPORT_NOTIFICATION_EMAILS
-PROMPTHUB_SUPPORT_FROM_EMAIL
-PROMPTHUB_SUPPORT_RATE_LIMIT_REQUESTS
-PROMPTHUB_SUPPORT_RATE_LIMIT_WINDOW_SECONDS
-PROMPTHUB_BUFFER_API_KEY
-PROMPTHUB_BUFFER_CHANNEL_IDS
-PROMPTHUB_DEVTO_API_KEY
-PROMPTHUB_DEVTO_ORGANIZATION_ID
-PROMPTHUB_GITHUB_MARKETING_TOKEN
-PROMPTHUB_GITHUB_MARKETING_REPOSITORY_ID
-PROMPTHUB_GITHUB_MARKETING_DISCUSSION_CATEGORY_ID
-PROMPTHUB_PROMPT_MAX_CHARS
-PROMPTHUB_RESPONSE_MAX_CHARS
-PROMPTHUB_EVENT_BATCH_MAX_BODY_BYTES
-PROMPTHUB_MEMORY_SLICE_EVENT_MAX_ROWS
-PROMPTHUB_MEMORY_SLICE_MAX_SLICES_PER_CALL
-PROMPTHUB_MEMORY_DRAFT_PROMPT_MAX_BYTES
-PROMPTHUB_MEMORY_DRAFT_EVIDENCE_MAX_BYTES
-PROMPTHUB_PROJECT_MEMORY_PROMPT_MAX_BYTES
-PROMPTHUB_MEMORY_PROVIDER_RESPONSE_MAX_BYTES
-PROMPTHUB_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS
-PROMPTHUB_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS
-PROMPTHUB_PROJECT_MEMORY_BATCH_MAX_DRAFTS
-PROMPTHUB_MEMORY_WORKER_POLL_SECONDS
-PROMPTHUB_MEMORY_WORKER_MAX_POLL_SECONDS
-PROMPTHUB_MEMORY_WORKER_HEARTBEAT_SECONDS
-PROMPTHUB_MEMORY_WORKER_CHUNK_CONCURRENCY
+PROMTY_API_TOKEN
+PROMTY_CORS_ORIGINS
+PROMTY_API_PUBLIC_URL
+PROMTY_APP_URL
+PROMTY_DATABASE_POOL_SIZE
+PROMTY_DATABASE_MAX_OVERFLOW
+PROMTY_DATABASE_POOL_TIMEOUT_SECONDS
+PROMTY_DATABASE_POOL_RECYCLE_SECONDS
+PROMTY_DATABASE_STATEMENT_TIMEOUT_MS
+PROMTY_DATABASE_LOCK_TIMEOUT_MS
+PROMTY_GITHUB_CLIENT_ID
+PROMTY_GITHUB_CLIENT_SECRET
+PROMTY_GITHUB_TOKEN_ENCRYPTION_KEY
+PROMTY_GITHUB_TOKEN_ENCRYPTION_PREVIOUS_KEYS
+PROMTY_APP_ENCRYPTION_KEY
+PROMTY_APP_ENCRYPTION_PREVIOUS_KEYS
+PROMTY_APP_ENCRYPTION_KEY_ID
+PROMTY_ADMIN_GITHUB_IDS
+PROMTY_AUTH_RATE_LIMIT_REQUESTS
+PROMTY_AUTH_RATE_LIMIT_WINDOW_SECONDS
+PROMTY_ADMIN_RATE_LIMIT_REQUESTS
+PROMTY_ADMIN_RATE_LIMIT_WINDOW_SECONDS
+PROMTY_COMMUNITY_RATE_LIMIT_REQUESTS
+PROMTY_COMMUNITY_RATE_LIMIT_WINDOW_SECONDS
+PROMTY_INGEST_RATE_LIMIT_REQUESTS
+PROMTY_INGEST_RATE_LIMIT_WINDOW_SECONDS
+PROMTY_TRUSTED_PROXY_CIDRS
+PROMTY_ADMIN_AUDIT_RETENTION_DAYS
+PROMTY_SUPPORT_EMAIL_PROVIDER
+PROMTY_SUPPORT_NOTIFICATION_EMAILS
+PROMTY_SUPPORT_FROM_EMAIL
+PROMTY_SUPPORT_RATE_LIMIT_REQUESTS
+PROMTY_SUPPORT_RATE_LIMIT_WINDOW_SECONDS
+PROMTY_BUFFER_API_KEY
+PROMTY_BUFFER_CHANNEL_IDS
+PROMTY_DEVTO_API_KEY
+PROMTY_DEVTO_ORGANIZATION_ID
+PROMTY_GITHUB_MARKETING_TOKEN
+PROMTY_GITHUB_MARKETING_REPOSITORY_ID
+PROMTY_GITHUB_MARKETING_DISCUSSION_CATEGORY_ID
+PROMTY_PROMPT_MAX_CHARS
+PROMTY_RESPONSE_MAX_CHARS
+PROMTY_EVENT_BATCH_MAX_BODY_BYTES
+PROMTY_MEMORY_SLICE_EVENT_MAX_ROWS
+PROMTY_MEMORY_SLICE_MAX_SLICES_PER_CALL
+PROMTY_MEMORY_DRAFT_PROMPT_MAX_BYTES
+PROMTY_MEMORY_DRAFT_EVIDENCE_MAX_BYTES
+PROMTY_PROJECT_MEMORY_PROMPT_MAX_BYTES
+PROMTY_MEMORY_PROVIDER_RESPONSE_MAX_BYTES
+PROMTY_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS
+PROMTY_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS
+PROMTY_PROJECT_MEMORY_BATCH_MAX_DRAFTS
+PROMTY_MEMORY_WORKER_POLL_SECONDS
+PROMTY_MEMORY_WORKER_MAX_POLL_SECONDS
+PROMTY_MEMORY_WORKER_HEARTBEAT_SECONDS
+PROMTY_MEMORY_WORKER_CHUNK_CONCURRENCY
 PROMTY_GEMINI_API_KEY
 PROMTY_GEMINI_MODEL
 PROMTY_GEMINI_TIMEOUT_SECONDS
 PROMTY_MEMORY_GENERATOR
 PROMTY_MEMORY_DRAFT_GENERATOR
 PROMTY_PROJECT_MEMORY_GENERATOR
-PROMPTHUB_OAUTH_STATE_SECRET
-PROMPTHUB_JWT_SECRET
-PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS
-PROMPTHUB_SESSION_COOKIE_NAME
-PROMPTHUB_SESSION_COOKIE_SECURE
-PROMPTHUB_SESSION_COOKIE_SAMESITE
-PROMPTHUB_OAUTH_STATE_COOKIE_NAME
+PROMTY_OAUTH_STATE_SECRET
+PROMTY_JWT_SECRET
+PROMTY_ACCESS_TOKEN_TTL_SECONDS
+PROMTY_SESSION_COOKIE_NAME
+PROMTY_SESSION_COOKIE_SECURE
+PROMTY_SESSION_COOKIE_SAMESITE
+PROMTY_OAUTH_STATE_COOKIE_NAME
 ```
 
 PostgreSQL connections use a bounded SQLAlchemy queue pool. Defaults are a pool
@@ -118,21 +118,21 @@ size of 5, maximum overflow of 2, a 5-second checkout timeout, and a 300-second
 connection recycle interval. Pool-only options are omitted for SQLite so
 in-memory tests keep their native pool behavior.
 
-`PROMPTHUB_DATABASE_STATEMENT_TIMEOUT_MS` and
-`PROMPTHUB_DATABASE_LOCK_TIMEOUT_MS` optionally set PostgreSQL session-level
+`PROMTY_DATABASE_STATEMENT_TIMEOUT_MS` and
+`PROMTY_DATABASE_LOCK_TIMEOUT_MS` optionally set PostgreSQL session-level
 timeouts for application connections. Both default to `0` (PostgreSQL's
 disabled behavior) so deployments can introduce limits after measuring their
 slowest legitimate queries.
 
 Memory materialization reads at most 500 event rows per slice by default.
-Configure this with `PROMPTHUB_MEMORY_SLICE_EVENT_MAX_ROWS` (or its `PROMTY_`
+Configure this with `PROMTY_MEMORY_SLICE_EVENT_MAX_ROWS` (or its `PROMTY_`
 alias). Values below 2 are clamped to 2, and the effective prompt target is
 clamped to one less than this ceiling so the prompt look-ahead query is bounded
 by the same setting. Oversized prompt windows are persisted as deterministic,
 contiguous continuation slices; their logical end sequence is checkpointed so
 later transactions resume without skipping or duplicating event coverage.
 One materialization call persists at most four slices by default; configure
-this with `PROMPTHUB_MEMORY_SLICE_MAX_SLICES_PER_CALL` (or its `PROMTY_`
+this with `PROMTY_MEMORY_SLICE_MAX_SLICES_PER_CALL` (or its `PROMTY_`
 alias). The worker detects unfinished groups from the persisted aggregate
 `max(materialization_end_sequence) > max(end_sequence)`. When the call ceiling
 lands exactly on a completed logical-window boundary, the last current
@@ -157,7 +157,7 @@ of 10 connections per deployment. Keep `max_connections` headroom for Alembic,
 backups, health checks, and operator sessions when changing these values.
 
 The Project Memory worker generates at most two draft chunks concurrently by
-default. Set `PROMPTHUB_MEMORY_WORKER_CHUNK_CONCURRENCY` (or its `PROMTY_`
+default. Set `PROMTY_MEMORY_WORKER_CHUNK_CONCURRENCY` (or its `PROMTY_`
 alias) to tune this independently of the database pool. Each source draft is
 marked `sent_to_ai_at` before provider work starts. Provider calls, failed
 batches, and interrupted worker leases are never retried; a new batch can only
@@ -166,9 +166,9 @@ claim draft sources that have never been sent to AI.
 Memory provider responses are capped at 1 MiB and generation requests ask for
 at most 8192 output tokens by default. The single provider attempt has a
 120-second wall deadline, including bounded response reads.
-Configure these with `PROMPTHUB_MEMORY_PROVIDER_RESPONSE_MAX_BYTES`,
-`PROMPTHUB_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS`, and
-`PROMPTHUB_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS`; equivalent `PROMTY_`
+Configure these with `PROMTY_MEMORY_PROVIDER_RESPONSE_MAX_BYTES`,
+`PROMTY_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS`, and
+`PROMTY_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS`; equivalent `PROMTY_`
 aliases are also supported.
 The generation preview estimates provider cost from the configured prompt and
 output ceilings. Keep the `*_INPUT_USD_PER_MILLION_TOKENS` and
@@ -177,22 +177,22 @@ provider price sheet; these values affect only the preview and never billing.
 
 Each Project Memory batch claims at most 60 pending drafts by default, ordered
 deterministically by creation time and artifact ID. Configure this with
-`PROMPTHUB_PROJECT_MEMORY_BATCH_MAX_DRAFTS` (or its `PROMTY_` alias); values
+`PROMTY_PROJECT_MEMORY_BATCH_MAX_DRAFTS` (or its `PROMTY_` alias); values
 below 1 are clamped to 1. Excess drafts remain pending for a later batch. This
 also bounds each batch's queued chunk futures and durable chunk checkpoints.
 
 The worker starts with a 2-second poll interval and exponentially backs off to
 10 seconds while no work is available. It resets to the base interval as soon
 as work is processed and heartbeats a running batch lease every 60 seconds.
-Configure these with `PROMPTHUB_MEMORY_WORKER_POLL_SECONDS`,
-`PROMPTHUB_MEMORY_WORKER_MAX_POLL_SECONDS`, and
-`PROMPTHUB_MEMORY_WORKER_HEARTBEAT_SECONDS`; keep the heartbeat comfortably
+Configure these with `PROMTY_MEMORY_WORKER_POLL_SECONDS`,
+`PROMTY_MEMORY_WORKER_MAX_POLL_SECONDS`, and
+`PROMTY_MEMORY_WORKER_HEARTBEAT_SECONDS`; keep the heartbeat comfortably
 below the 10-minute batch lease.
 
 The worker also updates a process heartbeat file used by the Compose and AWS
 container health checks. Configure its path and maximum age with
-`PROMPTHUB_MEMORY_WORKER_HEALTH_FILE` and
-`PROMPTHUB_MEMORY_WORKER_HEALTH_TIMEOUT_SECONDS`.
+`PROMTY_MEMORY_WORKER_HEALTH_FILE` and
+`PROMTY_MEMORY_WORKER_HEALTH_TIMEOUT_SECONDS`.
 
 Project list counters are incrementally maintained in `project_stats`. Check for
 drift or repair the rollup after an operational incident with:
@@ -211,7 +211,7 @@ GET /health/live   process liveness; does not query PostgreSQL
 GET /health/ready  readiness; returns 503 when SELECT 1 fails
 ```
 
-Browser reads require GitHub login and a valid PromptHub JWT session cookie. The session cookie is HttpOnly; JavaScript does not read the token directly. JWTs include a server-side session identifier, logout revokes that session immediately, and production sessions are capped at eight hours.
+Browser reads require GitHub login and a valid Promty JWT session cookie. The session cookie is HttpOnly; JavaScript does not read the token directly. JWTs include a server-side session identifier, logout revokes that session immediately, and production sessions are capped at eight hours.
 
 The administrator-only bilingual marketing studio stores source briefs, Korean and
 English channel variants, approval state, schedules, and external delivery results
@@ -221,11 +221,11 @@ manual community-posting boundaries.
 
 Gemini-backed memory generation reads `PROMTY_GEMINI_API_KEY` from `.env.local`, `backend/.env.local`, or the process environment. The backend must be restarted after changing this key. `GET /api/projects/_memory/generator` reports whether Gemini is configured without exposing the key.
 
-`POST /api/events/batch` requires `Authorization: Bearer <token>` by default. GitHub CLI login issues per-user collector tokens stored as hashes in `collector_tokens`. If `PROMPTHUB_API_TOKEN` is set, the endpoint also accepts that global token. Web JWTs and collector tokens are intentionally separate. Anonymous ingest is available only when `PROMPTHUB_ALLOW_ANONYMOUS_INGEST=true` is explicitly set for isolated local development.
+`POST /api/events/batch` requires `Authorization: Bearer <token>` by default. GitHub CLI login issues per-user collector tokens stored as hashes in `collector_tokens`. If `PROMTY_API_TOKEN` is set, the endpoint also accepts that global token. Web JWTs and collector tokens are intentionally separate. Anonymous ingest is available only when `PROMTY_ALLOW_ANONYMOUS_INGEST=true` is explicitly set for isolated local development.
 
-The web OAuth flow stores a short-lived HttpOnly nonce cookie and verifies it against the signed OAuth state in the callback. `PROMPTHUB_CORS_ORIGINS` is a comma-separated allowlist and defaults to the local Vite origins.
+The web OAuth flow stores a short-lived HttpOnly nonce cookie and verifies it against the signed OAuth state in the callback. `PROMTY_CORS_ORIGINS` is a comma-separated allowlist and defaults to the local Vite origins.
 
-Application-level encryption protects sensitive development context at rest. `PROMPTHUB_APP_ENCRYPTION_KEY` is the preferred dedicated key for prompt text, AI response text, and unified diff patch text. During rotation, keep old decrypt-only keys in the comma-separated `PROMPTHUB_APP_ENCRYPTION_PREVIOUS_KEYS` value until stored data has been migrated. If a dedicated key is not configured, the backend falls back to the JWT/OAuth/API secret chain for local compatibility. Production deployments should always set a dedicated application key and key id.
+Application-level encryption protects sensitive development context at rest. `PROMTY_APP_ENCRYPTION_KEY` is the preferred dedicated key for prompt text, AI response text, and unified diff patch text. During rotation, keep old decrypt-only keys in the comma-separated `PROMTY_APP_ENCRYPTION_PREVIOUS_KEYS` value until stored data has been migrated. If a dedicated key is not configured, the backend falls back to the JWT/OAuth/API secret chain for local compatibility. Production deployments should always set a dedicated application key and key id.
 
 ## ERD
 
@@ -429,13 +429,13 @@ Storage policy:
 
 ```text
 PromptSubmitted.payload.prompt is encrypted before persistence.
-Prompt text is capped by PROMPTHUB_PROMPT_MAX_CHARS, default 50000 characters.
+Prompt text is capped by PROMTY_PROMPT_MAX_CHARS, default 50000 characters.
 Prompt truncation metadata is stored as prompt_truncated, prompt_original_length, and prompt_storage_limit.
 ResponseReceived.payload.response is encrypted before persistence.
-Response text is capped by PROMPTHUB_RESPONSE_MAX_CHARS, default 50000 characters.
+Response text is capped by PROMTY_RESPONSE_MAX_CHARS, default 50000 characters.
 Response truncation metadata is stored as response_truncated, response_original_length, and response_storage_limit.
 FilesChanged.payload.changes[].patch is encrypted before persistence.
-Event batch request bodies are capped by PROMPTHUB_EVENT_BATCH_MAX_BODY_BYTES, default 8388608 bytes.
+Event batch request bodies are capped by PROMTY_EVENT_BATCH_MAX_BODY_BYTES, default 8388608 bytes.
 Event batches accept at most 100 events and 2000 aggregate file-change entries.
 POST /api/events/batch is rate limited by a SHA-256 credential fingerprint and by source address; raw bearer tokens are never used as limiter keys.
 Queryable metadata such as project_id, session_id, event_type, timestamps, file paths, and line counts remains plaintext.
@@ -567,7 +567,7 @@ creates a session when session_id is new
 stores the incoming event payload as JSONB
 requires Bearer auth by default
 accepts per-user collector tokens issued through GitHub OAuth
-optionally accepts a global PROMPTHUB_API_TOKEN
+optionally accepts a global PROMTY_API_TOKEN
 requires web JWT auth for browser event reads
 rejects empty batches and batches larger than 500 events
 accepts exact event-id replays as idempotent no-ops

@@ -13,8 +13,10 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from app.core.config import settings
 from app.core.encoding import base64_urldecode, base64_urlencode
 
-ENCRYPTED_TEXT_MARKER = "__buildhub_encrypted_text__"
-ENCRYPTED_TEXT_PREFIX = "bhenc:v1:"
+ENCRYPTED_TEXT_MARKER = "__promty_encrypted_text__"
+ENCRYPTED_TEXT_PREFIX = "promtyenc:v1:"
+LEGACY_ENCRYPTED_TEXT_MARKER = "__buildhub_encrypted_text__"
+LEGACY_ENCRYPTED_TEXT_PREFIX = "bhenc:v1:"
 APP_TEXT_ALGORITHM = "AES-256-GCM"
 
 
@@ -112,8 +114,8 @@ def _app_encryption_key() -> bytes:
     return _key_from_secret(_app_encryption_secret())
 
 
-def _aad(purpose: str) -> bytes:
-    return f"buildhub:{purpose}".encode("utf-8")
+def _aad(purpose: str, namespace: str = "promty") -> bytes:
+    return f"{namespace}:{purpose}".encode("utf-8")
 
 
 def _encryption_error() -> EncryptionDecryptionError:
@@ -140,7 +142,10 @@ def encrypt_app_text(value: str, *, purpose: str) -> dict[str, Any]:
 def is_encrypted_app_text(value: Any) -> bool:
     return (
         isinstance(value, dict)
-        and value.get(ENCRYPTED_TEXT_MARKER) is True
+        and (
+            value.get(ENCRYPTED_TEXT_MARKER) is True
+            or value.get(LEGACY_ENCRYPTED_TEXT_MARKER) is True
+        )
         and value.get("alg") == APP_TEXT_ALGORITHM
         and value.get("v") == 1
     )
@@ -160,16 +165,22 @@ def decrypt_app_text(value: dict[str, Any], *, purpose: str) -> str:
         raise _encryption_error() from exc
 
     last_error: Exception | None = None
+    aad_namespaces = (
+        ("buildhub", "promty")
+        if value.get(LEGACY_ENCRYPTED_TEXT_MARKER) is True
+        else ("promty", "buildhub")
+    )
     for secret in _app_encryption_secrets():
-        try:
-            plaintext = AESGCM(_key_from_secret(secret)).decrypt(
-                nonce_bytes,
-                ciphertext_bytes,
-                _aad(purpose),
-            )
-            return plaintext.decode("utf-8")
-        except (InvalidTag, ValueError) as exc:
-            last_error = exc
+        for namespace in aad_namespaces:
+            try:
+                plaintext = AESGCM(_key_from_secret(secret)).decrypt(
+                    nonce_bytes,
+                    ciphertext_bytes,
+                    _aad(purpose, namespace),
+                )
+                return plaintext.decode("utf-8")
+            except (InvalidTag, ValueError) as exc:
+                last_error = exc
 
     raise _encryption_error() from last_error
 
@@ -191,9 +202,17 @@ def encrypt_app_text_to_string(value: str, *, purpose: str) -> str:
 def maybe_decrypt_app_text_from_string(value: str | None, *, purpose: str) -> str | None:
     if value is None:
         return None
-    if not value.startswith(ENCRYPTED_TEXT_PREFIX):
+    prefix = next(
+        (
+            candidate
+            for candidate in (ENCRYPTED_TEXT_PREFIX, LEGACY_ENCRYPTED_TEXT_PREFIX)
+            if value.startswith(candidate)
+        ),
+        None,
+    )
+    if prefix is None:
         return value
-    encoded = value[len(ENCRYPTED_TEXT_PREFIX) :]
+    encoded = value[len(prefix) :]
     try:
         envelope = json.loads(base64_urldecode(encoded))
     except (ValueError, json.JSONDecodeError) as exc:

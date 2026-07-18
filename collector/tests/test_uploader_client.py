@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from uploader import client
-from uploader.client import PromptHubUploader
+from uploader.client import PromtyUploader
 from version import COLLECTOR_VERSION
 
 
@@ -36,7 +36,7 @@ def test_heartbeat_sends_authentication_and_collector_version(
 
     monkeypatch.setattr(client.request, "urlopen", urlopen)
 
-    PromptHubUploader(
+    PromtyUploader(
         "https://api.example.test/",
         token="collector-secret",
         timeout=3,

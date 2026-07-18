@@ -9,10 +9,10 @@ from typing import Any
 from payloads import first_string, first_value, payload_views
 
 RESPONSE_CAPTURE_MAX_CHARS = int(
-    os.environ.get("PROMPTHUB_RESPONSE_CAPTURE_MAX_CHARS", "50000")
+    os.environ.get("PROMTY_RESPONSE_CAPTURE_MAX_CHARS", "50000")
 )
 TRANSCRIPT_CAPTURE_MAX_BYTES = int(
-    os.environ.get("PROMPTHUB_RESPONSE_TRANSCRIPT_MAX_BYTES", "1048576")
+    os.environ.get("PROMTY_RESPONSE_TRANSCRIPT_MAX_BYTES", "1048576")
 )
 RESPONSE_KEYS = (
     "response",

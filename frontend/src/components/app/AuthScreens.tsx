@@ -22,6 +22,7 @@ export function CliLoginPage() {
   const state = params.get("state") ?? "";
   const apiUrl = (
     params.get("api_url") ??
+    import.meta.env.VITE_PROMTY_API_URL ??
     import.meta.env.VITE_PROMPTHUB_API_URL ??
     "http://127.0.0.1:8011"
   ).replace(/\/$/, "");

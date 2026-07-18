@@ -25,6 +25,21 @@ def _load_local_env() -> None:
 _load_local_env()
 
 
+def _promote_legacy_environment() -> None:
+    """Expose legacy PromptHub settings under the canonical Promty prefix."""
+
+    legacy_prefix = "PROMPTHUB_"
+    canonical_prefix = "PROMTY_"
+    for name, value in tuple(os.environ.items()):
+        if not name.startswith(legacy_prefix):
+            continue
+        canonical_name = f"{canonical_prefix}{name[len(legacy_prefix):]}"
+        os.environ.setdefault(canonical_name, value)
+
+
+_promote_legacy_environment()
+
+
 def _optional_env(name: str) -> str | None:
     value = os.environ.get(name)
     if value is None or not value.strip():
@@ -115,96 +130,96 @@ def _float_env_any(names: tuple[str, ...], default: float) -> float:
 class Settings:
     database_url: str = os.environ.get(
         "DATABASE_URL",
-        "postgresql+psycopg://prompthub:prompthub@localhost:5432/prompthub",
+        "postgresql+psycopg://promty:promty@localhost:5432/promty",
     )
     database_pool_size: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_DATABASE_POOL_SIZE",
+            "PROMTY_DATABASE_POOL_SIZE",
             5,
             minimum=1,
         )
     )
     database_max_overflow: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_DATABASE_MAX_OVERFLOW",
+            "PROMTY_DATABASE_MAX_OVERFLOW",
             2,
             minimum=0,
         )
     )
     database_pool_timeout_seconds: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_DATABASE_POOL_TIMEOUT_SECONDS",
+            "PROMTY_DATABASE_POOL_TIMEOUT_SECONDS",
             5,
             minimum=1,
         )
     )
     database_pool_recycle_seconds: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_DATABASE_POOL_RECYCLE_SECONDS",
+            "PROMTY_DATABASE_POOL_RECYCLE_SECONDS",
             300,
             minimum=1,
         )
     )
     database_statement_timeout_ms: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_DATABASE_STATEMENT_TIMEOUT_MS",
+            "PROMTY_DATABASE_STATEMENT_TIMEOUT_MS",
             0,
             minimum=0,
         )
     )
     database_lock_timeout_ms: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_DATABASE_LOCK_TIMEOUT_MS",
+            "PROMTY_DATABASE_LOCK_TIMEOUT_MS",
             0,
             minimum=0,
         )
     )
-    api_public_url: str = os.environ.get("PROMPTHUB_API_PUBLIC_URL", "http://127.0.0.1:8011")
-    app_url: str = os.environ.get("PROMPTHUB_APP_URL", "http://127.0.0.1:5173")
+    api_public_url: str = os.environ.get("PROMTY_API_PUBLIC_URL", "http://127.0.0.1:8011")
+    app_url: str = os.environ.get("PROMTY_APP_URL", "http://127.0.0.1:5173")
     cors_origins: tuple[str, ...] = field(
         default_factory=lambda: _csv_env(
-            "PROMPTHUB_CORS_ORIGINS",
+            "PROMTY_CORS_ORIGINS",
             ("http://127.0.0.1:5173", "http://localhost:5173"),
         )
     )
-    api_token: str | None = field(default_factory=lambda: _optional_env("PROMPTHUB_API_TOKEN"))
+    api_token: str | None = field(default_factory=lambda: _optional_env("PROMTY_API_TOKEN"))
     allow_anonymous_ingest: bool = field(
-        default_factory=lambda: _bool_env("PROMPTHUB_ALLOW_ANONYMOUS_INGEST", False)
+        default_factory=lambda: _bool_env("PROMTY_ALLOW_ANONYMOUS_INGEST", False)
     )
     github_client_id: str | None = field(
-        default_factory=lambda: _optional_env("PROMPTHUB_GITHUB_CLIENT_ID")
+        default_factory=lambda: _optional_env("PROMTY_GITHUB_CLIENT_ID")
     )
     github_client_secret: str | None = field(
-        default_factory=lambda: _optional_env("PROMPTHUB_GITHUB_CLIENT_SECRET")
+        default_factory=lambda: _optional_env("PROMTY_GITHUB_CLIENT_SECRET")
     )
     github_token_encryption_key: str | None = field(
-        default_factory=lambda: _optional_env("PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_KEY")
+        default_factory=lambda: _optional_env("PROMTY_GITHUB_TOKEN_ENCRYPTION_KEY")
     )
     github_token_encryption_previous_keys: tuple[str, ...] = field(
         default_factory=lambda: _csv_env(
-            "PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_PREVIOUS_KEYS",
+            "PROMTY_GITHUB_TOKEN_ENCRYPTION_PREVIOUS_KEYS",
             (),
         )
     )
     app_encryption_key: str | None = field(
-        default_factory=lambda: _optional_env("PROMPTHUB_APP_ENCRYPTION_KEY")
+        default_factory=lambda: _optional_env("PROMTY_APP_ENCRYPTION_KEY")
     )
     app_encryption_previous_keys: tuple[str, ...] = field(
         default_factory=lambda: _csv_env(
-            "PROMPTHUB_APP_ENCRYPTION_PREVIOUS_KEYS",
+            "PROMTY_APP_ENCRYPTION_PREVIOUS_KEYS",
             (),
         )
     )
-    app_encryption_key_id: str = os.environ.get("PROMPTHUB_APP_ENCRYPTION_KEY_ID", "local")
+    app_encryption_key_id: str = os.environ.get("PROMTY_APP_ENCRYPTION_KEY_ID", "local")
     prompt_max_chars: int = field(
-        default_factory=lambda: _int_env("PROMPTHUB_PROMPT_MAX_CHARS", 50000)
+        default_factory=lambda: _int_env("PROMTY_PROMPT_MAX_CHARS", 50000)
     )
     response_max_chars: int = field(
-        default_factory=lambda: _int_env("PROMPTHUB_RESPONSE_MAX_CHARS", 50000)
+        default_factory=lambda: _int_env("PROMTY_RESPONSE_MAX_CHARS", 50000)
     )
     event_batch_max_body_bytes: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_EVENT_BATCH_MAX_BODY_BYTES",
+            "PROMTY_EVENT_BATCH_MAX_BODY_BYTES",
             8_388_608,
             minimum=1,
             maximum=8_388_608,
@@ -213,13 +228,12 @@ class Settings:
     gemini_api_key: str | None = field(
         default_factory=lambda: _optional_env_any(
             "PROMTY_GEMINI_API_KEY",
-            "PROMPTHUB_GEMINI_API_KEY",
             "GEMINI_API_KEY",
         )
     )
     gemini_model: str = field(
         default_factory=lambda: _str_env_any(
-            ("PROMTY_GEMINI_MODEL", "PROMPTHUB_GEMINI_MODEL"),
+            ("PROMTY_GEMINI_MODEL",),
             "gemini-2.5-flash",
         )
     )
@@ -227,7 +241,6 @@ class Settings:
         default_factory=lambda: _float_env_any(
             (
                 "PROMTY_GEMINI_INPUT_USD_PER_MILLION_TOKENS",
-                "PROMPTHUB_GEMINI_INPUT_USD_PER_MILLION_TOKENS",
             ),
             0.30,
         )
@@ -236,27 +249,25 @@ class Settings:
         default_factory=lambda: _float_env_any(
             (
                 "PROMTY_GEMINI_OUTPUT_USD_PER_MILLION_TOKENS",
-                "PROMPTHUB_GEMINI_OUTPUT_USD_PER_MILLION_TOKENS",
             ),
             2.50,
         )
     )
     gemini_timeout_seconds: int = field(
         default_factory=lambda: _int_env_any(
-            ("PROMTY_GEMINI_TIMEOUT_SECONDS", "PROMPTHUB_GEMINI_TIMEOUT_SECONDS"),
+            ("PROMTY_GEMINI_TIMEOUT_SECONDS",),
             30,
         )
     )
     openai_api_key: str | None = field(
         default_factory=lambda: _optional_env_any(
             "PROMTY_OPENAI_API_KEY",
-            "PROMPTHUB_OPENAI_API_KEY",
             "OPENAI_API_KEY",
         )
     )
     openai_model: str = field(
         default_factory=lambda: _str_env_any(
-            ("PROMTY_OPENAI_MODEL", "PROMPTHUB_OPENAI_MODEL"),
+            ("PROMTY_OPENAI_MODEL",),
             "gpt-5-mini",
         )
     )
@@ -264,7 +275,6 @@ class Settings:
         default_factory=lambda: _float_env_any(
             (
                 "PROMTY_OPENAI_INPUT_USD_PER_MILLION_TOKENS",
-                "PROMPTHUB_OPENAI_INPUT_USD_PER_MILLION_TOKENS",
             ),
             0.25,
         )
@@ -273,20 +283,19 @@ class Settings:
         default_factory=lambda: _float_env_any(
             (
                 "PROMTY_OPENAI_OUTPUT_USD_PER_MILLION_TOKENS",
-                "PROMPTHUB_OPENAI_OUTPUT_USD_PER_MILLION_TOKENS",
             ),
             2.00,
         )
     )
     openai_timeout_seconds: int = field(
         default_factory=lambda: _int_env_any(
-            ("PROMTY_OPENAI_TIMEOUT_SECONDS", "PROMPTHUB_OPENAI_TIMEOUT_SECONDS"),
+            ("PROMTY_OPENAI_TIMEOUT_SECONDS",),
             90,
         )
     )
     openai_reasoning_effort: str = field(
         default_factory=lambda: _str_env_any(
-            ("PROMTY_OPENAI_REASONING_EFFORT", "PROMPTHUB_OPENAI_REASONING_EFFORT"),
+            ("PROMTY_OPENAI_REASONING_EFFORT",),
             "minimal",
         )
     )
@@ -296,7 +305,6 @@ class Settings:
             _int_env_any(
                 (
                     "PROMTY_MEMORY_PROVIDER_RESPONSE_MAX_BYTES",
-                    "PROMPTHUB_MEMORY_PROVIDER_RESPONSE_MAX_BYTES",
                 ),
                 1_048_576,
             ),
@@ -308,7 +316,6 @@ class Settings:
             _int_env_any(
                 (
                     "PROMTY_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS",
-                    "PROMPTHUB_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS",
                 ),
                 8_192,
             ),
@@ -320,7 +327,6 @@ class Settings:
             _float_env_any(
                 (
                     "PROMTY_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS",
-                    "PROMPTHUB_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS",
                 ),
                 120.0,
             ),
@@ -328,19 +334,19 @@ class Settings:
     )
     memory_draft_generator: str = field(
         default_factory=lambda: _str_env_any(
-            ("PROMTY_MEMORY_DRAFT_GENERATOR", "PROMPTHUB_MEMORY_DRAFT_GENERATOR"),
-            _str_env_any(("PROMTY_MEMORY_GENERATOR", "PROMPTHUB_MEMORY_GENERATOR"), "openai"),
+            ("PROMTY_MEMORY_DRAFT_GENERATOR",),
+            _str_env_any(("PROMTY_MEMORY_GENERATOR",), "openai"),
         )
     )
     project_memory_generator: str = field(
         default_factory=lambda: _str_env_any(
-            ("PROMTY_PROJECT_MEMORY_GENERATOR", "PROMPTHUB_PROJECT_MEMORY_GENERATOR"),
-            _str_env_any(("PROMTY_MEMORY_GENERATOR", "PROMPTHUB_MEMORY_GENERATOR"), "openai"),
+            ("PROMTY_PROJECT_MEMORY_GENERATOR",),
+            _str_env_any(("PROMTY_MEMORY_GENERATOR",), "openai"),
         )
     )
     memory_slice_prompt_count: int = field(
         default_factory=lambda: _int_env_any(
-            ("PROMTY_MEMORY_SLICE_PROMPT_COUNT", "PROMPTHUB_MEMORY_SLICE_PROMPT_COUNT"),
+            ("PROMTY_MEMORY_SLICE_PROMPT_COUNT",),
             20,
         )
     )
@@ -350,7 +356,6 @@ class Settings:
             _int_env_any(
                 (
                     "PROMTY_MEMORY_SLICE_EVENT_MAX_ROWS",
-                    "PROMPTHUB_MEMORY_SLICE_EVENT_MAX_ROWS",
                 ),
                 500,
             ),
@@ -362,7 +367,6 @@ class Settings:
             _int_env_any(
                 (
                     "PROMTY_MEMORY_SLICE_MAX_SLICES_PER_CALL",
-                    "PROMPTHUB_MEMORY_SLICE_MAX_SLICES_PER_CALL",
                 ),
                 4,
             ),
@@ -370,7 +374,7 @@ class Settings:
     )
     memory_slice_max_minutes: int = field(
         default_factory=lambda: _int_env_any(
-            ("PROMTY_MEMORY_SLICE_MAX_MINUTES", "PROMPTHUB_MEMORY_SLICE_MAX_MINUTES"),
+            ("PROMTY_MEMORY_SLICE_MAX_MINUTES",),
             120,
         )
     )
@@ -378,7 +382,6 @@ class Settings:
         default_factory=lambda: _int_env_any(
             (
                 "PROMTY_MEMORY_DRAFT_PROMPT_MAX_BYTES",
-                "PROMPTHUB_MEMORY_DRAFT_PROMPT_MAX_BYTES",
             ),
             131_072,
         )
@@ -387,7 +390,6 @@ class Settings:
         default_factory=lambda: _int_env_any(
             (
                 "PROMTY_MEMORY_DRAFT_EVIDENCE_MAX_BYTES",
-                "PROMPTHUB_MEMORY_DRAFT_EVIDENCE_MAX_BYTES",
             ),
             98_304,
         )
@@ -396,7 +398,6 @@ class Settings:
         default_factory=lambda: _int_env_any(
             (
                 "PROMTY_PROJECT_MEMORY_PROMPT_MAX_BYTES",
-                "PROMPTHUB_PROJECT_MEMORY_PROMPT_MAX_BYTES",
             ),
             262_144,
         )
@@ -407,7 +408,6 @@ class Settings:
             _int_env_any(
                 (
                     "PROMTY_PROJECT_MEMORY_BATCH_MAX_DRAFTS",
-                    "PROMPTHUB_PROJECT_MEMORY_BATCH_MAX_DRAFTS",
                 ),
                 60,
             ),
@@ -417,7 +417,6 @@ class Settings:
         default_factory=lambda: _float_env_any(
             (
                 "PROMTY_MEMORY_WORKER_POLL_SECONDS",
-                "PROMPTHUB_MEMORY_WORKER_POLL_SECONDS",
             ),
             2.0,
         )
@@ -426,7 +425,6 @@ class Settings:
         default_factory=lambda: _float_env_any(
             (
                 "PROMTY_MEMORY_WORKER_MAX_POLL_SECONDS",
-                "PROMPTHUB_MEMORY_WORKER_MAX_POLL_SECONDS",
             ),
             10.0,
         )
@@ -435,18 +433,17 @@ class Settings:
         default_factory=lambda: _float_env_any(
             (
                 "PROMTY_MEMORY_WORKER_HEARTBEAT_SECONDS",
-                "PROMPTHUB_MEMORY_WORKER_HEARTBEAT_SECONDS",
             ),
             60.0,
         )
     )
     memory_worker_health_file: str = os.environ.get(
-        "PROMPTHUB_MEMORY_WORKER_HEALTH_FILE",
-        "/tmp/prompthub-memory-worker.heartbeat",
+        "PROMTY_MEMORY_WORKER_HEALTH_FILE",
+        "/tmp/promty-memory-worker.heartbeat",
     )
     memory_worker_health_timeout_seconds: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_MEMORY_WORKER_HEALTH_TIMEOUT_SECONDS",
+            "PROMTY_MEMORY_WORKER_HEALTH_TIMEOUT_SECONDS",
             180,
             minimum=10,
         )
@@ -457,192 +454,191 @@ class Settings:
             _int_env_any(
                 (
                     "PROMTY_MEMORY_WORKER_CHUNK_CONCURRENCY",
-                    "PROMPTHUB_MEMORY_WORKER_CHUNK_CONCURRENCY",
                 ),
                 2,
             ),
         )
     )
     published_flows_enabled: bool = field(
-        default_factory=lambda: _bool_env("PROMPTHUB_PUBLISHED_FLOWS_ENABLED", False)
+        default_factory=lambda: _bool_env("PROMTY_PUBLISHED_FLOWS_ENABLED", False)
     )
     published_flow_asset_root: str = os.environ.get(
-        "PROMPTHUB_PUBLISHED_FLOW_ASSET_ROOT",
-        "~/.prompthub/published-flow-assets",
+        "PROMTY_PUBLISHED_FLOW_ASSET_ROOT",
+        "~/.promty/published-flow-assets",
     )
     published_flow_asset_storage: str = os.environ.get(
-        "PROMPTHUB_PUBLISHED_FLOW_ASSET_STORAGE",
+        "PROMTY_PUBLISHED_FLOW_ASSET_STORAGE",
         "local",
     )
     published_flow_asset_max_bytes: int = field(
-        default_factory=lambda: _int_env("PROMPTHUB_PUBLISHED_FLOW_ASSET_MAX_BYTES", 5_242_880)
+        default_factory=lambda: _int_env("PROMTY_PUBLISHED_FLOW_ASSET_MAX_BYTES", 5_242_880)
     )
     published_flow_asset_max_count_per_flow: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_PUBLISHED_FLOW_ASSET_MAX_COUNT_PER_FLOW",
+            "PROMTY_PUBLISHED_FLOW_ASSET_MAX_COUNT_PER_FLOW",
             20,
             minimum=1,
         )
     )
     published_flow_asset_max_total_bytes_per_user: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_PUBLISHED_FLOW_ASSET_MAX_TOTAL_BYTES_PER_USER",
+            "PROMTY_PUBLISHED_FLOW_ASSET_MAX_TOTAL_BYTES_PER_USER",
             104_857_600,
             minimum=1,
         )
     )
-    aws_region: str | None = field(default_factory=lambda: _optional_env("PROMPTHUB_AWS_REGION"))
+    aws_region: str | None = field(default_factory=lambda: _optional_env("PROMTY_AWS_REGION"))
     aws_s3_bucket: str | None = field(
-        default_factory=lambda: _optional_env("PROMPTHUB_AWS_S3_BUCKET")
+        default_factory=lambda: _optional_env("PROMTY_AWS_S3_BUCKET")
     )
     aws_s3_prefix: str = os.environ.get(
-        "PROMPTHUB_AWS_S3_PREFIX",
+        "PROMTY_AWS_S3_PREFIX",
         "published-flow-assets",
     )
     aws_s3_endpoint_url: str | None = field(
-        default_factory=lambda: _optional_env("PROMPTHUB_AWS_S3_ENDPOINT_URL")
+        default_factory=lambda: _optional_env("PROMTY_AWS_S3_ENDPOINT_URL")
     )
     oauth_state_secret: str | None = field(
-        default_factory=lambda: _optional_env("PROMPTHUB_OAUTH_STATE_SECRET")
+        default_factory=lambda: _optional_env("PROMTY_OAUTH_STATE_SECRET")
     )
-    jwt_secret: str | None = field(default_factory=lambda: _optional_env("PROMPTHUB_JWT_SECRET"))
-    jwt_issuer: str = os.environ.get("PROMPTHUB_JWT_ISSUER", "prompthub")
-    jwt_audience: str = os.environ.get("PROMPTHUB_JWT_AUDIENCE", "prompthub-web")
+    jwt_secret: str | None = field(default_factory=lambda: _optional_env("PROMTY_JWT_SECRET"))
+    jwt_issuer: str = os.environ.get("PROMTY_JWT_ISSUER", "promty")
+    jwt_audience: str = os.environ.get("PROMTY_JWT_AUDIENCE", "promty-web")
     access_token_ttl_seconds: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS",
+            "PROMTY_ACCESS_TOKEN_TTL_SECONDS",
             3600,
             minimum=300,
             maximum=28_800,
         )
     )
-    session_cookie_name: str = os.environ.get("PROMPTHUB_SESSION_COOKIE_NAME", "prompthub_session")
+    session_cookie_name: str = os.environ.get("PROMTY_SESSION_COOKIE_NAME", "promty_session")
     oauth_state_cookie_name: str = os.environ.get(
-        "PROMPTHUB_OAUTH_STATE_COOKIE_NAME",
-        "prompthub_oauth_state",
+        "PROMTY_OAUTH_STATE_COOKIE_NAME",
+        "promty_oauth_state",
     )
     session_cookie_secure: bool = field(
-        default_factory=lambda: _bool_env("PROMPTHUB_SESSION_COOKIE_SECURE", False)
+        default_factory=lambda: _bool_env("PROMTY_SESSION_COOKIE_SECURE", False)
     )
-    session_cookie_samesite: str = os.environ.get("PROMPTHUB_SESSION_COOKIE_SAMESITE", "lax")
+    session_cookie_samesite: str = os.environ.get("PROMTY_SESSION_COOKIE_SAMESITE", "lax")
     admin_github_ids: tuple[str, ...] = field(
-        default_factory=lambda: _csv_env("PROMPTHUB_ADMIN_GITHUB_IDS", ())
+        default_factory=lambda: _csv_env("PROMTY_ADMIN_GITHUB_IDS", ())
     )
     auth_rate_limit_requests: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_AUTH_RATE_LIMIT_REQUESTS",
+            "PROMTY_AUTH_RATE_LIMIT_REQUESTS",
             30,
             minimum=1,
         )
     )
     auth_rate_limit_window_seconds: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_AUTH_RATE_LIMIT_WINDOW_SECONDS",
+            "PROMTY_AUTH_RATE_LIMIT_WINDOW_SECONDS",
             60,
             minimum=1,
         )
     )
     admin_rate_limit_requests: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_ADMIN_RATE_LIMIT_REQUESTS",
+            "PROMTY_ADMIN_RATE_LIMIT_REQUESTS",
             120,
             minimum=1,
         )
     )
     admin_rate_limit_window_seconds: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_ADMIN_RATE_LIMIT_WINDOW_SECONDS",
+            "PROMTY_ADMIN_RATE_LIMIT_WINDOW_SECONDS",
             60,
             minimum=1,
         )
     )
     community_rate_limit_requests: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_COMMUNITY_RATE_LIMIT_REQUESTS",
+            "PROMTY_COMMUNITY_RATE_LIMIT_REQUESTS",
             120,
             minimum=1,
         )
     )
     community_rate_limit_window_seconds: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_COMMUNITY_RATE_LIMIT_WINDOW_SECONDS",
+            "PROMTY_COMMUNITY_RATE_LIMIT_WINDOW_SECONDS",
             60,
             minimum=1,
         )
     )
     ingest_rate_limit_requests: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_INGEST_RATE_LIMIT_REQUESTS",
+            "PROMTY_INGEST_RATE_LIMIT_REQUESTS",
             120,
             minimum=1,
         )
     )
     ingest_rate_limit_window_seconds: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_INGEST_RATE_LIMIT_WINDOW_SECONDS",
+            "PROMTY_INGEST_RATE_LIMIT_WINDOW_SECONDS",
             60,
             minimum=1,
         )
     )
     trusted_proxy_cidrs: tuple[str, ...] = field(
         default_factory=lambda: _csv_env(
-            "PROMPTHUB_TRUSTED_PROXY_CIDRS",
+            "PROMTY_TRUSTED_PROXY_CIDRS",
             ("127.0.0.0/8", "::1/128", "172.16.0.0/12"),
         )
     )
     support_rate_limit_requests: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_SUPPORT_RATE_LIMIT_REQUESTS",
+            "PROMTY_SUPPORT_RATE_LIMIT_REQUESTS",
             5,
             minimum=1,
         )
     )
     support_rate_limit_window_seconds: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_SUPPORT_RATE_LIMIT_WINDOW_SECONDS",
+            "PROMTY_SUPPORT_RATE_LIMIT_WINDOW_SECONDS",
             300,
             minimum=1,
         )
     )
     support_email_provider: str = (
         os.environ.get(
-            "PROMPTHUB_SUPPORT_EMAIL_PROVIDER",
+            "PROMTY_SUPPORT_EMAIL_PROVIDER",
             "ses",
         )
         .strip()
         .lower()
     )
     support_notification_emails: tuple[str, ...] = field(
-        default_factory=lambda: _csv_env("PROMPTHUB_SUPPORT_NOTIFICATION_EMAILS", ())
+        default_factory=lambda: _csv_env("PROMTY_SUPPORT_NOTIFICATION_EMAILS", ())
     )
     support_from_email: str | None = field(
-        default_factory=lambda: _optional_env("PROMPTHUB_SUPPORT_FROM_EMAIL")
+        default_factory=lambda: _optional_env("PROMTY_SUPPORT_FROM_EMAIL")
     )
     buffer_api_key: str | None = field(
-        default_factory=lambda: _optional_env("PROMPTHUB_BUFFER_API_KEY")
+        default_factory=lambda: _optional_env("PROMTY_BUFFER_API_KEY")
     )
     buffer_channel_ids_json: str = os.environ.get(
-        "PROMPTHUB_BUFFER_CHANNEL_IDS",
+        "PROMTY_BUFFER_CHANNEL_IDS",
         "{}",
     )
     devto_api_key: str | None = field(
-        default_factory=lambda: _optional_env("PROMPTHUB_DEVTO_API_KEY")
+        default_factory=lambda: _optional_env("PROMTY_DEVTO_API_KEY")
     )
     devto_organization_id: int | None = field(
-        default_factory=lambda: _int_env("PROMPTHUB_DEVTO_ORGANIZATION_ID", 0) or None
+        default_factory=lambda: _int_env("PROMTY_DEVTO_ORGANIZATION_ID", 0) or None
     )
     github_marketing_token: str | None = field(
-        default_factory=lambda: _optional_env("PROMPTHUB_GITHUB_MARKETING_TOKEN")
+        default_factory=lambda: _optional_env("PROMTY_GITHUB_MARKETING_TOKEN")
     )
     github_marketing_repository_id: str | None = field(
-        default_factory=lambda: _optional_env("PROMPTHUB_GITHUB_MARKETING_REPOSITORY_ID")
+        default_factory=lambda: _optional_env("PROMTY_GITHUB_MARKETING_REPOSITORY_ID")
     )
     github_marketing_discussion_category_id: str | None = field(
-        default_factory=lambda: _optional_env("PROMPTHUB_GITHUB_MARKETING_DISCUSSION_CATEGORY_ID")
+        default_factory=lambda: _optional_env("PROMTY_GITHUB_MARKETING_DISCUSSION_CATEGORY_ID")
     )
     admin_audit_retention_days: int = field(
         default_factory=lambda: _bounded_int_env(
-            "PROMPTHUB_ADMIN_AUDIT_RETENTION_DAYS",
+            "PROMTY_ADMIN_AUDIT_RETENTION_DAYS",
             180,
             minimum=1,
         )

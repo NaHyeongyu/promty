@@ -69,7 +69,7 @@ def _request_with_session(token: str) -> Request:
             "path": "/api/auth/me",
             "raw_path": b"/api/auth/me",
             "query_string": b"",
-            "headers": [(b"cookie", f"prompthub_session={token}".encode("ascii"))],
+            "headers": [(b"cookie", f"promty_session={token}".encode("ascii"))],
             "client": ("127.0.0.1", 1234),
             "server": ("testserver", 443),
         }
@@ -118,7 +118,7 @@ def test_web_token_does_not_reuse_other_application_secrets(
         ),
     )
 
-    with pytest.raises(RuntimeError, match="PROMPTHUB_JWT_SECRET"):
+    with pytest.raises(RuntimeError, match="PROMTY_JWT_SECRET"):
         issue_web_access_token(user, session_id=uuid4())
 
 

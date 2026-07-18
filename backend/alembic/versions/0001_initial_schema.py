@@ -1,4 +1,4 @@
-"""initial PromptHub schema
+"""initial Promty schema
 
 Revision ID: 0001_initial_schema
 Revises:

@@ -15,6 +15,8 @@ from typing import Any, Literal
 from urllib import error, parse, request
 import webbrowser
 
+from environment import migrate_legacy_data_root
+
 from adapters import normalize_collector_event, should_ignore_collector_event
 from change_tracking import ChangeBaselineStore, detect_changes
 from config import (
@@ -48,7 +50,7 @@ from mcp_server import PromtyMCPServer, run_mcp_server
 from sequence import SequenceStore
 from session_index import SessionIndex
 from secure_storage import ensure_private_parent, open_private_text, write_private_text_atomic
-from uploader.client import PromptHubUploader
+from uploader.client import PromtyUploader
 from uploader.queue import JSONLQueue
 from updater import auto_update
 from version import COLLECTOR_VERSION
@@ -179,7 +181,7 @@ def capture_raw(args: argparse.Namespace) -> int:
 
 
 def _has_project_context(payload: dict[str, Any]) -> bool:
-    if os.environ.get("PROMPTHUB_PROJECT_ID"):
+    if os.environ.get("PROMTY_PROJECT_ID"):
         return True
     return get_first_string(payload, PROJECT_CONTEXT_KEYS) is not None
 
@@ -212,7 +214,7 @@ def _apply_profile_defaults(args: argparse.Namespace) -> None:
     if not profile:
         return
 
-    profile_root = Path("~/.prompthub/profiles").expanduser() / profile
+    profile_root = Path("~/.promty/profiles").expanduser() / profile
     app_url, api_url = PROFILE_URLS[profile]
     defaults = {
         "app_url": app_url,
@@ -516,7 +518,7 @@ def _upload_queued_events(args: argparse.Namespace) -> int:
     if not events:
         return 0
 
-    uploader = PromptHubUploader(
+    uploader = PromtyUploader(
         api_url=resolve_api_url(args.api_url, args.config_path),
         token=resolve_token(args.token, args.config_path),
         timeout=args.timeout,
@@ -527,7 +529,7 @@ def _upload_queued_events(args: argparse.Namespace) -> int:
 
 
 def _send_heartbeat(args: argparse.Namespace) -> None:
-    PromptHubUploader(
+    PromtyUploader(
         api_url=resolve_api_url(args.api_url, args.config_path),
         token=resolve_token(args.token, args.config_path),
         timeout=args.timeout,
@@ -1072,11 +1074,11 @@ def start_uploader(args: argparse.Namespace) -> int:
             return 0
 
         env = os.environ.copy()
-        env["PROMPTHUB_API_URL"] = api_url
+        env["PROMTY_API_URL"] = api_url
         if token:
-            env["PROMPTHUB_API_TOKEN"] = token
+            env["PROMTY_API_TOKEN"] = token
         if args.config_path:
-            env["PROMPTHUB_CONFIG_PATH"] = str(Path(args.config_path).expanduser())
+            env["PROMTY_CONFIG_PATH"] = str(Path(args.config_path).expanduser())
 
         ensure_private_parent(log_path)
         ensure_private_parent(pid_path)
@@ -1226,7 +1228,7 @@ def _doctor_runtime_checks(
         (
             f"{prefix}config",
             bool(config),
-            str(args.config_path or "~/.prompthub/config.json"),
+            str(args.config_path or "~/.promty/config.json"),
         )
     )
     checks.append(
@@ -1525,7 +1527,7 @@ def build_parser() -> argparse.ArgumentParser:
     upload_parser.add_argument(
         "--interval",
         type=float,
-        default=float(os.environ.get("PROMPTHUB_UPLOAD_INTERVAL", "2")),
+        default=float(os.environ.get("PROMTY_UPLOAD_INTERVAL", "2")),
         help="Seconds between queue checks in watch mode.",
     )
     upload_parser.set_defaults(func=upload, no_auto_update=True)
@@ -1711,6 +1713,7 @@ def _update_runtime() -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    migrate_legacy_data_root()
     parser = build_parser()
     args = parser.parse_args(argv)
     _apply_profile_defaults(args)

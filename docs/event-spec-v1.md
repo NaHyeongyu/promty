@@ -1,14 +1,14 @@
-# PromptHub Event Specification v1
+# Promty Event Specification v1
 
 ## 목적
 
-PromptHub는 AI 개발 과정을 저장하는 플랫폼이다.
+Promty는 AI 개발 과정을 저장하는 플랫폼이다.
 
 Claude Code, Codex CLI, Cursor, Gemini CLI 등 다양한 AI 개발 도구가 존재하지만 각각 전달하는 데이터 구조는 모두 다르다.
 
-Collector의 역할은 각 도구의 데이터를 PromptHub의 표준 Event 형태로 변환하는 것이다.
+Collector의 역할은 각 도구의 데이터를 Promty의 표준 Event 형태로 변환하는 것이다.
 
-Backend는 어떤 AI 도구에서 왔는지 신경 쓰지 않고 PromptHub Event만 처리한다.
+Backend는 어떤 AI 도구에서 왔는지 신경 쓰지 않고 Promty Event만 처리한다.
 
 ## Event Flow
 
@@ -19,7 +19,7 @@ v
 Collector Adapter
 |
 v
-PromptHub Event
+Promty Event
 |
 v
 Local Queue(JSONL)
@@ -126,7 +126,7 @@ Payload model: `PromptSubmittedPayload`
 }
 ```
 
-PromptHub에서 가장 중요한 Event이다.
+Promty에서 가장 중요한 Event이다.
 
 Claude/Codex에서 제공하는 유용한 metadata는 이 typed payload 안에 보존한다.
 
@@ -301,7 +301,7 @@ Codex CLI:
 }
 ```
 
-Collector는 이를 PromptHub Event로 변환한다.
+Collector는 이를 Promty Event로 변환한다.
 
 예시:
 
@@ -315,7 +315,7 @@ Collector는 이를 PromptHub Event로 변환한다.
 }
 ```
 
-Backend는 PromptHub Event만 처리한다.
+Backend는 Promty Event만 처리한다.
 
 ## Local Queue
 
@@ -329,7 +329,7 @@ Collector는 Hook 내부에서 네트워크 요청을 하지 않는다.
 Hook
 |
 v
-PromptHub Event 생성
+Promty Event 생성
 |
 v
 project/session queue에 events.jsonl 저장
@@ -341,25 +341,25 @@ Uploader가 백그라운드 업로드
 저장 위치:
 
 ```text
-~/.prompthub/events/<project_id>/<session_id>/events.jsonl
+~/.promty/events/<project_id>/<session_id>/events.jsonl
 ```
 
 Sequence state 저장 위치:
 
 ```text
-~/.prompthub/sequences.json
+~/.promty/sequences.json
 ```
 
 Session index 저장 위치:
 
 ```text
-~/.prompthub/session-index.json
+~/.promty/session-index.json
 ```
 
 Git baseline 저장 위치:
 
 ```text
-~/.prompthub/change-baselines.json
+~/.promty/change-baselines.json
 ```
 
 ## Session 구조
@@ -389,14 +389,14 @@ v
 SessionEnded
 ```
 
-PromptHub Timeline은 Event를 session별 sequence 순서로 정렬하여 생성한다.
+Promty Timeline은 Event를 session별 sequence 순서로 정렬하여 생성한다.
 
 ## Design Principle
 
-PromptHub는 Prompt를 저장하는 서비스가 아니다.
+Promty는 Prompt를 저장하는 서비스가 아니다.
 
-PromptHub는 AI 개발 Event를 저장하는 플랫폼이다.
+Promty는 AI 개발 Event를 저장하는 플랫폼이다.
 
-모든 AI Tool은 PromptHub Event로 변환된다.
+모든 AI Tool은 Promty Event로 변환된다.
 
 Backend는 Event만 이해한다.

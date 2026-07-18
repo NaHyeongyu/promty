@@ -14,8 +14,8 @@ from secure_storage import (
     write_private_text_atomic,
 )
 
-DEFAULT_QUEUE_ROOT = Path(os.environ.get("PROMPTHUB_QUEUE_DIR", "~/.prompthub/events")).expanduser()
-LEGACY_QUEUE_PATH = Path("~/.prompthub/events.jsonl").expanduser()
+DEFAULT_QUEUE_ROOT = Path(os.environ.get("PROMTY_QUEUE_DIR", "~/.promty/events")).expanduser()
+LEGACY_QUEUE_PATH = Path("~/.promty/events.jsonl").expanduser()
 
 
 def _safe_path_part(value: Any) -> str:
@@ -25,7 +25,7 @@ def _safe_path_part(value: Any) -> str:
 
 class JSONLQueue:
     def __init__(self, path: str | Path | None = None) -> None:
-        configured_path = path or os.environ.get("PROMPTHUB_QUEUE_PATH")
+        configured_path = path or os.environ.get("PROMTY_QUEUE_PATH")
         self.root = None if configured_path else DEFAULT_QUEUE_ROOT
         self.path = Path(configured_path).expanduser() if configured_path else DEFAULT_QUEUE_ROOT
         self.lock_path = (

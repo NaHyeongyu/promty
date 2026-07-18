@@ -405,10 +405,10 @@ def test_project_memory_prompt_fails_before_provider_when_limit_is_impossible(
 
 def test_project_memory_prompt_limit_setting_supports_both_env_names(monkeypatch) -> None:
     monkeypatch.delenv("PROMTY_PROJECT_MEMORY_PROMPT_MAX_BYTES", raising=False)
-    monkeypatch.delenv("PROMPTHUB_PROJECT_MEMORY_PROMPT_MAX_BYTES", raising=False)
+    monkeypatch.delenv("PROMTY_PROJECT_MEMORY_PROMPT_MAX_BYTES", raising=False)
     assert Settings().project_memory_prompt_max_bytes == 262_144
 
-    monkeypatch.setenv("PROMPTHUB_PROJECT_MEMORY_PROMPT_MAX_BYTES", "196608")
+    monkeypatch.setenv("PROMTY_PROJECT_MEMORY_PROMPT_MAX_BYTES", "196608")
     assert Settings().project_memory_prompt_max_bytes == 196_608
 
     monkeypatch.setenv("PROMTY_PROJECT_MEMORY_PROMPT_MAX_BYTES", "131072")

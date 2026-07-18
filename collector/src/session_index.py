@@ -11,7 +11,7 @@ from file_lock import locked_file
 from secure_storage import open_private_text, write_private_text_atomic
 
 DEFAULT_SESSION_INDEX_PATH = Path(
-    os.environ.get("PROMPTHUB_SESSION_INDEX_PATH", "~/.prompthub/session-index.json")
+    os.environ.get("PROMTY_SESSION_INDEX_PATH", "~/.promty/session-index.json")
 ).expanduser()
 
 

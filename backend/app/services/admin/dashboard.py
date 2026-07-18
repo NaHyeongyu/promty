@@ -276,7 +276,7 @@ def _operational_risks() -> list[dict[str, str]]:
     if not settings.session_cookie_secure:
         risks.append(
             {
-                "detail": "PROMPTHUB_SESSION_COOKIE_SECURE is false.",
+                "detail": "PROMTY_SESSION_COOKIE_SECURE is false.",
                 "key": "session-cookie-secure",
                 "severity": "high",
                 "title": "Session cookie is not marked secure",

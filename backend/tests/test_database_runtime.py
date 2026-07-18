@@ -7,18 +7,19 @@ from types import SimpleNamespace
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 
+from app.core import config
 from app.core.config import Settings
 from app.db import session as database_session
 from app import main
 
 
 def test_database_pool_settings_read_valid_environment(monkeypatch) -> None:
-    monkeypatch.setenv("PROMPTHUB_DATABASE_POOL_SIZE", "7")
-    monkeypatch.setenv("PROMPTHUB_DATABASE_MAX_OVERFLOW", "3")
-    monkeypatch.setenv("PROMPTHUB_DATABASE_POOL_TIMEOUT_SECONDS", "9")
-    monkeypatch.setenv("PROMPTHUB_DATABASE_POOL_RECYCLE_SECONDS", "600")
-    monkeypatch.setenv("PROMPTHUB_DATABASE_STATEMENT_TIMEOUT_MS", "30000")
-    monkeypatch.setenv("PROMPTHUB_DATABASE_LOCK_TIMEOUT_MS", "5000")
+    monkeypatch.setenv("PROMTY_DATABASE_POOL_SIZE", "7")
+    monkeypatch.setenv("PROMTY_DATABASE_MAX_OVERFLOW", "3")
+    monkeypatch.setenv("PROMTY_DATABASE_POOL_TIMEOUT_SECONDS", "9")
+    monkeypatch.setenv("PROMTY_DATABASE_POOL_RECYCLE_SECONDS", "600")
+    monkeypatch.setenv("PROMTY_DATABASE_STATEMENT_TIMEOUT_MS", "30000")
+    monkeypatch.setenv("PROMTY_DATABASE_LOCK_TIMEOUT_MS", "5000")
 
     configured = Settings()
 
@@ -30,13 +31,26 @@ def test_database_pool_settings_read_valid_environment(monkeypatch) -> None:
     assert configured.database_lock_timeout_ms == 5000
 
 
+def test_legacy_environment_is_promoted_without_overriding_promty(monkeypatch) -> None:
+    monkeypatch.setenv("PROMPTHUB_DATABASE_POOL_SIZE", "7")
+    monkeypatch.setenv("PROMTY_DATABASE_POOL_SIZE", "9")
+    monkeypatch.setenv("PROMPTHUB_DATABASE_MAX_OVERFLOW", "4")
+    monkeypatch.delenv("PROMTY_DATABASE_MAX_OVERFLOW", raising=False)
+
+    config._promote_legacy_environment()
+    configured = Settings()
+
+    assert configured.database_pool_size == 9
+    assert configured.database_max_overflow == 4
+
+
 def test_database_pool_settings_fall_back_for_invalid_values(monkeypatch) -> None:
-    monkeypatch.setenv("PROMPTHUB_DATABASE_POOL_SIZE", "0")
-    monkeypatch.setenv("PROMPTHUB_DATABASE_MAX_OVERFLOW", "-1")
-    monkeypatch.setenv("PROMPTHUB_DATABASE_POOL_TIMEOUT_SECONDS", "invalid")
-    monkeypatch.setenv("PROMPTHUB_DATABASE_POOL_RECYCLE_SECONDS", "0")
-    monkeypatch.setenv("PROMPTHUB_DATABASE_STATEMENT_TIMEOUT_MS", "-1")
-    monkeypatch.setenv("PROMPTHUB_DATABASE_LOCK_TIMEOUT_MS", "invalid")
+    monkeypatch.setenv("PROMTY_DATABASE_POOL_SIZE", "0")
+    monkeypatch.setenv("PROMTY_DATABASE_MAX_OVERFLOW", "-1")
+    monkeypatch.setenv("PROMTY_DATABASE_POOL_TIMEOUT_SECONDS", "invalid")
+    monkeypatch.setenv("PROMTY_DATABASE_POOL_RECYCLE_SECONDS", "0")
+    monkeypatch.setenv("PROMTY_DATABASE_STATEMENT_TIMEOUT_MS", "-1")
+    monkeypatch.setenv("PROMTY_DATABASE_LOCK_TIMEOUT_MS", "invalid")
 
     configured = Settings()
 

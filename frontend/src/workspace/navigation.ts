@@ -386,7 +386,7 @@ export function writeUrlNavigationState(
   }
 
   window.history[mode === "replace" ? "replaceState" : "pushState"](
-    { buildhubNavigation: normalizedState },
+    { promtyNavigation: normalizedState },
     "",
     nextUrl,
   );

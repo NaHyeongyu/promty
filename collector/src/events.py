@@ -241,7 +241,7 @@ def resolve_project_id(raw_payload: dict[str, Any], event_payload: dict[str, Any
     explicit_project_id = (
         coerce_uuid(raw_payload.get("project_id"))
         or coerce_uuid(event_payload.get("project_id"))
-        or coerce_uuid(os.environ.get("PROMPTHUB_PROJECT_ID"))
+        or coerce_uuid(os.environ.get("PROMTY_PROJECT_ID"))
     )
     if explicit_project_id:
         return explicit_project_id
@@ -264,7 +264,7 @@ def resolve_session_id(
     explicit_session_id = (
         coerce_uuid(raw_payload.get("session_id"))
         or coerce_uuid(event_payload.get("session_id"))
-        or coerce_uuid(os.environ.get("PROMPTHUB_SESSION_ID"))
+        or coerce_uuid(os.environ.get("PROMTY_SESSION_ID"))
     )
     if explicit_session_id:
         return explicit_session_id

@@ -19,18 +19,18 @@ from payloads import TURN_ID_KEYS, get_first_value
 from secure_storage import open_private_text, write_private_text_atomic
 
 DEFAULT_CHANGE_BASELINE_PATH = Path(
-    os.environ.get("PROMPTHUB_CHANGE_BASELINE_PATH", "~/.prompthub/change-baselines.json")
+    os.environ.get("PROMTY_CHANGE_BASELINE_PATH", "~/.promty/change-baselines.json")
 ).expanduser()
-GIT_TIMEOUT_SECONDS = float(os.environ.get("PROMPTHUB_GIT_TIMEOUT", "5"))
-FINGERPRINT_MAX_BYTES = int(os.environ.get("PROMPTHUB_FINGERPRINT_MAX_BYTES", "2097152"))
-PATCH_CONTENT_MAX_BYTES = int(os.environ.get("PROMPTHUB_PATCH_CONTENT_MAX_BYTES", "524288"))
-PATCH_MAX_BYTES = int(os.environ.get("PROMPTHUB_PATCH_MAX_BYTES", "262144"))
+GIT_TIMEOUT_SECONDS = float(os.environ.get("PROMTY_GIT_TIMEOUT", "5"))
+FINGERPRINT_MAX_BYTES = int(os.environ.get("PROMTY_FINGERPRINT_MAX_BYTES", "2097152"))
+PATCH_CONTENT_MAX_BYTES = int(os.environ.get("PROMTY_PATCH_CONTENT_MAX_BYTES", "524288"))
+PATCH_MAX_BYTES = int(os.environ.get("PROMTY_PATCH_MAX_BYTES", "262144"))
 UNTRACKED_LINE_COUNT_MAX_BYTES = int(
-    os.environ.get("PROMPTHUB_UNTRACKED_LINE_COUNT_MAX_BYTES", "1048576")
+    os.environ.get("PROMTY_UNTRACKED_LINE_COUNT_MAX_BYTES", "1048576")
 )
-BASELINE_TTL_HOURS = float(os.environ.get("PROMPTHUB_BASELINE_TTL_HOURS", "24"))
-CONSUMED_BASELINE_TTL_HOURS = float(os.environ.get("PROMPTHUB_CONSUMED_BASELINE_TTL_HOURS", "1"))
-BASELINE_MAX_RECORDS = int(os.environ.get("PROMPTHUB_BASELINE_MAX_RECORDS", "500"))
+BASELINE_TTL_HOURS = float(os.environ.get("PROMTY_BASELINE_TTL_HOURS", "24"))
+CONSUMED_BASELINE_TTL_HOURS = float(os.environ.get("PROMTY_CONSUMED_BASELINE_TTL_HOURS", "1"))
+BASELINE_MAX_RECORDS = int(os.environ.get("PROMTY_BASELINE_MAX_RECORDS", "500"))
 PATCH_EXCLUDED_DIRS = {
     ".git",
     ".hg",

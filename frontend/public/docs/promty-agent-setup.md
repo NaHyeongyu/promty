@@ -16,7 +16,7 @@ Install the Promty collector in the user's intended Git repository, configure th
 - When this task is running in Codex, select `codex-cli`. When it is running in Claude Code, select `claude-code`.
 - Select `all` only when the user explicitly asks to connect both tools.
 - Run exactly one `init` command with the environment or environments selected by the user.
-- Do not display, read aloud, commit, or paste collector tokens, `~/.prompthub/config.json`, raw event queues, or private uploader logs.
+- Do not display, read aloud, commit, or paste collector tokens, `~/.promty/config.json`, raw event queues, or private uploader logs.
 - Do not claim completion while a diagnostic reports `needs-action`.
 - GitHub authorization, Codex repository trust, and any tool permission prompt require the user's review and confirmation.
 - Promty may capture prompts, responses, repository paths, and code changes. Tell the user to use non-sensitive test content.
@@ -122,7 +122,7 @@ Named `dev` and `prod` profiles use separate configuration, queue, PID, and log 
 Custom unprofiled installations still use the legacy shared uploader path. Stop that uploader before changing its app or API URL:
 
 ```bash
-kill "$(cat ~/.prompthub/uploader.pid)"
+kill "$(cat ~/.promty/uploader.pid)"
 ```
 
 Then run the new `init` command and restart the selected AI tool session.
@@ -139,7 +139,7 @@ Exit the Claude Code session that was open during installation and launch a new 
 
 ### Backend or uploader reports `needs-action`
 
-Confirm the selected API is reachable. The user may inspect `~/.prompthub/uploader.log` locally. Do not paste private log contents into the conversation. Start the uploader if needed:
+Confirm the selected API is reachable. The user may inspect `~/.promty/uploader.log` locally. Do not paste private log contents into the conversation. Start the uploader if needed:
 
 ```bash
 npx promty-collector start-uploader

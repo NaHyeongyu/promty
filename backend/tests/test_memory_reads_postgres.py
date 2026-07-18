@@ -24,7 +24,7 @@ from app.services.memory.project_memory import list_project_memory_artifacts
 from app.services.memory.windows import memory_slice_runtime_state, memory_slice_state
 
 pytestmark = pytest.mark.skipif(
-    os.environ.get("PROMPTHUB_RUN_POSTGRES_TESTS") != "1",
+    os.environ.get("PROMTY_RUN_POSTGRES_TESTS") != "1",
     reason="PostgreSQL integration tests are disabled",
 )
 

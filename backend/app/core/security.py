@@ -39,7 +39,7 @@ def issue_collector_token() -> str:
 def _jwt_secret() -> bytes:
     secret = settings.jwt_secret
     if not secret:
-        raise RuntimeError("PROMPTHUB_JWT_SECRET is not configured")
+        raise RuntimeError("PROMTY_JWT_SECRET is not configured")
     return secret.encode("utf-8")
 
 

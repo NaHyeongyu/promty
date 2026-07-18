@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 import subprocess
 
-GIT_TIMEOUT_SECONDS = float(os.environ.get("PROMPTHUB_GIT_TIMEOUT", "5"))
+GIT_TIMEOUT_SECONDS = float(os.environ.get("PROMTY_GIT_TIMEOUT", "5"))
 
 
 def _run_git(args: list[str], cwd: str | Path, timeout: float = GIT_TIMEOUT_SECONDS) -> str | None:

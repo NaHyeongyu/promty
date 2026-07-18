@@ -19,7 +19,7 @@ from app.models.users import User
 from app.services.projects.management import project_summary_with_counts
 
 pytestmark = pytest.mark.skipif(
-    os.environ.get("PROMPTHUB_RUN_POSTGRES_TESTS") != "1",
+    os.environ.get("PROMTY_RUN_POSTGRES_TESTS") != "1",
     reason="PostgreSQL integration tests are disabled",
 )
 

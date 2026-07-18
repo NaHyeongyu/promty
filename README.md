@@ -35,7 +35,7 @@ React Timeline
 ## Project Structure
 
 ```text
-prompthub/
+promty/
 ├── frontend/          # React
 ├── backend/           # FastAPI
 ├── collector/         # User-installed CLI
@@ -216,15 +216,15 @@ python3 collector/src/cli.py upload --api-url http://localhost:8011 --watch --in
 By default, queued events are stored by project and session at:
 
 ```text
-~/.prompthub/events/<project_id>/<session_id>/events.jsonl
+~/.promty/events/<project_id>/<session_id>/events.jsonl
 ```
 
-If `PROMPTHUB_QUEUE_PATH` or `--queue-path` is set, the collector uses that single JSONL file instead. The uploader also reads the legacy `~/.prompthub/events.jsonl` queue if it exists.
+If `PROMTY_QUEUE_PATH` or `--queue-path` is set, the collector uses that single JSONL file instead. The uploader also reads the legacy `~/.promty/events.jsonl` queue if it exists.
 
 Prompt baselines for git-backed change tracking are stored at:
 
 ```text
-~/.prompthub/change-baselines.json
+~/.promty/change-baselines.json
 ```
 
 ## Backend
@@ -255,7 +255,7 @@ GET  /health/ready
       "timestamp": "2026-06-27T00:00:00+00:00",
       "payload": {
         "prompt": "Build a FastAPI endpoint",
-        "cwd": "/projects/prompthub",
+        "cwd": "/projects/promty",
         "model": "gpt-5",
         "turn_id": 12
       }
@@ -290,63 +290,63 @@ complete Git, AWS CLI, domain, secret, deployment, and troubleshooting guide.
 Published flow assets can use S3 by setting:
 
 ```bash
-export PROMPTHUB_PUBLISHED_FLOW_ASSET_STORAGE="s3"
-export PROMPTHUB_AWS_REGION="ap-southeast-2"
-export PROMPTHUB_AWS_S3_BUCKET="your-private-asset-bucket"
+export PROMTY_PUBLISHED_FLOW_ASSET_STORAGE="s3"
+export PROMTY_AWS_REGION="ap-southeast-2"
+export PROMTY_AWS_S3_BUCKET="your-private-asset-bucket"
 ```
 
 Optional ingest security:
 
 ```bash
-export PROMPTHUB_API_TOKEN="replace-with-local-secret"
-export PROMPTHUB_CORS_ORIGINS="http://127.0.0.1:5173,http://localhost:5173"
-export PROMPTHUB_API_PUBLIC_URL="https://api.prompthub.example"
-export PROMPTHUB_APP_URL="https://app.prompthub.example"
-export PROMPTHUB_GITHUB_CLIENT_ID="github-oauth-client-id"
-export PROMPTHUB_GITHUB_CLIENT_SECRET="github-oauth-client-secret"
-export PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_KEY="replace-with-github-token-encryption-secret"
-export PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_PREVIOUS_KEYS=""
-export PROMPTHUB_APP_ENCRYPTION_KEY="replace-with-app-data-encryption-secret"
-export PROMPTHUB_APP_ENCRYPTION_KEY_ID="local"
-export PROMPTHUB_ADMIN_GITHUB_IDS="immutable-numeric-github-id"
-export PROMPTHUB_AUTH_RATE_LIMIT_REQUESTS="30"
-export PROMPTHUB_AUTH_RATE_LIMIT_WINDOW_SECONDS="60"
-export PROMPTHUB_ADMIN_RATE_LIMIT_REQUESTS="120"
-export PROMPTHUB_ADMIN_RATE_LIMIT_WINDOW_SECONDS="60"
-export PROMPTHUB_COMMUNITY_RATE_LIMIT_REQUESTS="120"
-export PROMPTHUB_COMMUNITY_RATE_LIMIT_WINDOW_SECONDS="60"
-export PROMPTHUB_INGEST_RATE_LIMIT_REQUESTS="120"
-export PROMPTHUB_INGEST_RATE_LIMIT_WINDOW_SECONDS="60"
-export PROMPTHUB_TRUSTED_PROXY_CIDRS="127.0.0.0/8,::1/128,172.16.0.0/12"
-export PROMPTHUB_ADMIN_AUDIT_RETENTION_DAYS="180"
-export PROMPTHUB_SUPPORT_EMAIL_PROVIDER="ses"
-export PROMPTHUB_SUPPORT_NOTIFICATION_EMAILS="owner@example.com"
-export PROMPTHUB_SUPPORT_FROM_EMAIL="support@promty.org"
-export PROMPTHUB_SUPPORT_RATE_LIMIT_REQUESTS="5"
-export PROMPTHUB_SUPPORT_RATE_LIMIT_WINDOW_SECONDS="300"
-export PROMPTHUB_PROMPT_MAX_CHARS="50000"
-export PROMPTHUB_RESPONSE_MAX_CHARS="50000"
-export PROMPTHUB_EVENT_BATCH_MAX_BODY_BYTES="8388608"
-export PROMPTHUB_MEMORY_SLICE_EVENT_MAX_ROWS="500"
-export PROMPTHUB_MEMORY_SLICE_MAX_SLICES_PER_CALL="4"
-export PROMPTHUB_MEMORY_DRAFT_PROMPT_MAX_BYTES="131072"
-export PROMPTHUB_MEMORY_DRAFT_EVIDENCE_MAX_BYTES="98304"
-export PROMPTHUB_PROJECT_MEMORY_PROMPT_MAX_BYTES="262144"
-export PROMPTHUB_MEMORY_PROVIDER_RESPONSE_MAX_BYTES="1048576"
-export PROMPTHUB_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS="8192"
-export PROMPTHUB_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS="120"
-export PROMPTHUB_PROJECT_MEMORY_BATCH_MAX_DRAFTS="60"
-export PROMPTHUB_MEMORY_WORKER_POLL_SECONDS="2"
-export PROMPTHUB_MEMORY_WORKER_HEARTBEAT_SECONDS="60"
-export PROMPTHUB_MEMORY_WORKER_CHUNK_CONCURRENCY="2"
-export PROMPTHUB_OAUTH_STATE_SECRET="replace-with-oauth-state-secret"
-export PROMPTHUB_JWT_SECRET="replace-with-jwt-secret"
-export PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS="3600"
+export PROMTY_API_TOKEN="replace-with-local-secret"
+export PROMTY_CORS_ORIGINS="http://127.0.0.1:5173,http://localhost:5173"
+export PROMTY_API_PUBLIC_URL="https://api.promty.example"
+export PROMTY_APP_URL="https://app.promty.example"
+export PROMTY_GITHUB_CLIENT_ID="github-oauth-client-id"
+export PROMTY_GITHUB_CLIENT_SECRET="github-oauth-client-secret"
+export PROMTY_GITHUB_TOKEN_ENCRYPTION_KEY="replace-with-github-token-encryption-secret"
+export PROMTY_GITHUB_TOKEN_ENCRYPTION_PREVIOUS_KEYS=""
+export PROMTY_APP_ENCRYPTION_KEY="replace-with-app-data-encryption-secret"
+export PROMTY_APP_ENCRYPTION_KEY_ID="local"
+export PROMTY_ADMIN_GITHUB_IDS="immutable-numeric-github-id"
+export PROMTY_AUTH_RATE_LIMIT_REQUESTS="30"
+export PROMTY_AUTH_RATE_LIMIT_WINDOW_SECONDS="60"
+export PROMTY_ADMIN_RATE_LIMIT_REQUESTS="120"
+export PROMTY_ADMIN_RATE_LIMIT_WINDOW_SECONDS="60"
+export PROMTY_COMMUNITY_RATE_LIMIT_REQUESTS="120"
+export PROMTY_COMMUNITY_RATE_LIMIT_WINDOW_SECONDS="60"
+export PROMTY_INGEST_RATE_LIMIT_REQUESTS="120"
+export PROMTY_INGEST_RATE_LIMIT_WINDOW_SECONDS="60"
+export PROMTY_TRUSTED_PROXY_CIDRS="127.0.0.0/8,::1/128,172.16.0.0/12"
+export PROMTY_ADMIN_AUDIT_RETENTION_DAYS="180"
+export PROMTY_SUPPORT_EMAIL_PROVIDER="ses"
+export PROMTY_SUPPORT_NOTIFICATION_EMAILS="owner@example.com"
+export PROMTY_SUPPORT_FROM_EMAIL="support@promty.org"
+export PROMTY_SUPPORT_RATE_LIMIT_REQUESTS="5"
+export PROMTY_SUPPORT_RATE_LIMIT_WINDOW_SECONDS="300"
+export PROMTY_PROMPT_MAX_CHARS="50000"
+export PROMTY_RESPONSE_MAX_CHARS="50000"
+export PROMTY_EVENT_BATCH_MAX_BODY_BYTES="8388608"
+export PROMTY_MEMORY_SLICE_EVENT_MAX_ROWS="500"
+export PROMTY_MEMORY_SLICE_MAX_SLICES_PER_CALL="4"
+export PROMTY_MEMORY_DRAFT_PROMPT_MAX_BYTES="131072"
+export PROMTY_MEMORY_DRAFT_EVIDENCE_MAX_BYTES="98304"
+export PROMTY_PROJECT_MEMORY_PROMPT_MAX_BYTES="262144"
+export PROMTY_MEMORY_PROVIDER_RESPONSE_MAX_BYTES="1048576"
+export PROMTY_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS="8192"
+export PROMTY_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS="120"
+export PROMTY_PROJECT_MEMORY_BATCH_MAX_DRAFTS="60"
+export PROMTY_MEMORY_WORKER_POLL_SECONDS="2"
+export PROMTY_MEMORY_WORKER_HEARTBEAT_SECONDS="60"
+export PROMTY_MEMORY_WORKER_CHUNK_CONCURRENCY="2"
+export PROMTY_OAUTH_STATE_SECRET="replace-with-oauth-state-secret"
+export PROMTY_JWT_SECRET="replace-with-jwt-secret"
+export PROMTY_ACCESS_TOKEN_TTL_SECONDS="3600"
 # Production may use up to 28800 (8 hours); sessions are revocable server-side.
 ```
 
-Use independent random values for `PROMPTHUB_OAUTH_STATE_SECRET`,
-`PROMPTHUB_JWT_SECRET`, and `PROMPTHUB_API_TOKEN`; the backend does not reuse one
+Use independent random values for `PROMTY_OAUTH_STATE_SECRET`,
+`PROMTY_JWT_SECRET`, and `PROMTY_API_TOKEN`; the backend does not reuse one
 secret as a fallback for another security boundary.
 
 Web users sign in through GitHub OAuth. The backend issues a short-lived HS256 JWT in an HttpOnly session cookie and requires it for browser reads such as `GET /api/events`.
@@ -358,12 +358,12 @@ flow are documented in [`docs/support-inquiries.md`](docs/support-inquiries.md).
 
 Prompt text, AI response text, and unified diff patch text in raw event storage are encrypted at rest with application-level encryption. Project/session IDs, timestamps, file paths, line counts, and status metadata remain queryable for sorting and filtering. Prompt and response text are capped before encryption and default to 50,000 characters. Derived memory artifacts and artifact-version metadata are not covered by this envelope yet and must not be treated as secret storage.
 
-Collectors do not use the web JWT. CLI login issues a separate per-user collector token stored as a hash in PostgreSQL. `POST /api/events/batch` accepts that collector token as `Authorization: Bearer <token>`. `PROMPTHUB_API_TOKEN` remains available as an optional local/global ingest token. Anonymous ingest is disabled by default; only set `PROMPTHUB_ALLOW_ANONYMOUS_INGEST=true` for isolated local development.
+Collectors do not use the web JWT. CLI login issues a separate per-user collector token stored as a hash in PostgreSQL. `POST /api/events/batch` accepts that collector token as `Authorization: Bearer <token>`. `PROMTY_API_TOKEN` remains available as an optional local/global ingest token. Anonymous ingest is disabled by default; only set `PROMTY_ALLOW_ANONYMOUS_INGEST=true` for isolated local development.
 
 The web OAuth flow uses a signed state value plus a short-lived HttpOnly nonce cookie to reduce login CSRF risk.
 
 Administrator authorization uses only immutable numeric GitHub IDs from
-`PROMPTHUB_ADMIN_GITHUB_IDS`; usernames and email addresses do not grant administrator
+`PROMTY_ADMIN_GITHUB_IDS`; usernames and email addresses do not grant administrator
 access. OAuth and administrator endpoints have per-client sliding-window rate limits.
 Administrator console access and cross-owner project access are recorded in
 `admin_audit_logs` without storing session tokens, email addresses, prompts, or responses.
@@ -497,7 +497,7 @@ then applies overrides from the ignored root `.env.local` when it exists.
 Run unit, PostgreSQL integration, and authenticated browser CRUD checks with:
 
 ```bash
-cd backend && PROMPTHUB_RUN_POSTGRES_TESTS=1 ../.venv/bin/pytest -q
+cd backend && PROMTY_RUN_POSTGRES_TESTS=1 ../.venv/bin/pytest -q
 cd frontend && npm test
 cd frontend && npm run test:e2e
 ```

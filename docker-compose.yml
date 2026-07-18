@@ -1,16 +1,18 @@
+name: promty
+
 services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: prompthub
-      POSTGRES_USER: prompthub
-      POSTGRES_PASSWORD: prompthub
+      POSTGRES_DB: promty
+      POSTGRES_USER: promty
+      POSTGRES_PASSWORD: promty
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U prompthub -d prompthub"]
+      test: ["CMD-SHELL", "pg_isready -U promty -d promty"]
       interval: 2s
       timeout: 3s
       retries: 20
@@ -29,16 +31,16 @@ services:
       - path: .env.local
         required: false
     environment:
-      DATABASE_URL: postgresql+psycopg://prompthub:prompthub@postgres:5432/prompthub
-      PROMPTHUB_API_PUBLIC_URL: http://127.0.0.1:8011
-      PROMPTHUB_APP_URL: http://127.0.0.1:5173
-      PROMPTHUB_CORS_ORIGINS: http://127.0.0.1:5173,http://localhost:5173
-      PROMPTHUB_DATABASE_POOL_SIZE: "5"
-      PROMPTHUB_DATABASE_MAX_OVERFLOW: "2"
-      PROMPTHUB_DATABASE_POOL_TIMEOUT_SECONDS: "5"
-      PROMPTHUB_DATABASE_POOL_RECYCLE_SECONDS: "300"
-      PROMPTHUB_SESSION_COOKIE_SECURE: "false"
-      PROMPTHUB_PUBLISHED_FLOWS_ENABLED: "true"
+      DATABASE_URL: postgresql+psycopg://promty:promty@postgres:5432/promty
+      PROMTY_API_PUBLIC_URL: http://127.0.0.1:8011
+      PROMTY_APP_URL: http://127.0.0.1:5173
+      PROMTY_CORS_ORIGINS: http://127.0.0.1:5173,http://localhost:5173
+      PROMTY_DATABASE_POOL_SIZE: "5"
+      PROMTY_DATABASE_MAX_OVERFLOW: "2"
+      PROMTY_DATABASE_POOL_TIMEOUT_SECONDS: "5"
+      PROMTY_DATABASE_POOL_RECYCLE_SECONDS: "300"
+      PROMTY_SESSION_COOKIE_SECURE: "false"
+      PROMTY_PUBLISHED_FLOWS_ENABLED: "true"
     ports:
       - "8011:8011"
     depends_on:
@@ -68,11 +70,11 @@ services:
       - path: .env.local
         required: false
     environment:
-      DATABASE_URL: postgresql+psycopg://prompthub:prompthub@postgres:5432/prompthub
-      PROMPTHUB_DATABASE_POOL_SIZE: "2"
-      PROMPTHUB_DATABASE_MAX_OVERFLOW: "1"
-      PROMPTHUB_DATABASE_POOL_TIMEOUT_SECONDS: "5"
-      PROMPTHUB_DATABASE_POOL_RECYCLE_SECONDS: "300"
+      DATABASE_URL: postgresql+psycopg://promty:promty@postgres:5432/promty
+      PROMTY_DATABASE_POOL_SIZE: "2"
+      PROMTY_DATABASE_MAX_OVERFLOW: "1"
+      PROMTY_DATABASE_POOL_TIMEOUT_SECONDS: "5"
+      PROMTY_DATABASE_POOL_RECYCLE_SECONDS: "300"
     depends_on:
       backend:
         condition: service_healthy
@@ -89,8 +91,8 @@ services:
     working_dir: /app/frontend
     command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
     environment:
-      VITE_PROMPTHUB_API_URL: http://127.0.0.1:8011
-      VITE_PROMPTHUB_PUBLISHED_FLOWS_ENABLED: "true"
+      VITE_PROMTY_API_URL: http://127.0.0.1:8011
+      VITE_PROMTY_PUBLISHED_FLOWS_ENABLED: "true"
     volumes:
       - .:/app
       - frontend-node-modules:/app/frontend/node_modules

@@ -310,19 +310,19 @@ def test_retry_sleep_rechecks_deadline_after_sleeper_returns(monkeypatch) -> Non
 def test_provider_limit_settings_support_aliases_and_safe_defaults(monkeypatch) -> None:
     names = (
         "PROMTY_MEMORY_PROVIDER_RESPONSE_MAX_BYTES",
-        "PROMPTHUB_MEMORY_PROVIDER_RESPONSE_MAX_BYTES",
+        "PROMTY_MEMORY_PROVIDER_RESPONSE_MAX_BYTES",
         "PROMTY_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS",
-        "PROMPTHUB_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS",
+        "PROMTY_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS",
         "PROMTY_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS",
-        "PROMPTHUB_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS",
+        "PROMTY_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS",
         "PROMTY_OPENAI_INPUT_USD_PER_MILLION_TOKENS",
-        "PROMPTHUB_OPENAI_INPUT_USD_PER_MILLION_TOKENS",
+        "PROMTY_OPENAI_INPUT_USD_PER_MILLION_TOKENS",
         "PROMTY_OPENAI_OUTPUT_USD_PER_MILLION_TOKENS",
-        "PROMPTHUB_OPENAI_OUTPUT_USD_PER_MILLION_TOKENS",
+        "PROMTY_OPENAI_OUTPUT_USD_PER_MILLION_TOKENS",
         "PROMTY_GEMINI_INPUT_USD_PER_MILLION_TOKENS",
-        "PROMPTHUB_GEMINI_INPUT_USD_PER_MILLION_TOKENS",
+        "PROMTY_GEMINI_INPUT_USD_PER_MILLION_TOKENS",
         "PROMTY_GEMINI_OUTPUT_USD_PER_MILLION_TOKENS",
-        "PROMPTHUB_GEMINI_OUTPUT_USD_PER_MILLION_TOKENS",
+        "PROMTY_GEMINI_OUTPUT_USD_PER_MILLION_TOKENS",
     )
     for name in names:
         monkeypatch.delenv(name, raising=False)
@@ -336,11 +336,11 @@ def test_provider_limit_settings_support_aliases_and_safe_defaults(monkeypatch) 
     assert defaults.gemini_input_usd_per_million_tokens == 0.30
     assert defaults.gemini_output_usd_per_million_tokens == 2.50
 
-    monkeypatch.setenv("PROMPTHUB_MEMORY_PROVIDER_RESPONSE_MAX_BYTES", "2048")
+    monkeypatch.setenv("PROMTY_MEMORY_PROVIDER_RESPONSE_MAX_BYTES", "2048")
     monkeypatch.setenv("PROMTY_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS", "777")
-    monkeypatch.setenv("PROMPTHUB_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS", "4.5")
+    monkeypatch.setenv("PROMTY_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS", "4.5")
     monkeypatch.setenv("PROMTY_OPENAI_INPUT_USD_PER_MILLION_TOKENS", "0.4")
-    monkeypatch.setenv("PROMPTHUB_GEMINI_OUTPUT_USD_PER_MILLION_TOKENS", "3.5")
+    monkeypatch.setenv("PROMTY_GEMINI_OUTPUT_USD_PER_MILLION_TOKENS", "3.5")
     configured = Settings()
     assert configured.memory_provider_response_max_bytes == 2_048
     assert configured.memory_provider_output_max_tokens == 777

@@ -1,8 +1,8 @@
-# PromptHub Development Guidelines
+# Promty Development Guidelines
 
 ## Core Rule
 
-PromptHub uses one task per commit.
+Promty uses one task per commit.
 
 A task is one logical change that can be reviewed, reverted, and tested independently.
 
@@ -92,7 +92,7 @@ Rules:
 
 ## Module Boundaries
 
-PromptHub is split into four main domains.
+Promty is split into four main domains.
 
 ```text
 collector -> backend -> frontend
@@ -106,7 +106,7 @@ Collector owns tool-specific input parsing.
 Responsibilities:
 
 - Read hook JSON from AI tools.
-- Convert external payloads into PromptHub Event v1.
+- Convert external payloads into Promty Event v1.
 - Write events to the local JSONL queue.
 - Upload queued events to the backend outside the hook path.
 
@@ -129,11 +129,11 @@ docs/event-spec-v1.md if the standard contract changes
 
 ### Backend
 
-Backend owns the PromptHub Event API and persistence.
+Backend owns the Promty Event API and persistence.
 
 Responsibilities:
 
-- Accept PromptHub Events.
+- Accept Promty Events.
 - Validate event shape.
 - Persist events.
 - Return events for timeline views.
@@ -141,7 +141,7 @@ Responsibilities:
 Rules:
 
 - Backend must not parse Claude, Codex, Cursor, or Gemini raw payloads.
-- Backend only understands the PromptHub Event contract.
+- Backend only understands the Promty Event contract.
 - HTTP routes belong in `backend/app/api/`.
 - Pydantic request/response models belong in `backend/app/schemas/`.
 - Business logic belongs in `backend/app/services/`.
@@ -155,7 +155,7 @@ Frontend owns user-facing views.
 
 Responsibilities:
 
-- Fetch PromptHub Events from the backend.
+- Fetch Promty Events from the backend.
 - Render project/session timelines.
 - Keep UI components independent from transport details.
 
@@ -180,7 +180,7 @@ Rules:
 
 ## Event Contract Rules
 
-PromptHub Event v1 is the boundary between collector and backend.
+Promty Event v1 is the boundary between collector and backend.
 
 Base fields:
 
@@ -209,7 +209,7 @@ SessionEnded
 
 Payloads must use typed models. Do not pass arbitrary JSON through the backend.
 
-Backend changes are required only when the PromptHub Event contract changes, not when a tool changes its own hook payload.
+Backend changes are required only when the Promty Event contract changes, not when a tool changes its own hook payload.
 
 If a tool payload changes:
 

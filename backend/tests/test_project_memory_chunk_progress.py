@@ -202,10 +202,10 @@ def test_retry_reuses_successful_and_empty_chunk_progress(monkeypatch) -> None:
 
 def test_chunk_concurrency_setting_defaults_bounded_and_supports_aliases(monkeypatch) -> None:
     monkeypatch.delenv("PROMTY_MEMORY_WORKER_CHUNK_CONCURRENCY", raising=False)
-    monkeypatch.delenv("PROMPTHUB_MEMORY_WORKER_CHUNK_CONCURRENCY", raising=False)
+    monkeypatch.delenv("PROMTY_MEMORY_WORKER_CHUNK_CONCURRENCY", raising=False)
     assert Settings().memory_worker_chunk_concurrency == 2
 
-    monkeypatch.setenv("PROMPTHUB_MEMORY_WORKER_CHUNK_CONCURRENCY", "4")
+    monkeypatch.setenv("PROMTY_MEMORY_WORKER_CHUNK_CONCURRENCY", "4")
     assert Settings().memory_worker_chunk_concurrency == 4
 
     monkeypatch.setenv("PROMTY_MEMORY_WORKER_CHUNK_CONCURRENCY", "0")
@@ -214,10 +214,10 @@ def test_chunk_concurrency_setting_defaults_bounded_and_supports_aliases(monkeyp
 
 def test_batch_draft_cap_defaults_bounded_and_supports_aliases(monkeypatch) -> None:
     monkeypatch.delenv("PROMTY_PROJECT_MEMORY_BATCH_MAX_DRAFTS", raising=False)
-    monkeypatch.delenv("PROMPTHUB_PROJECT_MEMORY_BATCH_MAX_DRAFTS", raising=False)
+    monkeypatch.delenv("PROMTY_PROJECT_MEMORY_BATCH_MAX_DRAFTS", raising=False)
     assert Settings().project_memory_batch_max_drafts == 60
 
-    monkeypatch.setenv("PROMPTHUB_PROJECT_MEMORY_BATCH_MAX_DRAFTS", "12")
+    monkeypatch.setenv("PROMTY_PROJECT_MEMORY_BATCH_MAX_DRAFTS", "12")
     assert Settings().project_memory_batch_max_drafts == 12
 
     monkeypatch.setenv("PROMTY_PROJECT_MEMORY_BATCH_MAX_DRAFTS", "0")

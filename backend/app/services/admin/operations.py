@@ -778,8 +778,8 @@ def admin_system_response(db: Session) -> dict[str, Any]:
     return {
         "database": database,
         "deployment": {
-            "environment": os.environ.get("PROMPTHUB_ENVIRONMENT", "development"),
-            "release_sha": os.environ.get("PROMPTHUB_RELEASE_SHA") or os.environ.get("GITHUB_SHA"),
+            "environment": os.environ.get("PROMTY_ENVIRONMENT", "development"),
+            "release_sha": os.environ.get("PROMTY_RELEASE_SHA") or os.environ.get("GITHUB_SHA"),
             "region": settings.aws_region,
         },
         "providers": {

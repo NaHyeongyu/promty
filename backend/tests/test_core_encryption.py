@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import os
 from types import SimpleNamespace
 
 import pytest
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from app.core import encryption
+from app.core.encoding import base64_urlencode
 from app.core.encryption import (
     EncryptionDecryptionError,
     decrypt_app_text,
@@ -34,6 +39,30 @@ def test_app_text_string_encryption_round_trip() -> None:
     encrypted = encrypt_app_text_to_string("stored patch", purpose="test.patch")
 
     assert maybe_decrypt_app_text_from_string(encrypted, purpose="test.patch") == "stored patch"
+
+
+def test_app_text_decryption_accepts_legacy_buildhub_envelopes() -> None:
+    secret = encryption.settings.app_encryption_key
+    assert secret is not None
+    nonce = os.urandom(12)
+    ciphertext = AESGCM(hashlib.sha256(secret.encode("utf-8")).digest()).encrypt(
+        nonce,
+        b"legacy text",
+        b"buildhub:test.legacy",
+    )
+    envelope = {
+        encryption.LEGACY_ENCRYPTED_TEXT_MARKER: True,
+        "alg": encryption.APP_TEXT_ALGORITHM,
+        "v": 1,
+        "key_id": "legacy",
+        "nonce": base64_urlencode(nonce),
+        "ciphertext": base64_urlencode(ciphertext),
+    }
+    payload = json.dumps(envelope, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    stored = f"{encryption.LEGACY_ENCRYPTED_TEXT_PREFIX}{base64_urlencode(payload)}"
+
+    assert decrypt_app_text(envelope, purpose="test.legacy") == "legacy text"
+    assert maybe_decrypt_app_text_from_string(stored, purpose="test.legacy") == "legacy text"
 
 
 def test_app_text_decryption_accepts_an_explicit_previous_key(

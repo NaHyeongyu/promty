@@ -26,8 +26,8 @@ describe("i18n", () => {
       translateMessage("ko", "review.reviewGenerateFor", { name: "Promty" }),
     ).toBe("Promty 메모리 리뷰 및 생성");
     expect(
-      translateMessage("ko", "project.deleteConfirm", { name: "PromptHub" }),
-    ).toContain("PromptHub");
+      translateMessage("ko", "project.deleteConfirm", { name: "Promty" }),
+    ).toContain("Promty");
     expect(translateMessage("ko", "error.notFoundTitle")).toBe(
       "페이지를 찾을 수 없습니다",
     );
@@ -44,8 +44,8 @@ describe("i18n", () => {
       translateMessage("ko", "collector.repositoryScopeDescription"),
     ).toContain("자동으로 수집되지 않습니다");
     expect(
-      translateMessage("en", "collector.runFromRepository", { name: "PromptHub" }),
-    ).toBe("Run from the root of PromptHub");
+      translateMessage("en", "collector.runFromRepository", { name: "Promty" }),
+    ).toBe("Run from the root of Promty");
     expect(
       translateMessage("ja", "collector.repositoryScopeDescription"),
     ).toContain("自動的に収集されることはありません");

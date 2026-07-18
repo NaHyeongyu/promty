@@ -11,28 +11,28 @@
       "ImageConfiguration": {
         "Port": "8011",
         "RuntimeEnvironmentVariables": {
-          "PROMPTHUB_API_PUBLIC_URL": "https://api.promty.org",
-          "PROMPTHUB_APP_URL": "https://promty.org",
-          "PROMPTHUB_CORS_ORIGINS": "https://promty.org,https://www.promty.org",
-          "PROMPTHUB_SESSION_COOKIE_SECURE": "true",
-          "PROMPTHUB_SESSION_COOKIE_SAMESITE": "lax",
-          "PROMPTHUB_PUBLISHED_FLOW_ASSET_STORAGE": "s3",
-          "PROMPTHUB_AWS_REGION": "ap-southeast-2",
-          "PROMPTHUB_AWS_S3_BUCKET": "promty-prod-assets-435917083683",
-          "PROMPTHUB_AWS_S3_PREFIX": "published-flow-assets",
-          "PROMPTHUB_APP_ENCRYPTION_KEY_ID": "aws-prod",
+          "PROMTY_API_PUBLIC_URL": "https://api.promty.org",
+          "PROMTY_APP_URL": "https://promty.org",
+          "PROMTY_CORS_ORIGINS": "https://promty.org,https://www.promty.org",
+          "PROMTY_SESSION_COOKIE_SECURE": "true",
+          "PROMTY_SESSION_COOKIE_SAMESITE": "lax",
+          "PROMTY_PUBLISHED_FLOW_ASSET_STORAGE": "s3",
+          "PROMTY_AWS_REGION": "ap-southeast-2",
+          "PROMTY_AWS_S3_BUCKET": "promty-prod-assets-435917083683",
+          "PROMTY_AWS_S3_PREFIX": "published-flow-assets",
+          "PROMTY_APP_ENCRYPTION_KEY_ID": "aws-prod",
           "PROMTY_MEMORY_GENERATOR": "local",
           "PROMTY_MEMORY_DRAFT_GENERATOR": "local",
           "PROMTY_PROJECT_MEMORY_GENERATOR": "local"
         },
         "RuntimeEnvironmentSecrets": {
           "DATABASE_URL": "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/database-url-wYIxEV",
-          "PROMPTHUB_APP_ENCRYPTION_KEY": "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/app-encryption-key-puJg9H",
-          "PROMPTHUB_GITHUB_CLIENT_ID": "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/github-client-id-EwwvMI",
-          "PROMPTHUB_GITHUB_CLIENT_SECRET": "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/github-client-secret-ytHkHo",
-          "PROMPTHUB_GITHUB_TOKEN_ENCRYPTION_KEY": "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/github-token-encryption-key-p24aoY",
-          "PROMPTHUB_OAUTH_STATE_SECRET": "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/oauth-state-secret-OQeAVr",
-          "PROMPTHUB_JWT_SECRET": "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/jwt-secret-owy3sL"
+          "PROMTY_APP_ENCRYPTION_KEY": "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/app-encryption-key-puJg9H",
+          "PROMTY_GITHUB_CLIENT_ID": "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/github-client-id-EwwvMI",
+          "PROMTY_GITHUB_CLIENT_SECRET": "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/github-client-secret-ytHkHo",
+          "PROMTY_GITHUB_TOKEN_ENCRYPTION_KEY": "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/github-token-encryption-key-p24aoY",
+          "PROMTY_OAUTH_STATE_SECRET": "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/oauth-state-secret-OQeAVr",
+          "PROMTY_JWT_SECRET": "arn:aws:secretsmanager:ap-southeast-2:435917083683:secret:promty/prod/jwt-secret-owy3sL"
         }
       }
     }

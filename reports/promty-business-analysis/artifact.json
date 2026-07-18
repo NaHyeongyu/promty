@@ -123,7 +123,7 @@
       { "id": "assessment_sql", "label": "Promty 사업성 평가 루브릭", "path": "reports/promty-business-analysis/scoring.sql" },
       { "id": "competitive_matrix_sql", "label": "공식 경쟁 제품 문서 비교", "path": "reports/promty-business-analysis/competitive-matrix.sql" },
       { "id": "validation_plan_sql", "label": "90일 검증 계획", "path": "reports/promty-business-analysis/validation-plan.sql" },
-      { "id": "repo_evidence", "label": "Promty 공개 저장소", "href": "https://github.com/NaHyeongyu/BuildHub" },
+      { "id": "repo_evidence", "label": "Promty 공개 저장소", "href": "https://github.com/NaHyeongyu/promty" },
       { "id": "stackoverflow_2025", "label": "Stack Overflow Developer Survey 2025", "href": "https://survey.stackoverflow.co/2025/ai" },
       { "id": "github_octoverse_2025", "label": "GitHub Octoverse 2025", "href": "https://github.blog/news-insights/octoverse/octoverse-a-new-developer-joins-github-every-second-as-ai-leads-typescript-to-1/" },
       { "id": "github_copilot_memory", "label": "GitHub Copilot Memory", "href": "https://docs.github.com/en/copilot/concepts/agents/copilot-memory" },

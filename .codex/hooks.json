@@ -4,7 +4,7 @@
       {
         "hooks": [
           {
-            "command": "$HOME/.promty/bin/promty capture-changes --tool codex-cli --queue-path $HOME/.prompthub/profiles/dev/events --mirror-queue-path $HOME/.prompthub/profiles/prod/events",
+            "command": "$HOME/.promty/bin/promty capture-changes --tool codex-cli --queue-path $HOME/.promty/profiles/dev/events --mirror-queue-path $HOME/.promty/profiles/prod/events",
             "statusMessage": "Capturing Promty AI activity",
             "timeout": 10,
             "type": "command"
@@ -16,7 +16,7 @@
       {
         "hooks": [
           {
-            "command": "$HOME/.promty/bin/promty capture --tool codex-cli --queue-path $HOME/.prompthub/profiles/dev/events --mirror-queue-path $HOME/.prompthub/profiles/prod/events",
+            "command": "$HOME/.promty/bin/promty capture --tool codex-cli --queue-path $HOME/.promty/profiles/dev/events --mirror-queue-path $HOME/.promty/profiles/prod/events",
             "statusMessage": "Capturing Promty event",
             "timeout": 5,
             "type": "command"
