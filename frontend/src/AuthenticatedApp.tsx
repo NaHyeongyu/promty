@@ -113,8 +113,8 @@ export function AuthenticatedApp() {
     clearWorkspaceData,
     errorMessage,
     hasLoadedWorkspaceData,
-    isEventsLoading,
-    loadEvents,
+    isWorkspaceLoading,
+    loadWorkspace,
     mergeProjectSummary: mergeWorkspaceProjectSummary,
     projects,
     removeProject,
@@ -404,7 +404,7 @@ export function AuthenticatedApp() {
       setCurrentUser(user);
       setLocale(user.preferred_locale);
       setAuthStatus("authenticated");
-      await Promise.all([loadEvents(), accountSettings.loadAccountOverview()]);
+      await Promise.all([loadWorkspace(), accountSettings.loadAccountOverview()]);
     } catch (error) {
       if (error instanceof UnauthorizedError) {
         handleUnauthorized();
@@ -517,7 +517,7 @@ export function AuthenticatedApp() {
     }, 0);
   };
   const openFirstCapturedEvent = async (event: EventRecord) => {
-    await Promise.all([loadEvents(), accountSettings.loadAccountOverview()]);
+    await Promise.all([loadWorkspace(), accountSettings.loadAccountOverview()]);
     closeRepositoryConnector();
     setIsReviewQueueOpen(false);
     navigateWorkspace({
@@ -741,7 +741,7 @@ export function AuthenticatedApp() {
     ? formatRelativeTimestamp(latestMemoryAt) ?? t("common.recently")
     : t("project.noMemoryGenerated");
   const refreshWorkspaceAndAccount = () => {
-    void Promise.all([loadEvents(), accountSettings.loadAccountOverview()]);
+    void Promise.all([loadWorkspace(), accountSettings.loadAccountOverview()]);
   };
   const pendingProjectRouteKey = selectedProjectRouteKey ?? selectedProjectId;
   const isResolvingProjectDetail =
@@ -996,7 +996,7 @@ export function AuthenticatedApp() {
             activeTitle={activeTitle}
             displayProjects={displayProjects}
             errorMessage={errorMessage}
-            isEventsLoading={isEventsLoading}
+            isEventsLoading={isWorkspaceLoading}
             onClearSearch={() => setProjectSearchQuery("")}
             onOpenProject={openProjectDetail}
             onOpenReviewQueue={(projectId, returnFocusElement) =>
@@ -1007,7 +1007,7 @@ export function AuthenticatedApp() {
               void openFirstCapturedEvent(event);
             }}
             onboardingPollingEnabled={!isRepositoryConnectorOpen}
-            onRetry={loadEvents}
+            onRetry={loadWorkspace}
             onSearchChange={setProjectSearchQuery}
             onSortModeChange={setProjectSortMode}
             previewEmptyProjects={previewEmptyProjects}
@@ -1022,7 +1022,7 @@ export function AuthenticatedApp() {
             activeTitle={activeTitle}
             displayProjects={bookmarkedProjects}
             errorMessage={errorMessage}
-            isEventsLoading={isEventsLoading}
+            isEventsLoading={isWorkspaceLoading}
             onBrowseProjects={() => selectSidebarItem("projects")}
             onClearSearch={() => setProjectSearchQuery("")}
             onFirstEvent={(event) => {
@@ -1034,7 +1034,7 @@ export function AuthenticatedApp() {
             onOpenReviewQueue={(projectId, returnFocusElement) =>
               openReviewQueue(returnFocusElement, projectId)
             }
-            onRetry={loadEvents}
+            onRetry={loadWorkspace}
             onSearchChange={setProjectSearchQuery}
             onSortModeChange={setProjectSortMode}
             previewEmptyProjects={previewEmptyProjects}
@@ -1127,7 +1127,7 @@ export function AuthenticatedApp() {
             connectedRepositoryCount={connectedRepositoryCount}
             currentUser={currentUser}
             githubConnectUrl={githubRepositoryConnectUrl()}
-            isEventsLoading={isEventsLoading}
+            isEventsLoading={isWorkspaceLoading}
             latestActivityLabel={latestProfileActivityLabel}
             latestMemoryLabel={latestMemoryLabel}
             memoryCount={memoryCount}
@@ -1153,7 +1153,7 @@ export function AuthenticatedApp() {
           projectFilterId={reviewQueueProjectId}
           projects={projectCatalog}
           returnFocusElement={reviewQueueReturnFocusRef.current}
-          workspaceReady={hasLoadedWorkspaceData && !isEventsLoading}
+          workspaceReady={hasLoadedWorkspaceData && !isWorkspaceLoading}
         />
       ) : null}
     </div>

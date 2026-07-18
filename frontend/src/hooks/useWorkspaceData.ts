@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { UnauthorizedError } from "../api/client";
-import { fetchWorkspaceEvents } from "../api/events";
+import { fetchProjectSummaries } from "../api/projects";
 import { projectsFromEvents } from "../workspace/projectList";
-import type { EventRecord, ProjectSummary } from "../workspace/types";
+import type { ProjectSummary } from "../workspace/types";
 
 type UseWorkspaceDataOptions = {
   onAuthenticated: () => void;
@@ -15,18 +15,16 @@ export function useWorkspaceData({
   onLoadError,
   onUnauthorized,
 }: UseWorkspaceDataOptions) {
-  const [events, setEvents] = useState<EventRecord[]>([]);
   const [projectSummaries, setProjectSummaries] = useState<ProjectSummary[]>([]);
   const [hasLoadedWorkspaceData, setHasLoadedWorkspaceData] = useState(false);
-  const [isEventsLoading, setIsEventsLoading] = useState(false);
+  const [isWorkspaceLoading, setIsWorkspaceLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const projects = useMemo(
-    () => projectsFromEvents(events, projectSummaries),
-    [events, projectSummaries],
+    () => projectsFromEvents([], projectSummaries),
+    [projectSummaries],
   );
 
   const clearWorkspaceData = () => {
-    setEvents([]);
     setProjectSummaries([]);
     setHasLoadedWorkspaceData(false);
   };
@@ -46,23 +44,19 @@ export function useWorkspaceData({
     setProjectSummaries((currentProjects) =>
       currentProjects.filter((project) => project.id !== projectId),
     );
-    setEvents((currentEvents) =>
-      currentEvents.filter((event) => event.project_id !== projectId),
-    );
   };
 
   const replaceProjectSummaries = (updatedProjects: ProjectSummary[]) => {
     setProjectSummaries(updatedProjects);
   };
 
-  const loadEvents = async () => {
-    setIsEventsLoading(true);
+  const loadWorkspace = async () => {
+    setIsWorkspaceLoading(true);
     setHasLoadedWorkspaceData(false);
     setErrorMessage(null);
     try {
-      const payload = await fetchWorkspaceEvents();
-      setEvents(payload.events);
-      setProjectSummaries(payload.projects);
+      const projects = await fetchProjectSummaries();
+      setProjectSummaries(projects);
       setHasLoadedWorkspaceData(true);
       onAuthenticated();
     } catch (error) {
@@ -71,11 +65,11 @@ export function useWorkspaceData({
         clearWorkspaceData();
         return;
       }
-      setErrorMessage(error instanceof Error ? error.message : "Events request failed");
+      setErrorMessage(error instanceof Error ? error.message : "Projects request failed");
       setHasLoadedWorkspaceData(true);
       onLoadError();
     } finally {
-      setIsEventsLoading(false);
+      setIsWorkspaceLoading(false);
     }
   };
 
@@ -83,8 +77,8 @@ export function useWorkspaceData({
     clearWorkspaceData,
     errorMessage,
     hasLoadedWorkspaceData,
-    isEventsLoading,
-    loadEvents,
+    isWorkspaceLoading,
+    loadWorkspace,
     mergeProjectSummary,
     projects,
     removeProject,

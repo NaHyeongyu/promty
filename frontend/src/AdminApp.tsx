@@ -109,10 +109,10 @@ type AdminData = {
   audit: AdminPage<AdminAuditLog>;
   events: AdminEventPage;
   jobs: AdminPage<AdminJob>;
-  overview: AdminOverview;
+  overview: AdminOverview | null;
   projects: AdminPage<AdminProject>;
   support: AdminPage<AdminSupportInquiry>;
-  system: AdminSystem;
+  system: AdminSystem | null;
   users: AdminPage<AdminUser>;
 };
 
@@ -162,6 +162,24 @@ const INITIAL_PAGE_OFFSETS: Record<PagedAdminSection, number> = {
   security: 0,
   support: 0,
   users: 0,
+};
+
+const emptyAdminPage = <T,>(): AdminPage<T> => ({
+  items: [],
+  limit: ADMIN_PAGE_SIZE,
+  offset: 0,
+  total: 0,
+});
+
+const INITIAL_ADMIN_DATA: AdminData = {
+  audit: emptyAdminPage<AdminAuditLog>(),
+  events: { ...emptyAdminPage<AdminEventPage["items"][number]>(), search_truncated: false },
+  jobs: emptyAdminPage<AdminJob>(),
+  overview: null,
+  projects: emptyAdminPage<AdminProject>(),
+  support: emptyAdminPage<AdminSupportInquiry>(),
+  system: null,
+  users: emptyAdminPage<AdminUser>(),
 };
 
 const SECTION_META: Array<{
@@ -248,7 +266,10 @@ export function AdminApp() {
   }, [text]);
   const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
-  const [data, setData] = useState<AdminData | null>(null);
+  const [data, setData] = useState<AdminData>(INITIAL_ADMIN_DATA);
+  const [loadedSections, setLoadedSections] = useState<Set<AdminSection>>(
+    () => new Set(["marketing"]),
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [section, setSection] = useState<AdminSection>(sectionFromUrl);
@@ -264,62 +285,95 @@ export function AdminApp() {
   const [confirmationValue, setConfirmationValue] = useState("");
   const [actionDetail, setActionDetail] = useState("");
   const [projectEditor, setProjectEditor] = useState<ProjectEditorState | null>(null);
+  const [projectOwnersLoaded, setProjectOwnersLoaded] = useState(false);
   const [issuedToken, setIssuedToken] = useState<IssuedToken | null>(null);
   const [isMutating, setIsMutating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
-  const loadData = async (signal?: AbortSignal) => {
+  const loadSectionData = async (
+    targetSection: AdminSection,
+    signal?: AbortSignal,
+  ) => {
+    if (targetSection === "marketing") return;
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const userSection = section === "security" ? "security" : "users";
-      const [overview, users, projects, support, jobs, events, system, audit] = await Promise.all([
-        fetchAdminOverview(signal),
-        fetchAdminUsers({
+      if (targetSection === "overview") {
+        const overview = await fetchAdminOverview(signal);
+        setData((current) => ({ ...current, overview }));
+      } else if (targetSection === "users") {
+        const users = await fetchAdminUsers({
           limit: ADMIN_PAGE_SIZE,
-          offset: pageOffsets[userSection],
-          query: section === userSection ? searchQuery : undefined,
-        }, signal),
-        fetchAdminProjects({
+          offset: pageOffsets.users,
+          query: searchQuery,
+        }, signal);
+        setData((current) => ({ ...current, users }));
+      } else if (targetSection === "projects") {
+        const projects = await fetchAdminProjects({
           limit: ADMIN_PAGE_SIZE,
           offset: pageOffsets.projects,
-          query: section === "projects" ? searchQuery : undefined,
+          query: searchQuery,
           sort: projectSort,
           visibility: projectVisibility,
-        }, signal),
-        fetchAdminSupportInquiries({
+        }, signal);
+        setData((current) => ({ ...current, projects }));
+      } else if (targetSection === "support") {
+        const support = await fetchAdminSupportInquiries({
           limit: ADMIN_PAGE_SIZE,
           offset: pageOffsets.support,
-        }, signal),
-        fetchAdminJobs({
-          limit: ADMIN_PAGE_SIZE,
-          offset: pageOffsets.operations,
-          query: section === "operations" ? searchQuery : undefined,
-          status: section === "operations" ? jobFilter : undefined,
-        }, signal),
-        fetchAdminEvents({
+        }, signal);
+        setData((current) => ({ ...current, support }));
+      } else if (targetSection === "operations") {
+        const [overview, jobs] = await Promise.all([
+          fetchAdminOverview(signal),
+          fetchAdminJobs({
+            limit: ADMIN_PAGE_SIZE,
+            offset: pageOffsets.operations,
+            query: searchQuery,
+            status: jobFilter,
+          }, signal),
+        ]);
+        setData((current) => ({ ...current, jobs, overview }));
+      } else if (targetSection === "activity") {
+        const events = await fetchAdminEvents({
           limit: ADMIN_PAGE_SIZE,
           offset: pageOffsets.activity,
-          query: section === "activity" ? searchQuery : undefined,
-        }, signal),
-        fetchAdminSystem(signal),
-        fetchAdminAuditLogs({
+          query: searchQuery,
+        }, signal);
+        setData((current) => ({ ...current, events }));
+      } else if (targetSection === "system") {
+        const system = await fetchAdminSystem(signal);
+        setData((current) => ({ ...current, system }));
+      } else if (targetSection === "security") {
+        const [overview, users] = await Promise.all([
+          fetchAdminOverview(signal),
+          fetchAdminUsers({
+            limit: ADMIN_PAGE_SIZE,
+            offset: pageOffsets.security,
+            query: searchQuery,
+          }, signal),
+        ]);
+        setData((current) => ({ ...current, overview, users }));
+      } else {
+        const audit = await fetchAdminAuditLogs({
           limit: ADMIN_PAGE_SIZE,
           offset: pageOffsets.audit,
-          outcome: section === "audit" && auditOutcome !== "all" ? auditOutcome : undefined,
-          query: section === "audit" ? searchQuery : undefined,
-          resourceType: section === "audit" && auditResourceType !== "all" ? auditResourceType : undefined,
-        }, signal),
-      ]);
-      setData({ audit, events, jobs, overview, projects, support, system, users });
+          outcome: auditOutcome === "all" ? undefined : auditOutcome,
+          query: searchQuery,
+          resourceType: auditResourceType === "all" ? undefined : auditResourceType,
+        }, signal);
+        setData((current) => ({ ...current, audit }));
+      }
+      setLoadedSections((current) => new Set(current).add(targetSection));
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       if (error instanceof UnauthorizedError) {
         setAuthStatus("unauthenticated");
         setCurrentUser(null);
-        setData(null);
+        setData(INITIAL_ADMIN_DATA);
+        setLoadedSections(new Set(["marketing"]));
         return;
       }
       if (error instanceof ForbiddenError) setAuthStatus("error");
@@ -328,6 +382,10 @@ export function AdminApp() {
       if (!signal?.aborted) setIsLoading(false);
     }
   };
+
+  const loadData = (signal?: AbortSignal) => loadSectionData(section, signal);
+  const loadDataRef = useRef(loadData);
+  loadDataRef.current = loadData;
 
   useEffect(() => {
     let active = true;
@@ -350,18 +408,11 @@ export function AdminApp() {
   }, []);
 
   useEffect(() => {
-    if (authStatus !== "authenticated") return;
-    const controller = new AbortController();
-    void loadData(controller.signal);
-    return () => controller.abort();
-  }, [authStatus]);
-
-  useEffect(() => {
-    if (authStatus !== "authenticated") return;
+    if (authStatus !== "authenticated" || section !== "overview") return;
     const refreshOverview = () => {
       if (document.visibilityState !== "visible") return;
       void fetchAdminOverview()
-        .then((overview) => setData((current) => current ? { ...current, overview } : current))
+        .then((overview) => setData((current) => ({ ...current, overview })))
         .catch(() => undefined);
     };
     const interval = window.setInterval(refreshOverview, 60_000);
@@ -370,7 +421,7 @@ export function AdminApp() {
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", refreshOverview);
     };
-  }, [authStatus]);
+  }, [authStatus, section]);
 
   useEffect(() => {
     const onPopState = () => setSection(sectionFromUrl());
@@ -381,7 +432,7 @@ export function AdminApp() {
       }
       if (event.key.toLowerCase() === "r" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
-        void loadData();
+        void loadDataRef.current();
       }
     };
     window.addEventListener("popstate", onPopState);
@@ -393,49 +444,11 @@ export function AdminApp() {
   }, []);
 
   useEffect(() => {
-    if (
-      authStatus !== "authenticated" ||
-      !data ||
-      !(section in INITIAL_PAGE_OFFSETS)
-    ) return;
-    const pagedSection = section as PagedAdminSection;
+    if (authStatus !== "authenticated" || section === "marketing") return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      const options = {
-        limit: ADMIN_PAGE_SIZE,
-        offset: pageOffsets[pagedSection],
-        query: searchQuery,
-      };
-      setIsLoading(true);
-      const request = pagedSection === "users" || pagedSection === "security"
-        ? fetchAdminUsers(options, controller.signal).then((users) => ({ users }))
-        : pagedSection === "projects"
-          ? fetchAdminProjects({ ...options, sort: projectSort, visibility: projectVisibility }, controller.signal).then((projects) => ({ projects }))
-          : pagedSection === "support"
-            ? fetchAdminSupportInquiries(options, controller.signal).then((support) => ({ support }))
-          : pagedSection === "operations"
-            ? fetchAdminJobs({ ...options, status: jobFilter }, controller.signal).then((jobs) => ({ jobs }))
-            : pagedSection === "activity"
-              ? fetchAdminEvents(options, controller.signal).then((events) => ({ events }))
-              : fetchAdminAuditLogs(
-                  {
-                    ...options,
-                    outcome: auditOutcome === "all" ? undefined : auditOutcome,
-                    resourceType: auditResourceType === "all" ? undefined : auditResourceType,
-                  },
-                  controller.signal,
-                ).then((audit) => ({ audit }));
-      void request
-        .then((page) => setData((current) => current ? { ...current, ...page } : current))
-        .catch((error) => {
-          if (!(error instanceof DOMException && error.name === "AbortError")) {
-            setErrorMessage(error instanceof Error ? error.message : text("Administrator list request failed", "관리자 목록 요청에 실패했습니다."));
-          }
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) setIsLoading(false);
-        });
-    }, 250);
+      void loadSectionData(section, controller.signal);
+    }, section in INITIAL_PAGE_OFFSETS ? 250 : 0);
     return () => {
       window.clearTimeout(timer);
       controller.abort();
@@ -444,7 +457,6 @@ export function AdminApp() {
     auditOutcome,
     auditResourceType,
     authStatus,
-    data !== null,
     jobFilter,
     pageOffsets,
     projectSort,
@@ -502,7 +514,7 @@ export function AdminApp() {
     try {
       await updateAdminAlertState(item.key, item.condition_hash, state);
       const overview = await fetchAdminOverview();
-      setData((current) => current ? { ...current, overview } : current);
+      setData((current) => ({ ...current, overview }));
       if (state === "resolved") setNotice(text("Alert resolved until the condition changes.", "조건이 바뀔 때까지 알림을 해결 처리했습니다."));
       if (state === "snoozed") setNotice(text("Alert snoozed for 24 hours.", "알림을 24시간 보류했습니다."));
     } catch (error) {
@@ -615,6 +627,29 @@ export function AdminApp() {
     }
   };
 
+  const openProjectEditor = async (editor: ProjectEditorState) => {
+    if (editor.mode === "edit" || projectOwnersLoaded) {
+      setProjectEditor(editor);
+      return;
+    }
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      const users = await fetchAdminUsers({ limit: 200, offset: 0 });
+      setData((current) => ({ ...current, users }));
+      setProjectOwnersLoaded(true);
+      setProjectEditor(editor);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : text("Project owners could not be loaded.", "프로젝트 소유자 목록을 불러오지 못했습니다."),
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   if (authStatus === "loading") return <AuthLoadingPage />;
   if (authStatus === "unauthenticated") return <WebLoginPage errorMessage={null} />;
   if (authStatus === "error") {
@@ -632,7 +667,8 @@ export function AdminApp() {
   }
 
   const activeMeta = sectionMeta.find((item) => item.id === section) ?? sectionMeta[0];
-  const systemHealthy = data
+  const sectionReady = loadedSections.has(section);
+  const systemHealthy = data.overview
     ? data.overview.metrics.failed_jobs === 0 && data.overview.metrics.stale_jobs === 0 &&
       (data.overview.metrics.failed_support_notifications ?? 0) === 0 &&
       !data.overview.risks.some((risk) => risk.severity === "high")
@@ -650,7 +686,7 @@ export function AdminApp() {
           <span className="ops-pulse" data-healthy={systemHealthy === null ? undefined : systemHealthy} />
           <div>
             <strong>{systemHealthy === null ? (isLoading ? text("CHECKING SYSTEM", "시스템 확인 중") : text("SYSTEM STATUS UNKNOWN", "시스템 상태 알 수 없음")) : systemHealthy ? text("SYSTEM NOMINAL", "시스템 정상") : text("ATTENTION REQUIRED", "확인 필요")}</strong>
-            <small>{data?.system.deployment.environment ?? text("unknown", "알 수 없음")} · {data?.system.deployment.region ?? text("local", "로컬")}</small>
+            <small>{data.system?.deployment.environment ?? text("unknown", "알 수 없음")} · {data.system?.deployment.region ?? text("local", "로컬")}</small>
           </div>
         </div>
         <nav className="ops-nav" aria-label={text("Admin control center", "관리자 제어 센터")}>
@@ -661,8 +697,8 @@ export function AdminApp() {
               <button aria-current={section === item.id ? "page" : undefined} data-active={section === item.id} key={item.id} onClick={() => selectSection(item.id)} type="button">
                 <Icon size={17} strokeWidth={1.4} />
                 <span><strong>{item.label}</strong><small>{item.description}</small></span>
-                {item.id === "overview" && (data?.overview.action_summary?.unread ?? data?.overview.action_items.length ?? 0) > 0 ? (
-                  <em className="ops-nav-alert-count">{data?.overview.action_summary?.unread ?? data?.overview.action_items.length}</em>
+                {item.id === "overview" && (data.overview?.action_summary?.unread ?? data.overview?.action_items.length ?? 0) > 0 ? (
+                  <em className="ops-nav-alert-count">{data.overview?.action_summary?.unread ?? data.overview?.action_items.length}</em>
                 ) : null}
                 <ChevronRight size={14} />
               </button>
@@ -698,15 +734,15 @@ export function AdminApp() {
             <button aria-pressed={locale === "ko"} data-active={locale === "ko"} onClick={() => setLocale("ko")} type="button">한</button>
             <button aria-pressed={locale === "en"} data-active={locale === "en"} onClick={() => setLocale("en")} type="button">EN</button>
           </div>
-          <button className="ops-refresh" disabled={isLoading} onClick={() => void loadData()} type="button">
+          <button className="ops-refresh" disabled={isLoading || section === "marketing"} onClick={() => void loadData()} type="button">
             <RefreshCw className={isLoading ? "is-spinning" : undefined} size={16} /><span>{isLoading ? text("Syncing", "동기화 중") : text("Sync", "동기화")}</span>
           </button>
         </header>
         <div className="ops-status-strip">
-          <span><CircleDot size={12} /> {data ? text("API READY", "API 정상") : text("API CHECKING", "API 확인 중")}</span>
-          <span><Database size={12} /> {data ? `${data.system.database.dialect.toUpperCase()} ${text("ONLINE", "정상")}` : text("DATABASE CHECKING", "데이터베이스 확인 중")}</span>
+          <span><CircleDot size={12} /> {sectionReady ? text("API READY", "API 정상") : text("API CHECKING", "API 확인 중")}</span>
+          <span><Database size={12} /> {data.system ? `${data.system.database.dialect.toUpperCase()} ${text("ONLINE", "정상")}` : text("DATABASE ON DEMAND", "데이터베이스 필요 시 확인")}</span>
           <span><ShieldCheck size={12} /> {text("ADMIN ID LOCKED", "관리자 ID 잠금")}</span>
-          <span className="ops-status-time">{text("LAST SYNC", "최근 동기화")} {formatOptionalTimestamp(data?.overview.generated_at ?? null, text("PENDING", "대기 중"))}</span>
+          <span className="ops-status-time">{text("LAST SYNC", "최근 동기화")} {formatOptionalTimestamp(data.overview?.generated_at ?? null, text("PENDING", "대기 중"))}</span>
         </div>
 
         <div className="ops-content">
@@ -715,8 +751,8 @@ export function AdminApp() {
             <div className="ops-heading-facts"><span>{text("Scope", "범위")} <strong>{text("ALL DATA", "전체 데이터")}</strong></span><span>{text("Authority", "권한")} <strong>{text("ADMIN", "관리자")}</strong></span></div>
           </header>
           {notice ? <div className="ops-notice" role="status"><CheckCircle2 size={16} /><span>{notice}</span><button aria-label={text("Dismiss", "닫기")} onClick={() => setNotice(null)} type="button"><X size={15} /></button></div> : null}
-          {errorMessage && data ? <div className="ops-error" role="alert"><AlertTriangle size={16} /><span>{errorMessage}</span></div> : null}
-          {!data ? (
+          {errorMessage && sectionReady ? <div className="ops-error" role="alert"><AlertTriangle size={16} /><span>{errorMessage}</span></div> : null}
+          {!sectionReady ? (
             <div className="ops-loading" data-error={!isLoading || undefined}>
               {isLoading ? <LoaderCircle className="is-spinning" size={20} /> : <AlertTriangle size={20} />}
               <span>{isLoading ? text("Building operational picture…", "운영 현황을 불러오는 중…") : errorMessage ?? text("The operational picture could not be loaded.", "운영 현황을 불러오지 못했습니다.")}</span>
@@ -731,7 +767,7 @@ export function AdminApp() {
               expandedUserId={expandedUserId}
               jobFilter={jobFilter}
               onConfirm={(action) => { setConfirmationAction(action); setActionDetail(action.kind === "suspend-user" ? text("Administrative access suspension", "관리자에 의한 계정 접근 정지") : ""); }}
-              onEditProject={setProjectEditor}
+              onEditProject={(editor) => void openProjectEditor(editor)}
               onExpandUser={(id) => setExpandedUserId((current) => current === id ? null : id)}
               onAuditOutcome={(outcome) => {
                 setAuditOutcome(outcome);
@@ -781,7 +817,7 @@ export function AdminApp() {
           onConfirm={() => void runConfirmedAction()}
         />
       ) : null}
-      {projectEditor && data ? (
+      {projectEditor ? (
         <ProjectEditorDialog
           editor={projectEditor}
           isMutating={isMutating}
@@ -851,6 +887,7 @@ function AdminSectionContent({
   projectVisibility: AdminProjectVisibility;
 }) {
   const { serverText, text } = useAdminLocale();
+  const overview = data.overview;
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const users = data.users.items;
@@ -860,7 +897,8 @@ function AdminSectionContent({
   const audit = data.audit.items;
 
   if (section === "overview") {
-    return <AdminDashboard errorMessage={null} isLoading={false} onOpenActionItem={onOpenActionItem} onOpenProject={(projectId) => window.location.assign(projectHref({ id: projectId }))} onRefresh={onRefresh} onUpdateActionItem={onUpdateActionItem} overview={data.overview} />;
+    if (!overview) return null;
+    return <AdminDashboard errorMessage={null} isLoading={false} onOpenActionItem={onOpenActionItem} onOpenProject={(projectId) => window.location.assign(projectHref({ id: projectId }))} onRefresh={onRefresh} onUpdateActionItem={onUpdateActionItem} overview={overview} />;
   }
 
   if (section === "marketing") {
@@ -963,14 +1001,15 @@ function AdminSectionContent({
   }
 
   if (section === "operations") {
+    if (!overview) return null;
     const statuses = ["all", "pending", "running", "failed", "succeeded", "superseded", "stale"] as const;
     return (
       <div className="ops-section-stack">
         <div className="ops-mini-metrics">
-          <MiniMetric icon={Activity} label={text("Running", "실행 중")} value={data.overview.metrics.running_jobs} />
-          <MiniMetric icon={Clock3} label={text("Pending", "대기 중")} value={data.overview.metrics.pending_jobs} />
-          <MiniMetric danger icon={AlertTriangle} label={text("Failed", "실패")} value={data.overview.metrics.failed_jobs} />
-          <MiniMetric danger icon={FileClock} label={text("Stale", "지연")} value={data.overview.metrics.stale_jobs} />
+          <MiniMetric icon={Activity} label={text("Running", "실행 중")} value={overview.metrics.running_jobs} />
+          <MiniMetric icon={Clock3} label={text("Pending", "대기 중")} value={overview.metrics.pending_jobs} />
+          <MiniMetric danger icon={AlertTriangle} label={text("Failed", "실패")} value={overview.metrics.failed_jobs} />
+          <MiniMetric danger icon={FileClock} label={text("Stale", "지연")} value={overview.metrics.stale_jobs} />
         </div>
         <section className="ops-panel">
           <PanelHeader detail={text(`${jobs.length} shown · ${data.jobs.total} total`, `${jobs.length}개 표시 · 전체 ${data.jobs.total}개`)} icon={Boxes} title={text("Memory generation jobs", "메모리 생성 작업")} />
@@ -1052,16 +1091,17 @@ function AdminSectionContent({
     );
   }
 
-  if (section === "system") return <SystemSection system={data.system} />;
+  if (section === "system") return data.system ? <SystemSection system={data.system} /> : null;
 
   if (section === "security") {
+    if (!overview) return null;
     const securedUsers = users;
     return (
       <div className="ops-security-grid">
         <section className="ops-panel">
-          <PanelHeader detail={text(`${data.overview.risks.length} findings`, `발견 항목 ${data.overview.risks.length}개`)} icon={ShieldAlert} title={text("Risk register", "위험 항목")} />
+          <PanelHeader detail={text(`${overview.risks.length} findings`, `발견 항목 ${overview.risks.length}개`)} icon={ShieldAlert} title={text("Risk register", "위험 항목")} />
           <div className="ops-risk-register">
-            {data.overview.risks.map((risk) => (
+            {overview.risks.map((risk) => (
               <div data-acknowledged={risk.acknowledged || undefined} data-severity={risk.severity} key={risk.key}>
                 <AlertTriangle size={16} />
                 <span>
@@ -1075,18 +1115,18 @@ function AdminSectionContent({
                 </div>
               </div>
             ))}
-            {data.overview.risks.length === 0 ? <EmptyData label={text("No active configuration risks.", "현재 활성화된 설정 위험이 없습니다.")} /> : null}
+            {overview.risks.length === 0 ? <EmptyData label={text("No active configuration risks.", "현재 활성화된 설정 위험이 없습니다.")} /> : null}
           </div>
         </section>
         <section className="ops-panel">
           <PanelHeader detail={text("Enforced controls", "적용 중인 보안 제어")} icon={ShieldCheck} title={text("Security posture", "보안 상태")} />
           <dl className="ops-posture-list">
             <div><dt>{text("Administrator model", "관리자 모델")}</dt><dd>{text("Single GitHub numeric ID", "단일 GitHub 숫자 ID")}</dd></div>
-            <div><dt>{text("Session cookie", "세션 쿠키")}</dt><dd>{data.overview.system.session_cookie_secure ? text("Secure", "보안 적용") : text("Development mode", "개발 모드")}</dd></div>
-            <div><dt>{text("SameSite policy", "SameSite 정책")}</dt><dd>{data.overview.system.session_cookie_samesite}</dd></div>
-            <div><dt>{text("Admin rate limit", "관리자 요청 제한")}</dt><dd>{data.overview.system.admin_rate_limit.requests} / {data.overview.system.admin_rate_limit.window_seconds}s</dd></div>
-            <div><dt>{text("Audit retention", "감사 로그 보존")}</dt><dd>{text(`${data.overview.system.admin_audit_retention_days} days`, `${data.overview.system.admin_audit_retention_days}일`)}</dd></div>
-            <div><dt>{text("Allowed origins", "허용 출처")}</dt><dd>{data.overview.system.cors_origins.length}</dd></div>
+            <div><dt>{text("Session cookie", "세션 쿠키")}</dt><dd>{overview.system.session_cookie_secure ? text("Secure", "보안 적용") : text("Development mode", "개발 모드")}</dd></div>
+            <div><dt>{text("SameSite policy", "SameSite 정책")}</dt><dd>{overview.system.session_cookie_samesite}</dd></div>
+            <div><dt>{text("Admin rate limit", "관리자 요청 제한")}</dt><dd>{overview.system.admin_rate_limit.requests} / {overview.system.admin_rate_limit.window_seconds}s</dd></div>
+            <div><dt>{text("Audit retention", "감사 로그 보존")}</dt><dd>{text(`${overview.system.admin_audit_retention_days} days`, `${overview.system.admin_audit_retention_days}일`)}</dd></div>
+            <div><dt>{text("Allowed origins", "허용 출처")}</dt><dd>{overview.system.cors_origins.length}</dd></div>
           </dl>
         </section>
         <section className="ops-panel is-wide">
