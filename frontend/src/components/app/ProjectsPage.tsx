@@ -78,31 +78,33 @@ export function ProjectsPage({
             (isEventsLoading && displayProjects.length === 0)
               ? t("project.loading")
               : displayProjects.length === 1
-                ? `1 ${t("project.project")}`
-                : `${displayProjects.length}${t("project.projects")}`}
+                ? t("project.projectCountOne")
+                : t("project.projectCount", { count: displayProjects.length })}
           </p>
         </div>
-        <div className="page-actions">
-          {view === "pinned" ? (
-            <button
-              className="toolbar-button"
-              onClick={onBrowseProjects}
-              type="button"
-            >
-              <Folder aria-hidden="true" size={16} strokeWidth={1.5} />
-              <span>{t("pinned.browseProjects")}</span>
-            </button>
-          ) : (
-            <button
-              className="toolbar-button project-add-button"
-              onClick={onOpenRepositoryConnector}
-              type="button"
-            >
-              <Plus aria-hidden="true" size={16} strokeWidth={1.5} />
-              <span>{t("project.add")}</span>
-            </button>
-          )}
-        </div>
+        {view === "pinned" && displayProjects.length === 0 ? null : (
+          <div className="page-actions">
+            {view === "pinned" ? (
+              <button
+                className="toolbar-button"
+                onClick={onBrowseProjects}
+                type="button"
+              >
+                <Folder aria-hidden="true" size={16} strokeWidth={1.5} />
+                <span>{t("pinned.browseProjects")}</span>
+              </button>
+            ) : (
+              <button
+                className="toolbar-button project-add-button"
+                onClick={onOpenRepositoryConnector}
+                type="button"
+              >
+                <Plus aria-hidden="true" size={16} strokeWidth={1.5} />
+                <span>{t("project.add")}</span>
+              </button>
+            )}
+          </div>
+        )}
       </header>
 
       {repositoryConnector}
@@ -130,21 +132,29 @@ export function ProjectsPage({
             </button>
           </EmptyState>
         ) : displayProjects.length === 0 && view === "pinned" ? (
-          <EmptyState
-            description={t("pinned.emptyDescription")}
-            eyebrow={t("nav.pinned")}
-            icon={Bookmark}
-            title={t("pinned.emptyTitle")}
-          >
-            <button
-              className="empty-state-button"
-              onClick={onBrowseProjects}
-              type="button"
+          <div className="project-list-panel project-list-empty-panel">
+            <section
+              className="project-search-empty pinned-projects-empty"
+              aria-labelledby="pinned-projects-empty-title"
             >
-              <Folder aria-hidden="true" size={16} strokeWidth={1.5} />
-              <span>{t("pinned.browseProjects")}</span>
-            </button>
-          </EmptyState>
+              <div className="project-search-empty-icon" aria-hidden="true">
+                <Bookmark size={20} strokeWidth={1.5} />
+              </div>
+              <div className="project-search-empty-copy">
+                <span>{t("nav.pinned")}</span>
+                <h2 id="pinned-projects-empty-title">{t("pinned.emptyTitle")}</h2>
+                <p>{t("pinned.emptyDescription")}</p>
+              </div>
+              <button
+                className="toolbar-button"
+                onClick={onBrowseProjects}
+                type="button"
+              >
+                <Folder aria-hidden="true" size={16} strokeWidth={1.5} />
+                <span>{t("pinned.browseProjects")}</span>
+              </button>
+            </section>
+          </div>
         ) : displayProjects.length === 0 ? (
           <EmptyProjectsState
             onFirstEvent={onFirstEvent}

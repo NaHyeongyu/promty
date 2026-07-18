@@ -153,6 +153,7 @@ export function WorkspaceSidebar({
             icon={Bookmark}
             label={t("nav.pinned")}
             onClick={() => selectItem("pinned")}
+            quiet
           />
           <SidebarNavItem
             active={activeItem === "community"}
@@ -313,6 +314,7 @@ const SidebarNavItem = function SidebarNavItem({
   icon: Icon,
   label,
   onClick,
+  quiet = false,
   ref,
   reviewQueueFallbackFocus,
 }: {
@@ -327,6 +329,7 @@ const SidebarNavItem = function SidebarNavItem({
   icon: typeof Folder;
   label: string;
   onClick: () => void;
+  quiet?: boolean;
   ref?: React.Ref<HTMLButtonElement>;
   reviewQueueFallbackFocus?: boolean;
 }) {
@@ -337,7 +340,13 @@ const SidebarNavItem = function SidebarNavItem({
       aria-haspopup={ariaHasPopup}
       aria-label={ariaLabel}
       aria-pressed={ariaHasPopup ? undefined : active}
-      className={action ? "sidebar-item sidebar-item-action" : "sidebar-item"}
+      className={[
+        "sidebar-item",
+        action ? "sidebar-item-action" : "",
+        quiet ? "sidebar-item-quiet" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       data-active={active}
       data-review-queue-fallback-focus={reviewQueueFallbackFocus || undefined}
       onClick={onClick}

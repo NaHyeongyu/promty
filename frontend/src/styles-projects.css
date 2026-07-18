@@ -65,6 +65,35 @@
   background: transparent;
 }
 
+.project-list-empty-panel {
+  background: var(--bh-color-surface);
+}
+
+.project-list-panel > .pinned-projects-empty {
+  box-sizing: border-box;
+  min-height: 260px;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: var(--bh-space-4);
+  padding: var(--bh-space-6);
+}
+
+.pinned-projects-empty .project-search-empty-icon {
+  width: 44px;
+  height: 44px;
+  border-color: var(--bh-color-primary-border);
+  border-radius: var(--bh-radius-md);
+  color: var(--bh-color-text-primary);
+  background: var(--bh-color-primary-subtle);
+}
+
+.pinned-projects-empty .project-search-empty-copy h2 {
+  font-size: var(--bh-font-size-h2);
+}
+
+.pinned-projects-empty .project-search-empty-copy p {
+  max-width: 560px;
+}
+
 .project-table {
   --project-table-column-gap: var(--bh-space-6);
   --project-table-columns:
@@ -334,6 +363,12 @@
     background: transparent;
   }
 
+  .project-list-panel.project-list-empty-panel {
+    overflow: hidden;
+    border: 1px solid var(--bh-card-border);
+    background: var(--bh-color-surface);
+  }
+
   .project-list-panel > .project-controls,
   .project-list-panel > .project-loading-controls {
     margin-bottom: var(--bh-space-3);
@@ -403,6 +438,17 @@
   .project-list-panel .project-sort-control,
   .project-list-panel .project-sort-control button {
     width: 100%;
+  }
+
+  .project-list-panel > .pinned-projects-empty {
+    grid-template-columns: 1fr;
+    align-items: start;
+    min-height: 240px;
+    padding: var(--bh-space-5);
+  }
+
+  .pinned-projects-empty .toolbar-button {
+    width: fit-content;
   }
 }
 
