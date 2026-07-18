@@ -88,6 +88,7 @@ jobs:
           PARAMETERS=$(cat <<EOF
           {
             "commands": [
+              "set -eu",
               "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${REGISTRY}",
               "docker pull ${REGISTRY}/${ECR_REPOSITORY}:latest",
               "if grep -q '^PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS=' /opt/promty/backend.env; then sed -i 's/^PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS=.*/PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS=28800/' /opt/promty/backend.env; else echo 'PROMPTHUB_ACCESS_TOKEN_TTL_SECONDS=28800' >> /opt/promty/backend.env; fi",
@@ -95,15 +96,18 @@ jobs:
               "if grep -q '^PROMPTHUB_INGEST_RATE_LIMIT_REQUESTS=' /opt/promty/backend.env; then sed -i 's/^PROMPTHUB_INGEST_RATE_LIMIT_REQUESTS=.*/PROMPTHUB_INGEST_RATE_LIMIT_REQUESTS=120/' /opt/promty/backend.env; else echo 'PROMPTHUB_INGEST_RATE_LIMIT_REQUESTS=120' >> /opt/promty/backend.env; fi",
               "if grep -q '^PROMPTHUB_INGEST_RATE_LIMIT_WINDOW_SECONDS=' /opt/promty/backend.env; then sed -i 's/^PROMPTHUB_INGEST_RATE_LIMIT_WINDOW_SECONDS=.*/PROMPTHUB_INGEST_RATE_LIMIT_WINDOW_SECONDS=60/' /opt/promty/backend.env; else echo 'PROMPTHUB_INGEST_RATE_LIMIT_WINDOW_SECONDS=60' >> /opt/promty/backend.env; fi",
               "if grep -q '^PROMPTHUB_TRUSTED_PROXY_CIDRS=' /opt/promty/backend.env; then sed -i 's|^PROMPTHUB_TRUSTED_PROXY_CIDRS=.*|PROMPTHUB_TRUSTED_PROXY_CIDRS=127.0.0.0/8,::1/128,172.16.0.0/12|' /opt/promty/backend.env; else echo 'PROMPTHUB_TRUSTED_PROXY_CIDRS=127.0.0.0/8,::1/128,172.16.0.0/12' >> /opt/promty/backend.env; fi",
+              "aws secretsmanager get-secret-value --region ${AWS_REGION} --secret-id promty/prod/openai-api-key --query SecretString --output text | grep -q .",
               "sed -i '/^PROMTY_OPENAI_API_KEY=/d' /opt/promty/backend.env; aws secretsmanager get-secret-value --region ${AWS_REGION} --secret-id promty/prod/openai-api-key --query SecretString --output text | sed 's/^/PROMTY_OPENAI_API_KEY=/' >> /opt/promty/backend.env",
               "if grep -q '^PROMTY_MEMORY_GENERATOR=' /opt/promty/backend.env; then sed -i 's/^PROMTY_MEMORY_GENERATOR=.*/PROMTY_MEMORY_GENERATOR=openai/' /opt/promty/backend.env; else echo 'PROMTY_MEMORY_GENERATOR=openai' >> /opt/promty/backend.env; fi",
               "if grep -q '^PROMTY_MEMORY_DRAFT_GENERATOR=' /opt/promty/backend.env; then sed -i 's/^PROMTY_MEMORY_DRAFT_GENERATOR=.*/PROMTY_MEMORY_DRAFT_GENERATOR=openai/' /opt/promty/backend.env; else echo 'PROMTY_MEMORY_DRAFT_GENERATOR=openai' >> /opt/promty/backend.env; fi",
               "if grep -q '^PROMTY_PROJECT_MEMORY_GENERATOR=' /opt/promty/backend.env; then sed -i 's/^PROMTY_PROJECT_MEMORY_GENERATOR=.*/PROMTY_PROJECT_MEMORY_GENERATOR=openai/' /opt/promty/backend.env; else echo 'PROMTY_PROJECT_MEMORY_GENERATOR=openai' >> /opt/promty/backend.env; fi",
+              "docker run --rm --network promty --env-file /opt/promty/backend.env ${REGISTRY}/${ECR_REPOSITORY}:latest python -c \"from app.core.config import settings; from app.services.memory.providers import provider_is_configured; assert settings.memory_generator == 'openai'; assert settings.memory_draft_generator == 'openai'; assert settings.project_memory_generator == 'openai'; assert provider_is_configured('openai'); print('memory_provider_configured=openai')\"",
               "docker rm -f promty-memory-worker || true",
               "docker rm -f promty-backend || true",
               "docker run -d --name promty-backend --restart unless-stopped --network promty --env-file /opt/promty/backend.env -e PROMPTHUB_PUBLISHED_FLOWS_ENABLED=true -e PROMPTHUB_ADMIN_GITHUB_IDS=191438254 -e PROMPTHUB_DATABASE_POOL_SIZE=5 -e PROMPTHUB_DATABASE_MAX_OVERFLOW=2 ${REGISTRY}/${ECR_REPOSITORY}:latest",
               "sleep 8",
               "docker exec promty-backend python -c \"import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8011/health/ready', timeout=5).read().decode())\"",
+              "docker exec promty-backend alembic -c alembic.ini current --check-heads",
               "docker run -d --name promty-memory-worker --restart unless-stopped --network promty --env-file /opt/promty/backend.env --health-cmd 'python -m app.workers.healthcheck' --health-interval 10s --health-timeout 3s --health-retries 3 --health-start-period 10s -e PROMPTHUB_PUBLISHED_FLOWS_ENABLED=true -e PROMPTHUB_DATABASE_POOL_SIZE=2 -e PROMPTHUB_DATABASE_MAX_OVERFLOW=1 ${REGISTRY}/${ECR_REPOSITORY}:latest python -m app.workers.project_memory",
               "sleep 6",
               "docker exec promty-memory-worker python -m app.workers.healthcheck",
