@@ -24,6 +24,10 @@ import type {
 
 export type MemoryGenerationResult = ProjectMemoryGenerationResponse;
 
+type MemoryPanelView = "current" | "history";
+
+const MEMORY_PANEL_VIEWS: MemoryPanelView[] = ["history", "current"];
+
 function isGeneratedMemoryArtifact(artifact: ProjectMemoryArtifact) {
   return (
     artifact.artifactStage === "generated_memory" ||
@@ -207,7 +211,6 @@ function MemoryArtifactDetailDrawer({
   const { t } = useI18n();
   const drawerRef = useRef<HTMLElement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
-  const [areAllFilesVisible, setAreAllFilesVisible] = useState(false);
   const sections = (artifact.sections ?? []).filter(
     (section) => section.title?.trim() && section.summary?.trim(),
   );
@@ -243,8 +246,6 @@ function MemoryArtifactDetailDrawer({
     { label: "Last updated", value: formatMemoryDate(artifact.updatedAt) },
     { label: "Status", value: statusLabel },
   ].filter((row) => row.value);
-  const visibleFiles = areAllFilesVisible ? changedFiles : changedFiles.slice(0, 5);
-  const hiddenFileCount = Math.max(changedFiles.length - visibleFiles.length, 0);
 
   useEffect(() => {
     const previousActiveElement = document.activeElement;
@@ -257,7 +258,6 @@ function MemoryArtifactDetailDrawer({
   }, []);
 
   useEffect(() => {
-    setAreAllFilesVisible(false);
     bodyRef.current?.scrollTo({ top: 0 });
   }, [artifact.id]);
 
@@ -433,7 +433,7 @@ function MemoryArtifactDetailDrawer({
                 <span>{changedFileCount}</span>
               </div>
               <ul className="bh-memory-detail-file-list" id="memory-detail-files-list">
-                {visibleFiles.map((file) => {
+                {changedFiles.map((file) => {
                   const pathSegments = file.path.split("/");
                   const fileName = pathSegments.pop() ?? file.path;
                   const directory = pathSegments.join("/");
@@ -454,19 +454,6 @@ function MemoryArtifactDetailDrawer({
                   );
                 })}
               </ul>
-              {changedFiles.length > 5 ? (
-                <button
-                  aria-controls="memory-detail-files-list"
-                  aria-expanded={areAllFilesVisible}
-                  className="bh-memory-detail-expand-button"
-                  onClick={() => setAreAllFilesVisible((isVisible) => !isVisible)}
-                  type="button"
-                >
-                  {areAllFilesVisible
-                    ? "Show fewer files"
-                    : `Show ${hiddenFileCount} more ${hiddenFileCount === 1 ? "file" : "files"}`}
-                </button>
-              ) : null}
               {changedFileCount > changedFiles.length ? (
                 <small className="bh-memory-detail-muted">
                   {changedFileCount - changedFiles.length} additional changed{" "}
@@ -612,6 +599,9 @@ export function MemoryPanel({
   const [isArtifactHistoryLoading, setIsArtifactHistoryLoading] = useState(false);
   const [artifactHistoryError, setArtifactHistoryError] = useState<string | null>(null);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
+  const [activeMemoryView, setActiveMemoryView] =
+    useState<MemoryPanelView>("history");
+  const memoryViewTabListRef = useRef<HTMLDivElement | null>(null);
   const generationRequestRef = useRef(0);
   const projectIdRef = useRef(data.project.id);
   const previousSharedDelayedRef = useRef(isProjectMemoryGenerationDelayed);
@@ -637,6 +627,10 @@ export function MemoryPanel({
     setLoadedArtifacts(null);
     setArtifactHistoryError(null);
   }, [data.project.id, data.memory.latestArtifactAt, data.memory.totalArtifacts]);
+
+  useEffect(() => {
+    setActiveMemoryView("history");
+  }, [data.project.id]);
 
   useEffect(() => {
     projectIdRef.current = data.project.id;
@@ -785,6 +779,39 @@ export function MemoryPanel({
     }
   };
 
+  const selectMemoryView = (view: MemoryPanelView, focus = false) => {
+    setActiveMemoryView(view);
+    if (!focus) {
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      memoryViewTabListRef.current
+        ?.querySelector<HTMLButtonElement>(`[data-memory-view="${view}"]`)
+        ?.focus();
+    });
+  };
+
+  const handleMemoryViewKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+      return;
+    }
+    event.preventDefault();
+    const currentIndex = MEMORY_PANEL_VIEWS.indexOf(activeMemoryView);
+    const nextIndex =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? MEMORY_PANEL_VIEWS.length - 1
+          : event.key === "ArrowRight"
+            ? (currentIndex + 1) % MEMORY_PANEL_VIEWS.length
+            : (currentIndex - 1 + MEMORY_PANEL_VIEWS.length) %
+              MEMORY_PANEL_VIEWS.length;
+    const nextView = MEMORY_PANEL_VIEWS[nextIndex];
+    if (nextView) {
+      selectMemoryView(nextView, true);
+    }
+  };
+
   return (
     <section className="bh-memory-workspace" aria-label={t("project.memory")}>
       <header className="bh-memory-toolbar">
@@ -794,199 +821,283 @@ export function MemoryPanel({
         </div>
       </header>
 
-      {generationStatus ? (
+      {onGenerateProjectMemory && generationStatus ? (
         <div className="bh-memory-status" role="status">
           {generationStatus}
         </div>
       ) : null}
       <div className="bh-memory-documentation">
-        <section
-          className="bh-memory-document-section"
-          aria-label={t("memory.generation")}
-        >
-          {hasPendingDocumentation ? (
-            <article
-              aria-busy={isGenerationActive || undefined}
-              className="bh-memory-document-request"
-              data-generating={isGenerationActive ? "true" : "false"}
-            >
-              <div className="bh-memory-document-row-main">
-                <h3>{t("memory.ready")}</h3>
-                <div className="bh-memory-request-metrics">
-                  <span>
-                    <strong>{pendingPromptCount.toLocaleString()}</strong>
-                    {pendingPromptCount === 1 ? "prompt" : "prompts"}
-                  </span>
-                  <span>
-                    <strong>{pendingSessionCount.toLocaleString()}</strong>
-                    {pendingSessionCount === 1 ? "session" : "sessions"}
-                  </span>
-                </div>
-                <p>
-                  {pendingDateRange ?? t("memory.readyDescription")}
-                </p>
-              </div>
-              <div className="bh-memory-generation-action">
-                <button
-                  aria-busy={isGenerationActive || undefined}
-                  aria-disabled={
-                    !hasPendingDocumentation ||
-                    !onGenerateProjectMemory ||
-                    isGenerationActive ||
-                    (visibleGenerationError !== null && !visibleGenerationRetryable)
-                  }
-                  className="bh-memory-primary-action"
-                  onClick={() => void createProjectMemory()}
-                  disabled={
-                    !onGenerateProjectMemory ||
-                    isGenerationActive ||
-                    (visibleGenerationError !== null && !visibleGenerationRetryable)
-                  }
-                  type="button"
-                >
-                  <Sparkles aria-hidden="true" size={16} strokeWidth={1.7} />
-                  <span>
-                    {isGenerationActive
-                      ? t("memory.updating")
-                      : isProjectMemoryGenerationDelayed
-                        ? t("memory.updateStatus")
-                      : visibleGenerationError
-                        ? visibleGenerationRetryable
-                          ? t("memory.retryUpdate")
-                          : t("memory.failed")
-                        : t("memory.create")}
-                  </span>
-                </button>
-                <span>{t("memory.createHint")}</span>
-              </div>
-              {isGenerationActive ? (
-                <div
-                  aria-live="polite"
-                  className="bh-memory-generation-status"
-                  role="status"
-                >
-                  <div className="bh-memory-generation-progress" aria-hidden="true" />
-                  <div className="bh-memory-generation-status-copy">
-                    <strong>{t("memory.creating")}</strong>
-                    <span>{t("memory.creatingDescription")}</span>
-                  </div>
-                </div>
-              ) : visibleGenerationError ? (
-                <div className="bh-memory-generation-status" data-error="true" role="alert">
-                  <div>
-                    <strong>{t("memory.failed")}</strong>
-                    <span>{visibleGenerationError}</span>
-                  </div>
-                </div>
-              ) : null}
-            </article>
-          ) : (
-            <div className="bh-memory-document-idle" role="status">
-              <span>
-                {projectMemoryArtifact
-                  ? t("memory.noWaiting")
-                  : t("memory.noCurrent")}
-              </span>
-            </div>
-          )}
-        </section>
-
-        {projectMemoryArtifact ? (
+        {onGenerateProjectMemory ? (
           <section
             className="bh-memory-document-section"
-            aria-labelledby="project-memory-document-title"
+            aria-label={t("memory.generation")}
           >
-            <div className="bh-memory-section-header">
-              <div>
-                <span className="bh-memory-step-kicker">{t("memory.currentDocument")}</span>
-                <h3 id="project-memory-document-title">{t("memory.currentProjectMemory")}</h3>
-                <p>
-                  {projectMemoryArtifact.updatedAt
-                    ? `Updated ${projectMemoryArtifact.updatedAt}`
-                    : t("memory.compiledDocument")}
-                </p>
-              </div>
-              <div className="bh-memory-agent-approval">
-                <span>
-                  {projectMemoryArtifact.sourceSessionIds.length > 0
-                    ? `${projectMemoryArtifact.sourceSessionIds.length} source ${
-                        projectMemoryArtifact.sourceSessionIds.length === 1
-                          ? "session"
-                          : "sessions"
-                      }`
-                    : t("memory.compiled")}
-                </span>
-                {projectMemoryNeedsApproval && onApproveProjectMemory ? (
+            {hasPendingDocumentation ? (
+              <article
+                aria-busy={isGenerationActive || undefined}
+                className="bh-memory-document-request"
+                data-generating={isGenerationActive ? "true" : "false"}
+              >
+                <div className="bh-memory-document-row-main">
+                  <h3>{t("memory.ready")}</h3>
+                  <div className="bh-memory-request-metrics">
+                    <span>
+                      <strong>{pendingPromptCount.toLocaleString()}</strong>
+                      {pendingPromptCount === 1 ? "prompt" : "prompts"}
+                    </span>
+                    <span>
+                      <strong>{pendingSessionCount.toLocaleString()}</strong>
+                      {pendingSessionCount === 1 ? "session" : "sessions"}
+                    </span>
+                  </div>
+                  <p>{pendingDateRange ?? t("memory.readyDescription")}</p>
+                </div>
+                <div className="bh-memory-generation-action">
                   <button
-                    disabled={isApprovingForAgents}
-                    onClick={() => void approveForAgentUse()}
+                    aria-busy={isGenerationActive || undefined}
+                    aria-disabled={
+                      !hasPendingDocumentation ||
+                      isGenerationActive ||
+                      (visibleGenerationError !== null && !visibleGenerationRetryable)
+                    }
+                    className="bh-memory-primary-action"
+                    disabled={
+                      isGenerationActive ||
+                      (visibleGenerationError !== null && !visibleGenerationRetryable)
+                    }
+                    onClick={() => void createProjectMemory()}
                     type="button"
                   >
-                    <CheckCircle2 aria-hidden="true" size={15} />
-                    {isApprovingForAgents
-                      ? t("memory.approvingForAgents")
-                      : t("memory.approveForAgents")}
+                    <Sparkles aria-hidden="true" size={16} strokeWidth={1.7} />
+                    <span>
+                      {isGenerationActive
+                        ? t("memory.updating")
+                        : isProjectMemoryGenerationDelayed
+                          ? t("memory.updateStatus")
+                          : visibleGenerationError
+                            ? visibleGenerationRetryable
+                              ? t("memory.retryUpdate")
+                              : t("memory.failed")
+                            : t("memory.create")}
+                    </span>
                   </button>
-                ) : projectMemoryIsApproved ? (
-                  <small>{t("memory.approvedForAgents")}</small>
+                  <span>{t("memory.createHint")}</span>
+                </div>
+                {isGenerationActive ? (
+                  <div
+                    aria-live="polite"
+                    className="bh-memory-generation-status"
+                    role="status"
+                  >
+                    <div className="bh-memory-generation-progress" aria-hidden="true" />
+                    <div className="bh-memory-generation-status-copy">
+                      <strong>{t("memory.creating")}</strong>
+                      <span>{t("memory.creatingDescription")}</span>
+                    </div>
+                  </div>
+                ) : visibleGenerationError ? (
+                  <div
+                    className="bh-memory-generation-status"
+                    data-error="true"
+                    role="alert"
+                  >
+                    <div>
+                      <strong>{t("memory.failed")}</strong>
+                      <span>{visibleGenerationError}</span>
+                    </div>
+                  </div>
                 ) : null}
+              </article>
+            ) : (
+              <div className="bh-memory-document-idle" role="status">
+                <span>
+                  {projectMemoryArtifact
+                    ? t("memory.noWaiting")
+                    : t("memory.noCurrent")}
+                </span>
               </div>
-            </div>
-            {approvalError ? <p role="alert">{approvalError}</p> : null}
-            <MarkdownContent
-              className="bh-markdown-preview bh-memory-project-document"
-              emptyLabel={t("memory.noCompiled")}
-              value={
-                projectMemoryArtifact.outcome ?? projectMemoryArtifact.summary ?? ""
-              }
-            />
+            )}
           </section>
         ) : null}
 
-        {generatedArtifacts.length > 0 ? (
-          <section
-            className="bh-memory-document-section"
-            aria-labelledby="memory-history-title"
+        <div
+          aria-label={t("memory.views")}
+          className="bh-memory-view-tabs"
+          onKeyDown={handleMemoryViewKeyDown}
+          ref={memoryViewTabListRef}
+          role="tablist"
+        >
+          <button
+            aria-controls="memory-view-panel-history"
+            aria-selected={activeMemoryView === "history"}
+            data-active={activeMemoryView === "history" || undefined}
+            data-memory-view="history"
+            id="memory-view-tab-history"
+            onClick={() => selectMemoryView("history")}
+            role="tab"
+            tabIndex={activeMemoryView === "history" ? 0 : -1}
+            type="button"
           >
-            <div className="bh-memory-section-header">
-              <div>
-                <span className="bh-memory-step-kicker">{t("memory.longTerm")}</span>
-                <h3 id="memory-history-title">{t("memory.history")}</h3>
-                <p>{resultDateRange}</p>
-              </div>
-              <span>{generatedSummaryCountLabel}</span>
-            </div>
+            <span>{t("memory.history")}</span>
+            <small>{totalGeneratedArtifactCount}</small>
+          </button>
+          <button
+            aria-controls="memory-view-panel-current"
+            aria-selected={activeMemoryView === "current"}
+            data-active={activeMemoryView === "current" || undefined}
+            data-memory-view="current"
+            id="memory-view-tab-current"
+            onClick={() => selectMemoryView("current")}
+            role="tab"
+            tabIndex={activeMemoryView === "current" ? 0 : -1}
+            type="button"
+          >
+            <span>{t("memory.currentTab")}</span>
+          </button>
+        </div>
 
-            <div className="bh-memory-context-list">
-              {generatedArtifacts.map((artifact) => (
-                <MemoryArtifactCard
-                  artifact={artifact}
-                  key={artifact.id}
-                  isSelected={artifact.id === selectedArtifactId}
-                  onSelect={(selectedArtifact) => setSelectedArtifactId(selectedArtifact.id)}
-                />
-              ))}
-              {canLoadMoreArtifacts ? (
-                <button
-                  className="bh-memory-load-more"
-                  disabled={isArtifactHistoryLoading}
-                  onClick={() => void loadMoreArtifacts()}
-                  type="button"
-                >
-                  {isArtifactHistoryLoading ? t("activity.loading") : t("memory.loadMore")}
-                </button>
-              ) : null}
-              {artifactHistoryError ? (
-                <div className="bh-memory-generation-status" data-error="true" role="alert">
+        {activeMemoryView === "current" ? (
+          <div
+            aria-labelledby="memory-view-tab-current"
+            className="bh-memory-view-panel"
+            id="memory-view-panel-current"
+            role="tabpanel"
+            tabIndex={0}
+          >
+            {projectMemoryArtifact ? (
+              <section
+                className="bh-memory-document-section"
+                aria-labelledby="project-memory-document-title"
+              >
+                <div className="bh-memory-section-header">
                   <div>
-                    <strong>{t("memory.historyLoadFailedTitle")}</strong>
-                    <span>{artifactHistoryError}</span>
+                    <span className="bh-memory-step-kicker">
+                      {t("memory.currentDocument")}
+                    </span>
+                    <h3 id="project-memory-document-title">
+                      {t("memory.currentProjectMemory")}
+                    </h3>
+                    <p>
+                      {projectMemoryArtifact.updatedAt
+                        ? `Updated ${projectMemoryArtifact.updatedAt}`
+                        : t("memory.compiledDocument")}
+                    </p>
+                  </div>
+                  <div className="bh-memory-agent-approval">
+                    <span>
+                      {projectMemoryArtifact.sourceSessionIds.length > 0
+                        ? `${projectMemoryArtifact.sourceSessionIds.length} source ${
+                            projectMemoryArtifact.sourceSessionIds.length === 1
+                              ? "session"
+                              : "sessions"
+                          }`
+                        : t("memory.compiled")}
+                    </span>
+                    {projectMemoryNeedsApproval && onApproveProjectMemory ? (
+                      <button
+                        disabled={isApprovingForAgents}
+                        onClick={() => void approveForAgentUse()}
+                        type="button"
+                      >
+                        <CheckCircle2 aria-hidden="true" size={15} />
+                        {isApprovingForAgents
+                          ? t("memory.approvingForAgents")
+                          : t("memory.approveForAgents")}
+                      </button>
+                    ) : projectMemoryIsApproved ? (
+                      <small>{t("memory.approvedForAgents")}</small>
+                    ) : null}
                   </div>
                 </div>
-              ) : null}
-            </div>
-          </section>
-        ) : null}
+                {approvalError ? <p role="alert">{approvalError}</p> : null}
+                <MarkdownContent
+                  className="bh-markdown-preview bh-memory-project-document"
+                  emptyLabel={t("memory.noCompiled")}
+                  value={
+                    projectMemoryArtifact.outcome ?? projectMemoryArtifact.summary ?? ""
+                  }
+                />
+              </section>
+            ) : (
+              <div className="bh-memory-view-empty" role="status">
+                <span className="bh-memory-step-kicker">
+                  {t("memory.currentDocument")}
+                </span>
+                <h3>{t("memory.noCurrent")}</h3>
+                <p>{t("memory.currentEmptyDescription")}</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div
+            aria-labelledby="memory-view-tab-history"
+            className="bh-memory-view-panel"
+            id="memory-view-panel-history"
+            role="tabpanel"
+            tabIndex={0}
+          >
+            {generatedArtifacts.length > 0 ? (
+              <section
+                className="bh-memory-document-section"
+                aria-labelledby="memory-history-title"
+              >
+                <div className="bh-memory-section-header">
+                  <div>
+                    <span className="bh-memory-step-kicker">
+                      {t("memory.longTerm")}
+                    </span>
+                    <h3 id="memory-history-title">{t("memory.history")}</h3>
+                    <p>{resultDateRange}</p>
+                  </div>
+                  <span>{generatedSummaryCountLabel}</span>
+                </div>
+
+                <div className="bh-memory-context-list">
+                  {generatedArtifacts.map((artifact) => (
+                    <MemoryArtifactCard
+                      artifact={artifact}
+                      key={artifact.id}
+                      isSelected={artifact.id === selectedArtifactId}
+                      onSelect={(selectedArtifact) =>
+                        setSelectedArtifactId(selectedArtifact.id)
+                      }
+                    />
+                  ))}
+                  {canLoadMoreArtifacts ? (
+                    <button
+                      className="bh-memory-load-more"
+                      disabled={isArtifactHistoryLoading}
+                      onClick={() => void loadMoreArtifacts()}
+                      type="button"
+                    >
+                      {isArtifactHistoryLoading
+                        ? t("activity.loading")
+                        : t("memory.loadMore")}
+                    </button>
+                  ) : null}
+                  {artifactHistoryError ? (
+                    <div
+                      className="bh-memory-generation-status"
+                      data-error="true"
+                      role="alert"
+                    >
+                      <div>
+                        <strong>{t("memory.historyLoadFailedTitle")}</strong>
+                        <span>{artifactHistoryError}</span>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </section>
+            ) : (
+              <div className="bh-memory-view-empty" role="status">
+                <span className="bh-memory-step-kicker">{t("memory.longTerm")}</span>
+                <h3>{t("memory.historyEmpty")}</h3>
+                <p>{t("memory.historyEmptyDescription")}</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       {selectedArtifact ? (
         <MemoryArtifactDetailDrawer

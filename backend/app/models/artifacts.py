@@ -91,7 +91,7 @@ class Artifact(Base):
         index=True,
     )
     type: Mapped[str] = mapped_column(String(64))
-    title: Mapped[str] = mapped_column(String(255))
+    title: Mapped[str] = mapped_column(Text)
     summary: Mapped[str | None] = mapped_column(Text)
     reason: Mapped[str | None] = mapped_column(Text)
     outcome: Mapped[str | None] = mapped_column(Text)

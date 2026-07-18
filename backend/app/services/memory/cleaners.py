@@ -15,8 +15,6 @@ from app.services.memory.text import clean_text, truncate
 MAX_SEMANTIC_LIST_ITEMS = 32
 MAX_SOURCE_IDS = 128
 MAX_SOURCE_ID_CHARS = 200
-MAX_PROJECT_SECTION_TEXT_CHARS = 4_000
-MAX_MEMORY_OUTCOME_CHARS = 600
 
 
 def parse_json_text(
@@ -85,7 +83,6 @@ def _clean_string_list(
     value: Any,
     *,
     limit: int | None = 12,
-    text_limit: int = 500,
 ) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -96,7 +93,7 @@ def _clean_string_list(
     return [
         cleaned
         for item in items
-        if isinstance(item, str) and (cleaned := truncate(item, text_limit))
+        if isinstance(item, str) and (cleaned := clean_text(item))
     ]
 
 
@@ -144,7 +141,7 @@ def _clean_draft_nested_items(
     for item in value[:MAX_SEMANTIC_LIST_ITEMS]:
         if not isinstance(item, dict):
             continue
-        text = truncate(item.get(required_text_key), 1000)
+        text = clean_text(item.get(required_text_key))
         if not text:
             continue
         cleaned_item: dict[str, Any] = {
@@ -161,7 +158,7 @@ def _clean_draft_nested_items(
         if "confidence" in item:
             cleaned_item["confidence"] = _clean_confidence(item.get("confidence"))
         if "reason" in item:
-            cleaned_item["reason"] = truncate(item.get("reason"), 1000)
+            cleaned_item["reason"] = clean_text(item.get("reason")) or None
         cleaned.append(cleaned_item)
     return cleaned
 
@@ -177,10 +174,10 @@ def clean_memory_drafts_response(value: Any, context: dict[str, Any]) -> dict[st
     for raw in raw_drafts[:MAX_MEMORY_DRAFTS]:
         if not isinstance(raw, dict):
             continue
-        title = truncate(raw.get("title"), 180)
-        summary = truncate(raw.get("summary"), 1000)
-        outcome = truncate(raw.get("outcome"), MAX_MEMORY_OUTCOME_CHARS)
-        why_it_matters = truncate(raw.get("why_it_matters"), 1000)
+        title = clean_text(raw.get("title"))
+        summary = clean_text(raw.get("summary"))
+        outcome = clean_text(raw.get("outcome"))
+        why_it_matters = clean_text(raw.get("why_it_matters"))
         if not title or not summary or not why_it_matters:
             continue
         details = raw.get("details") if isinstance(raw.get("details"), dict) else {}
@@ -213,20 +210,20 @@ def clean_memory_drafts_response(value: Any, context: dict[str, Any]) -> dict[st
                 fallback_event_ids=draft_event_ids,
                 required_text_key="question",
             ),
-            "problem": truncate(details.get("problem"), 1000),
+            "problem": clean_text(details.get("problem")) or None,
             "rejected_directions": _clean_draft_nested_items(
                 details.get("rejected_directions"),
                 fallback_chunk_ids=draft_chunk_ids,
                 fallback_event_ids=draft_event_ids,
                 required_text_key="content",
             ),
-            "summary": truncate(details.get("summary"), 1000),
+            "summary": clean_text(details.get("summary")) or None,
             "tasks": _clean_string_list(
                 details.get("tasks") or details.get("what_happened"),
                 limit=None,
             ),
             "what_happened": _clean_string_list(details.get("what_happened"), limit=None),
-            "why_started": truncate(details.get("why_started"), 1000),
+            "why_started": clean_text(details.get("why_started")) or None,
         }
         memory_drafts.append(
             {
@@ -297,8 +294,8 @@ def _clean_memory_id_items(
     for item in value[:MAX_SEMANTIC_LIST_ITEMS]:
         if not isinstance(item, dict):
             continue
-        text = truncate(item.get(key), 1000)
-        reason = truncate(item.get("reason"), 1000)
+        text = clean_text(item.get(key))
+        reason = clean_text(item.get("reason"))
         if not text:
             continue
         cleaned.append(
@@ -320,11 +317,7 @@ def clean_project_memory_response(value: Any, context: dict[str, Any]) -> dict[s
     sections = parsed.get("sections") if isinstance(parsed.get("sections"), dict) else {}
     cleaned_sections = {
         "core_workflow": _clean_string_list(sections.get("core_workflow"), limit=None),
-        "current_direction": truncate(
-            sections.get("current_direction"),
-            MAX_PROJECT_SECTION_TEXT_CHARS,
-        )
-        or "",
+        "current_direction": clean_text(sections.get("current_direction")),
         "important_decisions": _clean_memory_id_items(
             sections.get("important_decisions"),
             fallback_ids=fallback_ids,
@@ -334,11 +327,7 @@ def clean_project_memory_response(value: Any, context: dict[str, Any]) -> dict[s
         # boundary into a future tool-capable coding agent.
         "instructions_for_future_ai_agents": [],
         "open_questions": _clean_string_list(sections.get("open_questions"), limit=None),
-        "product_goal": truncate(
-            sections.get("product_goal"),
-            MAX_PROJECT_SECTION_TEXT_CHARS,
-        )
-        or "",
+        "product_goal": clean_text(sections.get("product_goal")),
         "rejected_directions": _clean_memory_id_items(
             sections.get("rejected_directions"),
             fallback_ids=fallback_ids,

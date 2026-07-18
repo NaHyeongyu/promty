@@ -70,6 +70,7 @@ class MemoryDraftItem(BaseModel):
     type: Literal["work_log", "thinking_note", "decision_note", "issue_note", "process_note"]
     title: str
     summary: str
+    outcome: str
     why_it_matters: str
     details: MemoryDraftDetails
     evidence: MemoryDraftEvidence

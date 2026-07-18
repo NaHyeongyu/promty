@@ -212,6 +212,16 @@
     width: 100%;
   }
 
+  .bh-memory-view-tabs {
+    width: 100%;
+  }
+
+  .bh-memory-view-tabs button {
+    min-width: 0;
+    flex: 1 1 0;
+    padding: 0 var(--bh-space-2);
+  }
+
   .bh-repository-browser {
     grid-template-columns: 1fr;
   }

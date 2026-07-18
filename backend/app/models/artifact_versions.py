@@ -44,7 +44,7 @@ class ArtifactVersion(Base):
         index=True,
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
-    title: Mapped[str] = mapped_column(String(255))
+    title: Mapped[str] = mapped_column(Text)
     summary: Mapped[str | None] = mapped_column(Text)
     reason: Mapped[str | None] = mapped_column(Text)
     outcome: Mapped[str | None] = mapped_column(Text)

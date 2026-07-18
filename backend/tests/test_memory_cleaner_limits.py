@@ -3,10 +3,9 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from app.core.text_limits import PROJECT_MEMORY_BODY_MAX_BYTES
+from app.schemas.memory import MemoryDraftGeneration
 from app.services.memory import draft_payloads
 from app.services.memory.cleaners import (
-    MAX_MEMORY_OUTCOME_CHARS,
-    MAX_PROJECT_SECTION_TEXT_CHARS,
     MAX_SEMANTIC_LIST_ITEMS,
     MAX_SOURCE_ID_CHARS,
     MAX_SOURCE_IDS,
@@ -64,27 +63,43 @@ def test_draft_cleaner_hard_caps_semantic_lists_and_source_ids() -> None:
     assert all(len(value) <= MAX_SOURCE_ID_CHARS for value in draft["evidence"]["source_event_ids"])
 
 
-def test_draft_cleaner_caps_outcome_separately_from_task_history() -> None:
+def test_draft_cleaner_preserves_complete_display_content() -> None:
     raw_draft = _draft_with_large_semantic_lists()
+    raw_draft["title"] = "A complete generated memory title " + "title " * 80
+    raw_draft["summary"] = "Complete summary. " + "summary detail " * 200
     raw_draft["outcome"] = "Implemented the final direction. " + "detail " * 500
+    raw_draft["why_it_matters"] = "This matters because " + "reason detail " * 200
+    raw_draft["details"]["tasks"][0] = "Task 0: " + "task detail " * 200
 
     cleaned = clean_memory_drafts_response(
         {"memory_drafts": [raw_draft]},
         {"pending_drafts": [], "prompt_events": []},
     )
+    draft = cleaned["memory_drafts"][0]
 
-    assert len(cleaned["memory_drafts"][0]["outcome"]) <= MAX_MEMORY_OUTCOME_CHARS
+    assert draft["title"] == raw_draft["title"].strip()
+    assert draft["summary"] == raw_draft["summary"].strip()
+    assert draft["outcome"] == raw_draft["outcome"].strip()
+    assert draft["why_it_matters"] == raw_draft["why_it_matters"].strip()
+    assert draft["details"]["tasks"][0] == raw_draft["details"]["tasks"][0].strip()
+    assert not draft["summary"].endswith("...")
+    assert not draft["outcome"].endswith("...")
+
+    validated = MemoryDraftGeneration.model_validate(cleaned).model_dump()
+    assert validated["memory_drafts"][0]["outcome"] == raw_draft["outcome"].strip()
 
 
-def test_project_cleaner_caps_utf8_body_sections_and_source_ids() -> None:
+def test_project_cleaner_caps_utf8_body_and_ids_without_truncating_sections() -> None:
     items = [f"Item {index}" for index in range(MAX_SEMANTIC_LIST_ITEMS + 20)]
     ids = [f"memory-{index}" for index in range(MAX_SOURCE_IDS + 20)]
+    current_direction = "d" * 4_100
+    product_goal = "g" * 4_100
     cleaned = clean_project_memory_response(
         {
             "body_markdown": "한" * PROJECT_MEMORY_BODY_MAX_BYTES,
             "sections": {
                 "core_workflow": items,
-                "current_direction": "d" * (MAX_PROJECT_SECTION_TEXT_CHARS + 100),
+                "current_direction": current_direction,
                 "important_decisions": [
                     {
                         "decision": f"Decision {index}",
@@ -95,7 +110,7 @@ def test_project_cleaner_caps_utf8_body_sections_and_source_ids() -> None:
                 ],
                 "instructions_for_future_ai_agents": items,
                 "open_questions": items,
-                "product_goal": "g" * (MAX_PROJECT_SECTION_TEXT_CHARS + 100),
+                "product_goal": product_goal,
                 "rejected_directions": [],
                 "technical_assumptions": items,
             },
@@ -108,8 +123,8 @@ def test_project_cleaner_caps_utf8_body_sections_and_source_ids() -> None:
     assert len(cleaned["body_markdown"].encode("utf-8")) <= PROJECT_MEMORY_BODY_MAX_BYTES
     assert len(cleaned["sections"]["core_workflow"]) == MAX_SEMANTIC_LIST_ITEMS
     assert len(cleaned["sections"]["important_decisions"]) == MAX_SEMANTIC_LIST_ITEMS
-    assert len(cleaned["sections"]["current_direction"]) <= MAX_PROJECT_SECTION_TEXT_CHARS
-    assert len(cleaned["sections"]["product_goal"]) <= MAX_PROJECT_SECTION_TEXT_CHARS
+    assert cleaned["sections"]["current_direction"] == current_direction
+    assert cleaned["sections"]["product_goal"] == product_goal
     assert cleaned["sections"]["instructions_for_future_ai_agents"] == []
     assert len(cleaned["source_memory_ids"]) == MAX_SOURCE_IDS
     assert len(cleaned["warnings"]) == MAX_SEMANTIC_LIST_ITEMS
