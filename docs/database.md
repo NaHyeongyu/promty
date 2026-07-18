@@ -107,11 +107,22 @@ PROMTY_PROJECT_MEMORY_GENERATOR
 PROMTY_OAUTH_STATE_SECRET
 PROMTY_JWT_SECRET
 PROMTY_ACCESS_TOKEN_TTL_SECONDS
+PROMTY_REFRESH_TOKEN_TTL_SECONDS
+PROMTY_REFRESH_TOKEN_IDLE_TTL_SECONDS
+PROMTY_REFRESH_TOKEN_ROTATION_GRACE_SECONDS
 PROMTY_SESSION_COOKIE_NAME
+PROMTY_REFRESH_COOKIE_NAME
 PROMTY_SESSION_COOKIE_SECURE
 PROMTY_SESSION_COOKIE_SAMESITE
 PROMTY_OAUTH_STATE_COOKIE_NAME
 ```
+
+Web login uses a short-lived access cookie and a rotating refresh cookie. Access
+tokens default to one hour. Refresh sessions have a 180-day absolute lifetime,
+expire after 30 days without a successful refresh, and retain the immediately
+previous refresh token for a 30-second concurrency grace period. Refresh token
+hashes and revocation state are stored in `web_sessions`; plaintext refresh
+credentials are only sent through `HttpOnly` cookies.
 
 PostgreSQL connections use a bounded SQLAlchemy queue pool. Defaults are a pool
 size of 5, maximum overflow of 2, a 5-second checkout timeout, and a 300-second

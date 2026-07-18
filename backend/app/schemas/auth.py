@@ -17,3 +17,7 @@ class CurrentUserResponse(BaseModel):
 
 class LogoutResponse(BaseModel):
     status: Literal["ok"]
+
+
+class RefreshSessionResponse(BaseModel):
+    status: Literal["ok"]

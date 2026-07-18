@@ -8,6 +8,8 @@ import { repositoryDirectory, runSessionHelper } from "./session";
 export default async function globalSetup(_config: FullConfig) {
   const session = JSON.parse(runSessionHelper()) as {
     cookie_name: string;
+    refresh_cookie_name: string;
+    refresh_token: string;
     token: string;
   };
   const stateDirectory = resolve(repositoryDirectory, "frontend/.playwright");
@@ -24,6 +26,15 @@ export default async function globalSetup(_config: FullConfig) {
           sameSite: "Lax",
           secure: false,
           value: session.token,
+        },
+        {
+          domain: "127.0.0.1",
+          httpOnly: true,
+          name: session.refresh_cookie_name,
+          path: "/api/auth",
+          sameSite: "Lax",
+          secure: false,
+          value: session.refresh_token,
         },
       ],
       origins: [],

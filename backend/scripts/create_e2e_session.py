@@ -7,7 +7,7 @@ import json
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.core.security import issue_web_access_token
+from app.core.security import issue_web_access_token, rotate_web_refresh_token
 from app.db.session import SessionLocal
 from app.models.users import User
 from app.models.web_sessions import WebSession
@@ -40,11 +40,12 @@ def main() -> None:
             preferred_locale="en",
         )
         db.add(user)
+        now = datetime.now(timezone.utc)
         web_session = WebSession(
             user=user,
-            expires_at=datetime.now(timezone.utc)
-            + timedelta(seconds=settings.access_token_ttl_seconds),
+            expires_at=now + timedelta(seconds=settings.refresh_token_ttl_seconds),
         )
+        refresh_token = rotate_web_refresh_token(web_session, now=now)
         db.add(web_session)
         db.commit()
         db.refresh(user)
@@ -52,6 +53,8 @@ def main() -> None:
             json.dumps(
                 {
                     "cookie_name": settings.session_cookie_name,
+                    "refresh_cookie_name": settings.refresh_cookie_name,
+                    "refresh_token": refresh_token,
                     "token": issue_web_access_token(user, session_id=web_session.id),
                 }
             )

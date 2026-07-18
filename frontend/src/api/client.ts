@@ -42,6 +42,31 @@ const apiUrl = (path: string) =>
     ? path
     : `${API_URL}${path}`;
 
+let sessionRefreshRequest: Promise<boolean> | null = null;
+
+function fetchApi(path: string, init: RequestInit = {}) {
+  return fetch(apiUrl(path), {
+    ...init,
+    credentials: init.credentials ?? "include",
+  });
+}
+
+function refreshSession(): Promise<boolean> {
+  if (!sessionRefreshRequest) {
+    sessionRefreshRequest = fetchApi("/api/auth/refresh", { method: "POST" })
+      .then((response) => response.ok)
+      .catch(() => false)
+      .finally(() => {
+        sessionRefreshRequest = null;
+      });
+  }
+  return sessionRefreshRequest;
+}
+
+function canRefreshSession(path: string): boolean {
+  return path !== "/api/auth/refresh" && path !== "/api/auth/logout";
+}
+
 export async function readErrorDetail(response: Response): Promise<string | null> {
   return response
     .clone()
@@ -78,10 +103,10 @@ async function apiFetch(
   init: RequestInit = {},
   messages: ApiErrorMessages = {},
 ) {
-  const response = await fetch(apiUrl(path), {
-    ...init,
-    credentials: init.credentials ?? "include",
-  });
+  let response = await fetchApi(path, init);
+  if (response.status === 401 && canRefreshSession(path) && await refreshSession()) {
+    response = await fetchApi(path, init);
+  }
   await assertOk(response, messages);
   return response;
 }

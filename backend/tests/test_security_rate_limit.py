@@ -91,6 +91,14 @@ def test_rate_limit_is_scoped_by_forwarded_client_address() -> None:
     assert _request(middleware, _scope(path, forwarded_for="203.0.113.11"))[0]["status"] == 204
 
 
+def test_auth_rate_limit_covers_session_refresh() -> None:
+    middleware = _middleware()
+
+    assert _request(middleware, _scope("/api/auth/refresh"))[0]["status"] == 204
+    assert _request(middleware, _scope("/api/auth/refresh"))[0]["status"] == 204
+    assert _request(middleware, _scope("/api/auth/refresh"))[0]["status"] == 429
+
+
 def test_rate_limit_rejects_unparseable_forwarded_identity() -> None:
     middleware = _middleware()
     path = "/api/auth/github/web/start"

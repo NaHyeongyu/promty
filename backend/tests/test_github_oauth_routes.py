@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import time
 from typing import Any
 from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from fastapi import Response
 from starlette.requests import Request
 
 from app.api import auth
 from app.core.config import settings
+from app.core.security import rotate_web_refresh_token
+from app.models.web_sessions import WebSession
 from app.models.users import User
 from app.services.github_oauth import GITHUB_REPOSITORY_SCOPE, GITHUB_WEB_SCOPE
 from app.services.oauth_state import decode_oauth_state, encode_oauth_state, nonce_hash
@@ -25,6 +29,21 @@ class FakeSession:
 
     def commit(self) -> None:
         self.commit_count += 1
+
+    def get(
+        self,
+        model: type[object],
+        item_id: object,
+        **_kwargs: object,
+    ) -> object | None:
+        return next(
+            (
+                item
+                for item in self.added
+                if isinstance(item, model) and getattr(item, "id", None) == item_id
+            ),
+            None,
+        )
 
 
 def _user(*, github_id: str = "github-123") -> User:
@@ -53,6 +72,24 @@ def _request_with_oauth_cookie(nonce: str, *, language: str = "en-US") -> Reques
             ],
             "client": ("127.0.0.1", 1234),
             "server": ("testserver", 80),
+        }
+    )
+
+
+def _request_with_refresh_cookie(refresh_token: str) -> Request:
+    cookie = f"{settings.refresh_cookie_name}={refresh_token}".encode("ascii")
+    return Request(
+        {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "https",
+            "path": "/api/auth/refresh",
+            "raw_path": b"/api/auth/refresh",
+            "query_string": b"",
+            "headers": [(b"cookie", cookie)],
+            "client": ("127.0.0.1", 1234),
+            "server": ("testserver", 443),
         }
     )
 
@@ -134,7 +171,51 @@ def test_web_login_callback_does_not_store_repository_connection(
     assert db.commit_count == 1
     assert len(db.added) == 1
     assert captured_locale == {"value": "ja"}
-    assert settings.session_cookie_name in response.headers.get("set-cookie", "")
+    web_session = db.added[0]
+    assert isinstance(web_session, WebSession)
+    assert web_session.refresh_token_hash is not None
+    assert web_session.idle_expires_at is not None
+    assert round((web_session.expires_at - web_session.idle_expires_at).days) == 150
+    set_cookie_headers = response.headers.getlist("set-cookie")
+    assert any(settings.session_cookie_name in header for header in set_cookie_headers)
+    assert any(settings.refresh_cookie_name in header for header in set_cookie_headers)
+
+
+def test_refresh_rotates_the_credential_and_previous_request_gets_access_only() -> None:
+    now = datetime.now(timezone.utc)
+    user = _user()
+    web_session = WebSession(
+        id=uuid4(),
+        user=user,
+        expires_at=now + timedelta(days=180),
+    )
+    refresh_token = rotate_web_refresh_token(web_session, now=now)
+    original_hash = web_session.refresh_token_hash
+    db = FakeSession()
+    db.add(web_session)
+
+    response = Response()
+    assert auth.refresh_session(
+        request=_request_with_refresh_cookie(refresh_token),
+        response=response,
+        db=db,  # type: ignore[arg-type]
+    ) == {"status": "ok"}
+
+    assert db.commit_count == 1
+    assert web_session.refresh_token_hash != original_hash
+    set_cookie_headers = response.headers.getlist("set-cookie")
+    assert any(settings.session_cookie_name in header for header in set_cookie_headers)
+    assert any(settings.refresh_cookie_name in header for header in set_cookie_headers)
+
+    concurrent_response = Response()
+    assert auth.refresh_session(
+        request=_request_with_refresh_cookie(refresh_token),
+        response=concurrent_response,
+        db=db,  # type: ignore[arg-type]
+    ) == {"status": "ok"}
+    concurrent_cookie_headers = concurrent_response.headers.getlist("set-cookie")
+    assert any(settings.session_cookie_name in header for header in concurrent_cookie_headers)
+    assert not any(settings.refresh_cookie_name in header for header in concurrent_cookie_headers)
 
 
 def test_repository_authorization_binds_signed_in_user_and_requests_repo_scope(

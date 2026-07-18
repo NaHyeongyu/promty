@@ -595,10 +595,6 @@ function PublicProjectDetail({
   const relativeActivity = formatRelativeTimestamp(detail.metrics.latest_activity_at);
   const [activeTab, setActiveTab] = useState<ProjectDetailTabId>("overview");
   const viewCount = detail.view_count ?? 0;
-  const viewsLast7Days = detail.views_7d ?? 0;
-  const uniqueViewers = detail.unique_viewers ?? 0;
-  const viewHistory = detail.view_history ?? [];
-  const maxViewHistory = Math.max(...viewHistory.map((item) => item.views), 1);
   const mappedData = projectDetailDataFromApi(detail, null);
   const publishedPromptActivities: PromptActivityItem[] = flowDetails.flatMap((flow) =>
     flow.items.map((item) => ({
@@ -694,7 +690,6 @@ function PublicProjectDetail({
             <h1 id="project-detail-title" title={project.name}>{project.name}</h1>
           </div>
           <div aria-label={t("project.activity")} className="bh-project-header-meta">
-            <span className="bh-project-header-chip"><Globe2 aria-hidden="true" size={14} strokeWidth={1.5} /> {t("explore.readOnly")}</span>
             {visibleModels.map((model) => <AiModelBadge className="is-header" key={model} model={model} />)}
             {connectedModels.length > visibleModels.length ? <span className="bh-project-header-chip">+{connectedModels.length - visibleModels.length}</span> : null}
             <span className="bh-project-header-chip"><Clock aria-hidden="true" size={14} strokeWidth={1.5} /><span>{relativeActivity ?? t("common.noActivity")}</span></span>
@@ -744,35 +739,6 @@ function PublicProjectDetail({
         </div>
       </header>
       {copyError || saveError ? <span className="public-project-copy-error" role="alert">{copyError ?? saveError}</span> : null}
-
-      <dl className="public-project-view-metrics" aria-label={t("community.viewAnalytics")}>
-        <div>
-          <Eye aria-hidden="true" size={16} strokeWidth={1.5} />
-          <dt>{t("community.totalViews")}</dt>
-          <dd>{formatCompactNumber(viewCount)}</dd>
-        </div>
-        <div>
-          <TrendingUp aria-hidden="true" size={16} strokeWidth={1.5} />
-          <dt>{t("community.viewsLast7Days")}</dt>
-          <dd>{formatCompactNumber(viewsLast7Days)}</dd>
-        </div>
-        <div>
-          <UserRound aria-hidden="true" size={16} strokeWidth={1.5} />
-          <dt>{t("community.uniqueViewers")}</dt>
-          <dd>{formatCompactNumber(uniqueViewers)}</dd>
-        </div>
-        <div className="public-project-view-trend" aria-label={t("community.viewsLast14Days")}>
-          {viewHistory.map((day) => {
-            return (
-              <i
-                key={day.date}
-                style={{ height: `${Math.max(12, (day.views / maxViewHistory) * 100)}%` }}
-                title={`${day.date}: ${day.views}`}
-              />
-            );
-          })}
-        </div>
-      </dl>
 
       <ProjectTabs
         activeTab={activeTab}

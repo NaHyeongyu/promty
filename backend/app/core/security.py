@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 import json
 import secrets
 import time
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import Depends, Header, HTTPException, Request, status
@@ -26,6 +26,7 @@ class JWTError(ValueError):
 
 
 WEB_ACCESS_TOKEN_MAX_CHARS = 8_192
+WEB_REFRESH_TOKEN_MAX_CHARS = 512
 
 
 def hash_collector_token(token: str) -> str:
@@ -123,6 +124,39 @@ def verify_web_access_token(token: str) -> UUID:
     return user_id
 
 
+def issue_web_refresh_token(session_id: UUID) -> str:
+    return f"{session_id}.{secrets.token_urlsafe(48)}"
+
+
+def hash_web_refresh_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _web_refresh_session_id(token: str) -> UUID:
+    if len(token) > WEB_REFRESH_TOKEN_MAX_CHARS:
+        raise ValueError("Invalid refresh token")
+    session_id, separator, secret = token.partition(".")
+    if not separator or len(secret) < 32:
+        raise ValueError("Invalid refresh token")
+    return UUID(session_id)
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+def _web_session_is_active(
+    web_session: WebSession,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    current_time = now or datetime.now(timezone.utc)
+    if web_session.revoked_at is not None or _as_utc(web_session.expires_at) <= current_time:
+        return False
+    idle_expires_at = web_session.idle_expires_at
+    return idle_expires_at is None or _as_utc(idle_expires_at) > current_time
+
+
 def _active_web_session(db: Session, token: str) -> WebSession | None:
     try:
         user_id, session_id = verify_web_access_token_claims(token)
@@ -131,12 +165,63 @@ def _active_web_session(db: Session, token: str) -> WebSession | None:
     web_session = db.get(WebSession, session_id)
     if web_session is None or web_session.user_id != user_id:
         return None
-    expires_at = web_session.expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if web_session.revoked_at is not None or expires_at <= datetime.now(timezone.utc):
+    if not _web_session_is_active(web_session):
         return None
     return web_session
+
+
+def web_session_for_refresh(
+    db: Session,
+    token: str,
+    *,
+    lock: bool = False,
+    now: datetime | None = None,
+) -> tuple[WebSession, Literal["current", "previous"]] | None:
+    try:
+        session_id = _web_refresh_session_id(token)
+    except ValueError:
+        return None
+    web_session = db.get(WebSession, session_id, with_for_update=lock)
+    current_time = now or datetime.now(timezone.utc)
+    if web_session is None or not _web_session_is_active(web_session, now=current_time):
+        return None
+
+    token_hash = hash_web_refresh_token(token)
+    if web_session.refresh_token_hash and secrets.compare_digest(
+        token_hash,
+        web_session.refresh_token_hash,
+    ):
+        return web_session, "current"
+
+    previous_expires_at = web_session.previous_refresh_token_expires_at
+    if (
+        web_session.previous_refresh_token_hash
+        and previous_expires_at is not None
+        and _as_utc(previous_expires_at) > current_time
+        and secrets.compare_digest(token_hash, web_session.previous_refresh_token_hash)
+    ):
+        return web_session, "previous"
+    return None
+
+
+def rotate_web_refresh_token(
+    web_session: WebSession,
+    *,
+    now: datetime | None = None,
+) -> str:
+    current_time = now or datetime.now(timezone.utc)
+    refresh_token = issue_web_refresh_token(web_session.id)
+    web_session.previous_refresh_token_hash = web_session.refresh_token_hash
+    web_session.previous_refresh_token_expires_at = min(
+        _as_utc(web_session.expires_at),
+        current_time + timedelta(seconds=settings.refresh_token_rotation_grace_seconds),
+    )
+    web_session.refresh_token_hash = hash_web_refresh_token(refresh_token)
+    web_session.idle_expires_at = min(
+        _as_utc(web_session.expires_at),
+        current_time + timedelta(seconds=settings.refresh_token_idle_ttl_seconds),
+    )
+    return refresh_token
 
 
 def revoke_web_session_token(db: Session, token: str | None) -> bool:
@@ -147,6 +232,32 @@ def revoke_web_session_token(db: Session, token: str | None) -> bool:
         return False
     web_session.revoked_at = datetime.now(timezone.utc)
     db.flush()
+    return True
+
+
+def revoke_web_refresh_token(db: Session, token: str | None) -> bool:
+    if not token:
+        return False
+    try:
+        session_id = _web_refresh_session_id(token)
+    except ValueError:
+        return False
+    web_session = db.get(WebSession, session_id, with_for_update=True)
+    if web_session is None:
+        return False
+    token_hash = hash_web_refresh_token(token)
+    token_matches = any(
+        candidate and secrets.compare_digest(token_hash, candidate)
+        for candidate in (
+            web_session.refresh_token_hash,
+            web_session.previous_refresh_token_hash,
+        )
+    )
+    if not token_matches:
+        return False
+    if web_session.revoked_at is None:
+        web_session.revoked_at = datetime.now(timezone.utc)
+        db.flush()
     return True
 
 
