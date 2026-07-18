@@ -288,6 +288,7 @@ def update_project_metadata(
     response = update_project_metadata_summary(
         db,
         memory_grouping_mode=payload.memory_grouping_mode,
+        name=payload.name,
         project_id=project_id,
         project_url=payload.project_url,
         project_url_is_set="project_url" in payload.model_fields_set,

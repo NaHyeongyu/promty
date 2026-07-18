@@ -7,6 +7,7 @@ import {
   revokeAccountCollectorToken,
   updateAccountPreferences,
 } from "../api/account";
+import { updateCachedCurrentUser } from "../api/auth";
 import type { AppLocale } from "../i18n/I18nProvider";
 import { UnauthorizedError } from "../api/client";
 import type {
@@ -151,6 +152,7 @@ export function useAccountSettings({ onUnauthorized }: UseAccountSettingsOptions
     setAccountError(null);
     try {
       const githubConnection = await disconnectAccountGithubConnection();
+      updateCachedCurrentUser({ github_repository_access: false });
       setAccountOverview((current) =>
         current ? { ...current, github_connection: githubConnection } : current,
       );
@@ -166,6 +168,7 @@ export function useAccountSettings({ onUnauthorized }: UseAccountSettingsOptions
     setAccountError(null);
     try {
       const preferences = await updateAccountPreferences(preferredLocale);
+      updateCachedCurrentUser({ preferred_locale: preferences.preferred_locale });
       setAccountOverview((current) =>
         current
           ? {

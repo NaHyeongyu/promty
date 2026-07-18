@@ -66,11 +66,17 @@ import {
   updateAdminSupportInquiry,
   updateAdminProject,
 } from "./api/admin";
-import { fetchCurrentUser, logoutSession } from "./api/auth";
+import {
+  clearCurrentUserCache,
+  fetchCurrentUser,
+  getCachedCurrentUser,
+  logoutSession,
+} from "./api/auth";
 import { ForbiddenError, UnauthorizedError } from "./api/client";
 import { AdminDashboard } from "./components/app/AdminDashboard";
 import { MarketingContentStudio } from "./components/app/MarketingContentStudio";
-import { AuthLoadingPage, WebLoginPage } from "./components/app/AuthScreens";
+import { WebLoginPage } from "./components/app/AuthScreens";
+import { AppLoadingPage } from "./components/app/AppStatusPages";
 import { BrandLogo } from "./components/app/Branding";
 import {
   formatCompactNumber,
@@ -78,6 +84,7 @@ import {
   formatRelativeTimestamp,
 } from "./lib/formatters";
 import { useAdminLocale } from "./i18n/useAdminLocale";
+import { navigateToAppUrl } from "./routing";
 import type {
   AdminAuditLog,
   AdminEventPage,
@@ -264,8 +271,15 @@ export function AdminApp() {
     };
     return SECTION_META.map((item) => ({ ...item, ...copy[item.id] }));
   }, [text]);
-  const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const initialCachedUser = useMemo(getCachedCurrentUser, []);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>(
+    initialCachedUser
+      ? initialCachedUser.is_admin
+        ? "authenticated"
+        : "error"
+      : "loading",
+  );
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(initialCachedUser);
   const [data, setData] = useState<AdminData>(INITIAL_ADMIN_DATA);
   const [loadedSections, setLoadedSections] = useState<Set<AdminSection>>(
     () => new Set(["marketing"]),
@@ -370,6 +384,7 @@ export function AdminApp() {
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       if (error instanceof UnauthorizedError) {
+        clearCurrentUserCache();
         setAuthStatus("unauthenticated");
         setCurrentUser(null);
         setData(INITIAL_ADMIN_DATA);
@@ -398,7 +413,10 @@ export function AdminApp() {
       })
       .catch((error) => {
         if (!active) return;
-        if (error instanceof UnauthorizedError) setAuthStatus("unauthenticated");
+        if (error instanceof UnauthorizedError) {
+          clearCurrentUserCache();
+          setAuthStatus("unauthenticated");
+        }
         else {
           setAuthStatus("error");
           setErrorMessage(error instanceof Error ? error.message : text("Session request failed", "세션 확인에 실패했습니다."));
@@ -650,7 +668,7 @@ export function AdminApp() {
     }
   };
 
-  if (authStatus === "loading") return <AuthLoadingPage />;
+  if (authStatus === "loading") return <AppLoadingPage />;
   if (authStatus === "unauthenticated") return <WebLoginPage errorMessage={null} />;
   if (authStatus === "error") {
     return (
@@ -796,6 +814,7 @@ export function AdminApp() {
                 setPageOffsets((current) => ({ ...current, projects: 0 }));
               }}
               onRefresh={() => void loadData()}
+              onSelectSection={selectSection}
               searchQuery={searchQuery}
               section={section}
               projectSort={projectSort}
@@ -851,6 +870,7 @@ function AdminSectionContent({
   onProjectSort,
   onProjectVisibility,
   onRefresh,
+  onSelectSection,
   searchQuery,
   section,
   projectSort,
@@ -881,6 +901,7 @@ function AdminSectionContent({
   onProjectSort: (value: AdminProjectSort) => void;
   onProjectVisibility: (value: AdminProjectVisibility) => void;
   onRefresh: () => void;
+  onSelectSection: (section: AdminSection) => void;
   searchQuery: string;
   section: AdminSection;
   projectSort: AdminProjectSort;
@@ -898,7 +919,10 @@ function AdminSectionContent({
 
   if (section === "overview") {
     if (!overview) return null;
-    return <AdminDashboard errorMessage={null} isLoading={false} onOpenActionItem={onOpenActionItem} onOpenProject={(projectId) => window.location.assign(projectHref({ id: projectId }))} onRefresh={onRefresh} onUpdateActionItem={onUpdateActionItem} overview={overview} />;
+    return <AdminDashboard errorMessage={null} isLoading={false} onOpenActionItem={onOpenActionItem} onOpenProject={(projectId) => {
+      const href = projectHref({ id: projectId });
+      if (!navigateToAppUrl(href)) window.location.assign(href);
+    }} onRefresh={onRefresh} onUpdateActionItem={onUpdateActionItem} overview={overview} />;
   }
 
   if (section === "marketing") {
@@ -1048,7 +1072,11 @@ function AdminSectionContent({
                         <li>{job.stale ? text("Cancel the stale lease before starting replacement work.", "대체 작업을 시작하기 전에 지연된 임대를 취소합니다.") : text("Review the error code and affected project context.", "오류 코드와 영향받은 프로젝트 컨텍스트를 확인합니다.")}</li>
                         <li>{job.retryable ? text("This job is marked safe to retry.", "이 작업은 안전하게 재시도할 수 있습니다.") : text("Do not retry automatically; correct the cause or create a new generation request.", "자동 재시도하지 말고 원인을 수정하거나 새 생성 요청을 만듭니다.")}</li>
                       </ol>
-                      <a href="/admin?section=system">{text("Open system telemetry", "시스템 상태 열기")} <ExternalLink size={12} /></a>
+                      <a href="/admin?section=system" onClick={(event) => {
+                        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                        event.preventDefault();
+                        onSelectSection("system");
+                      }}>{text("Open system telemetry", "시스템 상태 열기")} <ExternalLink size={12} /></a>
                     </aside>
                   </div>
                 ) : null}

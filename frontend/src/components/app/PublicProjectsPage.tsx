@@ -37,6 +37,7 @@ import {
   formatRelativeTimestamp,
 } from "../../lib/formatters";
 import { projectDetailDataFromApi } from "../../workspace/projectDetailMappers";
+import { navigateToWorkspaceUrl } from "../../workspace/navigation";
 import { projectDetailUrl, publicProjectUrl } from "../../workspace/projectUrls";
 import type {
   PublicProjectDetailResponse,
@@ -735,7 +736,10 @@ function PublicProjectDetail({
           >
             {copied ? <Check aria-hidden="true" size={17} strokeWidth={1.5} /> : <Share2 aria-hidden="true" size={17} strokeWidth={1.5} />}
           </button>
-          {detail.is_owner ? <a className="bh-header-action-button" href={projectDetailUrl(project.slug ?? project.id)}>{t("project.overview")} <ArrowRight aria-hidden="true" size={14} /></a> : null}
+          {detail.is_owner ? <a className="bh-header-action-button" href={projectDetailUrl(project.slug ?? project.id)} onClick={(event) => {
+            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            if (navigateToWorkspaceUrl(event.currentTarget.href)) event.preventDefault();
+          }}>{t("project.overview")} <ArrowRight aria-hidden="true" size={14} /></a> : null}
           {repositoryUrl ? <a aria-label={t("project.openRepository")} className="bh-icon-button" href={repositoryUrl} rel="noreferrer" target="_blank" title={t("project.openRepository")}><ExternalLink aria-hidden="true" size={17} strokeWidth={1.5} /></a> : null}
         </div>
       </header>

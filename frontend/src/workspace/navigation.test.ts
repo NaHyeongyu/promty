@@ -1,13 +1,35 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildUrlNavigationSearch,
+  navigateToWorkspaceUrl,
   normalizeUrlNavigationState,
   readUrlNavigationState,
 } from "./navigation";
 
 describe("workspace navigation", () => {
   beforeEach(() => {
-    vi.stubGlobal("window", { location: { search: "" } });
+    vi.stubGlobal("PopStateEvent", class {
+      state: unknown;
+      type: string;
+
+      constructor(type: string, init?: { state?: unknown }) {
+        this.type = type;
+        this.state = init?.state;
+      }
+    });
+    vi.stubGlobal("window", {
+      dispatchEvent: vi.fn(),
+      history: {
+        pushState: vi.fn(),
+        replaceState: vi.fn(),
+      },
+      location: {
+        hash: "",
+        origin: "https://promty.org",
+        pathname: "/",
+        search: "",
+      },
+    });
   });
 
   it("uses Projects and prompt navigation as the default", () => {
@@ -149,5 +171,27 @@ describe("workspace navigation", () => {
 
     expect(state.activeItem).toBe("community");
     expect(buildUrlNavigationSearch(state)).toBe("?preview=community&view=community");
+  });
+
+  it("navigates workspace links without reloading the document", () => {
+    const projectId = "56828395-f94c-56f7-9ff9-a2feb027ae19";
+
+    expect(
+      navigateToWorkspaceUrl(
+        `https://promty.org/app?view=community&public_project=${projectId}`,
+      ),
+    ).toBe(true);
+    expect(window.history.pushState).toHaveBeenCalledWith(
+      expect.objectContaining({ promtyNavigation: expect.any(Object) }),
+      "",
+      `/?view=community&public_project=${projectId}`,
+    );
+    expect(window.dispatchEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves external links to normal browser navigation", () => {
+    expect(navigateToWorkspaceUrl("https://github.com/example/project")).toBe(false);
+    expect(window.history.pushState).not.toHaveBeenCalled();
+    expect(window.dispatchEvent).not.toHaveBeenCalled();
   });
 });

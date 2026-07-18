@@ -37,6 +37,7 @@ export function useProjectDetail({ onUnauthorized }: UseProjectDetailOptions) {
               ...currentDetail.project,
               isBookmarked: updatedProject.is_bookmarked === true,
               memoryGroupingMode: updatedProject.memory_grouping_mode,
+              name: updatedProject.name,
               projectUrl: updatedProject.project_url ?? undefined,
               slug: updatedProject.slug ?? currentDetail.project.slug,
               tags: updatedProject.tags ?? currentDetail.project.tags,

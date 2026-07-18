@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
-import { fetchCurrentUser, logoutSession } from "./api/auth";
+import {
+  clearCurrentUserCache,
+  fetchCurrentUser,
+  getCachedCurrentUser,
+  logoutSession,
+} from "./api/auth";
 import { updateAdminAlertState } from "./api/admin";
 import { UnauthorizedError } from "./api/client";
 import { AdminDashboard } from "./components/app/AdminDashboard";
 import { AccountWorkspaceRoute } from "./components/app/AccountWorkspaceRoute";
-import { AuthLoadingPage, WebLoginPage } from "./components/app/AuthScreens";
+import { WebLoginPage } from "./components/app/AuthScreens";
 import { ProjectsPage } from "./components/app/ProjectsPage";
 import { CommunityHubPage } from "./components/app/CommunityHubPage";
 import { CollectorUpdateModal } from "./components/app/CollectorUpdateModal";
@@ -14,6 +19,7 @@ import { ReviewQueueDrawer } from "./components/app/ReviewQueueDrawer";
 import { RepositoryConnector } from "./components/app/RepositoryConnector";
 import { SupportPage } from "./components/app/SupportPage";
 import { WorkspaceSidebar } from "./components/app/WorkspaceSidebar";
+import { LoadingScreen } from "./components/app/WorkspaceStates";
 import {
   ProjectDetailPage,
   type ActivityNavigationState,
@@ -25,6 +31,7 @@ import { getCollectorHealth } from "./lib/collectorHealth";
 import { isCollectorUpdateAvailable } from "./lib/collectorVersion";
 import { githubFileUrl } from "./lib/github";
 import { useI18n } from "./i18n/I18nProvider";
+import { navigateToAppUrl } from "./routing";
 import { useAccountSettings } from "./hooks/useAccountSettings";
 import { useAdminOverview } from "./hooks/useAdminOverview";
 import { useProjectActions } from "./hooks/useProjectActions";
@@ -83,8 +90,11 @@ function githubRepositoryConnectUrl() {
 export function AuthenticatedApp() {
   const { setLocale, t } = useI18n();
   const initialNavigationState = useInitialWorkspaceNavigationState();
-  const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const initialCachedUser = useMemo(getCachedCurrentUser, []);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>(
+    initialCachedUser ? "authenticated" : "loading",
+  );
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(initialCachedUser);
   const [authorizationNotice, setAuthorizationNotice] = useState<string | null>(() =>
     new URLSearchParams(window.location.search).get("auth_error") ===
     "github_authorization_cancelled"
@@ -104,6 +114,7 @@ export function AuthenticatedApp() {
     useState<string | null>(null);
   const reviewQueueReturnFocusRef = useRef<HTMLElement | null>(null);
   const handleUnauthorized = useCallback(() => {
+    clearCurrentUserCache();
     setIsReviewQueueOpen(false);
     setReviewQueueProjectId(null);
     setAuthStatus("unauthenticated");
@@ -381,9 +392,11 @@ export function AuthenticatedApp() {
   };
 
   const loadSession = async () => {
-    setAuthStatus("loading");
-    clearWorkspaceData();
-    accountSettings.clearAccountSettings();
+    if (!getCachedCurrentUser()) {
+      setAuthStatus("loading");
+      clearWorkspaceData();
+      accountSettings.clearAccountSettings();
+    }
     setErrorMessage(null);
     if (previewCommunity) {
       setCurrentUser({
@@ -570,7 +583,9 @@ export function AuthenticatedApp() {
     }
 
     if (item === "admin") {
-      window.location.assign("/admin");
+      if (!navigateToAppUrl("/admin")) {
+        window.location.assign("/admin");
+      }
       return;
     }
 
@@ -642,7 +657,7 @@ export function AuthenticatedApp() {
     });
   };
   if (authStatus === "loading") {
-    return <AuthLoadingPage />;
+    return <LoadingScreen />;
   }
 
   if (authStatus === "unauthenticated") {
@@ -757,6 +772,7 @@ export function AuthenticatedApp() {
     selectedProjectDetailData ?? emptyProjectDetailData(selectedProject);
   const reviewProjectCount = pendingReviewProjectCount(projectCatalog);
   const collectorHealth = getCollectorHealth(accountSettings.accountOverview);
+  const isWorkspaceDataPending = isWorkspaceLoading || !hasLoadedWorkspaceData;
   const openCollectorUpdate = () => {
     if (!latestCollectorVersion) return;
     setCollectorUpdateTargetVersion(latestCollectorVersion);
@@ -996,7 +1012,7 @@ export function AuthenticatedApp() {
             activeTitle={activeTitle}
             displayProjects={displayProjects}
             errorMessage={errorMessage}
-            isEventsLoading={isWorkspaceLoading}
+            isEventsLoading={isWorkspaceDataPending}
             onClearSearch={() => setProjectSearchQuery("")}
             onOpenProject={openProjectDetail}
             onOpenReviewQueue={(projectId, returnFocusElement) =>
@@ -1022,7 +1038,7 @@ export function AuthenticatedApp() {
             activeTitle={activeTitle}
             displayProjects={bookmarkedProjects}
             errorMessage={errorMessage}
-            isEventsLoading={isWorkspaceLoading}
+            isEventsLoading={isWorkspaceDataPending}
             onBrowseProjects={() => selectSidebarItem("projects")}
             onClearSearch={() => setProjectSearchQuery("")}
             onFirstEvent={(event) => {
@@ -1103,7 +1119,10 @@ export function AuthenticatedApp() {
               onOpenProject={openProjectDetail}
               onOpenActionItem={(item) => {
                 const section = item.target?.split(":", 1)[0] || "overview";
-                window.location.assign(`/admin?section=${encodeURIComponent(section)}`);
+                const href = `/admin?section=${encodeURIComponent(section)}`;
+                if (!navigateToAppUrl(href)) {
+                  window.location.assign(href);
+                }
               }}
               onRefresh={() => {
                 void loadAdminOverview();
@@ -1127,7 +1146,7 @@ export function AuthenticatedApp() {
             connectedRepositoryCount={connectedRepositoryCount}
             currentUser={currentUser}
             githubConnectUrl={githubRepositoryConnectUrl()}
-            isEventsLoading={isWorkspaceLoading}
+            isEventsLoading={isWorkspaceDataPending}
             latestActivityLabel={latestProfileActivityLabel}
             latestMemoryLabel={latestMemoryLabel}
             memoryCount={memoryCount}

@@ -19,6 +19,7 @@ type UseOverviewEditorsOptions = {
   onSaveDescription?: (description: string) => Promise<void>;
   onSaveProjectMetadata?: (metadata: {
     memoryGroupingMode?: MemoryGroupingMode;
+    name?: string;
     projectUrl?: string;
     tags?: string[];
     visibility?: ProjectVisibility;
@@ -41,6 +42,7 @@ export function useOverviewEditors({
   const [isProjectMetadataEditing, setIsProjectMetadataEditing] = useState(false);
   const [isProjectMetadataSaving, setIsProjectMetadataSaving] = useState(false);
   const [projectMetadataError, setProjectMetadataError] = useState<string | null>(null);
+  const [projectNameDraft, setProjectNameDraft] = useState(data.project.name);
   const [projectUrlDraft, setProjectUrlDraft] = useState(data.project.projectUrl ?? "");
   const [projectTagsDraft, setProjectTagsDraft] = useState(
     data.project.tags.join(", "),
@@ -66,6 +68,7 @@ export function useOverviewEditors({
   };
 
   const resetProjectMetadataDraft = () => {
+    setProjectNameDraft(data.project.name);
     setProjectUrlDraft(data.project.projectUrl ?? "");
     setProjectTagsDraft(data.project.tags.join(", "));
     setProjectVisibilityDraft(projectVisibilityFromValue(data.project.visibility));
@@ -153,6 +156,7 @@ export function useOverviewEditors({
     try {
       await onSaveProjectMetadata({
         memoryGroupingMode: memoryGroupingModeDraft,
+        name: projectNameDraft.trim(),
         projectUrl: projectUrlDraft,
         tags: projectTagsFromInput(tagInput),
         visibility: projectVisibilityDraft,
@@ -221,6 +225,7 @@ export function useOverviewEditors({
 
   useEffect(() => {
     setProjectUrlDraft(data.project.projectUrl ?? "");
+    setProjectNameDraft(data.project.name);
     setProjectTagsDraft(data.project.tags.join(", "));
     setProjectVisibilityDraft(projectVisibilityFromValue(data.project.visibility));
     setMemoryGroupingModeDraft(data.project.memoryGroupingMode);
@@ -228,6 +233,7 @@ export function useOverviewEditors({
   }, [
     data.project.id,
     data.project.memoryGroupingMode,
+    data.project.name,
     data.project.projectUrl,
     data.project.tags,
     data.project.visibility,
@@ -288,12 +294,14 @@ export function useOverviewEditors({
     openProjectMetadataEditor,
     overviewEditDrawerRef,
     projectMetadataError,
+    projectNameDraft,
     projectUrlDraft,
     projectTagsDraft,
     projectVisibilityDraft,
     saveDescription,
     saveProjectMetadata,
     setDescriptionDraft,
+    setProjectNameDraft,
     setProjectUrlDraft,
     setProjectTagsDraft,
     setProjectVisibilityDraft,

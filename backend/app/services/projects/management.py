@@ -365,6 +365,7 @@ def update_project_metadata_summary(
     *,
     project_id: UUID,
     memory_grouping_mode: str | None,
+    name: str | None,
     project_url: str | None,
     project_url_is_set: bool,
     slug: str | None,
@@ -373,6 +374,8 @@ def update_project_metadata_summary(
     visibility: str | None,
 ) -> dict[str, Any]:
     project = project_for_user(db, project_id, user)
+    if name is not None:
+        project.name = name
     if slug is not None and slug != project.slug:
         existing_project_id = db.scalar(
             select(Project.id).where(

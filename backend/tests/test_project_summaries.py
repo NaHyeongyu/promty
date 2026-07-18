@@ -3,6 +3,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
+import pytest
+from pydantic import ValidationError
+
 from app.models.projects import Project
 from app.schemas.projects import ProjectMetadataUpdateRequest, ProjectSummaryResponse
 from app.services.projects.management import project_summary
@@ -67,6 +70,14 @@ def test_project_metadata_validates_memory_grouping_mode() -> None:
     payload = ProjectMetadataUpdateRequest(memory_grouping_mode="chronological")
 
     assert payload.memory_grouping_mode == "chronological"
+
+
+def test_project_metadata_normalizes_name_and_rejects_blank_value() -> None:
+    payload = ProjectMetadataUpdateRequest(name="  Renamed project  ")
+
+    assert payload.name == "Renamed project"
+    with pytest.raises(ValidationError):
+        ProjectMetadataUpdateRequest(name="   ")
 
 
 def test_public_project_routes_publish_read_only_contracts() -> None:

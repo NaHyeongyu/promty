@@ -277,8 +277,10 @@ export function normalizeUrlNavigationState(
   };
 }
 
-export function readUrlNavigationState(): UrlNavigationState {
-  const params = new URLSearchParams(window.location.search);
+export function readUrlNavigationState(
+  search = window.location.search,
+): UrlNavigationState {
+  const params = new URLSearchParams(search);
   const projectRouteKey = params.get("project");
   const legacyView = params.get("view");
   return normalizeUrlNavigationState({
@@ -390,6 +392,31 @@ export function writeUrlNavigationState(
     "",
     nextUrl,
   );
+}
+
+export function navigateToWorkspaceUrl(
+  href: string,
+  mode: UrlNavigationWriteMode = "push",
+) {
+  let target: URL;
+  try {
+    target = new URL(href, window.location.origin);
+  } catch {
+    return false;
+  }
+
+  const targetPathname = target.pathname.replace(/\/+$/, "") || "/";
+  if (
+    target.origin !== window.location.origin ||
+    (targetPathname !== "/" && targetPathname !== "/app")
+  ) {
+    return false;
+  }
+
+  const nextState = readUrlNavigationState(target.search);
+  writeUrlNavigationState(nextState, mode);
+  window.dispatchEvent(new PopStateEvent("popstate", { state: { promtyNavigation: nextState } }));
+  return true;
 }
 
 export function currentWorkspaceReturnUrl() {

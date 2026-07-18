@@ -51,6 +51,8 @@ type ProjectDetailPageProps = {
   onSharePrompt?: (activity: PromptActivityItem) => void;
   onSaveProjectMetadata?: (metadata: {
     memoryGroupingMode?: MemoryGroupingMode;
+    name?: string;
+    projectUrl?: string;
     slug?: string;
     tags?: string[];
     visibility?: "private" | "public";
@@ -142,6 +144,8 @@ function ProjectPanel({
   onRetry?: () => void;
   onSaveProjectMetadata?: (metadata: {
     memoryGroupingMode?: MemoryGroupingMode;
+    name?: string;
+    projectUrl?: string;
     slug?: string;
     tags?: string[];
     visibility?: "private" | "public";
@@ -301,6 +305,11 @@ export function ProjectDetailPage({
         onConnectRepository={repositoryUrl ? undefined : onConnectRepository}
         onOpenAllProjects={onOpenAllProjects}
         onProjectSelect={onProjectSelect}
+        onRenameProject={
+          onSaveProjectMetadata
+            ? async (name) => onSaveProjectMetadata({ name })
+            : undefined
+        }
         onShareProject={onShareProject}
         onToggleBookmark={onToggleBookmark}
         projectOptions={projectOptions}

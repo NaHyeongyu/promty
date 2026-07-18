@@ -80,6 +80,7 @@ def test_project_create_read_update_delete_round_trip(
     updated = management.update_project_metadata_summary(
         db,
         memory_grouping_mode="chronological",
+        name="Renamed CRUD project",
         project_id=project_id,
         project_url="https://example.com/crud",
         project_url_is_set=True,
@@ -95,6 +96,7 @@ def test_project_create_read_update_delete_round_trip(
         user=user,
     )
     assert updated["slug"] == "crud-updated"
+    assert updated["name"] == "Renamed CRUD project"
     assert updated["tags"] == ["api", "postgres"]
     assert updated["visibility"] == "public"
     assert updated["memory_grouping_mode"] == "chronological"

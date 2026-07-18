@@ -17,18 +17,21 @@ describe("current user preload", () => {
   });
 
   it("reuses the request started before the workspace chunk loads", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(currentUser), {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify(currentUser), {
         headers: { "Content-Type": "application/json" },
         status: 200,
-      }),
+      })),
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { fetchCurrentUser, preloadCurrentUser } = await import("./auth");
+    const { fetchCurrentUser, getCachedCurrentUser, preloadCurrentUser } =
+      await import("./auth");
 
     preloadCurrentUser();
 
     await expect(fetchCurrentUser()).resolves.toEqual(currentUser);
+    await expect(fetchCurrentUser()).resolves.toEqual(currentUser);
+    expect(getCachedCurrentUser()).toEqual(currentUser);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -45,6 +48,44 @@ describe("current user preload", () => {
     preloadCurrentUser();
 
     await expect(fetchCurrentUser()).rejects.toMatchObject({ status: 401 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("requests the user again after the in-memory session cache is cleared", async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify(currentUser), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { clearCurrentUserCache, fetchCurrentUser, getCachedCurrentUser } =
+      await import("./auth");
+
+    await fetchCurrentUser();
+    clearCurrentUserCache();
+
+    expect(getCachedCurrentUser()).toBeNull();
+    await fetchCurrentUser();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps account preference changes in the session cache", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(currentUser), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { fetchCurrentUser, getCachedCurrentUser, updateCachedCurrentUser } =
+      await import("./auth");
+
+    await fetchCurrentUser();
+    updateCachedCurrentUser({ preferred_locale: "ja" });
+
+    expect(getCachedCurrentUser()?.preferred_locale).toBe("ja");
+    await expect(fetchCurrentUser()).resolves.toMatchObject({ preferred_locale: "ja" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

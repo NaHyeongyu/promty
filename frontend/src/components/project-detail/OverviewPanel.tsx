@@ -22,6 +22,7 @@ import {
 import type { ProjectDetailData } from "./types";
 import type { MemoryGroupingMode } from "../../workspace/types";
 import { useI18n } from "../../i18n/I18nProvider";
+import { navigateToWorkspaceUrl } from "../../workspace/navigation";
 import { publicProjectUrl } from "../../workspace/projectUrls";
 import { useOverviewEditors } from "./useOverviewEditors";
 
@@ -56,6 +57,7 @@ export function OverviewPanel({
   onSaveDescription?: (description: string) => Promise<void>;
   onSaveProjectMetadata?: (metadata: {
     memoryGroupingMode?: MemoryGroupingMode;
+    name?: string;
     projectUrl?: string;
     tags?: string[];
     visibility?: "private" | "public";
@@ -81,12 +83,14 @@ export function OverviewPanel({
     openProjectMetadataEditor,
     overviewEditDrawerRef,
     projectMetadataError,
+    projectNameDraft,
     projectUrlDraft,
     projectTagsDraft,
     projectVisibilityDraft,
     saveDescription,
     saveProjectMetadata,
     setDescriptionDraft,
+    setProjectNameDraft,
     setProjectUrlDraft,
     setProjectTagsDraft,
     setProjectVisibilityDraft,
@@ -268,7 +272,23 @@ export function OverviewPanel({
                     {projectVisibility === "public" ? t("project.workspaceListed") : t("project.private")}
                   </span>
                   {projectVisibility === "public" && !hidePublicListingLink ? (
-                    <a href={publicProjectUrl(data.project.id)}>
+                    <a
+                      href={publicProjectUrl(data.project.id)}
+                      onClick={(event) => {
+                        if (
+                          event.button !== 0 ||
+                          event.metaKey ||
+                          event.ctrlKey ||
+                          event.shiftKey ||
+                          event.altKey
+                        ) {
+                          return;
+                        }
+                        if (navigateToWorkspaceUrl(event.currentTarget.href)) {
+                          event.preventDefault();
+                        }
+                      }}
+                    >
                       <ExternalLink aria-hidden="true" size={16} strokeWidth={1.5} />
                       {t("project.viewPublicListing")}
                     </a>
@@ -392,6 +412,17 @@ export function OverviewPanel({
                 void saveProjectMetadata();
               }}
             >
+              <label>
+                <span>{t("project.projectName")}</span>
+                <input
+                  autoComplete="off"
+                  maxLength={255}
+                  onChange={(event) => setProjectNameDraft(event.target.value)}
+                  required
+                  type="text"
+                  value={projectNameDraft}
+                />
+              </label>
               <label>
                 <span>{t("project.projectUrl")}</span>
                 <input
@@ -541,7 +572,11 @@ export function OverviewPanel({
                   Clear tags
                 </button>
                 <button
-                  disabled={isProjectDeleting || isProjectMetadataSaving}
+                  disabled={
+                    isProjectDeleting ||
+                    isProjectMetadataSaving ||
+                    projectNameDraft.trim().length === 0
+                  }
                   type="submit"
                 >
                   {isProjectMetadataSaving ? t("common.saving") : t("common.save")}

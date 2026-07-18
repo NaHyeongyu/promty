@@ -38,6 +38,36 @@ export function appRouteFromPathname(pathname: string): AppRoute {
   return "not-found";
 }
 
+export function navigateToAppUrl(
+  href: string,
+  mode: "push" | "replace" = "push",
+) {
+  let target: URL;
+  try {
+    target = new URL(href, window.location.origin);
+  } catch {
+    return false;
+  }
+
+  if (
+    target.origin !== window.location.origin ||
+    appRouteFromPathname(target.pathname) === "not-found"
+  ) {
+    return false;
+  }
+
+  const nextUrl = `${target.pathname}${target.search}${target.hash}`;
+  window.history[mode === "replace" ? "replaceState" : "pushState"](
+    { promtyAppNavigation: true },
+    "",
+    nextUrl,
+  );
+  window.dispatchEvent(
+    new PopStateEvent("popstate", { state: { promtyAppNavigation: true } }),
+  );
+  return true;
+}
+
 const LEGACY_WORKSPACE_QUERY_KEYS = new Set([
   "activity",
   "author",

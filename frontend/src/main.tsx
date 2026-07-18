@@ -11,7 +11,11 @@ if (import.meta.env.PROD) {
   const communityPreview =
     pathname === "/" &&
     new URLSearchParams(window.location.search).get("preview") === "community";
-  if ((pathname === "/" && !communityPreview) || pathname === "/admin") {
+  if (
+    (pathname === "/" && !communityPreview) ||
+    pathname === "/app" ||
+    pathname === "/admin"
+  ) {
     preloadCurrentUser();
   }
   if (pathname === "/admin") {

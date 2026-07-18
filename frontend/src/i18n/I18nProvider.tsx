@@ -500,6 +500,7 @@ const en = {
   "project.plainText": "Plain text",
   "project.private": "Private",
   "project.projectDescription": "Project description",
+  "project.projectName": "Project name",
   "project.projectLinks": "Project links",
   "project.projectUrl": "Project URL",
   "project.repository": "Repository",
@@ -725,7 +726,7 @@ const ko: Dictionary = {
   "auth.repositoryPermissionDescription": "소스 컨텍스트를 연결할 때만 저장소 접근 권한을 요청합니다.",
   "auth.secureGithub": "안전한 로그인은 GitHub에서 처리합니다.",
   "auth.sessionRequestFailed": "세션 요청에 실패했습니다",
-  "auth.signInDescription": "AI 작업의 결정, 응답과 코드 변경 내역을 다시 확인하세요.",
+  "auth.signInDescription": "AI와 작업하며 내린 결정, 응답, 코드 변경 내역을 다시 확인하세요.",
   "auth.signInGithub": "GitHub로 로그인",
   "auth.signInTitle": "{brand}에 로그인",
   "auth.signInScope": "이 로그인은 사용자 정보와 이메일 권한만 요청합니다.",
@@ -763,7 +764,7 @@ const ko: Dictionary = {
   "language.korean": "한국어",
   "language.label": "언어",
   "language.savedLocally": "이 기기에 저장됨",
-  "language.savedToAccount": "계정에 저장되며 AI 생성 콘텐츠에도 적용됩니다",
+  "language.savedToAccount": "계정에 저장되며 AI가 생성하는 콘텐츠의 언어에도 적용됩니다",
   "nav.accountSettings": "계정 설정",
   "nav.admin": "관리자",
   "nav.closeNavigation": "내비게이션 닫기",
@@ -863,7 +864,7 @@ const ko: Dictionary = {
   "community.archived": "보관됨",
   "community.author": "작성자",
   "community.backToProjects": "공개 프로젝트로 돌아가기",
-  "community.usedAi": "사용 AI",
+  "community.usedAi": "사용한 AI",
   "community.content": "콘텐츠",
   "community.contentTypes": "커뮤니티 콘텐츠 유형",
   "community.context": "컨텍스트",
@@ -949,18 +950,18 @@ const ko: Dictionary = {
   "explore.loadingList": "공개 프로젝트를 불러오는 중",
   "explore.loadingDetail": "공개 프로젝트를 여는 중",
   "review.captureUnavailable": "수집 시간 정보 없음",
-  "review.checkingProjects": "프로젝트별 수집 작업을 확인하고 있습니다.",
+  "review.checkingProjects": "프로젝트별로 수집된 작업을 확인하고 있습니다.",
   "review.chunkCount": "청크 {count}개",
   "review.clear": "리뷰 큐가 비었습니다",
   "review.close": "리뷰 큐 닫기",
-  "review.incomplete": "리뷰 상태가 완전하지 않음",
+  "review.incomplete": "일부 리뷰 상태를 확인하지 못했습니다",
   "review.loadFailed": "리뷰 큐를 불러오지 못했습니다.",
   "review.loadingProject": "{name} 불러오는 중",
   "review.memoryQueue": "메모리 큐",
   "review.mostAccumulated": "누적량 많은 순",
-  "review.noCapturedWaiting": "메모리로 만들 수집 작업이 없습니다.",
+  "review.noCapturedWaiting": "메모리로 생성할 수집 작업이 없습니다.",
   "review.noMatching": "일치하는 프로젝트 없음",
-  "review.noRemaining": "{name}에 남은 수집 작업이 없습니다.",
+  "review.noRemaining": "{name}에 남아 있는 수집 작업이 없습니다.",
   "review.noReviewable": "현재 리뷰 가능한 작업이 없습니다.",
   "review.oldestWaiting": "오래 기다린 순",
   "review.projectCountReady": "프로젝트 {count}개 준비됨",
@@ -980,7 +981,7 @@ const ko: Dictionary = {
   "nav.workspace": "워크스페이스",
   "admin.only": "관리자 전용",
   "collector.checkingStatus": "상태 확인 중",
-  "collector.alertDescription": "{time} 이후 heartbeat가 없습니다. 로컬 작업은 큐에 안전하게 보관되어 있습니다. 설정에서 다시 연결해 주세요.",
+  "collector.alertDescription": "{time} 이후 상태 신호를 받지 못했습니다. 로컬 작업은 큐에 안전하게 보관되어 있습니다. 설정에서 다시 연결해 주세요.",
   "collector.alertTitle": "콜렉터 연결이 끊겼습니다",
   "collector.delayed": "전송 지연 · 마지막 확인 {time}",
   "collector.disconnected": "연결 끊김 · 마지막 확인 {time}",
@@ -1003,7 +1004,7 @@ const ko: Dictionary = {
   "collector.updateCommand": "업데이트 명령어",
   "collector.updateCommandHint": "명령어를 복사해 저장소 터미널에서 실행하세요.",
   "collector.updateComplete": "이 기기 업데이트 완료",
-  "collector.updateCompleteDescription": "Collector {version} heartbeat를 확인했습니다.",
+  "collector.updateCompleteDescription": "Collector {version}의 상태 신호를 확인했습니다.",
   "collector.updateDescription": "이 기기에서 사용하는 환경과 AI 도구를 선택하세요. Promty는 검토 가능한 터미널 명령어만 만들며 브라우저에서 자동 실행하지 않습니다.",
   "collector.updateEnvironment": "연결할 환경",
   "collector.updateEyebrow": "안전한 로컬 업데이트",
@@ -1081,20 +1082,20 @@ const ko: Dictionary = {
   "project.memoryReadyShort": "프로젝트 메모리 생성 가능",
   "project.modelNotCaptured": "모델 정보 없음",
   "project.memory": "메모리",
-  "memory.compiled": "컴파일됨",
-  "memory.compiledDocument": "컴파일된 프로젝트 메모리",
+  "memory.compiled": "통합됨",
+  "memory.compiledDocument": "통합된 프로젝트 메모리",
   "memory.create": "프로젝트 메모리 생성",
   "memory.createHint": "현재 기록을 바탕으로 메모리를 생성해요.",
   "memory.creating": "프로젝트 메모리 생성 중",
   "memory.creatingDescription": "소스 작업 처리가 끝나면 메모리가 새로고침됩니다.",
   "memory.currentDocument": "현재 문서",
-  "memory.currentEmptyDescription": "최근에 컴파일된 프로젝트 메모리가 이곳에 표시됩니다.",
+  "memory.currentEmptyDescription": "최근에 통합된 프로젝트 메모리가 이곳에 표시됩니다.",
   "memory.currentProjectMemory": "현재 프로젝트 메모리",
   "memory.currentTab": "현재 메모리",
   "memory.description": "수집한 작업을 확인하고 장기 프로젝트 컨텍스트를 최신으로 유지하세요.",
-  "memory.approvalFailed": "에이전트 사용을 위한 프로젝트 메모리 승인이 실패했습니다.",
-  "memory.approveForAgents": "에이전트 사용 승인",
-  "memory.approvedForAgents": "에이전트 사용 승인됨",
+  "memory.approvalFailed": "AI 에이전트에서 사용하도록 프로젝트 메모리를 승인하지 못했습니다.",
+  "memory.approveForAgents": "AI 에이전트에서 사용하도록 승인",
+  "memory.approvedForAgents": "AI 에이전트 사용 승인됨",
   "memory.approvingForAgents": "승인 중...",
   "memory.failed": "생성에 실패했습니다.",
   "memory.generation": "메모리 생성",
@@ -1105,12 +1106,12 @@ const ko: Dictionary = {
   "memory.historyLoadFailedTitle": "기록을 불러오지 못했습니다.",
   "memory.loadMore": "메모리 더 보기",
   "memory.longTerm": "장기 컨텍스트",
-  "memory.noCompiled": "컴파일된 콘텐츠가 없습니다.",
+  "memory.noCompiled": "통합된 콘텐츠가 없습니다.",
   "memory.noCurrent": "아직 프로젝트 메모리가 없습니다.",
   "memory.noWaiting": "리뷰를 기다리는 작업이 없습니다.",
   "memory.projectMemory": "프로젝트 메모리",
   "memory.ready": "생성 준비됨",
-  "memory.readyDescription": "수집 작업을 컴파일할 준비가 되었습니다.",
+  "memory.readyDescription": "수집된 작업을 하나의 메모리로 통합할 준비가 되었습니다.",
   "memory.retryLatest": "최신 작업으로 다시 시도",
   "memory.retryUpdate": "업데이트 다시 시도",
   "memory.updateStatus": "업데이트 상태 확인",
@@ -1166,7 +1167,7 @@ const ko: Dictionary = {
   "project.last14Days": "최근 14일",
   "project.lastActivity": "최근 활동",
   "project.defaultBranch": "기본 브랜치",
-  "project.noModels": "수집된 모델 없음",
+  "project.noModels": "기록된 모델 정보 없음",
   "project.noOverview": "아직 오버뷰 데이터가 없습니다",
   "project.noOverviewDescription": "Promty가 프로젝트 활동을 수신하면 프로젝트 메타데이터가 표시됩니다.",
   "project.noTags": "태그 없음",
@@ -1175,6 +1176,7 @@ const ko: Dictionary = {
   "project.plainText": "일반 텍스트",
   "project.private": "비공개",
   "project.projectDescription": "프로젝트 설명",
+  "project.projectName": "프로젝트 이름",
   "project.projectLinks": "프로젝트 링크",
   "project.projectUrl": "프로젝트 URL",
   "project.repository": "저장소",
@@ -1189,9 +1191,9 @@ const ko: Dictionary = {
   "project.workspaceVisibility": "워크스페이스 공개 범위",
   "project.memoryGrouping": "AI 요약 구분 방식",
   "project.memoryGroupingSession": "세션별",
-  "project.memoryGroupingSessionHint": "AI가 요약 묶음을 만들 때 각 코딩 세션의 작업을 함께 유지합니다.",
+  "project.memoryGroupingSessionHint": "AI가 요약할 때 같은 코딩 세션의 작업을 하나의 묶음으로 유지합니다.",
   "project.memoryGroupingChronological": "시간순",
-  "project.memoryGroupingChronologicalHint": "서로 다른 세션의 작업이어도 수집된 시간 순서대로 이어서 묶습니다.",
+  "project.memoryGroupingChronologicalHint": "세션이 달라도 수집 시각에 따라 작업을 이어서 묶습니다.",
   "activity.aiResponse": "AI 응답",
   "activity.byPrompt": "프롬프트별",
   "activity.bySession": "세션별",
@@ -1384,12 +1386,12 @@ const ja: Dictionary = {
   "auth.collectorGuide": "Collectorセットアップガイド",
   "auth.deviceToken": "デバイストークン",
   "auth.deviceTokenDescription": "無効化可能な{brand} Collectorトークンはこの端末にのみ返されます。",
-  "auth.identityAccessDescription": "GitHubがプロフィールとメールアクセスでアカウントを確認します。",
+  "auth.identityAccessDescription": "GitHubのプロフィールとメールアドレスへのアクセス権を使ってアカウントを確認します。",
   "auth.noRepositoryAccess": "この手順ではGitHubリポジトリアクセスを要求しません。",
   "auth.returnTerminal": "GitHub承認後、ターミナルに戻ってください。",
   "auth.checkingSession": "セッションを確認中",
   "auth.identity": "アカウントログイン",
-  "auth.identityDescription": "GitHubでアカウントを確認し、ワークスペースをユーザーに関連付けます。",
+  "auth.identityDescription": "GitHubで本人確認を行い、ワークスペースをアカウントに紐付けます。",
   "auth.learnCollector": "CodexとClaude Codeの接続方法を見る",
   "auth.loading": "読み込み中",
   "auth.moment": "しばらくお待ちください。",
@@ -1435,7 +1437,7 @@ const ja: Dictionary = {
   "language.korean": "韓国語",
   "language.label": "言語",
   "language.savedLocally": "このデバイスに保存",
-  "language.savedToAccount": "アカウントに保存され、AI生成コンテンツにも使用されます",
+  "language.savedToAccount": "アカウントに保存され、AI生成コンテンツの言語にも反映されます",
   "nav.accountSettings": "アカウント設定",
   "nav.admin": "管理者",
   "nav.closeNavigation": "ナビゲーションを閉じる",
@@ -1535,7 +1537,7 @@ const ja: Dictionary = {
   "community.archived": "アーカイブ済み",
   "community.author": "作成者",
   "community.backToProjects": "公開プロジェクトに戻る",
-  "community.usedAi": "使用AI",
+  "community.usedAi": "使用したAI",
   "community.content": "コンテンツ",
   "community.contentTypes": "コミュニティコンテンツの種類",
   "community.context": "コンテキスト",
@@ -1621,18 +1623,18 @@ const ja: Dictionary = {
   "explore.loadingList": "公開プロジェクトを読み込み中",
   "explore.loadingDetail": "公開プロジェクトを開いています",
   "review.captureUnavailable": "取得時刻を利用できません",
-  "review.checkingProjects": "プロジェクトごとの取得作業を確認しています。",
+  "review.checkingProjects": "プロジェクトごとに記録された作業を確認しています。",
   "review.chunkCount": "{count}チャンク",
   "review.clear": "レビューキューは空です",
   "review.close": "レビューキューを閉じる",
-  "review.incomplete": "レビュー状態が不完全です",
+  "review.incomplete": "一部のレビュー状況を確認できませんでした",
   "review.loadFailed": "レビューキューを読み込めませんでした。",
   "review.loadingProject": "{name}を読み込み中",
   "review.memoryQueue": "メモリキュー",
   "review.mostAccumulated": "蓄積量が多い順",
-  "review.noCapturedWaiting": "メモリ待ちの取得作業はありません。",
+  "review.noCapturedWaiting": "メモリにまとめる作業はありません。",
   "review.noMatching": "一致するプロジェクトなし",
-  "review.noRemaining": "{name}に残っている取得作業はありません。",
+  "review.noRemaining": "{name}に未処理の作業はありません。",
   "review.noReviewable": "現在レビュー可能な作業はありません。",
   "review.oldestWaiting": "待機時間が長い順",
   "review.projectCountReady": "{count}件のプロジェクトが準備完了",
@@ -1753,20 +1755,20 @@ const ja: Dictionary = {
   "project.memoryReadyShort": "プロジェクトメモリを作成可能",
   "project.modelNotCaptured": "モデル情報なし",
   "project.memory": "メモリ",
-  "memory.compiled": "コンパイル済み",
-  "memory.compiledDocument": "コンパイル済みプロジェクトメモリ",
+  "memory.compiled": "統合済み",
+  "memory.compiledDocument": "統合済みのプロジェクトメモリ",
   "memory.create": "プロジェクトメモリを作成",
   "memory.createHint": "現在の記録からメモリを作成します。",
   "memory.creating": "プロジェクトメモリを作成中",
   "memory.creatingDescription": "ソース作業の処理後にメモリが更新されます。",
   "memory.currentDocument": "現在のドキュメント",
-  "memory.currentEmptyDescription": "最新のコンパイル済みプロジェクトメモリがここに表示されます。",
+  "memory.currentEmptyDescription": "最新の統合済みプロジェクトメモリがここに表示されます。",
   "memory.currentProjectMemory": "現在のプロジェクトメモリ",
   "memory.currentTab": "現在のメモリ",
-  "memory.description": "取得した作業を確認し、長期プロジェクトコンテキストを最新に保ちます。",
-  "memory.approvalFailed": "エージェント利用のためのプロジェクトメモリを承認できませんでした。",
-  "memory.approveForAgents": "エージェント利用を承認",
-  "memory.approvedForAgents": "エージェント利用を承認済み",
+  "memory.description": "記録された作業を確認し、長期的なプロジェクトコンテキストを最新に保ちます。",
+  "memory.approvalFailed": "AIエージェントで使用できるようプロジェクトメモリを承認できませんでした。",
+  "memory.approveForAgents": "AIエージェントでの使用を承認",
+  "memory.approvedForAgents": "AIエージェントでの使用を承認済み",
   "memory.approvingForAgents": "承認中...",
   "memory.failed": "生成に失敗しました。",
   "memory.generation": "メモリ生成",
@@ -1777,12 +1779,12 @@ const ja: Dictionary = {
   "memory.historyLoadFailedTitle": "履歴を読み込めませんでした。",
   "memory.loadMore": "メモリをさらに読み込む",
   "memory.longTerm": "長期コンテキスト",
-  "memory.noCompiled": "コンパイル済みコンテンツはありません。",
+  "memory.noCompiled": "統合済みのコンテンツはありません。",
   "memory.noCurrent": "プロジェクトメモリはまだありません。",
   "memory.noWaiting": "レビュー待ちの作業はありません。",
   "memory.projectMemory": "プロジェクトメモリ",
   "memory.ready": "生成準備完了",
-  "memory.readyDescription": "取得済み作業をコンパイルする準備ができました。",
+  "memory.readyDescription": "記録された作業を1つのメモリに統合する準備ができました。",
   "memory.retryLatest": "最新作業で再試行",
   "memory.retryUpdate": "更新を再試行",
   "memory.updateStatus": "更新状態を確認",
@@ -1838,7 +1840,7 @@ const ja: Dictionary = {
   "project.last14Days": "過去14日間",
   "project.lastActivity": "最新アクティビティ",
   "project.defaultBranch": "デフォルトブランチ",
-  "project.noModels": "取得済みモデルなし",
+  "project.noModels": "記録されたモデル情報はありません",
   "project.noOverview": "概要データはまだありません",
   "project.noOverviewDescription": "Promtyがプロジェクトアクティビティを受信するとメタデータが表示されます。",
   "project.noTags": "タグなし",
@@ -1847,6 +1849,7 @@ const ja: Dictionary = {
   "project.plainText": "プレーンテキスト",
   "project.private": "非公開",
   "project.projectDescription": "プロジェクト説明",
+  "project.projectName": "プロジェクト名",
   "project.projectLinks": "プロジェクトリンク",
   "project.projectUrl": "プロジェクトURL",
   "project.repository": "リポジトリ",
@@ -1861,9 +1864,9 @@ const ja: Dictionary = {
   "project.workspaceVisibility": "ワークスペース公開範囲",
   "project.memoryGrouping": "AI要約のグループ化",
   "project.memoryGroupingSession": "セッション別",
-  "project.memoryGroupingSessionHint": "AIが要約チャンクを作成するとき、各コーディングセッションの作業をまとめます。",
+  "project.memoryGroupingSessionHint": "AIで要約するとき、同じコーディングセッションの作業を1つにまとめます。",
   "project.memoryGroupingChronological": "時系列",
-  "project.memoryGroupingChronologicalHint": "異なるセッションの作業でも、収集時刻の順に続けてまとめます。",
+  "project.memoryGroupingChronologicalHint": "セッションが異なる作業も、記録された時刻の順にまとめます。",
   "activity.aiResponse": "AI応答",
   "activity.byPrompt": "プロンプト別",
   "activity.bySession": "セッション別",
@@ -2051,6 +2054,32 @@ export function normalizeAppLocale(value: string | null | undefined): AppLocale 
   return value === "ko" || value === "ja" ? value : "en";
 }
 
+function matchSupportedLocale(value: string | null | undefined): AppLocale | null {
+  const language = value?.trim().toLowerCase().split(/[-_]/, 1)[0];
+  return language === "en" || language === "ja" || language === "ko"
+    ? language
+    : null;
+}
+
+export function detectBrowserLocale(
+  languages: readonly string[] | null | undefined,
+): AppLocale {
+  for (const language of languages ?? []) {
+    const locale = matchSupportedLocale(language);
+    if (locale) {
+      return locale;
+    }
+  }
+  return "en";
+}
+
+export function resolveInitialAppLocale(
+  storedLocale: string | null | undefined,
+  browserLanguages: readonly string[] | null | undefined,
+): AppLocale {
+  return matchSupportedLocale(storedLocale) ?? detectBrowserLocale(browserLanguages);
+}
+
 function interpolate(template: string, values?: Record<string, string | number>) {
   if (!values) {
     return template;
@@ -2079,12 +2108,27 @@ type I18nContextValue = {
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<AppLocale>(() =>
-    normalizeAppLocale(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)),
-  );
+  const [locale, setLocaleState] = useState<AppLocale>(() => {
+    let storedLocale: string | null = null;
+    try {
+      storedLocale = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    } catch {
+      // Browser privacy settings can make localStorage unavailable.
+    }
+
+    const browserLanguages =
+      window.navigator.languages.length > 0
+        ? window.navigator.languages
+        : [window.navigator.language];
+    return resolveInitialAppLocale(storedLocale, browserLanguages);
+  });
 
   useEffect(() => {
-    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, locale);
+    try {
+      window.localStorage.setItem(LANGUAGE_STORAGE_KEY, locale);
+    } catch {
+      // The selected locale still applies to this tab when storage is unavailable.
+    }
     document.documentElement.lang = locale;
   }, [locale]);
 

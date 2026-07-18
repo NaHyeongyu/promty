@@ -36,7 +36,7 @@ def _user(*, github_id: str = "github-123") -> User:
     )
 
 
-def _request_with_oauth_cookie(nonce: str) -> Request:
+def _request_with_oauth_cookie(nonce: str, *, language: str = "en-US") -> Request:
     cookie = f"{settings.oauth_state_cookie_name}={nonce}".encode("ascii")
     return Request(
         {
@@ -47,7 +47,10 @@ def _request_with_oauth_cookie(nonce: str) -> Request:
             "path": "/api/auth/github/callback",
             "raw_path": b"/api/auth/github/callback",
             "query_string": b"",
-            "headers": [(b"cookie", cookie)],
+            "headers": [
+                (b"cookie", cookie),
+                (b"accept-language", language.encode("ascii")),
+            ],
             "client": ("127.0.0.1", 1234),
             "server": ("testserver", 80),
         }
@@ -101,7 +104,18 @@ def test_web_login_callback_does_not_store_repository_connection(
         "exchange_code_for_token",
         lambda _code: {"access_token": "identity-token", "scope": GITHUB_WEB_SCOPE},
     )
-    monkeypatch.setattr(auth, "upsert_github_user", lambda _db, _token: user)
+    captured_locale: dict[str, str] = {}
+
+    def upsert_user(
+        _db: object,
+        _token: str,
+        *,
+        preferred_locale: str,
+    ) -> User:
+        captured_locale["value"] = preferred_locale
+        return user
+
+    monkeypatch.setattr(auth, "upsert_github_user", upsert_user)
 
     def unexpected_connection(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("identity login must not create a repository connection")
@@ -109,7 +123,7 @@ def test_web_login_callback_does_not_store_repository_connection(
     monkeypatch.setattr(auth, "upsert_github_connection", unexpected_connection)
 
     response = auth.finish_github_login(
-        request=_request_with_oauth_cookie(nonce),
+        request=_request_with_oauth_cookie(nonce, language="ja-JP,ja;q=0.9,en;q=0.8"),
         code="code",
         state=state,
         db=db,  # type: ignore[arg-type]
@@ -119,6 +133,7 @@ def test_web_login_callback_does_not_store_repository_connection(
     assert response.status_code == 302
     assert db.commit_count == 1
     assert len(db.added) == 1
+    assert captured_locale == {"value": "ja"}
     assert settings.session_cookie_name in response.headers.get("set-cookie", "")
 
 

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.encryption import encrypt_github_token
+from app.core.locales import AppLocale, DEFAULT_APP_LOCALE
 from app.models.github_connections import GitHubConnection
 from app.models.users import User
 
@@ -143,7 +144,12 @@ def get_github_user_id(access_token: str) -> str:
     return str(github_id_value)
 
 
-def upsert_github_user(db: Session, access_token: str) -> User:
+def upsert_github_user(
+    db: Session,
+    access_token: str,
+    *,
+    preferred_locale: AppLocale = DEFAULT_APP_LOCALE,
+) -> User:
     payload = _json_request(GITHUB_USER_URL, token=access_token)
     if not isinstance(payload, dict):
         raise HTTPException(status_code=502, detail="Invalid GitHub user response")
@@ -170,6 +176,7 @@ def upsert_github_user(db: Session, access_token: str) -> User:
             email=email,
             username=username,
             avatar_url=avatar_url,
+            preferred_locale=preferred_locale,
         )
         db.add(user)
     else:

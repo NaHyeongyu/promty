@@ -6,28 +6,31 @@ import {
 } from "react";
 import type { LucideProps } from "lucide-react";
 import { BRAND_NAME } from "../../config";
+import { useI18n } from "../../i18n/I18nProvider";
+import { navigateToAppUrl } from "../../routing";
 import type { EventRecord } from "../../workspace/types";
 import { FirstRunOnboarding } from "./CollectorOnboarding";
 
 export function LoadingScreen() {
+  const { t } = useI18n();
   return (
     <div
       aria-busy="true"
-      aria-label={`Loading ${BRAND_NAME} workspace`}
+      aria-label={`${BRAND_NAME} · ${t("auth.loading")}`}
       aria-live="polite"
       className="app-shell"
       role="status"
     >
-      <LoadingSidebar />
+      <LoadingSidebar loadingLabel={t("auth.loading")} />
 
       <main className="page">
         <header className="page-header">
           <div>
-            <h1>Projects</h1>
+            <h1>{t("project.projects")}</h1>
           </div>
         </header>
 
-        <section className="projects-section" aria-label="Projects">
+        <section className="projects-section" aria-label={t("project.projects")}>
           <ProjectListLoadingState />
         </section>
       </main>
@@ -35,7 +38,7 @@ export function LoadingScreen() {
   );
 }
 
-function LoadingSidebar() {
+function LoadingSidebar({ loadingLabel }: { loadingLabel: string }) {
   return (
     <aside className="sidebar sidebar-loading" aria-hidden="true">
       <div className="sidebar-header">
@@ -48,7 +51,7 @@ function LoadingSidebar() {
       <div className="sidebar-content">
         <div className="sidebar-divider" />
 
-        <nav className="sidebar-nav" aria-label="Loading navigation">
+        <nav className="sidebar-nav" aria-label={loadingLabel}>
           <div className="sidebar-loading-item">
             <span />
             <span />
@@ -115,7 +118,10 @@ export function EmptyProjectsState({
       tab: "ai-activity",
     });
     window.setTimeout(() => {
-      window.location.assign(`${window.location.pathname}?${search.toString()}`);
+      const href = `${window.location.pathname}?${search.toString()}`;
+      if (!navigateToAppUrl(href)) {
+        window.location.assign(href);
+      }
     }, 650);
   });
 

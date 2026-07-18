@@ -31,6 +31,7 @@ export type ProjectHeaderProps = {
   onOpenAllProjects?: () => void;
   onConnectRepository?: () => void;
   onProjectSelect?: (projectId: string) => void;
+  onRenameProject?: (name: string) => Promise<void>;
   onShareProject?: () => void;
   onToggleBookmark?: () => void;
   projectOptions?: ProjectHeaderProjectOption[];

@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 
 test("project CRUD works through the authenticated browser workspace", async ({ page }) => {
   const repositoryName = `e2e-crud-${Date.now()}`;
+  const renamedProjectName = `${repositoryName}-renamed`;
   const repositoryUrl = `https://github.com/promty/${repositoryName}`;
 
   await page.goto("/");
@@ -24,6 +25,13 @@ test("project CRUD works through the authenticated browser workspace", async ({ 
   await page.getByRole("button", { name: `Open ${repositoryName}` }).click();
   await expect(page.getByRole("heading", { name: repositoryName })).toBeVisible();
 
+  await page.getByRole("tab", { name: "Prompts" }).click();
+  await page.getByRole("button", { name: "Edit project" }).click();
+  await page.getByLabel("Project name").fill(renamedProjectName);
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("heading", { name: renamedProjectName })).toBeVisible();
+  await page.getByRole("tab", { name: "Overview" }).click();
+
   await page.getByRole("button", { name: "Edit", exact: true }).first().click();
   const editor = page.getByRole("dialog", { name: "Edit project" });
   await editor.getByLabel("Project URL").fill("https://example.com/e2e-project");
@@ -40,14 +48,14 @@ test("project CRUD works through the authenticated browser workspace", async ({ 
   );
 
   await page.getByRole("link", { name: "View public listing" }).click();
-  await expect(page.getByRole("heading", { name: repositoryName })).toBeVisible();
+  await expect(page.getByRole("heading", { name: renamedProjectName })).toBeVisible();
   await page.getByRole("button", { name: /^View .+'s profile$/ }).click();
   await expect(page).toHaveURL(/\?view=community&profile=/);
   const publicProfileUrl = page.url();
   await expect(page.getByText("Community profile", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: new RegExp(repositoryName) }).click();
+  await page.getByRole("button", { name: new RegExp(renamedProjectName) }).click();
   await expect(page).toHaveURL(new RegExp(`public_project=${created.id}`));
-  await expect(page.getByRole("heading", { name: repositoryName })).toBeVisible();
+  await expect(page.getByRole("heading", { name: renamedProjectName })).toBeVisible();
 
   await page.getByRole("link", { name: "Overview" }).click();
   await page.getByRole("button", { name: "Edit", exact: true }).first().click();
@@ -60,10 +68,10 @@ test("project CRUD works through the authenticated browser workspace", async ({ 
 
   await page.goto(publicProfileUrl);
   await expect(page.getByRole("heading", { name: "No public projects" })).toBeVisible();
-  await expect(page.getByRole("button", { name: new RegExp(repositoryName) })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: new RegExp(renamedProjectName) })).toHaveCount(0);
 
   await page.goto(`/?project=${created.id}&tab=overview`);
-  await expect(page.getByRole("heading", { name: repositoryName })).toBeVisible();
+  await expect(page.getByRole("heading", { name: renamedProjectName })).toBeVisible();
 
   await page.getByRole("button", { name: "Edit", exact: true }).first().click();
   page.once("dialog", (dialog) => dialog.accept());
@@ -72,7 +80,7 @@ test("project CRUD works through the authenticated browser workspace", async ({ 
     .click();
 
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
-  await expect(page.getByRole("button", { name: `Open ${repositoryName}` })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: `Open ${renamedProjectName}` })).toHaveCount(0);
 });
 
 

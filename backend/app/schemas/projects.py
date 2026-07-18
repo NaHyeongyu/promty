@@ -49,10 +49,16 @@ class ProjectDescriptionUpdateRequest(BaseModel):
 
 class ProjectMetadataUpdateRequest(BaseModel):
     memory_grouping_mode: Literal["session", "chronological"] | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=255)
     slug: str | None = Field(default=None, min_length=1, max_length=255)
     project_url: str | None = Field(default=None, max_length=2048)
     tags: list[str] | None = None
     visibility: str | None = Field(default=None)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
 
     @field_validator("slug", mode="before")
     @classmethod

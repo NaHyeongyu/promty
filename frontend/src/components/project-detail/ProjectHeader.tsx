@@ -7,8 +7,10 @@ import {
   ExternalLink,
   Folder,
   Link,
+  Pencil,
   Search,
   Share2,
+  X,
 } from "lucide-react";
 import { AiModelBadge } from "./AiModelBadge";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -25,6 +27,7 @@ export function ProjectHeader({
   onOpenAllProjects,
   onConnectRepository,
   onProjectSelect,
+  onRenameProject,
   onShareProject,
   onToggleBookmark,
   projectOptions = [],
@@ -33,6 +36,10 @@ export function ProjectHeader({
 }: ProjectHeaderProps) {
   const { t } = useI18n();
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
+  const [isNameEditing, setIsNameEditing] = useState(false);
+  const [isNameSaving, setIsNameSaving] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
+  const [nameError, setNameError] = useState<string | null>(null);
   const [projectSearchQuery, setProjectSearchQuery] = useState("");
   const switcherRef = useRef<HTMLDivElement | null>(null);
   const filteredProjectOptions = useMemo(() => {
@@ -56,6 +63,40 @@ export function ProjectHeader({
     setIsProjectMenuOpen(false);
     setProjectSearchQuery("");
   };
+  const cancelNameEditing = () => {
+    setNameDraft(name);
+    setNameError(null);
+    setIsNameEditing(false);
+  };
+  const saveProjectName = async () => {
+    const nextName = nameDraft.trim();
+    if (!nextName || !onRenameProject) {
+      return;
+    }
+    if (nextName === name) {
+      cancelNameEditing();
+      return;
+    }
+
+    setIsNameSaving(true);
+    setNameError(null);
+    try {
+      await onRenameProject(nextName);
+      setIsNameEditing(false);
+    } catch (error) {
+      setNameError(
+        error instanceof Error ? error.message : t("project.metadataSaveFailed"),
+      );
+    } finally {
+      setIsNameSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isNameEditing) {
+      setNameDraft(name);
+    }
+  }, [isNameEditing, name]);
 
   useEffect(() => {
     if (!isProjectMenuOpen) {
@@ -90,18 +131,73 @@ export function ProjectHeader({
       <div className="bh-project-header-copy">
         <div className="bh-project-title-row">
           <div className="bh-project-name-switcher" ref={switcherRef}>
-            <h1
-              data-loading={isLoading ? "true" : undefined}
-              id="project-detail-title"
-              title={projectTitle}
-            >
-              {isLoading ? (
-                <span className="skeleton-line skeleton-line-heading" />
-              ) : (
-                name
-              )}
-            </h1>
-            {canSwitchProjects && !isLoading ? (
+            {isNameEditing ? (
+              <form
+                className="bh-project-name-editor"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void saveProjectName();
+                }}
+              >
+                <input
+                  aria-label={t("project.projectName")}
+                  autoFocus
+                  disabled={isNameSaving}
+                  maxLength={255}
+                  onChange={(event) => setNameDraft(event.target.value)}
+                  required
+                  type="text"
+                  value={nameDraft}
+                />
+                <button
+                  aria-label={isNameSaving ? t("common.saving") : t("common.save")}
+                  className="bh-project-name-editor-action"
+                  disabled={isNameSaving || nameDraft.trim().length === 0}
+                  type="submit"
+                >
+                  <Check aria-hidden="true" size={16} strokeWidth={1.8} />
+                </button>
+                <button
+                  aria-label={t("common.cancel")}
+                  className="bh-project-name-editor-action"
+                  disabled={isNameSaving}
+                  onClick={cancelNameEditing}
+                  type="button"
+                >
+                  <X aria-hidden="true" size={16} strokeWidth={1.8} />
+                </button>
+              </form>
+            ) : (
+              <>
+                <h1
+                  data-loading={isLoading ? "true" : undefined}
+                  id="project-detail-title"
+                  title={projectTitle}
+                >
+                  {isLoading ? (
+                    <span className="skeleton-line skeleton-line-heading" />
+                  ) : (
+                    name
+                  )}
+                </h1>
+                {onRenameProject && !isLoading ? (
+                  <button
+                    aria-label={t("project.editProject")}
+                    className="bh-project-title-edit"
+                    onClick={() => {
+                      closeProjectMenu();
+                      setNameError(null);
+                      setIsNameEditing(true);
+                    }}
+                    title={t("project.editProject")}
+                    type="button"
+                  >
+                    <Pencil aria-hidden="true" size={15} strokeWidth={1.7} />
+                  </button>
+                ) : null}
+              </>
+            )}
+            {canSwitchProjects && !isLoading && !isNameEditing ? (
               <>
                 <button
                   aria-expanded={isProjectMenuOpen}
@@ -179,6 +275,9 @@ export function ProjectHeader({
             ) : null}
           </div>
         </div>
+        {nameError ? (
+          <p className="bh-project-name-error" role="alert">{nameError}</p>
+        ) : null}
         {hasHeaderMeta ? (
           <div className="bh-project-header-meta" aria-label={t("project.activity")}>
             {visibleModelNames.map((modelName) => (

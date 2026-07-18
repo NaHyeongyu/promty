@@ -1,136 +1,161 @@
-# Promty
+<p align="center">
+  <img src="./promty.svg" alt="Promty logo" width="112" />
+</p>
 
-Promty collects AI development events from local coding tools and turns completed sessions into long-term project memory.
+<h1 align="center">Promty</h1>
 
-## Flow
+<p align="center">
+  <strong>Your AI tools can read the code. Promty remembers why it became this code.</strong>
+</p>
+
+<p align="center">
+  Durable, reviewable project memory for AI-assisted software development.
+</p>
+
+<p align="center">
+  <a href="https://promty.org">Website</a>
+  ·
+  <a href="#quick-start">Quick start</a>
+  ·
+  <a href="./docs/memory-architecture.md">Architecture</a>
+  ·
+  <a href="./docs/development-guidelines.md">Contributing</a>
+</p>
+
+---
+
+AI coding sessions are good at the work in front of them. They are much worse at
+carrying forward the reasoning that shaped a project:
+
+- Why was this architecture chosen?
+- Which approaches were tried and rejected?
+- What is still unresolved?
+- What should the next human or agent do first?
+
+Promty captures completed work from supported AI coding tools and compiles it into
+structured **Project Memory**. The result is not another transcript archive. It is a
+concise, source-linked context layer that you can review before the next session uses it.
+
+> **The core promise:** stop re-explaining the project and continue with the decision
+> trail intact.
+
+<p align="center">
+  <img
+    src="./frontend/public/marketing/promty-product-memory.png"
+    alt="Promty Project Memory review interface"
+    width="100%"
+  />
+</p>
+
+## How it works
+
+| | Stage | What Promty does | What you get |
+|---:|---|---|---|
+| **01** | **Capture** | Collects completed work only from repositories where you install Promty. | Repository-scoped development history |
+| **02** | **Compile** | Extracts outcomes, decisions, rejected paths, open questions, and next instructions. | Human-reviewable Project Memory |
+| **03** | **Continue** | Makes the latest reviewed memory available through the CLI and read-only MCP. | Context ready for the next human or agent |
 
 ```text
-AI Tool
-    |
-    v
-Hook
-    |
-    v
-Adapter
-    |
-    v
-Promty Event
-    |
-    v
-Queue (JSONL)
-    |
-    v
-Uploader
-    |
-    v
-Backend API
-    |
-    v
-PostgreSQL
-    |
-    v
-React Timeline
+Codex CLI / Claude Code
+          │
+          ▼
+   repository hooks
+          │
+          ▼
+   local durable queue
+          │
+          ▼
+ FastAPI + PostgreSQL
+          │
+          ▼
+  reviewable memory
+       ┌──┴──┐
+       ▼     ▼
+      CLI   MCP
 ```
 
-## Project Structure
+## Why Promty
 
-```text
-promty/
-├── frontend/          # React
-├── backend/           # FastAPI
-├── collector/         # User-installed CLI
-├── docs/
-├── docker/
-├── docker-compose.yml
-├── README.md
-└── .github/
-```
+### Remember decisions, not just messages
 
-## Collector
+Chat histories preserve what was said. Promty organizes what future work needs:
+current direction, important decisions, rejected alternatives, unresolved questions,
+and the next instruction.
 
-The collector receives hook JSON through stdin and normalizes each tool payload into a Promty Event.
+### Move between tools without starting over
 
-User-facing setup flow:
+Project context should belong to the project, not to one model or chat window. Promty
+creates a tool-independent memory layer for Codex CLI, Claude Code, and future agents.
 
-```bash
-python3 collector/src/cli.py init \
-  --tool codex-cli \
-  --profile dev
-```
+### Keep humans in control
 
-`init` opens the Promty login page, uses GitHub sign-in to receive a collector token, writes local Promty config, installs the selected AI tool hooks, and starts the uploader in the background. Codex is the safe CLI default; use `--tool claude-code` for Claude Code or explicitly select `--tool all` for both.
+Generated memory is reviewable. Collection is enabled repository by repository, and the
+Agent Context bridge is owner-scoped and read-only.
 
-The Promty runtime is shared on the machine, but hooks are installed only in the
-repository where `init` runs. Run `init` once in every additional repository you
-want to collect. Repositories without Promty hooks are not collected automatically.
+## Quick start
 
-If the local repository has a GitHub `origin` remote, Promty automatically links the captured project to that GitHub repository:
+### Requirements
 
-```bash
-git remote add origin git@github.com:OWNER/REPO.git
-```
+- Node.js 20+
+- Python 3.12+
+- A Git repository
 
-Supported remote formats include `git@github.com:OWNER/REPO.git`, `ssh://git@github.com/OWNER/REPO.git`, and `https://github.com/OWNER/REPO.git`.
-
-Run the published npm package with:
+Run the setup command from the repository you want Promty to remember:
 
 ```bash
 npx promty-collector init --tool codex-cli
 ```
 
-Use `--profile dev` for local development and `--profile prod` for production.
-Profiles isolate login credentials, uploader processes, logs, and event queues so
-switching environments cannot overwrite another environment's collector state.
+Setup opens Promty sign-in, stores a revocable collector credential on your machine,
+installs repository-local hooks, and starts the background uploader.
 
-To store every captured event in both environments, initialize both profiles
-explicitly:
+For Claude Code:
 
 ```bash
-npx promty-collector init --tool codex-cli --profiles dev,prod
+npx promty-collector init --tool claude-code
 ```
 
-The collector creates each event once, writes the same event ID to independent
-profile queues, and uploads each queue separately. A backend outage therefore
-does not block or remove the other profile's pending events. Verify all targets
-with `npx promty-collector doctor --profiles dev,prod --tool codex-cli`.
+Check the local installation:
 
-Automatic updates are disabled by default. Pass `--auto-update` to `init` or
-`start-uploader` only when you want the background uploader to check npm every
-six hours, install a newer release, and restart with the same profile and queue.
-Without that explicit opt-in, update manually with
-`npx promty-collector@latest init --tool codex-cli --profile <dev|prod>`.
+```bash
+promty doctor --tool codex-cli
+```
 
-The npm package includes the Python collector and uses `python3` by default. Set
-`PROMTY_PYTHON` when a different Python executable is required.
+After Project Memory has been generated and reviewed, read it from the repository:
 
-For a Python-native installation, run `pipx install ./collector` and use the
-same `promty` command.
+```bash
+promty context
+promty context --format json
+```
 
-Installable integrations:
+Promty installs hooks only in the repository where `init` runs. Run the command again
+inside every additional repository you explicitly want to connect.
+
+## Agent Context bridge
+
+Promty can provide the latest reviewed Project Memory to an MCP-compatible coding agent.
+Configure the client to start:
+
+```json
+{
+  "command": "promty",
+  "args": ["mcp"]
+}
+```
+
+The server exposes one owner-scoped, read-only tool:
 
 ```text
-claude-code
-codex-cli
+get_project_context
 ```
 
-Current validation status:
+It returns the latest Project Memory as Markdown and structured JSON. It cannot modify
+the project or write back into memory. See the [Agent Context guide](./docs/agent-context.md)
+for details.
 
-```text
-codex-cli   adapter + repository hook + real payload path validated
-claude-code adapter + repository hook installer implemented
-```
+## What gets captured
 
-Cursor and Gemini CLI adapters remain experimental and are not exposed by
-`init`, `install-hooks`, or `doctor` until their hook paths are validated.
-
-`init` installs a content-addressed runtime under `~/.promty/runtime` and writes
-the durable `~/.promty/bin/promty` launcher into repository hooks. Hooks do not
-depend on the npm cache, the source checkout, or the directory where setup ran.
-The uploader sends a one-minute heartbeat so the web app can report connection
-loss even when no new events are produced. After a reboot, the first captured
-event safely restarts a stopped profile uploader before draining its disk queue.
-
-Supported event types:
+Promty normalizes tool-specific hook payloads into a stable event model:
 
 ```text
 SessionStarted
@@ -141,345 +166,83 @@ CommitCreated
 SessionEnded
 ```
 
-Capture a Claude Code prompt:
+The currently installable integrations are:
 
-```bash
-python3 collector/src/cli.py capture --tool claude-code
-```
+| Tool | Status |
+|---|---|
+| Codex CLI | Adapter, repository hooks, and real payload path validated |
+| Claude Code | Adapter and repository hook installer implemented |
+| Cursor | Experimental; not exposed by setup commands |
+| Gemini CLI | Experimental; not exposed by setup commands |
 
-Capture a Codex prompt:
+If a connected repository has a GitHub `origin`, Promty links the captured project to
+that repository automatically. SSH and HTTPS GitHub remote formats are supported.
 
-```bash
-python3 collector/src/cli.py capture --tool codex-cli
-```
+## Trust boundaries
 
-Capture a non-prompt event:
+Promty is designed around explicit collection and review:
 
-```bash
-python3 collector/src/cli.py capture --tool codex-cli --event-type FilesChanged
-```
+- **Selected repositories only.** Unrelated projects are not scanned automatically.
+- **Durable local queue.** Hook execution does not depend on backend availability.
+- **Separate credentials.** Browser sessions and collector ingestion use different tokens.
+- **Encrypted sensitive text.** Raw prompt, response, and unified diff text is encrypted at rest.
+- **Owner-scoped context.** Private Project Memory is returned only to its owner.
+- **Read-only agent access.** MCP can retrieve reviewed memory but cannot change it.
+- **Immediate privacy changes.** Switching a public project back to private removes its public access.
 
-Capture code changes at the end of a Codex turn:
+Project and session metadata, timestamps, file paths, line counts, and status fields
+remain queryable for organization and diagnostics. Derived memory artifacts should not be
+treated as a general-purpose secret store. See [Memory Architecture](./docs/memory-architecture.md)
+and [Event Specification v1](./docs/event-spec-v1.md) for the full boundaries.
 
-```bash
-python3 collector/src/cli.py capture-changes --tool codex-cli
-```
-
-Capture code changes at the end of a Claude Code turn:
-
-```bash
-python3 collector/src/cli.py capture-changes --tool claude-code
-```
-
-Install or repair Codex hooks without logging in:
-
-```bash
-python3 collector/src/cli.py install-hooks --tool codex-cli
-```
-
-Install or repair Claude Code hooks without logging in:
-
-```bash
-python3 collector/src/cli.py install-hooks --tool claude-code
-```
-
-Remove only Promty's Claude Code hooks while preserving unrelated Claude settings:
-
-```bash
-python3 collector/src/cli.py uninstall-hooks --tool claude-code
-```
-
-Run local diagnostics:
-
-```bash
-python3 collector/src/cli.py doctor
-```
-
-Run Claude Code diagnostics:
-
-```bash
-python3 collector/src/cli.py doctor --tool claude-code
-```
-
-Upload queued events:
-
-```bash
-python3 collector/src/cli.py upload --api-url http://localhost:8011
-```
-
-Run the uploader in the background for near-real-time sync:
-
-```bash
-python3 collector/src/cli.py upload --api-url http://localhost:8011 --watch --interval 2
-```
-
-By default, queued events are stored by project and session at:
+## Architecture
 
 ```text
-~/.promty/events/<project_id>/<session_id>/events.jsonl
+promty/
+├── collector/       Local CLI, adapters, hooks, queue, uploader, and MCP server
+├── backend/         FastAPI application, workers, SQLAlchemy models, and Alembic
+├── frontend/        React workspace, public pages, and administrator console
+├── docs/            Architecture, operations, security, and development guides
+├── docker/          Local Compose configuration
+└── infra/aws/       Production AWS configuration and validation scripts
 ```
 
-If `PROMTY_QUEUE_PATH` or `--queue-path` is set, the collector uses that single JSONL file instead. The uploader also reads the legacy `~/.promty/events.jsonl` queue if it exists.
+The collector converts each supported tool payload into **Promty Event v1** before it
+reaches the backend. The backend does not need to understand raw Codex or Claude payloads.
+Events are uploaded idempotently, persisted in PostgreSQL, and compiled asynchronously
+into memory artifacts.
 
-Prompt baselines for git-backed change tracking are stored at:
+For a deeper view, start with:
 
-```text
-~/.promty/change-baselines.json
-```
+- [Memory Architecture](./docs/memory-architecture.md)
+- [Agent Context bridge](./docs/agent-context.md)
+- [Event Specification v1](./docs/event-spec-v1.md)
+- [Artifact Model](./docs/artifact-model.md)
+- [Database schema](./docs/database.md)
 
-## Backend
+## Local development
 
-Current API contract:
-
-```text
-POST /api/events/batch
-GET  /api/events
-GET  /health
-GET  /health/live
-GET  /health/ready
-```
-
-`POST /api/events/batch` requires `Authorization: Bearer <token>` in production and accepts:
-
-```json
-{
-  "events": [
-    {
-      "id": "0db26f22-26a1-4b4b-b42f-8a6248eb65d8",
-      "schema_version": 1,
-      "project_id": "56828395-f94c-56f7-9ff9-a2feb027ae19",
-      "session_id": "7d9f16c5-76ef-5a7a-82f7-356b25b897b5",
-      "sequence": 12,
-      "tool": "codex-cli",
-      "event_type": "PromptSubmitted",
-      "timestamp": "2026-06-27T00:00:00+00:00",
-      "payload": {
-        "prompt": "Build a FastAPI endpoint",
-        "cwd": "/projects/promty",
-        "model": "gpt-5",
-        "turn_id": 12
-      }
-    }
-  ]
-}
-```
-
-The backend persists events to PostgreSQL through SQLAlchemy and Alembic.
-Runtime dependencies are declared in `backend/requirements.txt` and the fully
-resolved Python 3.12 build is pinned in `backend/requirements.lock` for CI and
-Docker.
-
-## AWS And GitHub
-
-The repository includes a production deployment runbook for AWS and GitHub Actions:
-
-```text
-.github/workflows/ci.yml
-.github/workflows/aws-deploy.yml
-backend/Dockerfile
-docs/aws-github-deployment.md
-docs/aws-resource-inventory.md
-```
-
-`CI` runs Python static checks, backend and collector tests, collector package
-validation, and the frontend production build. `AWS Deploy` is a manual workflow
-that builds the frontend for S3/CloudFront, publishes the backend image to ECR,
-and restarts the EC2 backend through AWS Systems Manager. See
-[AWS and GitHub Deployment Runbook](docs/aws-github-deployment.md) for the
-complete Git, AWS CLI, domain, secret, deployment, and troubleshooting guide.
-Published flow assets can use S3 by setting:
-
-```bash
-export PROMTY_PUBLISHED_FLOW_ASSET_STORAGE="s3"
-export PROMTY_AWS_REGION="ap-southeast-2"
-export PROMTY_AWS_S3_BUCKET="your-private-asset-bucket"
-```
-
-Optional ingest security:
-
-```bash
-export PROMTY_API_TOKEN="replace-with-local-secret"
-export PROMTY_CORS_ORIGINS="http://127.0.0.1:5173,http://localhost:5173"
-export PROMTY_API_PUBLIC_URL="https://api.promty.example"
-export PROMTY_APP_URL="https://app.promty.example"
-export PROMTY_GITHUB_CLIENT_ID="github-oauth-client-id"
-export PROMTY_GITHUB_CLIENT_SECRET="github-oauth-client-secret"
-export PROMTY_GITHUB_TOKEN_ENCRYPTION_KEY="replace-with-github-token-encryption-secret"
-export PROMTY_GITHUB_TOKEN_ENCRYPTION_PREVIOUS_KEYS=""
-export PROMTY_APP_ENCRYPTION_KEY="replace-with-app-data-encryption-secret"
-export PROMTY_APP_ENCRYPTION_KEY_ID="local"
-export PROMTY_ADMIN_GITHUB_IDS="immutable-numeric-github-id"
-export PROMTY_AUTH_RATE_LIMIT_REQUESTS="30"
-export PROMTY_AUTH_RATE_LIMIT_WINDOW_SECONDS="60"
-export PROMTY_ADMIN_RATE_LIMIT_REQUESTS="120"
-export PROMTY_ADMIN_RATE_LIMIT_WINDOW_SECONDS="60"
-export PROMTY_COMMUNITY_RATE_LIMIT_REQUESTS="120"
-export PROMTY_COMMUNITY_RATE_LIMIT_WINDOW_SECONDS="60"
-export PROMTY_INGEST_RATE_LIMIT_REQUESTS="120"
-export PROMTY_INGEST_RATE_LIMIT_WINDOW_SECONDS="60"
-export PROMTY_TRUSTED_PROXY_CIDRS="127.0.0.0/8,::1/128,172.16.0.0/12"
-export PROMTY_ADMIN_AUDIT_RETENTION_DAYS="180"
-export PROMTY_SUPPORT_EMAIL_PROVIDER="ses"
-export PROMTY_SUPPORT_NOTIFICATION_EMAILS="owner@example.com"
-export PROMTY_SUPPORT_FROM_EMAIL="support@promty.org"
-export PROMTY_SUPPORT_RATE_LIMIT_REQUESTS="5"
-export PROMTY_SUPPORT_RATE_LIMIT_WINDOW_SECONDS="300"
-export PROMTY_PROMPT_MAX_CHARS="50000"
-export PROMTY_RESPONSE_MAX_CHARS="50000"
-export PROMTY_EVENT_BATCH_MAX_BODY_BYTES="8388608"
-export PROMTY_MEMORY_SLICE_EVENT_MAX_ROWS="500"
-export PROMTY_MEMORY_SLICE_MAX_SLICES_PER_CALL="4"
-export PROMTY_MEMORY_DRAFT_PROMPT_MAX_BYTES="131072"
-export PROMTY_MEMORY_DRAFT_EVIDENCE_MAX_BYTES="98304"
-export PROMTY_PROJECT_MEMORY_PROMPT_MAX_BYTES="262144"
-export PROMTY_MEMORY_PROVIDER_RESPONSE_MAX_BYTES="1048576"
-export PROMTY_MEMORY_PROVIDER_OUTPUT_MAX_TOKENS="8192"
-export PROMTY_MEMORY_PROVIDER_WALL_DEADLINE_SECONDS="120"
-export PROMTY_PROJECT_MEMORY_BATCH_MAX_DRAFTS="60"
-export PROMTY_MEMORY_WORKER_POLL_SECONDS="2"
-export PROMTY_MEMORY_WORKER_HEARTBEAT_SECONDS="60"
-export PROMTY_MEMORY_WORKER_CHUNK_CONCURRENCY="2"
-export PROMTY_OAUTH_STATE_SECRET="replace-with-oauth-state-secret"
-export PROMTY_JWT_SECRET="replace-with-jwt-secret"
-export PROMTY_ACCESS_TOKEN_TTL_SECONDS="3600"
-# Production may use up to 28800 (8 hours); sessions are revocable server-side.
-```
-
-Use independent random values for `PROMTY_OAUTH_STATE_SECRET`,
-`PROMTY_JWT_SECRET`, and `PROMTY_API_TOKEN`; the backend does not reuse one
-secret as a fallback for another security boundary.
-
-Web users sign in through GitHub OAuth. The backend issues a short-lived HS256 JWT in an HttpOnly session cookie and requires it for browser reads such as `GET /api/events`.
-
-Signed-in users can open **Help & support** for searchable FAQs and a support
-inquiry form. Inquiries are stored before notification delivery; subject and
-message text are encrypted at rest. AWS SES configuration and the operational
-flow are documented in [`docs/support-inquiries.md`](docs/support-inquiries.md).
-
-Prompt text, AI response text, and unified diff patch text in raw event storage are encrypted at rest with application-level encryption. Project/session IDs, timestamps, file paths, line counts, and status metadata remain queryable for sorting and filtering. Prompt and response text are capped before encryption and default to 50,000 characters. Derived memory artifacts and artifact-version metadata are not covered by this envelope yet and must not be treated as secret storage.
-
-Collectors do not use the web JWT. CLI login issues a separate per-user collector token stored as a hash in PostgreSQL. `POST /api/events/batch` accepts that collector token as `Authorization: Bearer <token>`. `PROMTY_API_TOKEN` remains available as an optional local/global ingest token. Anonymous ingest is disabled by default; only set `PROMTY_ALLOW_ANONYMOUS_INGEST=true` for isolated local development.
-
-The web OAuth flow uses a signed state value plus a short-lived HttpOnly nonce cookie to reduce login CSRF risk.
-
-Administrator authorization uses only immutable numeric GitHub IDs from
-`PROMTY_ADMIN_GITHUB_IDS`; usernames and email addresses do not grant administrator
-access. OAuth and administrator endpoints have per-client sliding-window rate limits.
-Administrator console access and cross-owner project access are recorded in
-`admin_audit_logs` without storing session tokens, email addresses, prompts, or responses.
-
-The standalone operations console is available at `/admin`. It provides system-wide
-overview, user and credential inventory, full project management, decrypted event search
-and export, memory-generation job control, database/runtime telemetry, security posture,
-and the administrator audit trail. The configured administrator can suspend, restore, or
-delete non-admin users; issue and revoke collector tokens; disconnect GitHub access;
-create, update, export, or delete projects; and cancel or safely retry eligible memory
-jobs. Destructive and sensitive actions require typing the target username or project
-slug, are authorized again by the API, and are written to the audit trail. Raw events and
-administrator audit entries remain append-only from the console to preserve provenance.
-
-The console also includes a bilingual Marketing studio. One verified source story can
-generate side-by-side Korean and English variants for X, Threads, Bluesky, LinkedIn,
-DEV.to, GitHub Discussions, Reddit, and Hacker News. Approved social variants can be
-sent to Buffer as drafts, queued, or scheduled; DEV.to receives unpublished drafts;
-GitHub Discussions can be published directly; Reddit and Hacker News remain manual
-copy-only channels. See [`docs/marketing-content-studio.md`](docs/marketing-content-studio.md).
-
-Administrator control endpoints:
-
-```text
-GET  /api/admin/overview
-GET  /api/admin/users
-GET  /api/admin/projects
-GET  /api/admin/jobs
-GET  /api/admin/events
-GET  /api/admin/system
-GET  /api/admin/audit-logs
-GET  /api/admin/marketing-content
-GET  /api/admin/marketing-content/integrations
-POST /api/admin/marketing-content
-PATCH /api/admin/marketing-content/{content_id}
-POST /api/admin/marketing-content/{content_id}/generate
-POST /api/admin/marketing-content/{content_id}/approve
-POST /api/admin/marketing-content/{content_id}/deliver
-POST /api/admin/users/{user_id}/suspend
-POST /api/admin/users/{user_id}/restore
-DELETE /api/admin/users/{user_id}
-POST /api/admin/users/{user_id}/collector-tokens
-POST /api/admin/users/{user_id}/collector-tokens/{token_id}/revoke
-POST /api/admin/users/{user_id}/collector-tokens/revoke-all
-POST /api/admin/users/{user_id}/github-connection/disconnect
-POST /api/admin/projects
-PATCH /api/admin/projects/{project_id}
-DELETE /api/admin/projects/{project_id}
-POST /api/admin/jobs/{batch_id}/cancel
-POST /api/admin/jobs/{batch_id}/retry
-POST /api/admin/exports/events
-POST /api/admin/exports/projects/{project_id}
-```
-
-Signed-in users can publish a project from its Overview settings and browse shared
-projects from the Explore sidebar. Public project reads use dedicated read-only
-contracts:
-
-```text
-GET /api/projects/public
-GET /api/projects/public/{project_id}
-```
-
-The public response includes project metadata, aggregate activity, and generated or
-verified memory. Raw prompts, AI responses, unified diffs, and tracked file contents
-remain owner-only. Changing the project back to private immediately removes it from the
-public list and makes its public URL return not found.
-
-GitHub OAuth endpoints:
-
-```text
-GET /api/auth/github/start
-GET /api/auth/github/web/start
-GET /api/auth/github/web/repository/start
-GET /api/auth/github/callback
-GET /api/auth/me
-POST /api/auth/logout
-```
-
-See [Event Specification v1](docs/event-spec-v1.md) for the normalized event contract.
-
-See [Development Guidelines](docs/development-guidelines.md) for branch, commit, and module rules.
-
-See [Memory Architecture](docs/memory-architecture.md) for the project memory roadmap.
-
-See [Artifact Model](docs/artifact-model.md) for the current memory artifact direction.
-
-Gemini-backed memory generation is enabled when `PROMTY_GEMINI_API_KEY` is set in `.env.local` or `backend/.env.local`. Use [Promty env example](docs/promty.env.example) as the copy source. Without the key, Promty falls back to deterministic local session summaries.
-
-See [Codex Hook Verification](docs/codex-hook-verification.md) for the first hook smoke path.
-
-See [Database](docs/database.md) for the PostgreSQL schema and migration commands.
-
-See [Project Status](docs/project-status.md) for the current implementation snapshot and local runbook.
-
-Start the complete local stack, including migrations:
+Start PostgreSQL, migrations, backend workers, API, and frontend:
 
 ```bash
 docker compose up --build
 ```
 
-The frontend is available at `http://127.0.0.1:5173` and the API readiness check at
-`http://127.0.0.1:8011/health/ready`.
+Then open:
 
-Use the isolated Community UI preview at
-`http://127.0.0.1:5173/?view=community&preview=community`. It supplies local mock
-projects and public profiles without writing them to PostgreSQL.
+```text
+Frontend        http://127.0.0.1:5173
+API readiness   http://127.0.0.1:8011/health/ready
+```
 
-To run only PostgreSQL and manage processes on the host instead:
+To run application processes on the host while keeping PostgreSQL in Docker:
 
 ```bash
 docker compose up -d postgres
 ./.venv/bin/alembic -c backend/alembic.ini upgrade head
 ```
 
-Then run the API and Project Memory worker in separate terminals:
+Run the API and Project Memory worker in separate terminals:
 
 ```bash
 cd backend
@@ -491,10 +254,13 @@ cd backend
 ../.venv/bin/python -m app.workers.project_memory
 ```
 
-Compose loads development-only fallback secrets from `docker/compose.env` and
-then applies overrides from the ignored root `.env.local` when it exists.
+Compose loads development defaults from `docker/compose.env` and applies overrides from
+the ignored root `.env.local` when present. Copy configuration names from
+[`docs/promty.env.example`](./docs/promty.env.example).
 
-Run unit, PostgreSQL integration, and authenticated browser CRUD checks with:
+## Testing
+
+With the Compose stack running:
 
 ```bash
 cd backend && PROMTY_RUN_POSTGRES_TESTS=1 ../.venv/bin/pytest -q
@@ -502,5 +268,80 @@ cd frontend && npm test
 cd frontend && npm run test:e2e
 ```
 
-The E2E suite expects the Compose stack to be running. It creates an isolated
-short-lived browser user inside the backend container and removes it after the run.
+CI runs Python static checks, backend and collector tests, collector package validation,
+and the frontend production build.
+
+## Operations
+
+Promty includes an administrator console at `/admin` for system health, users, projects,
+memory jobs, security posture, audit logs, support inquiries, and bilingual marketing
+content operations.
+
+Production deployment uses GitHub Actions with AWS services including S3, CloudFront,
+ECR, EC2, Systems Manager, and PostgreSQL. Operational details and sensitive configuration
+belong in the dedicated runbooks rather than this README:
+
+- [AWS and GitHub deployment](./docs/aws-github-deployment.md)
+- [AWS resource inventory](./docs/aws-resource-inventory.md)
+- [Backend optimization plan](./docs/backend-optimization-plan.md)
+- [Support inquiries](./docs/support-inquiries.md)
+- [Marketing content studio](./docs/marketing-content-studio.md)
+
+## Collector reference
+
+Profiles isolate credentials, queues, logs, and uploader processes between environments:
+
+```bash
+npx promty-collector init --tool codex-cli --profile dev
+npx promty-collector init --tool codex-cli --profile prod
+npx promty-collector init --tool codex-cli --profiles dev,prod
+```
+
+Verify multiple targets:
+
+```bash
+npx promty-collector doctor --profiles dev,prod --tool codex-cli
+```
+
+Automatic updates are opt-in. Pass `--auto-update` to `init` or `start-uploader` when you
+want the background process to check npm periodically. Otherwise update explicitly:
+
+```bash
+npx promty-collector@latest init --tool codex-cli --profile prod
+```
+
+Useful maintenance commands:
+
+```bash
+promty install-hooks --tool codex-cli
+promty install-hooks --tool claude-code
+promty uninstall-hooks --tool claude-code
+promty upload --api-url http://127.0.0.1:8011
+promty doctor
+```
+
+The default local runtime lives under `~/.promty`. Events are queued by project and
+session at:
+
+```text
+~/.promty/events/<project_id>/<session_id>/events.jsonl
+```
+
+## Documentation
+
+| Guide | Purpose |
+|---|---|
+| [Project status](./docs/project-status.md) | Current implementation snapshot and local runbook |
+| [Development guidelines](./docs/development-guidelines.md) | Branch, commit, module, and verification rules |
+| [Collector verification](./docs/codex-hook-verification.md) | Real Codex hook smoke path |
+| [Memory architecture](./docs/memory-architecture.md) | Project Memory model and roadmap |
+| [Agent Context](./docs/agent-context.md) | CLI and MCP context retrieval |
+| [Artifact model](./docs/artifact-model.md) | Generated and reviewed memory artifacts |
+| [Database](./docs/database.md) | PostgreSQL schema and migrations |
+| [Deployment](./docs/aws-github-deployment.md) | AWS and GitHub Actions production runbook |
+
+---
+
+<p align="center">
+  <strong>Capture the work. Preserve the reasoning. Continue with intent.</strong>
+</p>

@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { appRouteFromPathname, isLegacyWorkspaceSearch } from "./routing";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  appRouteFromPathname,
+  isLegacyWorkspaceSearch,
+  navigateToAppUrl,
+} from "./routing";
 
 describe("appRouteFromPathname", () => {
   it("matches supported application routes", () => {
@@ -23,5 +27,44 @@ describe("appRouteFromPathname", () => {
     expect(isLegacyWorkspaceSearch("?project=project-id&tab=memory")).toBe(true);
     expect(isLegacyWorkspaceSearch("?utm_source=launch")).toBe(false);
     expect(isLegacyWorkspaceSearch("")).toBe(false);
+  });
+});
+
+describe("navigateToAppUrl", () => {
+  beforeEach(() => {
+    vi.stubGlobal("PopStateEvent", class {
+      state: unknown;
+      type: string;
+
+      constructor(type: string, init?: { state?: unknown }) {
+        this.type = type;
+        this.state = init?.state;
+      }
+    });
+    vi.stubGlobal("window", {
+      dispatchEvent: vi.fn(),
+      history: {
+        pushState: vi.fn(),
+        replaceState: vi.fn(),
+      },
+      location: { origin: "https://promty.org" },
+    });
+  });
+
+  it("uses history navigation for supported same-origin pages", () => {
+    expect(navigateToAppUrl("/admin?section=system")).toBe(true);
+    expect(window.history.pushState).toHaveBeenCalledWith(
+      { promtyAppNavigation: true },
+      "",
+      "/admin?section=system",
+    );
+    expect(window.dispatchEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not intercept API, raw document, or external URLs", () => {
+    expect(navigateToAppUrl("/api/auth/github/web/start")).toBe(false);
+    expect(navigateToAppUrl("/docs/promty-agent-setup.md")).toBe(false);
+    expect(navigateToAppUrl("https://github.com/example/project")).toBe(false);
+    expect(window.history.pushState).not.toHaveBeenCalled();
   });
 });

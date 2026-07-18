@@ -4,7 +4,6 @@ import {
   FolderGit2,
   KeyRound,
   Laptop,
-  LoaderCircle,
   ShieldCheck,
   UserRoundCheck,
 } from "lucide-react";
@@ -180,48 +179,6 @@ export function WebLoginPage({
           <BookOpen aria-hidden="true" size={15} strokeWidth={1.5} />
           {t("auth.learnCollector")}
         </a>
-      </section>
-    </main>
-  );
-}
-
-export function AuthLoadingPage() {
-  const { t } = useI18n();
-  return (
-    <main
-      aria-busy="true"
-      aria-live="polite"
-      className="cli-login-shell auth-loading-shell"
-    >
-      <section
-        className="cli-login-panel auth-login-panel auth-loading-panel"
-        aria-labelledby="auth-loading-title"
-        role="status"
-      >
-        <div className="cli-login-kicker">
-          <BrandLogo className="is-kicker" />
-          {BRAND_NAME}
-        </div>
-
-        <div className="cli-login-copy">
-          <h1 id="auth-loading-title">{t("auth.checkingSession")}</h1>
-          <p>{t("auth.moment")}</p>
-        </div>
-
-        <div className="auth-loading-indicator">
-          <LoaderCircle
-            aria-hidden="true"
-            className="auth-loading-spinner"
-            size={18}
-            strokeWidth={1.5}
-          />
-          <span>{t("auth.loading")}</span>
-        </div>
-
-        <div className="cli-login-footer">
-          <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.5} />
-          <span>{t("auth.secureGithub")}</span>
-        </div>
       </section>
     </main>
   );

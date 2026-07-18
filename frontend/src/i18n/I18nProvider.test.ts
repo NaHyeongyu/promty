@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  detectBrowserLocale,
   normalizeAppLocale,
+  resolveInitialAppLocale,
   translateMessage,
 } from "./I18nProvider";
 
@@ -15,6 +17,18 @@ describe("i18n", () => {
   it("supports Korean and Japanese locale values", () => {
     expect(normalizeAppLocale("ko")).toBe("ko");
     expect(normalizeAppLocale("ja")).toBe("ja");
+  });
+
+  it("uses the first supported browser language when no preference is saved", () => {
+    expect(detectBrowserLocale(["ko-KR", "en-US"])).toBe("ko");
+    expect(detectBrowserLocale(["fr-FR", "ja-JP", "en-US"])).toBe("ja");
+    expect(detectBrowserLocale(["zh-CN", "fr-FR"])).toBe("en");
+  });
+
+  it("keeps a saved preference ahead of the browser language", () => {
+    expect(resolveInitialAppLocale("ja", ["ko-KR", "en-US"])).toBe("ja");
+    expect(resolveInitialAppLocale(null, ["ko-KR", "en-US"])).toBe("ko");
+    expect(resolveInitialAppLocale("unsupported", ["ja-JP"])).toBe("ja");
   });
 
   it("translates and interpolates interface messages", () => {
@@ -34,6 +48,18 @@ describe("i18n", () => {
     expect(
       translateMessage("ja", "project.nameSearchNoMatch", { query: "Promty" }),
     ).toContain("Promty");
+  });
+
+  it("uses natural terminology for memory and review states", () => {
+    expect(translateMessage("ko", "memory.compiledDocument")).toBe(
+      "통합된 프로젝트 메모리",
+    );
+    expect(translateMessage("ko", "collector.updateCompleteDescription", { version: "0.1.4" }))
+      .toContain("상태 신호");
+    expect(translateMessage("ja", "memory.readyDescription")).toBe(
+      "記録された作業を1つのメモリに統合する準備ができました。",
+    );
+    expect(translateMessage("ja", "community.usedAi")).toBe("使用したAI");
   });
 
   it("explains that collector hooks are installed per repository", () => {

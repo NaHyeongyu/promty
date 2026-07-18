@@ -12,6 +12,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.locales import locale_from_accept_language
 from app.core.security import (
     get_optional_web_user,
     hash_collector_token,
@@ -234,7 +235,11 @@ def finish_github_login(
         )
         return response
 
-    user = upsert_github_user(db, access_token)
+    user = upsert_github_user(
+        db,
+        access_token,
+        preferred_locale=locale_from_accept_language(request.headers.get("accept-language")),
+    )
     if user.suspended_at is not None:
         db.rollback()
         raise HTTPException(
