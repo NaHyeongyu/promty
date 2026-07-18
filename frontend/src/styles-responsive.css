@@ -42,14 +42,6 @@
     flex: 1 1 132px;
   }
 
-  .sidebar-saved-section {
-    flex: 1 1 100%;
-  }
-
-  .sidebar-saved-list {
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  }
-
   .sidebar-loading-item {
     flex: 1 1 132px;
   }

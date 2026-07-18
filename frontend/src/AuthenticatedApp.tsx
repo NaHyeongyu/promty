@@ -273,7 +273,7 @@ export function AuthenticatedApp() {
     selectedProject,
     setProjectSearchQuery,
     setProjectSortMode,
-    sidebarBookmarkedProjects,
+    visibleBookmarkedProjects,
     visibleProjects,
   } = useProjectCatalog({
     previewEmptyProjects,
@@ -285,15 +285,17 @@ export function AuthenticatedApp() {
   const activeTitle =
     activeItem === "projects"
       ? t("nav.projects")
-      : activeItem === "community"
-        ? t("nav.community")
-        : activeItem === "support"
-          ? t("nav.support")
-          : activeItem === "admin"
-            ? t("nav.admin")
-            : activeItem === "settings" || activeItem === "profile"
-              ? t("settings.title")
-              : t("settings.account");
+      : activeItem === "pinned"
+        ? t("nav.pinned")
+        : activeItem === "community"
+          ? t("nav.community")
+          : activeItem === "support"
+            ? t("nav.support")
+            : activeItem === "admin"
+              ? t("nav.admin")
+              : activeItem === "settings" || activeItem === "profile"
+                ? t("settings.title")
+                : t("settings.account");
   const projectRouteKey = (project: Project | null | undefined) =>
     sanitizeProjectRouteKey(project?.slug) ?? project?.id ?? null;
   const projectMatchesRouteKey = (project: Project, routeKey: string) =>
@@ -819,14 +821,11 @@ export function AuthenticatedApp() {
         currentUser={currentUser}
         isReviewQueueOpen={isReviewQueueOpen}
         onLogout={logout}
-        onOpenProject={openProjectDetail}
         onOpenReviewQueue={openReviewQueue}
         onOpenCollectorUpdate={openCollectorUpdate}
         onSelectItem={selectSidebarItem}
         pendingReviewProjectCount={reviewProjectCount}
         savedProjectCount={bookmarkedProjects.length}
-        savedProjects={sidebarBookmarkedProjects}
-        selectedProjectId={selectedProjectId}
       />
 
       <CollectorUpdateModal
@@ -1013,6 +1012,34 @@ export function AuthenticatedApp() {
             projectSortMode={projectSortMode}
             repositoryConnector={repositoryConnector}
             visibleProjects={visibleProjects}
+          />
+        ) : activeItem === "pinned" ? (
+          <ProjectsPage
+            activeTitle={activeTitle}
+            displayProjects={bookmarkedProjects}
+            errorMessage={errorMessage}
+            isEventsLoading={isEventsLoading}
+            onBrowseProjects={() => selectSidebarItem("projects")}
+            onClearSearch={() => setProjectSearchQuery("")}
+            onFirstEvent={(event) => {
+              void openFirstCapturedEvent(event);
+            }}
+            onboardingPollingEnabled={false}
+            onOpenProject={openProjectDetail}
+            onOpenRepositoryConnector={() => openRepositoryConnectorOverlay(null)}
+            onOpenReviewQueue={(projectId, returnFocusElement) =>
+              openReviewQueue(returnFocusElement, projectId)
+            }
+            onRetry={loadEvents}
+            onSearchChange={setProjectSearchQuery}
+            onSortModeChange={setProjectSortMode}
+            previewEmptyProjects={previewEmptyProjects}
+            previewProjectLoading={previewProjectLoading}
+            projectSearchQuery={projectSearchQuery}
+            projectSortMode={projectSortMode}
+            repositoryConnector={null}
+            view="pinned"
+            visibleProjects={visibleBookmarkedProjects}
           />
         ) : activeItem === "community" ? (
           <CommunityHubPage hideHeader={Boolean(selectedPublicProjectId || selectedPublicProfileId)}>

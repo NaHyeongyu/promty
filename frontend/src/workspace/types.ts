@@ -6,6 +6,7 @@ import type {
 
 export type SidebarItemId =
   | "projects"
+  | "pinned"
   | "community"
   | "admin"
   | "support"

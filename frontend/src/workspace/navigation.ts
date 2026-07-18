@@ -48,6 +48,7 @@ const PROJECT_DETAIL_TAB_IDS = new Set<ProjectDetailTabId>([
 const SIDEBAR_ITEM_IDS = new Set<SidebarItemId>([
   "admin",
   "community",
+  "pinned",
   "projects",
   "support",
   "settings",

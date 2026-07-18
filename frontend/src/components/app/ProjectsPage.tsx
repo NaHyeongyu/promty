@@ -1,7 +1,9 @@
 import { type ReactNode, useRef } from "react";
 import {
   ArrowRight,
+  Bookmark,
   CircleAlert,
+  Folder,
   Plus,
   RefreshCw,
   Search,
@@ -22,6 +24,7 @@ export function ProjectsPage({
   displayProjects,
   errorMessage,
   isEventsLoading,
+  onBrowseProjects,
   onClearSearch,
   onFirstEvent,
   onboardingPollingEnabled,
@@ -37,11 +40,13 @@ export function ProjectsPage({
   projectSortMode,
   repositoryConnector,
   visibleProjects,
+  view = "all",
 }: {
   activeTitle: string;
   displayProjects: Project[];
   errorMessage: string | null;
   isEventsLoading: boolean;
+  onBrowseProjects?: () => void;
   onClearSearch: () => void;
   onFirstEvent: (event: EventRecord) => void;
   onboardingPollingEnabled: boolean;
@@ -60,6 +65,7 @@ export function ProjectsPage({
   projectSortMode: ProjectSortMode;
   repositoryConnector: ReactNode;
   visibleProjects: Project[];
+  view?: "all" | "pinned";
 }) {
   const { t } = useI18n();
   return (
@@ -77,20 +83,31 @@ export function ProjectsPage({
           </p>
         </div>
         <div className="page-actions">
-          <button
-            className="toolbar-button project-add-button"
-            onClick={onOpenRepositoryConnector}
-            type="button"
-          >
-            <Plus aria-hidden="true" size={16} strokeWidth={1.5} />
-            <span>{t("project.add")}</span>
-          </button>
+          {view === "pinned" ? (
+            <button
+              className="toolbar-button"
+              onClick={onBrowseProjects}
+              type="button"
+            >
+              <Folder aria-hidden="true" size={16} strokeWidth={1.5} />
+              <span>{t("pinned.browseProjects")}</span>
+            </button>
+          ) : (
+            <button
+              className="toolbar-button project-add-button"
+              onClick={onOpenRepositoryConnector}
+              type="button"
+            >
+              <Plus aria-hidden="true" size={16} strokeWidth={1.5} />
+              <span>{t("project.add")}</span>
+            </button>
+          )}
         </div>
       </header>
 
       {repositoryConnector}
 
-      <section className="projects-section" aria-label={t("nav.projects")}>
+      <section className="projects-section" aria-label={activeTitle}>
         {previewProjectLoading ? (
           <ProjectListLoadingState delayMs={0} />
         ) : isEventsLoading && displayProjects.length === 0 && !previewEmptyProjects ? (
@@ -110,6 +127,22 @@ export function ProjectsPage({
             >
               <RefreshCw aria-hidden="true" size={16} strokeWidth={1.5} />
               <span>{isEventsLoading ? t("common.refreshing") : t("common.retry")}</span>
+            </button>
+          </EmptyState>
+        ) : displayProjects.length === 0 && view === "pinned" ? (
+          <EmptyState
+            description={t("pinned.emptyDescription")}
+            eyebrow={t("nav.pinned")}
+            icon={Bookmark}
+            title={t("pinned.emptyTitle")}
+          >
+            <button
+              className="empty-state-button"
+              onClick={onBrowseProjects}
+              type="button"
+            >
+              <Folder aria-hidden="true" size={16} strokeWidth={1.5} />
+              <span>{t("pinned.browseProjects")}</span>
             </button>
           </EmptyState>
         ) : displayProjects.length === 0 ? (

@@ -43,12 +43,11 @@ export function useProjectCatalog({
         ),
     [projectCatalog],
   );
-  const sidebarBookmarkedProjects = bookmarkedProjects.slice(0, 6);
-  const visibleProjects = useMemo(() => {
+  const sortAndFilterProjects = (sourceProjects: Project[]) => {
     const query = projectSearchQuery.trim().toLowerCase();
     const filteredProjects = query
-      ? displayProjects.filter((project) => project.name.toLowerCase().includes(query))
-      : displayProjects;
+      ? sourceProjects.filter((project) => project.name.toLowerCase().includes(query))
+      : sourceProjects;
 
     return [...filteredProjects].sort((left, right) => {
       const leftTimestamp =
@@ -57,7 +56,13 @@ export function useProjectCatalog({
         projectSortMode === "added" ? right.createdTimestamp : right.latestTimestamp;
       return new Date(rightTimestamp).getTime() - new Date(leftTimestamp).getTime();
     });
+  };
+  const visibleProjects = useMemo(() => {
+    return sortAndFilterProjects(displayProjects);
   }, [displayProjects, projectSearchQuery, projectSortMode]);
+  const visibleBookmarkedProjects = useMemo(() => {
+    return sortAndFilterProjects(bookmarkedProjects);
+  }, [bookmarkedProjects, projectSearchQuery, projectSortMode]);
   const projectHeaderOptions = useMemo<ProjectHeaderProjectOption[]>(
     () =>
       projectCatalog.map((project) => ({
@@ -84,7 +89,7 @@ export function useProjectCatalog({
     selectedProject,
     setProjectSearchQuery,
     setProjectSortMode,
-    sidebarBookmarkedProjects,
+    visibleBookmarkedProjects,
     visibleProjects,
   };
 }

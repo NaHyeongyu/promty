@@ -72,6 +72,11 @@
   font-weight: var(--bh-font-weight-section);
 }
 
+.sidebar-item-badge[data-tone="neutral"] {
+  color: var(--bh-color-text-muted);
+  background: var(--bh-color-surface-secondary);
+}
+
 .sidebar-item-action[data-active="true"] {
   background: transparent;
 }
@@ -79,10 +84,6 @@
 .sidebar-item-action[data-active="true"] .sidebar-item-badge {
   color: var(--bh-color-text-primary);
   background: color-mix(in srgb, var(--bh-color-warning) 22%, transparent);
-}
-
-.sidebar-saved-section + .sidebar-item {
-  margin-top: var(--bh-space-2);
 }
 
 .sidebar-footer {
@@ -589,10 +590,6 @@
 
   .sidebar-item {
     width: 100%;
-  }
-
-  .sidebar-saved-list {
-    grid-template-columns: 1fr;
   }
 
   .sidebar-spacer {

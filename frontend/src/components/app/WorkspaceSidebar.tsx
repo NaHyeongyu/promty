@@ -14,7 +14,7 @@ import {
   Settings,
   X,
 } from "lucide-react";
-import type { AuthUser, Project, SidebarItemId } from "../../workspace/types";
+import type { AuthUser, SidebarItemId } from "../../workspace/types";
 import { useI18n } from "../../i18n/I18nProvider";
 import { BrandLockup } from "./Branding";
 
@@ -33,13 +33,10 @@ export function WorkspaceSidebar({
   isReviewQueueOpen,
   onLogout,
   onOpenCollectorUpdate,
-  onOpenProject,
   onOpenReviewQueue,
   onSelectItem,
   pendingReviewProjectCount,
   savedProjectCount,
-  savedProjects,
-  selectedProjectId,
 }: {
   activeItem: SidebarItemId;
   adminAlertCount: number;
@@ -49,13 +46,10 @@ export function WorkspaceSidebar({
   isReviewQueueOpen: boolean;
   onLogout: () => void;
   onOpenCollectorUpdate?: () => void;
-  onOpenProject: (projectId: string) => void;
   onOpenReviewQueue: (returnFocusElement: HTMLElement | null) => void;
   onSelectItem: (item: SidebarItemId) => void;
   pendingReviewProjectCount: number;
   savedProjectCount: number;
-  savedProjects: Project[];
-  selectedProjectId: string | null;
 }) {
   const { t } = useI18n();
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
@@ -97,10 +91,6 @@ export function WorkspaceSidebar({
     setIsAccountMenuOpen(false);
     setIsMobileMenuOpen(false);
     onSelectItem(item);
-  };
-  const openProject = (projectId: string) => {
-    setIsMobileMenuOpen(false);
-    onOpenProject(projectId);
   };
   const openReviewQueue = () => {
     const returnFocusElement = isMobileMenuOpen
@@ -152,6 +142,19 @@ export function WorkspaceSidebar({
             onClick={() => selectItem("projects")}
           />
           <SidebarNavItem
+            active={activeItem === "pinned"}
+            ariaLabel={
+              savedProjectCount > 0
+                ? `${t("nav.pinned")}, ${savedProjectCount}`
+                : t("nav.pinned")
+            }
+            badge={savedProjectCount > 0 ? savedProjectCount : undefined}
+            badgeTone="neutral"
+            icon={Bookmark}
+            label={t("nav.pinned")}
+            onClick={() => selectItem("pinned")}
+          />
+          <SidebarNavItem
             active={activeItem === "community"}
             icon={Share2}
             label={t("nav.community")}
@@ -179,40 +182,6 @@ export function WorkspaceSidebar({
             ref={reviewQueueButtonRef}
             reviewQueueFallbackFocus
           />
-
-          <section className="sidebar-saved-section" aria-label={t("nav.pinned")}>
-            <div className="sidebar-saved-header">
-              <span>{t("nav.pinned")}</span>
-              <small>{savedProjectCount}</small>
-            </div>
-            {savedProjects.length > 0 ? (
-              <div className="sidebar-saved-list">
-                {savedProjects.map((project) => (
-                  <button
-                    className="sidebar-saved-project"
-                    data-active={project.id === selectedProjectId ? "true" : undefined}
-                    key={project.id}
-                    onClick={() => openProject(project.id)}
-                    title={project.name}
-                    type="button"
-                  >
-                    <Bookmark
-                      aria-hidden="true"
-                      fill="currentColor"
-                      size={14}
-                      strokeWidth={1.5}
-                    />
-                    <span>
-                      <strong>{project.name}</strong>
-                      <small>{project.latestActivityLabel}</small>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="sidebar-saved-empty">{t("nav.pinnedEmpty")}</p>
-            )}
-          </section>
 
           {canUseAdmin ? (
             <SidebarNavItem
@@ -340,6 +309,7 @@ const SidebarNavItem = function SidebarNavItem({
   ariaHasPopup,
   ariaLabel,
   badge,
+  badgeTone = "attention",
   icon: Icon,
   label,
   onClick,
@@ -353,6 +323,7 @@ const SidebarNavItem = function SidebarNavItem({
   ariaHasPopup?: "dialog";
   ariaLabel?: string;
   badge?: number;
+  badgeTone?: "attention" | "neutral";
   icon: typeof Folder;
   label: string;
   onClick: () => void;
@@ -376,7 +347,7 @@ const SidebarNavItem = function SidebarNavItem({
       <Icon aria-hidden="true" className="sidebar-icon" size={18} strokeWidth={1.5} />
       <span>{label}</span>
       {badge ? (
-        <span aria-hidden="true" className="sidebar-item-badge">
+        <span aria-hidden="true" className="sidebar-item-badge" data-tone={badgeTone}>
           {badge}
         </span>
       ) : null}

@@ -57,6 +57,14 @@ describe("workspace navigation", () => {
     expect(buildUrlNavigationSearch(state)).toBe("?view=support");
   });
 
+  it("keeps the pinned projects page in a shareable workspace URL", () => {
+    window.location.search = "?view=pinned";
+    const state = readUrlNavigationState();
+
+    expect(state.activeItem).toBe("pinned");
+    expect(buildUrlNavigationSearch(state)).toBe("?view=pinned");
+  });
+
   it("rejects traversal paths from repository navigation", () => {
     const state = normalizeUrlNavigationState({
       activeDetailTab: "files",
