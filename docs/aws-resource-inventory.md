@@ -68,6 +68,9 @@ Status: Deployed
 Origin: promty-prod-frontend-435917083683.s3.ap-southeast-2.amazonaws.com
 Origin access control id: ETUAJRENPIY53
 Response headers policy: 67f7725c-6f97-4210-82d7-5512b31e9d03 Managed-SecurityHeadersPolicy
+Viewer request function: promty-spa-rewrite
+HTTP versions: HTTP/2 and HTTP/3
+Price class: PriceClass_100
 ```
 
 S3 frontend bucket:
@@ -84,6 +87,8 @@ Frontend configuration files:
 
 ```text
 infra/aws/promty-cloudfront-distribution.json
+infra/aws/promty-cloudfront-spa-rewrite.js
+infra/aws/configure-promty-cloudfront.sh
 infra/aws/promty-cloudfront-oac.json
 infra/aws/promty-frontend-bucket-policy.json
 infra/aws/promty-frontend-dns-records.json

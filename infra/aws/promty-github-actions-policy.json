@@ -45,6 +45,22 @@
       "Resource": "*"
     },
     {
+      "Sid": "CloudFrontFrontendConfiguration",
+      "Effect": "Allow",
+      "Action": [
+        "cloudfront:CreateFunction",
+        "cloudfront:DescribeFunction",
+        "cloudfront:GetDistributionConfig",
+        "cloudfront:PublishFunction",
+        "cloudfront:UpdateDistribution",
+        "cloudfront:UpdateFunction"
+      ],
+      "Resource": [
+        "arn:aws:cloudfront::435917083683:distribution/E3RJ7YU3NUZQSF",
+        "arn:aws:cloudfront::435917083683:function/promty-spa-rewrite"
+      ]
+    },
+    {
       "Sid": "Ec2SsmDeployment",
       "Effect": "Allow",
       "Action": "ssm:SendCommand",

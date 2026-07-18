@@ -107,6 +107,7 @@
 .auth-docs-link {
   display: inline-flex;
   width: fit-content;
+  min-height: 44px;
   align-items: center;
   gap: var(--bh-space-2);
   margin-top: calc(var(--bh-space-3) * -1);

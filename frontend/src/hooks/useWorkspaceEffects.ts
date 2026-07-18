@@ -272,7 +272,6 @@ export function useWorkspaceProjectResourceEffects({
     }
 
     const detailController = new AbortController();
-    const githubFilesController = new AbortController();
     clearProjectDetailRef.current();
     clearProjectFilesRef.current();
     clearRepositoryBrowserStateRef.current();
@@ -281,13 +280,8 @@ export function useWorkspaceProjectResourceEffects({
       selectedProject,
       detailController.signal,
     );
-    void loadProjectGithubFilesRef.current(
-      selectedProjectId,
-      githubFilesController.signal,
-    );
     return () => {
       detailController.abort();
-      githubFilesController.abort();
     };
   }, [
     activeItem,
@@ -308,12 +302,21 @@ export function useWorkspaceProjectResourceEffects({
       return;
     }
 
-    const controller = new AbortController();
-    void loadProjectFilesRef.current(selectedProjectId, controller.signal);
-    return () => controller.abort();
+    const projectFilesController = new AbortController();
+    const githubFilesController = new AbortController();
+    void loadProjectFilesRef.current(selectedProjectId, projectFilesController.signal);
+    void loadProjectGithubFilesRef.current(
+      selectedProjectId,
+      githubFilesController.signal,
+    );
+    return () => {
+      projectFilesController.abort();
+      githubFilesController.abort();
+    };
   }, [
     activeDetailTab,
     activeItem,
+    loadProjectGithubFilesRef,
     loadProjectFilesRef,
     selectedProjectId,
   ]);

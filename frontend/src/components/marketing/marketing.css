@@ -86,6 +86,7 @@
 .marketing-brand {
   display: inline-flex;
   width: fit-content;
+  min-height: 44px;
   align-items: center;
   gap: 9px;
   color: #fff;
@@ -106,6 +107,9 @@
 
 .marketing-nav a,
 .marketing-footer-links a {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
   color: #aab1bd;
   font-size: 13px;
   transition: color 150ms ease;
@@ -119,7 +123,7 @@
 
 .marketing-header-cta {
   display: inline-flex;
-  min-height: 38px;
+  min-height: 44px;
   width: fit-content;
   margin-left: auto;
   align-items: center;
@@ -2242,7 +2246,7 @@
 }
 
 .marketing-site--figma-home .marketing-header-cta {
-  min-height: 38px;
+  min-height: 44px;
   border: 1px solid var(--figma-line-strong);
   border-radius: 0;
   padding: 0 17px;
@@ -2388,7 +2392,7 @@
   display: grid;
   grid-template-columns: 1fr auto;
   width: 462px;
-  min-height: 42px;
+  min-height: 44px;
   margin-top: 18px;
   align-items: center;
   border: 1px solid var(--figma-line);
@@ -2406,7 +2410,7 @@
   color: var(--figma-secondary);
   font-family: var(--bh-font-code);
   font-size: 11px;
-  line-height: 40px;
+  line-height: 42px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2414,7 +2418,7 @@
 .figma-command > span {
   display: inline-flex;
   min-width: 76px;
-  height: 40px;
+  height: 42px;
   align-items: center;
   justify-content: center;
   gap: 7px;
@@ -2687,8 +2691,8 @@
 
 .figma-hero-demo-footer button {
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 44px;
+  height: 44px;
   place-items: center;
   border: 1px solid var(--figma-line);
   border-radius: 0;
@@ -3472,7 +3476,7 @@
   }
 
   .marketing-site--figma-home .marketing-header-cta {
-    min-height: 36px;
+    min-height: 44px;
     padding: 0 12px;
   }
 

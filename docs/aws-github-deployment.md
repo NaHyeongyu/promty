@@ -760,12 +760,37 @@ Manual frontend deploy:
 cd frontend
 npm ci
 VITE_PROMPTHUB_API_URL=https://api.promty.org npm run build
-aws s3 sync dist s3://promty-prod-frontend-435917083683 --delete --profile promty-prod
+aws s3 sync dist/assets s3://promty-prod-frontend-435917083683/assets --delete --profile promty-prod
+aws s3 cp dist/assets s3://promty-prod-frontend-435917083683/assets \
+  --recursive \
+  --cache-control "public,max-age=31536000,immutable" \
+  --profile promty-prod
+aws s3 sync dist s3://promty-prod-frontend-435917083683 \
+  --delete \
+  --exclude "assets/*" \
+  --exclude "index.html" \
+  --cache-control "public,max-age=3600" \
+  --profile promty-prod
+aws s3 cp dist/index.html s3://promty-prod-frontend-435917083683/index.html \
+  --cache-control "public,max-age=0,must-revalidate,s-maxage=86400" \
+  --content-type "text/html" \
+  --profile promty-prod
 aws cloudfront create-invalidation \
   --profile promty-prod \
   --distribution-id E3RJ7YU3NUZQSF \
   --paths "/*"
 ```
+
+Apply the SPA viewer-request rewrite and HTTP/3 distribution settings after
+CloudFront infrastructure changes:
+
+```bash
+AWS_PROFILE_NAME=promty-prod bash infra/aws/configure-promty-cloudfront.sh
+```
+
+The rewrite sends extensionless application routes such as `/about` and
+`/docs/collector` directly to `index.html`. Hashed files under `assets/` keep
+their original paths and use a one-year immutable browser cache.
 
 Manual backend image build and push:
 
