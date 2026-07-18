@@ -34,9 +34,7 @@ def marketing_content_response(item: MarketingContent) -> dict[str, Any]:
     return {
         "id": str(item.id),
         "creator": (
-            {"id": str(creator.id), "username": creator.username}
-            if creator is not None
-            else None
+            {"id": str(creator.id), "username": creator.username} if creator is not None else None
         ),
         "campaign_name": item.campaign_name,
         "source_type": item.source_type,
@@ -61,8 +59,11 @@ def marketing_content_response(item: MarketingContent) -> dict[str, Any]:
 def read_marketing_content(db: Session, content_id: UUID) -> MarketingContent:
     item = db.scalar(select(MarketingContent).where(MarketingContent.id == content_id))
     if item is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Marketing content not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Marketing content not found"
+        )
     return item
+
 
 def list_marketing_content(
     db: Session,
@@ -141,6 +142,27 @@ def update_marketing_content(
         setattr(item, field, value)
     item.updated_at = utc_now()
     return item
+
+
+def delete_marketing_content(
+    db: Session,
+    item: MarketingContent,
+    *,
+    confirmation: str,
+) -> dict[str, str]:
+    if confirmation != item.campaign_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f'Type "{item.campaign_name}" to confirm this administrator action.',
+        )
+    response = {
+        "campaign_name": item.campaign_name,
+        "id": str(item.id),
+        "status": "deleted",
+    }
+    db.delete(item)
+    db.flush()
+    return response
 
 
 def approve_marketing_content(item: MarketingContent) -> MarketingContent:
@@ -255,7 +277,7 @@ def _generation_prompt(item: MarketingContent) -> str:
     return "\n".join(
         (
             "Create bilingual marketing content for Promty, a durable project-memory product for AI coding tools.",
-            "Return JSON only with exactly this shape: {\"ko\": {CHANNEL: {\"title\": string, \"body\": string, \"hashtags\": [string]}}, \"en\": {CHANNEL: {\"title\": string, \"body\": string, \"hashtags\": [string]}}}.",
+            'Return JSON only with exactly this shape: {"ko": {CHANNEL: {"title": string, "body": string, "hashtags": [string]}}, "en": {CHANNEL: {"title": string, "body": string, "hashtags": [string]}}}.',
             "Include every requested channel in both ko and en and no other channels.",
             "Write idiomatic Korean and idiomatic English independently; do not produce literal translations.",
             "Use only the supplied facts. Never invent metrics, customers, testimonials, integrations, or outcomes.",

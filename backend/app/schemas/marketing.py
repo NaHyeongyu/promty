@@ -38,6 +38,10 @@ SUPPORTED_MARKETING_CHANNELS: tuple[str, ...] = (
 )
 
 
+class StrictMarketingRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
 def _strip_optional(value: Any) -> Any:
     if isinstance(value, str):
         return value.strip() or None
@@ -97,7 +101,7 @@ class MarketingBilingualContent(BaseModel):
         return value
 
 
-class MarketingContentCreateRequest(BaseModel):
+class MarketingContentCreateRequest(StrictMarketingRequest):
     campaign_name: str = Field(..., min_length=1, max_length=255)
     source_type: Literal["manual", "release", "public_project", "faq", "support"] = "manual"
     source_title: str = Field(..., min_length=1, max_length=500)
@@ -127,7 +131,7 @@ class MarketingContentCreateRequest(BaseModel):
         return list(dict.fromkeys(value))
 
 
-class MarketingContentUpdateRequest(BaseModel):
+class MarketingContentUpdateRequest(StrictMarketingRequest):
     campaign_name: str | None = Field(default=None, min_length=1, max_length=255)
     source_title: str | None = Field(default=None, min_length=1, max_length=500)
     source_summary: str | None = Field(default=None, min_length=10, max_length=20_000)
@@ -159,11 +163,15 @@ class MarketingContentUpdateRequest(BaseModel):
         return list(dict.fromkeys(value)) if value is not None else None
 
 
-class MarketingContentGenerateRequest(BaseModel):
+class MarketingContentGenerateRequest(StrictMarketingRequest):
     provider: Literal["auto", "openai", "gemini", "template"] = "auto"
 
 
-class MarketingDeliveryRequest(BaseModel):
+class MarketingContentDeleteRequest(StrictMarketingRequest):
+    confirmation: str = Field(..., min_length=1, max_length=255)
+
+
+class MarketingDeliveryRequest(StrictMarketingRequest):
     channel: MarketingChannel
     locale: MarketingLocale
     mode: Literal[
@@ -221,6 +229,14 @@ class MarketingContentPageResponse(BaseModel):
     limit: int
     offset: int
     total: int
+
+
+class MarketingContentDeleteResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    campaign_name: str
+    id: str
+    status: Literal["deleted"]
 
 
 class MarketingDeliveryResponse(BaseModel):

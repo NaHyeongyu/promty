@@ -66,7 +66,6 @@ import {
   updateAdminSupportInquiry,
   updateAdminProject,
 } from "./api/admin";
-import type { AdminProjectMutation } from "./api/admin";
 import { fetchCurrentUser, logoutSession } from "./api/auth";
 import { ForbiddenError, UnauthorizedError } from "./api/client";
 import { AdminDashboard } from "./components/app/AdminDashboard";
@@ -138,6 +137,18 @@ type ProjectEditorState =
   | { mode: "edit"; project: AdminProject };
 
 type IssuedToken = { name: string; token: string; username: string };
+type AdminProjectFormPayload = {
+  confirmation: string;
+  default_branch: string;
+  description: string | null;
+  github_url: string | null;
+  name: string;
+  owner_id?: string;
+  project_url: string | null;
+  slug: string | null;
+  tags: string[];
+  visibility: "private" | "public";
+};
 type AdminProjectSort = "popularity" | "recent" | "saves" | "views" | "views_7d";
 type AdminProjectVisibility = "all" | "private" | "public";
 
@@ -581,7 +592,7 @@ export function AdminApp() {
     }
   };
 
-  const saveProject = async (payload: AdminProjectMutation & { name?: string; owner_id?: string }) => {
+  const saveProject = async (payload: AdminProjectFormPayload) => {
     if (!projectEditor) return;
     setIsMutating(true);
     setErrorMessage(null);
@@ -591,7 +602,8 @@ export function AdminApp() {
         await createAdminProject({ ...payload, name: payload.name, owner_id: payload.owner_id });
         setNotice(text(`${payload.name} created.`, `${payload.name} 프로젝트를 생성했습니다.`));
       } else {
-        await updateAdminProject(projectEditor.project.id, payload);
+        const { owner_id: _ownerId, ...update } = payload;
+        await updateAdminProject(projectEditor.project.id, update);
         setNotice(text(`${payload.name || projectEditor.project.name} updated.`, `${payload.name || projectEditor.project.name} 프로젝트를 수정했습니다.`));
       }
       setProjectEditor(null);
@@ -1152,7 +1164,7 @@ function SystemSection({ system }: { system: AdminSystem }) {
   );
 }
 
-function ProjectEditorDialog({ editor, isMutating, onCancel, onSave, users }: { editor: ProjectEditorState; isMutating: boolean; onCancel: () => void; onSave: (payload: AdminProjectMutation & { name?: string; owner_id?: string }) => void; users: AdminUser[] }) {
+function ProjectEditorDialog({ editor, isMutating, onCancel, onSave, users }: { editor: ProjectEditorState; isMutating: boolean; onCancel: () => void; onSave: (payload: AdminProjectFormPayload) => void; users: AdminUser[] }) {
   const { text } = useAdminLocale();
   const project = editor.mode === "edit" ? editor.project : null;
   const initialOwner = project?.owner.id ?? users[0]?.id ?? "";

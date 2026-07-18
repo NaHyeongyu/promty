@@ -53,10 +53,10 @@ export type MarketingContent = {
   scheduled_at: string | null;
   source_summary: string;
   source_title: string;
-  source_type: string;
+  source_type: "faq" | "manual" | "public_project" | "release" | "support";
   source_url: string | null;
   status: MarketingStatus;
-  tone: string;
+  tone: "founder" | "launch" | "practical" | "technical";
   updated_at: string | null;
 };
 
@@ -108,6 +108,18 @@ export function updateMarketingContent(
   return requestJsonBody(`/api/admin/marketing-content/${id}`, "PATCH", payload, messages);
 }
 
+export function deleteMarketingContent(
+  id: string,
+  confirmation: string,
+): Promise<{ campaign_name: string; id: string; status: "deleted" }> {
+  return requestJsonBody(
+    `/api/admin/marketing-content/${id}`,
+    "DELETE",
+    { confirmation },
+    messages,
+  );
+}
+
 export function generateMarketingContent(
   id: string,
   provider: "auto" | "gemini" | "openai" | "template" = "auto",
@@ -143,7 +155,7 @@ export function deliverMarketingContent(
   external_url: string | null;
   locale: MarketingLocale;
   mode: string;
-  status: string;
+  status: "copied" | "drafted" | "published" | "queued" | "scheduled";
 }> {
   return requestJsonBody(
     `/api/admin/marketing-content/${id}/deliver`,

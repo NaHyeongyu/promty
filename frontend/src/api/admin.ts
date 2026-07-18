@@ -204,7 +204,12 @@ export function suspendAdminUser(
   userId: string,
   confirmation: string,
   reason: string,
-): Promise<{ status: string; user_id: string }> {
+): Promise<{
+  status: "suspended";
+  suspended_at: string | null;
+  suspension_reason: string;
+  user_id: string;
+}> {
   return requestJsonBody(
     `/api/admin/users/${userId}/suspend`,
     "POST",
@@ -216,7 +221,7 @@ export function suspendAdminUser(
 export function restoreAdminUser(
   userId: string,
   confirmation: string,
-): Promise<{ status: string; user_id: string }> {
+): Promise<{ status: "active"; user_id: string }> {
   return requestJsonBody(
     `/api/admin/users/${userId}/restore`,
     "POST",
@@ -228,7 +233,11 @@ export function restoreAdminUser(
 export function deleteAdminUser(
   userId: string,
   confirmation: string,
-): Promise<{ user_id: string; username: string }> {
+): Promise<{
+  counts: { collector_tokens: number; projects: number };
+  user_id: string;
+  username: string;
+}> {
   return requestJsonBody(
     `/api/admin/users/${userId}`,
     "DELETE",
@@ -250,13 +259,25 @@ export function createAdminCollectorToken(
   );
 }
 
-export type AdminProjectMutation = {
+export type AdminProjectCreate = {
+  confirmation: string;
+  default_branch?: string;
+  description?: string | null;
+  github_url?: string | null;
+  name: string;
+  owner_id: string;
+  project_url?: string | null;
+  slug?: string | null;
+  tags?: string[];
+  visibility?: "private" | "public";
+};
+
+export type AdminProjectUpdate = {
   confirmation: string;
   default_branch?: string | null;
   description?: string | null;
   github_url?: string | null;
   name?: string | null;
-  owner_id?: string;
   project_url?: string | null;
   slug?: string | null;
   tags?: string[] | null;
@@ -279,14 +300,14 @@ export type AdminProjectMutationResponse = {
 };
 
 export function createAdminProject(
-  payload: AdminProjectMutation & { name: string; owner_id: string },
+  payload: AdminProjectCreate,
 ): Promise<AdminProjectMutationResponse> {
   return requestJsonBody("/api/admin/projects", "POST", payload, adminMessages);
 }
 
 export function updateAdminProject(
   projectId: string,
-  payload: AdminProjectMutation,
+  payload: AdminProjectUpdate,
 ): Promise<AdminProjectMutationResponse> {
   return requestJsonBody(
     `/api/admin/projects/${projectId}`,
@@ -299,7 +320,12 @@ export function updateAdminProject(
 export function deleteAdminProject(
   projectId: string,
   confirmation: string,
-): Promise<{ project_id: string; slug: string }> {
+): Promise<{
+  counts: { artifacts: number; events: number; sessions: number };
+  name: string;
+  project_id: string;
+  slug: string;
+}> {
   return requestJsonBody(
     `/api/admin/projects/${projectId}`,
     "DELETE",
@@ -311,7 +337,12 @@ export function deleteAdminProject(
 export function cancelAdminJob(
   jobId: string,
   confirmation: string,
-): Promise<{ batch_id: string; retryable: boolean; status: string }> {
+): Promise<{
+  batch_id: string;
+  external_call_may_complete: boolean;
+  retryable: boolean;
+  status: "cancelled";
+}> {
   return requestJsonBody(
     `/api/admin/jobs/${jobId}/cancel`,
     "POST",
@@ -323,7 +354,7 @@ export function cancelAdminJob(
 export function retryAdminJob(
   jobId: string,
   confirmation: string,
-): Promise<{ batch_id: string; status: string }> {
+): Promise<{ batch_id: string; status: "pending" }> {
   return requestJsonBody(
     `/api/admin/jobs/${jobId}/retry`,
     "POST",

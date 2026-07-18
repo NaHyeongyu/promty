@@ -13,6 +13,8 @@ from app.db.session import get_db
 from app.models.users import User
 from app.schemas.marketing import (
     MarketingContentCreateRequest,
+    MarketingContentDeleteRequest,
+    MarketingContentDeleteResponse,
     MarketingContentGenerateRequest,
     MarketingContentPageResponse,
     MarketingContentResponse,
@@ -24,6 +26,7 @@ from app.schemas.marketing import (
 from app.services.marketing_content import (
     approve_marketing_content,
     create_marketing_content,
+    delete_marketing_content,
     generate_marketing_content,
     list_marketing_content,
     marketing_content_response,
@@ -117,6 +120,21 @@ def update_marketing_content_item(
     commit_or_conflict(db, detail="Marketing content could not be updated.")
     db.refresh(item)
     return marketing_content_response(item)
+
+
+@router.delete("/{content_id}", response_model=MarketingContentDeleteResponse)
+def delete_marketing_content_item(
+    content_id: UUID,
+    payload: MarketingContentDeleteRequest,
+    request: Request,
+    _admin_user: User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    item = read_marketing_content(db, content_id)
+    _set_audit_action(request, action="admin.marketing_content.delete", resource_id=item.id)
+    response = delete_marketing_content(db, item, confirmation=payload.confirmation)
+    commit_or_conflict(db, detail="Marketing content could not be deleted.")
+    return response
 
 
 @router.post("/{content_id}/generate", response_model=MarketingContentResponse)

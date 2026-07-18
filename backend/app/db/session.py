@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
@@ -42,7 +42,7 @@ engine = create_engine(settings.database_url, **_engine_options(settings.databas
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
-def get_db() -> Generator[Session, None, None]:
+async def get_db() -> AsyncGenerator[Session, None]:
     db = SessionLocal()
     try:
         yield db

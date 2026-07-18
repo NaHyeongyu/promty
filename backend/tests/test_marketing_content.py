@@ -12,6 +12,7 @@ from app.core.time import utc_now
 from app.models.marketing_content import MarketingContent
 from app.schemas.marketing import (
     MarketingContentCreateRequest,
+    MarketingContentDeleteRequest,
     MarketingDeliveryRequest,
 )
 from app.services.marketing_content import (
@@ -38,6 +39,7 @@ def _content_item() -> MarketingContent:
         tone="practical",
     )
 
+
 def test_marketing_request_requires_public_urls_and_valid_channels() -> None:
     payload = MarketingContentCreateRequest(
         campaign_name="  Launch story  ",
@@ -57,6 +59,11 @@ def test_marketing_request_requires_public_urls_and_valid_channels() -> None:
             cta_url="javascript:alert(1)",
             source_summary="A sufficiently detailed source summary for generation.",
             source_title="Unsafe URL",
+        )
+
+    with pytest.raises(ValidationError):
+        MarketingContentDeleteRequest.model_validate(
+            {"confirmation": "Launch story", "confirmaton": "typo"}
         )
 
 
@@ -160,8 +167,11 @@ def test_marketing_admin_routes_publish_response_contracts() -> None:
     assert paths["/api/admin/marketing-content"]["get"]["responses"]["200"]["content"][
         "application/json"
     ]["schema"]["$ref"].endswith("MarketingContentPageResponse")
-    assert paths["/api/admin/marketing-content/{content_id}/generate"]["post"]["responses"][
-        "200"
-    ]["content"]["application/json"]["schema"]["$ref"].endswith(
-        "MarketingContentResponse"
-    )
+    assert paths["/api/admin/marketing-content/{content_id}/generate"]["post"]["responses"]["200"][
+        "content"
+    ]["application/json"]["schema"]["$ref"].endswith("MarketingContentResponse")
+    delete_operation = paths["/api/admin/marketing-content/{content_id}"]["delete"]
+    assert delete_operation["requestBody"]["required"] is True
+    assert delete_operation["responses"]["200"]["content"]["application/json"]["schema"][
+        "$ref"
+    ].endswith("MarketingContentDeleteResponse")

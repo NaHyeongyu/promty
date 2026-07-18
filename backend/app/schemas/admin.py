@@ -3,20 +3,24 @@ from __future__ import annotations
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-class AdminConfirmationRequest(BaseModel):
+class StrictAdminRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class AdminConfirmationRequest(StrictAdminRequest):
     confirmation: str = Field(..., min_length=1, max_length=255)
 
 
-class AdminAlertStateRequest(BaseModel):
+class AdminAlertStateRequest(StrictAdminRequest):
     condition_hash: str = Field(..., min_length=64, max_length=64, pattern="^[a-f0-9]{64}$")
     snooze_hours: int = Field(default=24, ge=1, le=168)
     state: Literal["read", "resolved", "snoozed"]
 
 
-class AdminSupportInquiryStatusRequest(BaseModel):
+class AdminSupportInquiryStatusRequest(StrictAdminRequest):
     status: Literal["new", "in_progress", "resolved"]
 
 

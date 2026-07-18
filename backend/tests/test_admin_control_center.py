@@ -4,10 +4,12 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from app.models.github_connections import GitHubConnection
 from app.models.tokens import CollectorToken
 from app.models.users import User
+from app.schemas.admin import AdminConfirmationRequest
 from app.services.admin.control_center import (
     disconnect_admin_github_response,
     revoke_admin_collector_token_response,
@@ -160,3 +162,10 @@ def test_admin_routes_publish_control_center_contracts() -> None:
         "post"
     ]
     assert revoke_operation["requestBody"]["required"] is True
+
+
+def test_admin_mutation_requests_reject_unknown_fields() -> None:
+    with pytest.raises(ValidationError):
+        AdminConfirmationRequest.model_validate(
+            {"confirmation": "managed-user", "confirmaton": "typo"}
+        )

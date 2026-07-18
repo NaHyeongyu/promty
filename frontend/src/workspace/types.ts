@@ -569,18 +569,18 @@ export type PublishedFlowDetailResponse = PublishedFlowSummary & {
 export type AdminOverview = {
   action_items: Array<{
     area: string;
-    condition_hash?: string;
+    condition_hash: string;
     count: number | null;
     detail: string;
-    key?: string;
+    key: string;
     severity: string;
-    snoozed_until?: string | null;
-    state?: "read" | "snoozed" | "unread";
-    target?: string;
+    snoozed_until: string | null;
+    state: "read" | "snoozed" | "unread";
+    target: string;
     title: string;
-    window?: string;
+    window: string;
   }>;
-  action_summary?: {
+  action_summary: {
     active: number;
     read: number;
     resolved: number;
@@ -622,19 +622,19 @@ export type AdminOverview = {
     events_24h: number;
     events_7d: number;
     failed_jobs: number;
-    failed_support_notifications?: number;
+    failed_support_notifications: number;
     github_connections: number;
     memory_artifacts: number;
     memory_artifacts_24h: number;
     pending_jobs: number;
     pending_memory_drafts: number;
-    open_support_inquiries?: number;
+    open_support_inquiries: number;
     projects: number;
     projects_without_activity: number;
     projects_without_repo: number;
-    public_project_views?: number;
-    public_project_views_24h?: number;
-    public_project_views_7d?: number;
+    public_project_views: number;
+    public_project_views_24h: number;
+    public_project_views_7d: number;
     prompts: number;
     prompts_24h: number;
     responses: number;
@@ -643,7 +643,7 @@ export type AdminOverview = {
     sessions: number;
     stale_jobs: number;
     tracked_files: number;
-    unique_public_viewers_7d?: number;
+    unique_public_viewers_7d: number;
     users: number;
   };
   memory_monitor: {
@@ -701,7 +701,7 @@ export type AdminOverview = {
       memory: number;
       prompts: number;
       sessions: number;
-      views?: number;
+      views: number;
     };
     default_branch: string;
     failed_jobs: number;
@@ -754,15 +754,15 @@ export type AdminOverview = {
     cors_origins: string[];
     gemini_configured: boolean;
     memory_generators: {
-      draft?: string;
-      project?: string;
+      draft: string;
+      project: string;
     };
-    openai_configured?: boolean;
+    openai_configured: boolean;
     published_flows_enabled: boolean;
     session_cookie_secure: boolean;
     session_cookie_samesite: string;
   };
-  view_analytics?: {
+  view_analytics: {
     top_projects: Array<{
       id: string;
       name: string;
@@ -846,15 +846,15 @@ export type AdminProject = {
   };
   project_url: string | null;
   prompt_count: number;
-  save_count?: number;
-  saves_7d?: number;
+  save_count: number;
+  saves_7d: number;
   slug: string;
   tags: string[];
   updated_at: string | null;
-  view_count?: number;
-  views_7d?: number;
-  unique_viewers_7d?: number;
-  weekly_popularity_score?: number;
+  view_count: number;
+  views_7d: number;
+  unique_viewers_7d: number;
+  weekly_popularity_score: number;
   visibility: "private" | "public";
 };
 

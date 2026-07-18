@@ -19,11 +19,13 @@ import {
   Save,
   Send,
   Sparkles,
+  Trash2,
   X,
 } from "lucide-react";
 import {
   approveMarketingContent,
   createMarketingContent,
+  deleteMarketingContent,
   deliverMarketingContent,
   fetchMarketingContent,
   fetchMarketingIntegrations,
@@ -101,6 +103,8 @@ export function MarketingContentStudio() {
   const [activeChannel, setActiveChannel] = useState<MarketingChannel>("x");
   const [createForm, setCreateForm] = useState<MarketingContentCreate>(EMPTY_CREATE);
   const [showCreate, setShowCreate] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<MarketingContent | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isMutating, setIsMutating] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
@@ -198,6 +202,20 @@ export function MarketingContentStudio() {
       const generated = await generateMarketingContent(editor.id);
       replaceItem(generated);
       setNotice(text("Bilingual variants regenerated.", "한국어·영어 콘텐츠를 다시 생성했습니다."));
+    });
+  };
+
+  const remove = () => {
+    if (!deleteTarget || deleteConfirmation !== deleteTarget.campaign_name) return;
+    const target = deleteTarget;
+    void mutate(async () => {
+      await deleteMarketingContent(target.id, deleteConfirmation);
+      const remaining = items.filter((item) => item.id !== target.id);
+      setItems(remaining);
+      setSelectedId(remaining[0]?.id ?? null);
+      setDeleteTarget(null);
+      setDeleteConfirmation("");
+      setNotice(text(`Deleted ${target.campaign_name}.`, `${target.campaign_name} 콘텐츠를 삭제했습니다.`));
     });
   };
 
@@ -325,6 +343,7 @@ export function MarketingContentStudio() {
                   <button disabled={isMutating} onClick={generate} type="button"><Sparkles size={15} /> {text("Regenerate", "다시 생성")}</button>
                   <button disabled={!isDirty || isMutating} onClick={() => void mutate(async () => { await save(); })} type="button"><Save size={15} /> {text("Save", "저장")}</button>
                   <button disabled={!content || isMutating} onClick={approve} type="button"><Check size={15} /> {text("Approve both", "두 언어 승인")}</button>
+                  <button className="is-danger" disabled={isMutating} onClick={() => { setDeleteTarget(editor); setDeleteConfirmation(""); }} type="button"><Trash2 size={15} /> {text("Delete", "삭제")}</button>
                 </div>
               </header>
 
@@ -401,6 +420,16 @@ export function MarketingContentStudio() {
             </div>
             <fieldset><legend>{text("Channels", "채널")}</legend><div className="marketing-create-channels">{MARKETING_CHANNELS.map((channel) => <label key={channel}><input checked={createForm.channels.includes(channel)} onChange={(event) => setCreateForm((current) => ({ ...current, channels: event.target.checked ? [...current.channels, channel] : current.channels.filter((item) => item !== channel) }))} type="checkbox" />{CHANNEL_META[channel].label}</label>)}</div></fieldset>
             <footer><button onClick={() => setShowCreate(false)} type="button">{text("Cancel", "취소")}</button><button disabled={isMutating || createForm.channels.length === 0} type="submit">{isMutating ? <LoaderCircle className="is-spinning" size={15} /> : <Sparkles size={15} />} {text("Create and generate KO + EN", "생성하고 한국어·영어 만들기")}</button></footer>
+          </form>
+        </div>
+      ) : null}
+      {deleteTarget ? (
+        <div className="marketing-modal-backdrop" role="presentation">
+          <form className="marketing-create-dialog" onSubmit={(event) => { event.preventDefault(); remove(); }}>
+            <header><div><span>{text("DESTRUCTIVE ACTION", "삭제 작업")}</span><h3>{text("Delete marketing content", "마케팅 콘텐츠 삭제")}</h3></div><button aria-label={text("Close", "닫기")} onClick={() => setDeleteTarget(null)} type="button"><X size={18} /></button></header>
+            <p>{text("This permanently deletes the story, generated variants, and recorded delivery results.", "원본 사례, 생성된 콘텐츠, 전송 기록을 영구적으로 삭제합니다.")}</p>
+            <label>{text("Type", "확인을 위해")} <strong>{deleteTarget.campaign_name}</strong>{text(" to confirm", " 입력")}<input autoFocus maxLength={255} onChange={(event) => setDeleteConfirmation(event.target.value)} spellCheck="false" value={deleteConfirmation} /></label>
+            <footer><button onClick={() => setDeleteTarget(null)} type="button">{text("Cancel", "취소")}</button><button className="is-danger" disabled={isMutating || deleteConfirmation !== deleteTarget.campaign_name} type="submit">{isMutating ? <LoaderCircle className="is-spinning" size={15} /> : <Trash2 size={15} />} {text("Delete permanently", "영구 삭제")}</button></footer>
           </form>
         </div>
       ) : null}

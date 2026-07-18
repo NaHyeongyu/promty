@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from types import SimpleNamespace
 
@@ -103,6 +104,20 @@ def test_sqlite_engine_omits_queue_pool_only_options(monkeypatch) -> None:
     sqlite_engine = create_engine("sqlite+pysqlite:///:memory:", **options)
     with sqlite_engine.connect() as connection:
         assert connection.scalar(text("SELECT 1")) == 1
+
+
+def test_database_dependency_closes_without_threadpool_cleanup(monkeypatch) -> None:
+    session = SimpleNamespace(close=lambda: setattr(session, "closed", True), closed=False)
+    monkeypatch.setattr(database_session, "SessionLocal", lambda: session)
+
+    async def exercise_dependency() -> None:
+        dependency = database_session.get_db()
+        assert await anext(dependency) is session
+        await dependency.aclose()
+
+    asyncio.run(exercise_dependency())
+
+    assert session.closed is True
 
 
 class _Connection:
