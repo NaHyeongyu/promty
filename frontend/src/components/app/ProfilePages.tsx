@@ -9,9 +9,11 @@ import {
   KeyRound,
   LogOut,
   Minus,
+  Moon,
   Pencil,
   RefreshCw,
   ShieldCheck,
+  Sun,
   User,
 } from "lucide-react";
 import { formatOptionalTimestamp } from "../../lib/formatters";
@@ -27,6 +29,7 @@ import type {
   AccountOverview,
   AuthUser,
 } from "../../workspace/types";
+import { useTheme } from "../../theme";
 import { GitHubIcon } from "./Branding";
 import { EmptyState } from "./WorkspaceStates";
 
@@ -418,9 +421,25 @@ export function UserSettingsPage({
   projectCount: number;
 }) {
   const { locale, setLocale, t } = useI18n();
+  const { setTheme, theme } = useTheme();
   const [collectorTokenName, setCollectorTokenName] = useState("");
   const [isTokenCopied, setIsTokenCopied] = useState(false);
   const roleLabel = currentUser?.is_admin ? t("common.admin") : t("common.member");
+  const themeCopy = locale === "ko"
+    ? {
+        bright: "브라이트",
+        dark: "다크",
+        description: "Promty 화면의 밝기와 분위기를 선택합니다.",
+        label: "테마",
+        saved: "이 브라우저에 저장됩니다.",
+      }
+    : {
+        bright: "Bright",
+        dark: "Dark",
+        description: "Choose the brightness and mood of your Promty workspace.",
+        label: "Theme",
+        saved: "Saved in this browser.",
+      };
   const githubConnection = accountOverview?.github_connection;
   const collectorTokens = accountOverview?.collector_tokens ?? [];
   const activeCollectorTokens = collectorTokens.filter(
@@ -617,6 +636,47 @@ export function UserSettingsPage({
                   ))}
                 </select>
                 <small>{t("language.savedToAccount")}</small>
+              </div>
+            </div>
+            <div className="settings-theme-setting">
+              <div>
+                <span className="settings-theme-label">{themeCopy.label}</span>
+                <span>{themeCopy.description}</span>
+              </div>
+              <div>
+                <div
+                  aria-label={themeCopy.label}
+                  className="settings-theme-options"
+                  role="radiogroup"
+                >
+                  <button
+                    aria-checked={theme === "dark"}
+                    className="settings-theme-option"
+                    data-active={theme === "dark" ? "true" : undefined}
+                    onClick={() => setTheme("dark")}
+                    role="radio"
+                    type="button"
+                  >
+                    <span className="settings-theme-preview" data-theme-preview="dark">
+                      <Moon aria-hidden="true" size={16} strokeWidth={1.5} />
+                    </span>
+                    <strong>{themeCopy.dark}</strong>
+                  </button>
+                  <button
+                    aria-checked={theme === "bright"}
+                    className="settings-theme-option"
+                    data-active={theme === "bright" ? "true" : undefined}
+                    onClick={() => setTheme("bright")}
+                    role="radio"
+                    type="button"
+                  >
+                    <span className="settings-theme-preview" data-theme-preview="bright">
+                      <Sun aria-hidden="true" size={16} strokeWidth={1.5} />
+                    </span>
+                    <strong>{themeCopy.bright}</strong>
+                  </button>
+                </div>
+                <small>{themeCopy.saved}</small>
               </div>
             </div>
           </div>

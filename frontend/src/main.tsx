@@ -6,8 +6,9 @@ import "./styles-warm-human.css";
 import { preloadCurrentUser } from "./api/auth";
 import { AppErrorBoundary } from "./components/app/AppStatusPages";
 import { I18nProvider } from "./i18n/I18nProvider";
+import { initializeTheme } from "./theme";
 
-document.documentElement.dataset.designConcept = "warm-human";
+initializeTheme();
 
 if (import.meta.env.PROD) {
   const pathname = window.location.pathname;

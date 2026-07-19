@@ -1,9 +1,52 @@
-:root[data-design-concept="warm-human"] {
+:root[data-theme="bright"] {
+  --bh-font-ui:
+    "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --bh-font-brand: var(--bh-font-display);
+
+  --bh-color-primary: #7a8c7a;
+  --bh-color-primary-hover: #697d69;
+  --bh-color-primary-active: #596d5a;
+  --bh-color-primary-subtle: #e9eee9;
+  --bh-color-primary-border: #c8d2c7;
+
+  --bh-color-background: #fffcf7;
+  --bh-color-surface: #fffdf9;
+  --bh-color-surface-secondary: #f7f1e8;
+  --bh-color-surface-hover: #f0ede6;
+  --bh-color-border: #d6d9d1;
+  --bh-color-border-hover: #bfc7bc;
+
+  --bh-color-text-primary: #2b2a2f;
+  --bh-color-text-secondary: #6b5f59;
+  --bh-color-text-muted: #8c7e72;
+  --bh-color-text-disabled: #a6998e;
+
+  --bh-color-success: #6f8b67;
+  --bh-color-success-subtle: rgb(111 139 103 / 12%);
+  --bh-color-warning: #c8873e;
+  --bh-color-warning-subtle: rgb(200 135 62 / 12%);
+  --bh-color-danger: #b85c5c;
+  --bh-color-danger-subtle: rgb(184 92 92 / 11%);
+  --bh-color-info: #738ba3;
+  --bh-color-info-subtle: rgb(115 139 163 / 12%);
+
+  --bh-button-primary-bg: #667a66;
+  --bh-button-primary-bg-hover: #596d5a;
+  --bh-button-primary-bg-active: #4e624f;
+  --bh-sidebar-bg: #f7f1e8;
+  --bh-input-bg: #fffdf9;
+  --bh-shadow-card: 0 4px 12px rgb(43 42 47 / 5%);
+  --bh-shadow-overlay: 0 20px 56px rgb(43 42 47 / 16%);
+
   color-scheme: light;
   accent-color: var(--bh-color-primary);
 }
 
-:root[data-design-concept="warm-human"] :is(
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+:root[data-theme="bright"] :is(
     .page h1,
     .page h2,
     .page h3,
@@ -24,7 +67,7 @@
   letter-spacing: -0.025em;
 }
 
-:root[data-design-concept="warm-human"] :is(
+:root[data-theme="bright"] :is(
     button,
     input,
     select,
@@ -33,7 +76,7 @@
   font-family: var(--bh-font-ui);
 }
 
-:root[data-design-concept="warm-human"] :is(
+:root[data-theme="bright"] :is(
     .project-list-panel,
     .profile-hero,
     .profile-section,
@@ -57,36 +100,36 @@
   box-shadow: var(--bh-shadow-card);
 }
 
-:root[data-design-concept="warm-human"] .sidebar {
+:root[data-theme="bright"] .sidebar {
   border-right-color: #e0d6ca;
 }
 
-:root[data-design-concept="warm-human"] .sidebar-header {
+:root[data-theme="bright"] .sidebar-header {
   min-height: 72px;
   padding-inline: var(--bh-space-5);
 }
 
-:root[data-design-concept="warm-human"] .sidebar-header strong,
-:root[data-design-concept="warm-human"] .marketing-brand,
-:root[data-design-concept="warm-human"] .ops-brand strong {
+:root[data-theme="bright"] .sidebar-header strong,
+:root[data-theme="bright"] .marketing-brand,
+:root[data-theme="bright"] .ops-brand strong {
   font-family: var(--bh-font-display);
   letter-spacing: -0.02em;
 }
 
-:root[data-design-concept="warm-human"] .sidebar-item {
+:root[data-theme="bright"] .sidebar-item {
   border: 1px solid transparent;
 }
 
-:root[data-design-concept="warm-human"] .sidebar-item:hover {
+:root[data-theme="bright"] .sidebar-item:hover {
   border-color: color-mix(in srgb, var(--bh-color-border) 76%, transparent);
 }
 
-:root[data-design-concept="warm-human"] .sidebar-item[data-active="true"] {
+:root[data-theme="bright"] .sidebar-item[data-active="true"] {
   border-color: var(--bh-color-border);
   color: var(--bh-color-primary-active);
 }
 
-:root[data-design-concept="warm-human"] :is(
+:root[data-theme="bright"] :is(
     .toolbar-button,
     .bh-icon-button,
     .bh-header-action-button,
@@ -97,7 +140,7 @@
   border-radius: var(--bh-radius-md);
 }
 
-:root[data-design-concept="warm-human"] :is(
+:root[data-theme="bright"] :is(
     .project-add-button,
     .empty-state-button,
     .community-flow-save-button,
@@ -108,12 +151,12 @@
   background: var(--bh-button-primary-bg);
 }
 
-:root[data-design-concept="warm-human"] .community-hub-tabs > button[data-active="true"] {
+:root[data-theme="bright"] .community-hub-tabs > button[data-active="true"] {
   color: #fffdf9;
   background: var(--bh-button-primary-bg);
 }
 
-:root[data-design-concept="warm-human"] :is(
+:root[data-theme="bright"] :is(
     .project-row:hover,
     .project-row:focus-within,
     .admin-table-row.is-head,
@@ -122,7 +165,7 @@
   background: color-mix(in srgb, var(--bh-color-primary-subtle) 72%, #fffdf9);
 }
 
-:root[data-design-concept="warm-human"] :is(
+:root[data-theme="bright"] :is(
     .community-flow-card[data-active="true"],
     .bh-project-switcher-option[data-active="true"],
     .bh-project-tab[data-active="true"]
@@ -131,7 +174,7 @@
 }
 
 /* Warm Human marketing treatment: preserve the current information architecture. */
-:root[data-design-concept="warm-human"] .marketing-site {
+:root[data-theme="bright"] .marketing-site {
   --marketing-accent: #7a8c7a;
   --marketing-accent-strong: #596d5a;
   --marketing-accent-soft: rgb(122 140 122 / 12%);
@@ -145,7 +188,7 @@
     #fffcf7;
 }
 
-:root[data-design-concept="warm-human"] .marketing-site :is(
+:root[data-theme="bright"] .marketing-site :is(
     h1,
     h2,
     h3,
@@ -157,7 +200,7 @@
   font-family: var(--bh-font-display);
 }
 
-:root[data-design-concept="warm-human"] .marketing-site :is(
+:root[data-theme="bright"] .marketing-site :is(
     .marketing-nav a,
     .marketing-footer-links a,
     .marketing-hero-copy > p,
@@ -171,7 +214,7 @@
   color: #6b5f59;
 }
 
-:root[data-design-concept="warm-human"] .marketing-site :is(
+:root[data-theme="bright"] .marketing-site :is(
     .marketing-nav a:hover,
     .marketing-nav a[aria-current="page"],
     .marketing-footer-links a:hover
@@ -179,38 +222,38 @@
   color: #2b2a2f;
 }
 
-:root[data-design-concept="warm-human"] .marketing-hero h1 span {
+:root[data-theme="bright"] .marketing-hero h1 span {
   color: #7a8c7a;
 }
 
-:root[data-design-concept="warm-human"] .marketing-header-cta,
-:root[data-design-concept="warm-human"] .marketing-cta {
+:root[data-theme="bright"] .marketing-header-cta,
+:root[data-theme="bright"] .marketing-cta {
   border-color: var(--bh-button-primary-bg);
   color: #fffdf9;
   background: var(--bh-button-primary-bg);
 }
 
-:root[data-design-concept="warm-human"] .marketing-cta:hover,
-:root[data-design-concept="warm-human"] .marketing-header-cta:hover {
+:root[data-theme="bright"] .marketing-cta:hover,
+:root[data-theme="bright"] .marketing-header-cta:hover {
   border-color: var(--bh-button-primary-bg-hover);
   color: #fffdf9;
   background: var(--bh-button-primary-bg-hover);
   box-shadow: 0 12px 34px rgb(122 140 122 / 18%);
 }
 
-:root[data-design-concept="warm-human"] .marketing-cta.is-secondary {
+:root[data-theme="bright"] .marketing-cta.is-secondary {
   border-color: #d6d9d1;
   color: #2b2a2f;
   background: #fffdf9;
 }
 
-:root[data-design-concept="warm-human"] .marketing-cta.is-secondary:hover {
+:root[data-theme="bright"] .marketing-cta.is-secondary:hover {
   border-color: #bfc7bc;
   color: #2b2a2f;
   background: #f7f1e8;
 }
 
-:root[data-design-concept="warm-human"] :is(
+:root[data-theme="bright"] :is(
     .marketing-command,
     .hero-product,
     .workflow-preview,
@@ -226,15 +269,15 @@
   box-shadow: var(--bh-shadow-card);
 }
 
-:root[data-design-concept="warm-human"] .marketing-command code {
+:root[data-theme="bright"] .marketing-command code {
   color: #524944;
 }
 
-:root[data-design-concept="warm-human"] .marketing-hero-grid {
+:root[data-theme="bright"] .marketing-hero-grid {
   opacity: 0.22;
 }
 
-:root[data-design-concept="warm-human"] .marketing-site--figma-home {
+:root[data-theme="bright"] .marketing-site--figma-home {
   --figma-bg: #fffcf7;
   --figma-surface: #f7f1e8;
   --figma-panel: #fffdf9;
@@ -247,46 +290,46 @@
   --figma-line-strong: rgb(107 95 89 / 30%);
 }
 
-:root[data-design-concept="warm-human"] .marketing-site--figma-home .marketing-header-cta,
-:root[data-design-concept="warm-human"] .figma-button.is-primary {
+:root[data-theme="bright"] .marketing-site--figma-home .marketing-header-cta,
+:root[data-theme="bright"] .figma-button.is-primary {
   border-color: var(--bh-button-primary-bg);
   border-radius: var(--bh-radius-md);
   color: #fffdf9;
   background: var(--bh-button-primary-bg);
 }
 
-:root[data-design-concept="warm-human"] .marketing-site--figma-home .marketing-header-cta:hover,
-:root[data-design-concept="warm-human"] .figma-button.is-primary:hover {
+:root[data-theme="bright"] .marketing-site--figma-home .marketing-header-cta:hover,
+:root[data-theme="bright"] .figma-button.is-primary:hover {
   border-color: var(--bh-button-primary-bg-hover);
   color: #fffdf9;
   background: var(--bh-button-primary-bg-hover);
 }
 
-:root[data-design-concept="warm-human"] .figma-button.is-secondary {
+:root[data-theme="bright"] .figma-button.is-secondary {
   border-color: #d6d9d1;
   border-radius: var(--bh-radius-md);
   color: #2b2a2f;
   background: #fffdf9;
 }
 
-:root[data-design-concept="warm-human"] .figma-command {
+:root[data-theme="bright"] .figma-command {
   border-color: #d6d9d1;
   border-radius: var(--bh-radius-md);
   color: #6b5f59;
   background: #fffdf9;
 }
 
-:root[data-design-concept="warm-human"] .figma-command code {
+:root[data-theme="bright"] .figma-command code {
   color: #524944;
 }
 
-:root[data-design-concept="warm-human"] .figma-command > span {
+:root[data-theme="bright"] .figma-command > span {
   border-left-color: #d6d9d1;
   color: #8c7e72;
 }
 
-:root[data-design-concept="warm-human"] .figma-hero-demo,
-:root[data-design-concept="warm-human"] .figma-workflow-section {
+:root[data-theme="bright"] .figma-hero-demo,
+:root[data-theme="bright"] .figma-workflow-section {
   --figma-surface: #2f2d32;
   --figma-panel: #363339;
   --figma-primary: #fffdf9;
@@ -298,17 +341,17 @@
   --figma-line-strong: rgb(255 253 249 / 24%);
 }
 
-:root[data-design-concept="warm-human"] .figma-hero-demo {
+:root[data-theme="bright"] .figma-hero-demo {
   border-color: rgb(255 253 249 / 22%);
   background: #2f2d32;
   box-shadow: 0 28px 80px rgb(43 42 47 / 22%);
 }
 
-:root[data-design-concept="warm-human"] .figma-workflow-section {
+:root[data-theme="bright"] .figma-workflow-section {
   background: #2f2d32;
 }
 
-:root[data-design-concept="warm-human"] .marketing-site :is(
+:root[data-theme="bright"] .marketing-site :is(
     .figma-hero-demo h3,
     .figma-hero-demo strong,
     .figma-workflow-section h2,
@@ -317,15 +360,15 @@
   color: #fffdf9;
 }
 
-:root[data-design-concept="warm-human"] .figma-workflow-steps article:hover,
-:root[data-design-concept="warm-human"] .figma-workflow-steps article:focus-visible,
-:root[data-design-concept="warm-human"] .figma-workflow-steps article[aria-current="step"] {
+:root[data-theme="bright"] .figma-workflow-steps article:hover,
+:root[data-theme="bright"] .figma-workflow-steps article:focus-visible,
+:root[data-theme="bright"] .figma-workflow-steps article[aria-current="step"] {
   border-color: rgb(202 215 200 / 48%);
   background: #39363c;
 }
 
 /* The dedicated operations route uses its own tokens; align those too. */
-:root[data-design-concept="warm-human"] .ops-shell {
+:root[data-theme="bright"] .ops-shell {
   --ops-accent: #7a8c7a;
   --ops-accent-soft: rgb(122 140 122 / 12%);
   --ops-rail: #f7f1e8;
@@ -343,11 +386,11 @@
   background-size: 32px 32px;
 }
 
-:root[data-design-concept="warm-human"] .ops-rail {
+:root[data-theme="bright"] .ops-rail {
   box-shadow: 8px 0 28px rgb(43 42 47 / 6%);
 }
 
-:root[data-design-concept="warm-human"] .ops-shell :is(
+:root[data-theme="bright"] .ops-shell :is(
     .ops-brand strong,
     .ops-operator strong,
     h1,
@@ -357,14 +400,14 @@
   color: #2b2a2f;
 }
 
-:root[data-design-concept="warm-human"] .ops-nav button[data-active="true"] {
+:root[data-theme="bright"] .ops-nav button[data-active="true"] {
   border-color: #c8d2c7;
   color: #596d5a;
   background: #e9eee9;
   box-shadow: inset 2px 0 0 #7a8c7a;
 }
 
-:root[data-design-concept="warm-human"] .ops-shell :is(
+:root[data-theme="bright"] .ops-shell :is(
     input,
     select,
     textarea,
@@ -377,9 +420,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root[data-design-concept="warm-human"] *,
-  :root[data-design-concept="warm-human"] *::before,
-  :root[data-design-concept="warm-human"] *::after {
+  :root[data-theme="bright"] *,
+  :root[data-theme="bright"] *::before,
+  :root[data-theme="bright"] *::after {
     scroll-behavior: auto !important;
   }
 }

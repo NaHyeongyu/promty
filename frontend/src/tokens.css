@@ -1,13 +1,13 @@
 :root {
   /* Typography */
   --bh-font-ui:
-    "Inter", system-ui, -apple-system, BlinkMacSystemFont,
+    "Geist", "Geist Sans", system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
   --bh-font-display: "Lora", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   --bh-font-code:
     "Geist Mono", ui-monospace, SFMono-Regular, "SF Mono", Consolas,
     "Liberation Mono", Menlo, monospace;
-  --bh-font-brand: var(--bh-font-display);
+  --bh-font-brand: "Commit Mono", "SFMono-Regular", Consolas, var(--bh-font-code);
 
   --bh-font-weight-light: 300;
   --bh-font-weight-regular: 400;
@@ -30,35 +30,35 @@
   --bh-line-height-code: 1.5;
 
   /* Brand */
-  --bh-color-primary: #7a8c7a;
-  --bh-color-primary-hover: #697d69;
-  --bh-color-primary-active: #596d5a;
-  --bh-color-primary-subtle: #e9eee9;
-  --bh-color-primary-border: #c8d2c7;
+  --bh-color-primary: #5f6e86;
+  --bh-color-primary-hover: #647389;
+  --bh-color-primary-active: #526075;
+  --bh-color-primary-subtle: #222830;
+  --bh-color-primary-border: #3c4656;
 
   /* Neutral */
-  --bh-color-background: #fffcf7;
-  --bh-color-surface: #fffdf9;
-  --bh-color-surface-secondary: #f7f1e8;
-  --bh-color-surface-hover: #f0ede6;
-  --bh-color-border: #d6d9d1;
-  --bh-color-border-hover: #bfc7bc;
+  --bh-color-background: #09090b;
+  --bh-color-surface: #111113;
+  --bh-color-surface-secondary: #17181c;
+  --bh-color-surface-hover: #1e2127;
+  --bh-color-border: #2a2f38;
+  --bh-color-border-hover: #3a414d;
 
   /* Text */
-  --bh-color-text-primary: #2b2a2f;
-  --bh-color-text-secondary: #6b5f59;
-  --bh-color-text-muted: #8c7e72;
-  --bh-color-text-disabled: #a6998e;
+  --bh-color-text-primary: #fafafa;
+  --bh-color-text-secondary: #c4cad4;
+  --bh-color-text-muted: #9aa3b2;
+  --bh-color-text-disabled: #6b7280;
 
   /* Semantic */
-  --bh-color-success: #6f8b67;
-  --bh-color-success-subtle: rgb(111 139 103 / 12%);
-  --bh-color-warning: #c8873e;
-  --bh-color-warning-subtle: rgb(200 135 62 / 12%);
-  --bh-color-danger: #b85c5c;
-  --bh-color-danger-subtle: rgb(184 92 92 / 11%);
-  --bh-color-info: #738ba3;
-  --bh-color-info-subtle: rgb(115 139 163 / 12%);
+  --bh-color-success: #22c55e;
+  --bh-color-success-subtle: rgb(34 197 94 / 12%);
+  --bh-color-warning: #f59e0b;
+  --bh-color-warning-subtle: rgb(245 158 11 / 12%);
+  --bh-color-danger: #ef4444;
+  --bh-color-danger-subtle: rgb(239 68 68 / 12%);
+  --bh-color-info: #38bdf8;
+  --bh-color-info-subtle: rgb(56 189 248 / 12%);
 
   /* Events */
   --bh-color-event-prompt: var(--bh-color-primary);
@@ -69,9 +69,9 @@
   --bh-color-event-tool: var(--bh-color-primary);
 
   /* Components */
-  --bh-button-primary-bg: #667a66;
-  --bh-button-primary-bg-hover: #596d5a;
-  --bh-button-primary-bg-active: #4e624f;
+  --bh-button-primary-bg: var(--bh-color-primary);
+  --bh-button-primary-bg-hover: var(--bh-color-primary-hover);
+  --bh-button-primary-bg-active: var(--bh-color-primary-active);
   --bh-button-primary-text: #ffffff;
   --bh-button-secondary-bg: transparent;
   --bh-button-secondary-border: var(--bh-color-border);
@@ -79,7 +79,7 @@
   --bh-button-ghost-bg: transparent;
   --bh-button-ghost-text: var(--bh-color-text-secondary);
 
-  --bh-sidebar-bg: #f7f1e8;
+  --bh-sidebar-bg: var(--bh-color-background);
   --bh-sidebar-item-selected-bg: var(--bh-color-primary-subtle);
   --bh-sidebar-icon: var(--bh-color-text-muted);
   --bh-sidebar-icon-active: var(--bh-color-primary);
@@ -88,7 +88,7 @@
   --bh-card-border: var(--bh-color-border);
   --bh-card-bg-hover: var(--bh-color-surface-hover);
 
-  --bh-input-bg: #fffdf9;
+  --bh-input-bg: var(--bh-color-background);
   --bh-input-border: var(--bh-color-border);
   --bh-input-border-focus: var(--bh-color-primary);
   --bh-input-border-error: var(--bh-color-danger);
@@ -148,6 +148,6 @@
 
   /* Elevation */
   --bh-shadow-none: none;
-  --bh-shadow-card: 0 4px 12px rgb(43 42 47 / 5%);
-  --bh-shadow-overlay: 0 20px 56px rgb(43 42 47 / 16%);
+  --bh-shadow-card: var(--bh-shadow-none);
+  --bh-shadow-overlay: 0 16px 40px rgb(0 0 0 / 36%);
 }
