@@ -1,9 +1,10 @@
 import type { AccountSettingsController } from "../../hooks/useAccountSettings";
-import type { AuthUser } from "../../workspace/types";
-import { UserSettingsPage } from "./ProfilePages";
+import type { AuthUser, SidebarItemId } from "../../workspace/types";
+import { UserProfilePage, UserSettingsPage } from "./ProfilePages";
 
 export function AccountWorkspaceRoute({
   account,
+  activeItem,
   activeTitle,
   apiUrl,
   canUseAdmin,
@@ -16,11 +17,13 @@ export function AccountWorkspaceRoute({
   memoryCount,
   onOpenRepositoryConnector,
   onOpenReviewQueue,
+  onLogout,
   onRefreshWorkspace,
   pendingMemoryCount,
   projectCount,
 }: {
   account: AccountSettingsController;
+  activeItem: SidebarItemId;
   activeTitle: string;
   apiUrl: string;
   canUseAdmin: boolean;
@@ -33,6 +36,7 @@ export function AccountWorkspaceRoute({
   memoryCount: number;
   onOpenRepositoryConnector: () => void;
   onOpenReviewQueue: (returnFocusElement: HTMLElement) => void;
+  onLogout: () => void;
   onRefreshWorkspace: () => void;
   pendingMemoryCount: number;
   projectCount: number;
@@ -45,7 +49,19 @@ export function AccountWorkspaceRoute({
         </div>
       </header>
 
-      <UserSettingsPage
+      {activeItem === "profile" ? (
+        <UserProfilePage
+          accountError={account.accountError}
+          accountOverview={account.accountOverview}
+          connectedRepositoryCount={connectedRepositoryCount}
+          currentUser={currentUser}
+          isAccountLoading={account.isAccountLoading}
+          latestActivityLabel={latestActivityLabel}
+          onLogout={onLogout}
+          projectCount={projectCount}
+        />
+      ) : (
+        <UserSettingsPage
           accountError={account.accountError}
           accountOverview={account.accountOverview}
           apiUrl={apiUrl}
@@ -72,6 +88,7 @@ export function AccountWorkspaceRoute({
           pendingMemoryCount={pendingMemoryCount}
           projectCount={projectCount}
         />
+      )}
     </>
   );
 }

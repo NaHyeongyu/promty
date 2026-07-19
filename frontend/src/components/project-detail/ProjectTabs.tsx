@@ -44,6 +44,7 @@ export function ProjectTabs({
               type="button"
             >
               <span>{tab.label}</span>
+              {tab.externalIcon === "github" ? <GitHubIcon /> : null}
               {hasNotification ? (
                 <span aria-hidden="true" className="bh-project-tab-notification" />
               ) : null}

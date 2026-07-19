@@ -304,7 +304,7 @@ export function AuthenticatedApp() {
             ? t("nav.support")
             : activeItem === "admin"
               ? t("nav.admin")
-              : activeItem === "settings" || activeItem === "profile"
+              : activeItem === "settings"
                 ? t("settings.title")
                 : t("settings.account");
   const projectRouteKey = (project: Project | null | undefined) =>
@@ -1140,6 +1140,7 @@ export function AuthenticatedApp() {
         ) : (
           <AccountWorkspaceRoute
             account={accountSettings}
+            activeItem={activeItem}
             activeTitle={activeTitle}
             apiUrl={API_URL}
             canUseAdmin={canUseAdmin}
@@ -1154,6 +1155,7 @@ export function AuthenticatedApp() {
             onOpenReviewQueue={(returnFocusElement) =>
               openReviewQueue(returnFocusElement)
             }
+            onLogout={logout}
             onRefreshWorkspace={refreshWorkspaceAndAccount}
             pendingMemoryCount={pendingMemoryCount}
             projectCount={projectCatalog.length}
