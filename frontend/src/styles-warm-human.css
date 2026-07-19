@@ -1,0 +1,385 @@
+:root[data-design-concept="warm-human"] {
+  color-scheme: light;
+  accent-color: var(--bh-color-primary);
+}
+
+:root[data-design-concept="warm-human"] :is(
+    .page h1,
+    .page h2,
+    .page h3,
+    .bh-project-header-copy h1,
+    .bh-overview-card h2,
+    .bh-overview-card h3,
+    .profile-hero-copy h2,
+    .profile-section-header h3,
+    .settings-hero-copy h2,
+    .settings-stage-heading h3,
+    .admin-command-bar h2,
+    .admin-panel-header h3,
+    .app-status-card h1,
+    .cli-login-copy h1,
+    .prompt-share-dialog-header h2
+  ) {
+  font-family: var(--bh-font-display);
+  letter-spacing: -0.025em;
+}
+
+:root[data-design-concept="warm-human"] :is(
+    button,
+    input,
+    select,
+    textarea
+  ) {
+  font-family: var(--bh-font-ui);
+}
+
+:root[data-design-concept="warm-human"] :is(
+    .project-list-panel,
+    .profile-hero,
+    .profile-section,
+    .settings-hero,
+    .settings-stage,
+    .admin-command-bar,
+    .admin-metric,
+    .admin-panel,
+    .app-status-card,
+    .cli-login-panel,
+    .repository-connector,
+    .prompt-share-dialog,
+    .community-flow-card,
+    .community-flow-detail,
+    .bh-overview-card,
+    .bh-memory-panel,
+    .bh-file-panel,
+    .bh-activity-feed-sidebar,
+    .bh-session-conversation-panel
+  ) {
+  box-shadow: var(--bh-shadow-card);
+}
+
+:root[data-design-concept="warm-human"] .sidebar {
+  border-right-color: #e0d6ca;
+}
+
+:root[data-design-concept="warm-human"] .sidebar-header {
+  min-height: 72px;
+  padding-inline: var(--bh-space-5);
+}
+
+:root[data-design-concept="warm-human"] .sidebar-header strong,
+:root[data-design-concept="warm-human"] .marketing-brand,
+:root[data-design-concept="warm-human"] .ops-brand strong {
+  font-family: var(--bh-font-display);
+  letter-spacing: -0.02em;
+}
+
+:root[data-design-concept="warm-human"] .sidebar-item {
+  border: 1px solid transparent;
+}
+
+:root[data-design-concept="warm-human"] .sidebar-item:hover {
+  border-color: color-mix(in srgb, var(--bh-color-border) 76%, transparent);
+}
+
+:root[data-design-concept="warm-human"] .sidebar-item[data-active="true"] {
+  border-color: var(--bh-color-border);
+  color: var(--bh-color-primary-active);
+}
+
+:root[data-design-concept="warm-human"] :is(
+    .toolbar-button,
+    .bh-icon-button,
+    .bh-header-action-button,
+    .community-hub-tabs > button,
+    .community-flow-save-button,
+    .prompt-share-dialog-actions button
+  ) {
+  border-radius: var(--bh-radius-md);
+}
+
+:root[data-design-concept="warm-human"] :is(
+    .project-add-button,
+    .empty-state-button,
+    .community-flow-save-button,
+    .prompt-share-dialog-actions button.is-primary,
+    .bh-header-action-button.is-primary
+  ) {
+  color: #fffdf9;
+  background: var(--bh-button-primary-bg);
+}
+
+:root[data-design-concept="warm-human"] .community-hub-tabs > button[data-active="true"] {
+  color: #fffdf9;
+  background: var(--bh-button-primary-bg);
+}
+
+:root[data-design-concept="warm-human"] :is(
+    .project-row:hover,
+    .project-row:focus-within,
+    .admin-table-row.is-head,
+    .admin-table-action-row:hover
+  ) {
+  background: color-mix(in srgb, var(--bh-color-primary-subtle) 72%, #fffdf9);
+}
+
+:root[data-design-concept="warm-human"] :is(
+    .community-flow-card[data-active="true"],
+    .bh-project-switcher-option[data-active="true"],
+    .bh-project-tab[data-active="true"]
+  ) {
+  border-color: var(--bh-color-primary-border);
+}
+
+/* Warm Human marketing treatment: preserve the current information architecture. */
+:root[data-design-concept="warm-human"] .marketing-site {
+  --marketing-accent: #7a8c7a;
+  --marketing-accent-strong: #596d5a;
+  --marketing-accent-soft: rgb(122 140 122 / 12%);
+  --marketing-panel: rgb(255 253 249 / 92%);
+  --marketing-panel-strong: #fffdf9;
+  --marketing-line: rgb(107 95 89 / 18%);
+  color: #2b2a2f;
+  background:
+    radial-gradient(circle at 78% 9%, rgb(122 140 122 / 12%), transparent 32rem),
+    radial-gradient(circle at 8% 34%, rgb(200 135 62 / 7%), transparent 28rem),
+    #fffcf7;
+}
+
+:root[data-design-concept="warm-human"] .marketing-site :is(
+    h1,
+    h2,
+    h3,
+    .marketing-brand,
+    .proof-heading,
+    .figma-brand-word
+  ) {
+  color: #2b2a2f;
+  font-family: var(--bh-font-display);
+}
+
+:root[data-design-concept="warm-human"] .marketing-site :is(
+    .marketing-nav a,
+    .marketing-footer-links a,
+    .marketing-hero-copy > p,
+    .product-hero-copy > p,
+    .marketing-section-heading p,
+    .marketing-footer,
+    .product-tour-caption,
+    .comparison-content p,
+    .faq-list p
+  ) {
+  color: #6b5f59;
+}
+
+:root[data-design-concept="warm-human"] .marketing-site :is(
+    .marketing-nav a:hover,
+    .marketing-nav a[aria-current="page"],
+    .marketing-footer-links a:hover
+  ) {
+  color: #2b2a2f;
+}
+
+:root[data-design-concept="warm-human"] .marketing-hero h1 span {
+  color: #7a8c7a;
+}
+
+:root[data-design-concept="warm-human"] .marketing-header-cta,
+:root[data-design-concept="warm-human"] .marketing-cta {
+  border-color: var(--bh-button-primary-bg);
+  color: #fffdf9;
+  background: var(--bh-button-primary-bg);
+}
+
+:root[data-design-concept="warm-human"] .marketing-cta:hover,
+:root[data-design-concept="warm-human"] .marketing-header-cta:hover {
+  border-color: var(--bh-button-primary-bg-hover);
+  color: #fffdf9;
+  background: var(--bh-button-primary-bg-hover);
+  box-shadow: 0 12px 34px rgb(122 140 122 / 18%);
+}
+
+:root[data-design-concept="warm-human"] .marketing-cta.is-secondary {
+  border-color: #d6d9d1;
+  color: #2b2a2f;
+  background: #fffdf9;
+}
+
+:root[data-design-concept="warm-human"] .marketing-cta.is-secondary:hover {
+  border-color: #bfc7bc;
+  color: #2b2a2f;
+  background: #f7f1e8;
+}
+
+:root[data-design-concept="warm-human"] :is(
+    .marketing-command,
+    .hero-product,
+    .workflow-preview,
+    .context-code-window,
+    .product-tour-chrome,
+    .comparison-card,
+    .control-panel,
+    .figma-memory-panel
+  ) {
+  border-color: #d6d9d1;
+  color: #2b2a2f;
+  background: #fffdf9;
+  box-shadow: var(--bh-shadow-card);
+}
+
+:root[data-design-concept="warm-human"] .marketing-command code {
+  color: #524944;
+}
+
+:root[data-design-concept="warm-human"] .marketing-hero-grid {
+  opacity: 0.22;
+}
+
+:root[data-design-concept="warm-human"] .marketing-site--figma-home {
+  --figma-bg: #fffcf7;
+  --figma-surface: #f7f1e8;
+  --figma-panel: #fffdf9;
+  --figma-primary: #2b2a2f;
+  --figma-secondary: #6b5f59;
+  --figma-muted: #8c7e72;
+  --figma-accent: #7a8c7a;
+  --figma-accent-strong: #596d5a;
+  --figma-line: rgb(107 95 89 / 18%);
+  --figma-line-strong: rgb(107 95 89 / 30%);
+}
+
+:root[data-design-concept="warm-human"] .marketing-site--figma-home .marketing-header-cta,
+:root[data-design-concept="warm-human"] .figma-button.is-primary {
+  border-color: var(--bh-button-primary-bg);
+  border-radius: var(--bh-radius-md);
+  color: #fffdf9;
+  background: var(--bh-button-primary-bg);
+}
+
+:root[data-design-concept="warm-human"] .marketing-site--figma-home .marketing-header-cta:hover,
+:root[data-design-concept="warm-human"] .figma-button.is-primary:hover {
+  border-color: var(--bh-button-primary-bg-hover);
+  color: #fffdf9;
+  background: var(--bh-button-primary-bg-hover);
+}
+
+:root[data-design-concept="warm-human"] .figma-button.is-secondary {
+  border-color: #d6d9d1;
+  border-radius: var(--bh-radius-md);
+  color: #2b2a2f;
+  background: #fffdf9;
+}
+
+:root[data-design-concept="warm-human"] .figma-command {
+  border-color: #d6d9d1;
+  border-radius: var(--bh-radius-md);
+  color: #6b5f59;
+  background: #fffdf9;
+}
+
+:root[data-design-concept="warm-human"] .figma-command code {
+  color: #524944;
+}
+
+:root[data-design-concept="warm-human"] .figma-command > span {
+  border-left-color: #d6d9d1;
+  color: #8c7e72;
+}
+
+:root[data-design-concept="warm-human"] .figma-hero-demo,
+:root[data-design-concept="warm-human"] .figma-workflow-section {
+  --figma-surface: #2f2d32;
+  --figma-panel: #363339;
+  --figma-primary: #fffdf9;
+  --figma-secondary: #d8d1c8;
+  --figma-muted: #aaa198;
+  --figma-accent: #9daf9c;
+  --figma-accent-strong: #cad7c8;
+  --figma-line: rgb(255 253 249 / 13%);
+  --figma-line-strong: rgb(255 253 249 / 24%);
+}
+
+:root[data-design-concept="warm-human"] .figma-hero-demo {
+  border-color: rgb(255 253 249 / 22%);
+  background: #2f2d32;
+  box-shadow: 0 28px 80px rgb(43 42 47 / 22%);
+}
+
+:root[data-design-concept="warm-human"] .figma-workflow-section {
+  background: #2f2d32;
+}
+
+:root[data-design-concept="warm-human"] .marketing-site :is(
+    .figma-hero-demo h3,
+    .figma-hero-demo strong,
+    .figma-workflow-section h2,
+    .figma-workflow-section h3
+  ) {
+  color: #fffdf9;
+}
+
+:root[data-design-concept="warm-human"] .figma-workflow-steps article:hover,
+:root[data-design-concept="warm-human"] .figma-workflow-steps article:focus-visible,
+:root[data-design-concept="warm-human"] .figma-workflow-steps article[aria-current="step"] {
+  border-color: rgb(202 215 200 / 48%);
+  background: #39363c;
+}
+
+/* The dedicated operations route uses its own tokens; align those too. */
+:root[data-design-concept="warm-human"] .ops-shell {
+  --ops-accent: #7a8c7a;
+  --ops-accent-soft: rgb(122 140 122 / 12%);
+  --ops-rail: #f7f1e8;
+  --ops-panel: #fffdf9;
+  --ops-panel-raised: #f6f2ec;
+  --ops-line: #d6d9d1;
+  --ops-line-bright: #bfc7bc;
+  --ops-copy: #2b2a2f;
+  --ops-muted: #8c7e72;
+  color: var(--ops-copy);
+  background:
+    linear-gradient(rgb(122 140 122 / 4%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(122 140 122 / 4%) 1px, transparent 1px),
+    #fffcf7;
+  background-size: 32px 32px;
+}
+
+:root[data-design-concept="warm-human"] .ops-rail {
+  box-shadow: 8px 0 28px rgb(43 42 47 / 6%);
+}
+
+:root[data-design-concept="warm-human"] .ops-shell :is(
+    .ops-brand strong,
+    .ops-operator strong,
+    h1,
+    h2,
+    h3
+  ) {
+  color: #2b2a2f;
+}
+
+:root[data-design-concept="warm-human"] .ops-nav button[data-active="true"] {
+  border-color: #c8d2c7;
+  color: #596d5a;
+  background: #e9eee9;
+  box-shadow: inset 2px 0 0 #7a8c7a;
+}
+
+:root[data-design-concept="warm-human"] .ops-shell :is(
+    input,
+    select,
+    textarea,
+    .ops-environment,
+    .ops-shell .sidebar-avatar
+  ) {
+  border-color: var(--ops-line);
+  color: #2b2a2f;
+  background: #fffdf9;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-design-concept="warm-human"] *,
+  :root[data-design-concept="warm-human"] *::before,
+  :root[data-design-concept="warm-human"] *::after {
+    scroll-behavior: auto !important;
+  }
+}

@@ -2,9 +2,12 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.tsx";
+import "./styles-warm-human.css";
 import { preloadCurrentUser } from "./api/auth";
 import { AppErrorBoundary } from "./components/app/AppStatusPages";
 import { I18nProvider } from "./i18n/I18nProvider";
+
+document.documentElement.dataset.designConcept = "warm-human";
 
 if (import.meta.env.PROD) {
   const pathname = window.location.pathname;
