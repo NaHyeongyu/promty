@@ -753,7 +753,7 @@ def _prepare_batch(
     idempotency_key: str,
     project_id: UUID,
     user_id: UUID,
-    review_token: str,
+    review_token: str = "",
 ) -> ProjectMemoryBatch:
     snapshot_at = utc_now()
     project = db.get(Project, project_id)
@@ -761,13 +761,14 @@ def _prepare_batch(
         raise ProjectMemoryBatchInvariantError("Project not found")
     drafts = list(db.execute(_pending_draft_claim_statement(project_id, snapshot_at)).scalars())
     versions = _latest_versions_by_artifact(db, [draft.id for draft in drafts])
-    _validate_memory_review_token(
-        drafts=drafts,
-        project_id=project_id,
-        review_token=review_token,
-        user_id=user_id,
-        versions=versions,
-    )
+    if review_token:
+        _validate_memory_review_token(
+            drafts=drafts,
+            project_id=project_id,
+            review_token=review_token,
+            user_id=user_id,
+            versions=versions,
+        )
     missing_versions = [str(draft.id) for draft in drafts if draft.id not in versions]
     if missing_versions:
         raise ProjectMemoryBatchInvariantError(
