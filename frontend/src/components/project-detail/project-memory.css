@@ -1694,3 +1694,43 @@
   font-weight: var(--bh-font-weight-section);
   line-height: var(--bh-line-height-heading);
 }
+
+.bh-memory-review-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--bh-color-text-primary) 35%, transparent);
+}
+
+.bh-memory-review-dialog {
+  display: grid;
+  width: min(720px, 100%);
+  max-height: min(760px, 90vh);
+  overflow: hidden;
+  gap: 16px;
+  padding: 22px;
+  border: 1px solid var(--bh-color-border);
+  border-radius: var(--bh-radius-lg);
+  background: var(--bh-color-surface);
+  box-shadow: var(--bh-shadow-lg);
+}
+
+.bh-memory-review-header,
+.bh-memory-review-actions,
+.bh-memory-review-item > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bh-memory-review-header h3,
+.bh-memory-review-header p { margin: 0; }
+.bh-memory-review-list { display: grid; gap: 10px; overflow: auto; }
+.bh-memory-review-item { padding: 14px; border: 1px solid var(--bh-color-border); border-radius: var(--bh-radius-md); }
+.bh-memory-review-item p { white-space: pre-wrap; margin: 10px 0; max-height: 160px; overflow: auto; }
+.bh-memory-review-item time { color: var(--bh-color-text-secondary); font-size: 12px; }
+.bh-memory-review-item button { color: var(--bh-color-danger); }
