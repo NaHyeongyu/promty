@@ -1701,21 +1701,45 @@
   z-index: 50;
   display: grid;
   place-items: center;
-  padding: 24px;
-  background: color-mix(in srgb, var(--bh-color-text-primary) 35%, transparent);
+  padding: clamp(16px, 4vw, 48px);
+  background: color-mix(in srgb, var(--bh-color-text-primary) 42%, transparent);
+  backdrop-filter: blur(5px);
 }
 
 .bh-memory-review-dialog {
   display: grid;
-  width: min(720px, 100%);
-  max-height: min(760px, 90vh);
+  width: min(760px, 100%);
+  max-height: min(820px, 90vh);
   overflow: hidden;
-  gap: 16px;
-  padding: 22px;
+  gap: var(--bh-space-4);
+  padding: clamp(20px, 3vw, 32px);
   border: 1px solid var(--bh-color-border);
   border-radius: var(--bh-radius-lg);
   background: var(--bh-color-surface);
-  box-shadow: var(--bh-shadow-lg);
+  box-shadow: var(--bh-shadow-overlay);
+}
+
+.bh-memory-confirm-dialog {
+  width: min(500px, 100%);
+  min-height: 430px;
+  align-content: start;
+}
+
+.bh-memory-review-dialog h3 {
+  margin: 0;
+  color: var(--bh-color-text-primary);
+  font-family: var(--bh-font-brand);
+  font-size: var(--bh-font-size-title);
+  font-weight: var(--bh-font-weight-section);
+  line-height: var(--bh-line-height-heading);
+}
+
+.bh-memory-review-dialog > p,
+.bh-memory-review-header p {
+  margin: 0;
+  color: var(--bh-color-text-secondary);
+  font-size: var(--bh-font-size-body);
+  line-height: var(--bh-line-height-body);
 }
 
 .bh-memory-review-header,
@@ -1730,10 +1754,28 @@
 .bh-memory-review-header h3,
 .bh-memory-review-header p { margin: 0; }
 .bh-memory-review-list { display: grid; gap: 10px; overflow: auto; }
-.bh-memory-review-section { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--bh-color-border); border-radius: var(--bh-radius-md); }
+.bh-memory-review-section { display: grid; gap: 8px; padding: var(--bh-space-3); border: 1px solid var(--bh-color-border); border-radius: var(--bh-radius-md); background: var(--bh-color-surface-secondary); }
 .bh-memory-review-section > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.bh-memory-review-section > header button { color: var(--bh-color-danger); }
-.bh-memory-review-item { padding: 14px; border: 1px solid var(--bh-color-border); border-radius: var(--bh-radius-md); }
-.bh-memory-review-item p { white-space: pre-wrap; margin: 10px 0; max-height: 160px; overflow: auto; }
+.bh-memory-review-section > header strong { color: var(--bh-color-text-primary); font-size: var(--bh-font-size-body); font-weight: var(--bh-font-weight-section); }
+.bh-memory-review-section > header button,
+.bh-memory-review-item button { min-height: var(--bh-interactive-min-size); border: 0; border-radius: var(--bh-radius-sm); padding: 0 var(--bh-space-2); color: var(--bh-color-danger); background: transparent; font: inherit; font-size: var(--bh-font-size-caption); cursor: pointer; }
+.bh-memory-review-section > header button:hover,
+.bh-memory-review-item button:hover { background: var(--bh-color-danger-subtle); }
+.bh-memory-review-item { display: grid; gap: var(--bh-space-2); padding: var(--bh-space-3); border: 1px solid var(--bh-color-border); border-radius: var(--bh-radius-sm); background: var(--bh-color-surface); }
+.bh-memory-review-item p { white-space: pre-wrap; margin: 0; max-height: 160px; overflow: auto; color: var(--bh-color-text-primary); font-size: var(--bh-font-size-body); line-height: var(--bh-line-height-body); }
 .bh-memory-review-item time { color: var(--bh-color-text-secondary); font-size: 12px; }
-.bh-memory-review-item button { color: var(--bh-color-danger); }
+.bh-memory-review-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--bh-space-2); padding-top: var(--bh-space-2); }
+.bh-memory-review-actions > button { min-height: var(--bh-interactive-min-size); border: 1px solid var(--bh-color-border); border-radius: var(--bh-radius-sm); padding: 0 var(--bh-space-4); color: var(--bh-color-text-primary); background: var(--bh-color-surface-secondary); font: inherit; font-size: var(--bh-font-size-caption); font-weight: var(--bh-font-weight-label); cursor: pointer; }
+.bh-memory-review-actions > button:hover { border-color: var(--bh-color-border-hover); background: var(--bh-color-surface-hover); }
+.bh-memory-review-actions > .bh-memory-primary-action { border-color: var(--bh-button-primary-bg); color: var(--bh-button-primary-text); background: var(--bh-button-primary-bg); }
+.bh-memory-review-actions > .bh-memory-primary-action:hover { background: var(--bh-button-primary-bg-hover); }
+.bh-memory-review-actions > button:disabled { cursor: progress; opacity: .58; }
+
+@media (max-width: 640px) {
+  .bh-memory-review-overlay { align-items: end; padding: 0; }
+  .bh-memory-review-dialog { max-height: 92dvh; border-bottom: 0; border-radius: var(--bh-radius-lg) var(--bh-radius-lg) 0 0; }
+  .bh-memory-review-header { align-items: flex-start; }
+  .bh-memory-review-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .bh-memory-review-actions > button { width: 100%; }
+  .bh-memory-review-actions > .bh-memory-primary-action { grid-column: 1 / -1; }
+}
