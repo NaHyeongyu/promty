@@ -3,12 +3,16 @@ from __future__ import annotations
 from collections import defaultdict
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import contextmanager
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import timedelta
+import hmac
 import hashlib
+import json
 import logging
 from math import ceil
 import re
+import time
 from threading import Event as ThreadEvent, Thread
 from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -20,9 +24,11 @@ from sqlalchemy.orm import Session as DBSession
 
 from app.core.time import utc_now
 from app.core.config import settings
+from app.core.encoding import base64_urldecode, base64_urlencode
 from app.db.session import SessionLocal
 from app.models.artifact_versions import ArtifactVersion
 from app.models.artifacts import Artifact
+from app.models.events import Event
 from app.models.project_memory_batches import (
     ProjectMemoryBatch,
     ProjectMemoryBatchItem,
@@ -53,6 +59,8 @@ from app.services.memory.project_memory import (
 )
 from app.services.memory.providers import provider_name
 from app.services.memory.repository import write_memory_artifact_payload
+from app.services.event_payload_security import decrypt_event_payload, encrypt_event_payload
+from app.services.projects.search import upsert_prompt_search_document
 
 
 logger = logging.getLogger(__name__)
@@ -64,6 +72,9 @@ PROJECT_MEMORY_BATCH_TRIGGER = "project_batch"
 MEMORY_GROUPING_SESSION = "session"
 MEMORY_GROUPING_CHRONOLOGICAL = "chronological"
 HTTP_STATUS_PATTERN = re.compile(r"\bHTTP(?: status)?\s+([1-5][0-9]{2})\b")
+MEMORY_REVIEW_TOKEN_TTL_SECONDS = 15 * 60
+MEMORY_REVIEW_TOKEN_MAX_CHARS = 4_096
+DELETED_PROMPT_MARKER = "[Deleted by user before AI memory generation]"
 
 
 class ProjectMemoryBatchError(RuntimeError):
@@ -84,6 +95,10 @@ class ProjectMemoryBatchInvariantError(ProjectMemoryBatchError):
 
 class ProjectMemoryBatchLeaseLostError(ProjectMemoryBatchGenerationError):
     code = "lease_lost"
+
+
+class ProjectMemoryReviewRequiredError(ProjectMemoryBatchError):
+    code = "prompt_review_required"
 
 
 def _heartbeat_interval_seconds() -> float:
@@ -391,6 +406,332 @@ def _latest_versions_by_artifact(
     return {version.artifact_id: version for version in versions}
 
 
+def _memory_review_secret() -> bytes:
+    secret = (
+        settings.app_encryption_key
+        or settings.jwt_secret
+        or settings.oauth_state_secret
+        or settings.api_token
+    )
+    if not secret:
+        raise ProjectMemoryReviewRequiredError(
+            "Prompt review signing is not configured"
+        )
+    return secret.encode("utf-8")
+
+
+def _available_pending_drafts(db: DBSession, project_id: UUID) -> list[Artifact]:
+    claimed_drafts = select(ProjectMemoryBatchItem.draft_id)
+    return list(
+        db.execute(
+            select(Artifact)
+            .where(
+                *_pending_draft_filters(project_id),
+                Artifact.id.not_in(claimed_drafts),
+            )
+            .order_by(Artifact.created_at, Artifact.id)
+            .limit(settings.project_memory_batch_max_drafts)
+        ).scalars()
+    )
+
+
+def _review_manifest_digest(
+    drafts: list[Artifact],
+    versions: dict[UUID, ArtifactVersion],
+) -> str:
+    manifest: list[dict[str, Any]] = []
+    for draft in drafts:
+        version = versions.get(draft.id)
+        if version is None:
+            raise ProjectMemoryBatchInvariantError(
+                f"Pending draft {draft.id} has no immutable version"
+            )
+        content = {
+            "changed_files": version.changed_files,
+            "metadata": version.metadata_,
+            "prompt_event_ids": version.prompt_event_ids,
+            "summary": version.summary,
+            "title": version.title,
+        }
+        content_digest = hashlib.sha256(
+            json.dumps(
+                content,
+                default=str,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        manifest.append(
+            {
+                "content_digest": content_digest,
+                "draft_id": str(draft.id),
+                "version_id": str(version.id),
+            }
+        )
+    return hashlib.sha256(
+        json.dumps(manifest, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+
+def _encode_memory_review_token(
+    *,
+    digest: str,
+    project_id: UUID,
+    user_id: UUID,
+) -> str:
+    payload = {
+        "digest": digest,
+        "iat": int(time.time()),
+        "project_id": str(project_id),
+        "user_id": str(user_id),
+    }
+    body = base64_urlencode(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    )
+    signature = hmac.new(
+        _memory_review_secret(),
+        body.encode("ascii"),
+        hashlib.sha256,
+    ).digest()
+    return f"{body}.{base64_urlencode(signature)}"
+
+
+def _decode_memory_review_token(token: str) -> dict[str, Any]:
+    if not token or len(token) > MEMORY_REVIEW_TOKEN_MAX_CHARS:
+        raise ProjectMemoryReviewRequiredError("Review prompts again before generating memory")
+    try:
+        body, signature = token.split(".", 1)
+        actual_signature = base64_urldecode(signature)
+        payload = json.loads(base64_urldecode(body))
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise ProjectMemoryReviewRequiredError(
+            "Review prompts again before generating memory"
+        ) from exc
+    expected_signature = hmac.new(
+        _memory_review_secret(),
+        body.encode("ascii"),
+        hashlib.sha256,
+    ).digest()
+    if not hmac.compare_digest(actual_signature, expected_signature):
+        raise ProjectMemoryReviewRequiredError("Review prompts again before generating memory")
+    issued_at = payload.get("iat") if isinstance(payload, dict) else None
+    now = int(time.time())
+    if (
+        not isinstance(issued_at, int)
+        or issued_at > now + 60
+        or now - issued_at > MEMORY_REVIEW_TOKEN_TTL_SECONDS
+    ):
+        raise ProjectMemoryReviewRequiredError("Prompt review expired; review prompts again")
+    return payload
+
+
+def _validate_memory_review_token(
+    *,
+    drafts: list[Artifact],
+    project_id: UUID,
+    review_token: str = "",
+    user_id: UUID,
+    versions: dict[UUID, ArtifactVersion],
+) -> None:
+    payload = _decode_memory_review_token(review_token)
+    expected_digest = _review_manifest_digest(drafts, versions)
+    if (
+        payload.get("project_id") != str(project_id)
+        or payload.get("user_id") != str(user_id)
+        or not hmac.compare_digest(str(payload.get("digest") or ""), expected_digest)
+    ):
+        raise ProjectMemoryReviewRequiredError(
+            "Captured work changed; review prompts again before generating memory"
+        )
+
+
+def _prompt_event_ids_from_version(version: ArtifactVersion) -> list[UUID]:
+    raw_ids: list[Any] = list(version.prompt_event_ids or [])
+    metadata = version.metadata_ if isinstance(version.metadata_, dict) else {}
+    evidence = metadata.get("draft_evidence")
+    if isinstance(evidence, dict):
+        prompts = evidence.get("prompts")
+        if isinstance(prompts, list):
+            raw_ids.extend(
+                prompt.get("event_id")
+                for prompt in prompts
+                if isinstance(prompt, dict)
+            )
+    event_ids: list[UUID] = []
+    for raw_id in raw_ids:
+        try:
+            event_id = raw_id if isinstance(raw_id, UUID) else UUID(str(raw_id))
+        except (TypeError, ValueError):
+            continue
+        if event_id not in event_ids:
+            event_ids.append(event_id)
+    return event_ids
+
+
+def build_project_memory_generation_review(
+    db: DBSession,
+    *,
+    project_id: UUID,
+    user_id: UUID,
+) -> dict[str, Any]:
+    drafts = _available_pending_drafts(db, project_id)
+    versions = _latest_versions_by_artifact(db, [draft.id for draft in drafts])
+    event_ids = list(
+        dict.fromkeys(
+            event_id
+            for draft in drafts
+            for event_id in _prompt_event_ids_from_version(versions[draft.id])
+        )
+    )
+    events = list(
+        db.execute(
+            select(Event)
+            .where(
+                Event.id.in_(event_ids),
+                Event.project_id == project_id,
+                Event.event_type == "PromptSubmitted",
+            )
+            .order_by(Event.created_at, Event.sequence, Event.id)
+        ).scalars()
+    ) if event_ids else []
+    prompts: list[dict[str, Any]] = []
+    for event in events:
+        payload = decrypt_event_payload(event.event_type, event.payload)
+        if payload.get("deleted_before_ai_generation") is True:
+            continue
+        prompt = payload.get("prompt")
+        prompts.append(
+            {
+                "created_at": event.created_at.isoformat(),
+                "event_id": str(event.id),
+                "sequence": event.sequence,
+                "session_id": str(event.session_id),
+                "text": prompt if isinstance(prompt, str) else "",
+                "tool": event.tool,
+            }
+        )
+    digest = _review_manifest_digest(drafts, versions)
+    return {
+        "draft_count": len(drafts),
+        "prompt_count": len(prompts),
+        "prompts": prompts,
+        "review_token": _encode_memory_review_token(
+            digest=digest,
+            project_id=project_id,
+            user_id=user_id,
+        ),
+    }
+
+
+def delete_pending_prompt_before_generation(
+    db: DBSession,
+    *,
+    project_id: UUID,
+    event_id: UUID,
+) -> dict[str, Any]:
+    lock_project_memory(db, project_id)
+    active = _active_batch(db, project_id=project_id)
+    if active is not None:
+        raise ProjectMemoryReviewRequiredError("Generation is already in progress")
+    event = db.get(Event, event_id)
+    if event is None or event.project_id != project_id or event.event_type != "PromptSubmitted":
+        raise ProjectMemoryReviewRequiredError("Prompt is no longer available for review")
+    selected = _available_pending_drafts(db, project_id)
+    versions = _latest_versions_by_artifact(db, [draft.id for draft in selected])
+    visible_ids = {
+        prompt_id
+        for draft in selected
+        for prompt_id in _prompt_event_ids_from_version(versions[draft.id])
+    }
+    if event_id not in visible_ids:
+        raise ProjectMemoryReviewRequiredError("Prompt is no longer available for review")
+
+    response_ids: set[UUID] = set()
+    prompt_payload = decrypt_event_payload(event.event_type, event.payload)
+    turn_id = prompt_payload.get("turn_id")
+    session_events = list(
+        db.execute(
+            select(Event)
+            .where(Event.session_id == event.session_id, Event.project_id == project_id)
+            .order_by(Event.sequence, Event.id)
+        ).scalars()
+    )
+    for candidate in session_events:
+        if candidate.sequence <= event.sequence or candidate.event_type != "ResponseReceived":
+            continue
+        candidate_payload = decrypt_event_payload(candidate.event_type, candidate.payload)
+        if turn_id is not None and candidate_payload.get("turn_id") == turn_id:
+            response_ids.add(candidate.id)
+            break
+        if turn_id is None:
+            response_ids.add(candidate.id)
+            break
+
+    for candidate in session_events:
+        if candidate.id != event_id and candidate.id not in response_ids:
+            continue
+        payload = decrypt_event_payload(candidate.event_type, candidate.payload)
+        if candidate.event_type == "PromptSubmitted":
+            payload["prompt"] = DELETED_PROMPT_MARKER
+            payload["deleted_before_ai_generation"] = True
+        elif candidate.event_type == "ResponseReceived":
+            payload["response"] = DELETED_PROMPT_MARKER
+            payload["deleted_before_ai_generation"] = True
+        candidate.payload = encrypt_event_payload(candidate.event_type, payload)
+        if candidate.event_type == "PromptSubmitted":
+            upsert_prompt_search_document(db, candidate, payload)
+
+    for draft in selected:
+        version = versions[draft.id]
+        if event_id not in _prompt_event_ids_from_version(version):
+            continue
+        for historical in db.execute(
+            select(ArtifactVersion).where(ArtifactVersion.artifact_id == draft.id)
+        ).scalars():
+            historical.prompt_event_ids = [
+                str(item)
+                for item in (historical.prompt_event_ids or [])
+                if str(item) != str(event_id)
+            ]
+            metadata = deepcopy(historical.metadata_ or {})
+            evidence = metadata.get("draft_evidence")
+            if isinstance(evidence, dict):
+                prompts = evidence.get("prompts")
+                if isinstance(prompts, list):
+                    evidence["prompts"] = [
+                        prompt
+                        for prompt in prompts
+                        if str(prompt.get("event_id")) != str(event_id)
+                    ]
+                responses = evidence.get("responses")
+                if isinstance(responses, list) and response_ids:
+                    evidence["responses"] = [
+                        response
+                        for response in responses
+                        if str(response.get("event_id")) not in {str(item) for item in response_ids}
+                    ]
+                metadata["draft_evidence"] = evidence
+            metadata["deleted_prompt_event_ids"] = sorted(
+                set(metadata.get("deleted_prompt_event_ids") or []) | {str(event_id)}
+            )
+            historical.metadata_ = metadata
+            historical.title = "Pending memory draft"
+        draft.prompt_event_ids = [
+            str(item) for item in (draft.prompt_event_ids or []) if str(item) != str(event_id)
+        ]
+        draft.title = "Pending memory draft"
+        draft.metadata_ = {
+            **(draft.metadata_ if isinstance(draft.metadata_, dict) else {}),
+            "deleted_prompt_event_ids": sorted(
+                set((draft.metadata_ or {}).get("deleted_prompt_event_ids") or [])
+                | {str(event_id)}
+            ),
+        }
+    db.flush()
+    return {"deleted_event_id": str(event_id), "prompt_count": len(visible_ids) - 1}
+
+
 def _pending_draft_claim_statement(project_id: UUID, snapshot_at: Any):
     claimed_drafts = select(ProjectMemoryBatchItem.draft_id)
     return (
@@ -412,6 +753,7 @@ def _prepare_batch(
     idempotency_key: str,
     project_id: UUID,
     user_id: UUID,
+    review_token: str,
 ) -> ProjectMemoryBatch:
     snapshot_at = utc_now()
     project = db.get(Project, project_id)
@@ -419,6 +761,13 @@ def _prepare_batch(
         raise ProjectMemoryBatchInvariantError("Project not found")
     drafts = list(db.execute(_pending_draft_claim_statement(project_id, snapshot_at)).scalars())
     versions = _latest_versions_by_artifact(db, [draft.id for draft in drafts])
+    _validate_memory_review_token(
+        drafts=drafts,
+        project_id=project_id,
+        review_token=review_token,
+        user_id=user_id,
+        versions=versions,
+    )
     missing_versions = [str(draft.id) for draft in drafts if draft.id not in versions]
     if missing_versions:
         raise ProjectMemoryBatchInvariantError(
@@ -1799,6 +2148,7 @@ def generate_project_memory_batch(
     idempotency_key: str,
     project_id: UUID,
     user_id: UUID,
+    review_token: str = "",
 ) -> dict[str, Any]:
     in_progress = _in_progress_batch_by_idempotency_key(
         db,
@@ -1844,6 +2194,7 @@ def generate_project_memory_batch(
         idempotency_key=idempotency_key,
         project_id=project_id,
         user_id=user_id,
+        review_token=review_token,
     )
     if batch.status == "succeeded":
         return serialize_project_memory_batch(db, batch, replayed=False)

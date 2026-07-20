@@ -8,6 +8,7 @@ import {
   MemoryPanel,
   type MemoryGenerationResult,
 } from "./MemoryPanel";
+import type { MemoryGenerationReviewResponse } from "../../api/projects";
 import { OverviewPanel } from "./OverviewPanel";
 import { ProjectDetailLoadingSkeleton } from "./ProjectDetailLoadingSkeleton";
 import { ProjectHeader } from "./ProjectHeader";
@@ -58,7 +59,8 @@ type ProjectDetailPageProps = {
     visibility?: "private" | "public";
   }) => Promise<void>;
   onSaveDescription?: (description: string) => Promise<void>;
-  onGenerateProjectMemory?: () => Promise<MemoryGenerationResult>;
+  onGenerateProjectMemory?: (reviewToken: string) => Promise<MemoryGenerationResult>;
+  onLoadMemoryGenerationReview?: () => Promise<MemoryGenerationReviewResponse>;
   onToggleBookmark?: () => void;
   onRetry?: () => void;
   onTabChange: (tabId: ProjectDetailTabId) => void;
@@ -114,6 +116,7 @@ function ProjectPanel({
   onApproveProjectMemory,
   onSharePrompt,
   onGenerateProjectMemory,
+  onLoadMemoryGenerationReview,
   onLoadMemoryArtifacts,
   onDeleteProject,
   onSaveProjectMetadata,
@@ -135,7 +138,8 @@ function ProjectPanel({
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onApproveProjectMemory?: () => Promise<void>;
   onSharePrompt?: (activity: PromptActivityItem) => void;
-  onGenerateProjectMemory?: () => Promise<MemoryGenerationResult>;
+  onGenerateProjectMemory?: (reviewToken: string) => Promise<MemoryGenerationResult>;
+  onLoadMemoryGenerationReview?: () => Promise<MemoryGenerationReviewResponse>;
   onLoadMemoryArtifacts?: (limit: number) => Promise<ProjectMemoryArtifact[]>;
   onDeleteProject?: () => Promise<void>;
   onRepositoryFileSelect?: (path: string) => void;
@@ -193,6 +197,7 @@ function ProjectPanel({
         isProjectMemoryGenerationDelayed={isProjectMemoryGenerationDelayed}
         onApproveProjectMemory={onApproveProjectMemory}
         onGenerateProjectMemory={onGenerateProjectMemory}
+        onLoadMemoryGenerationReview={onLoadMemoryGenerationReview}
         onLoadMemoryArtifacts={onLoadMemoryArtifacts}
         onOpenSession={(sessionId) => {
           if (onActivityNavigationChange) {
@@ -257,6 +262,7 @@ export function ProjectDetailPage({
   onActivityNavigationChange,
   onApproveProjectMemory,
   onGenerateProjectMemory,
+  onLoadMemoryGenerationReview,
   onConnectRepository,
   onDeleteProject,
   onOpenAllProjects,
@@ -304,11 +310,6 @@ export function ProjectDetailPage({
         onConnectRepository={repositoryUrl ? undefined : onConnectRepository}
         onOpenAllProjects={onOpenAllProjects}
         onProjectSelect={onProjectSelect}
-        onRenameProject={
-          onSaveProjectMetadata
-            ? async (name) => onSaveProjectMetadata({ name })
-            : undefined
-        }
         onShareProject={onShareProject}
         onToggleBookmark={onToggleBookmark}
         projectOptions={projectOptions}
@@ -344,6 +345,7 @@ export function ProjectDetailPage({
           onApproveProjectMemory={onApproveProjectMemory}
           onSharePrompt={onSharePrompt}
           onGenerateProjectMemory={onGenerateProjectMemory}
+          onLoadMemoryGenerationReview={onLoadMemoryGenerationReview}
           onLoadMemoryArtifacts={onLoadMemoryArtifacts}
           onDeleteProject={onDeleteProject}
           onSaveProjectMetadata={onSaveProjectMetadata}
