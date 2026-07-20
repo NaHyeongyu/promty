@@ -127,10 +127,10 @@ export function useProjectActions({
     }
   };
 
-  const runProjectMemoryGeneration = async (projectId: string) => {
+  const runProjectMemoryGeneration = async (projectId: string, reviewToken: string) => {
     let payload: ProjectMemoryGenerationResponse;
     try {
-      payload = await requestProjectMemoryGeneration(projectId);
+      payload = await requestProjectMemoryGeneration(projectId, reviewToken);
     } catch (error) {
       return rethrowAfterUnauthorized(error);
     }
@@ -191,6 +191,7 @@ export function useProjectActions({
 
   const generateProjectMemory = (
     projectId: string,
+    reviewToken: string,
   ): Promise<ProjectMemoryGenerationResponse> => {
     const existingRequest = projectMemoryGenerationRequestsRef.current.get(projectId);
     if (existingRequest) {
@@ -203,7 +204,7 @@ export function useProjectActions({
       return next;
     });
 
-    const request = runProjectMemoryGeneration(projectId).then((result) => {
+    const request = runProjectMemoryGeneration(projectId, reviewToken).then((result) => {
       setDelayedProjectMemoryGenerationIds((current) => {
         const next = new Set(current);
         if (result.status === "generation_delayed") {

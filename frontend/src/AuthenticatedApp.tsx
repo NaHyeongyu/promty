@@ -26,6 +26,7 @@ import {
   type ProjectDetailTabId,
 } from "./components/project-detail";
 import { API_URL } from "./config";
+import { fetchMemoryGenerationReview } from "./api/projects";
 import { formatRelativeTimestamp } from "./lib/formatters";
 import { getCollectorHealth } from "./lib/collectorHealth";
 import { isCollectorUpdateAvailable } from "./lib/collectorVersion";
@@ -941,7 +942,12 @@ export function AuthenticatedApp() {
               }
               onGenerateProjectMemory={
                 selectedProject
-                  ? () => generateProjectMemory(selectedProject.id)
+                  ? (reviewToken) => generateProjectMemory(selectedProject.id, reviewToken)
+                  : undefined
+              }
+              onLoadMemoryGenerationReview={
+                selectedProject
+                  ? () => fetchMemoryGenerationReview(selectedProject.id)
                   : undefined
               }
               onConnectRepository={

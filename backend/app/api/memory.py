@@ -15,6 +15,7 @@ from app.schemas.memory_responses import (
     MemoryArtifactSummaryResponse,
     MemoryBatchResponse,
     MemoryGenerationPreviewResponse,
+    MemoryGenerationReviewResponse,
     MemoryGeneratorStatusResponse,
     MemoryReviewQueueResponse,
     PendingMemoryRangeResponse,
@@ -29,6 +30,8 @@ from app.services.memory.workflows import (
     list_project_artifacts_response,
     memory_generator_status,
     preview_project_memory_generation_response,
+    project_memory_generation_review_response,
+    delete_project_memory_review_prompt_response,
     read_project_memory_batch_response,
     read_latest_project_memory_batch_response,
     read_project_memory_response,
@@ -120,6 +123,7 @@ def generate_project_memory(
     response = generate_project_memory_response(
         db,
         idempotency_key=str(payload.idempotency_key),
+        review_token=payload.review_token,
         project_id=project_id,
         user=current_user,
     )
@@ -141,6 +145,41 @@ def preview_project_memory_generation(
         project_id=project_id,
         user=current_user,
     )
+
+
+@router.get(
+    "/{project_id}/memory/generation-review",
+    response_model=MemoryGenerationReviewResponse,
+)
+def review_project_memory_generation(
+    project_id: UUID,
+    current_user: User = Depends(require_web_user),
+    db: DBSession = Depends(get_db),
+) -> dict[str, Any]:
+    return project_memory_generation_review_response(
+        db,
+        project_id=project_id,
+        user=current_user,
+    )
+
+
+@router.delete(
+    "/{project_id}/memory/generation-review/prompts/{event_id}",
+)
+def delete_project_memory_review_prompt(
+    project_id: UUID,
+    event_id: UUID,
+    current_user: User = Depends(require_web_user),
+    db: DBSession = Depends(get_db),
+) -> dict[str, Any]:
+    response = delete_project_memory_review_prompt_response(
+        db,
+        project_id=project_id,
+        event_id=event_id,
+        user=current_user,
+    )
+    db.commit()
+    return response
 
 
 @router.get(
