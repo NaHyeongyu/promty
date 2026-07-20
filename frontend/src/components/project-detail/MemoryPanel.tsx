@@ -602,6 +602,7 @@ export function MemoryPanel({
   const [generationRetryable, setGenerationRetryable] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationReview, setGenerationReview] = useState<MemoryGenerationReviewResponse | null>(null);
+  const [showGenerationConfirm, setShowGenerationConfirm] = useState(false);
   const [isReviewLoading, setIsReviewLoading] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [deletingPromptId, setDeletingPromptId] = useState<string | null>(null);
@@ -693,7 +694,7 @@ export function MemoryPanel({
     }
   }, [generatedArtifacts, selectedArtifactId]);
 
-  const createProjectMemory = async () => {
+  const createProjectMemory = async (reviewTokenOverride?: string) => {
     if (
       !onGenerateProjectMemory ||
       !hasPendingDocumentation ||
@@ -712,7 +713,7 @@ export function MemoryPanel({
     const projectId = data.project.id;
     const requestId = generationRequestRef.current + 1;
     generationRequestRef.current = requestId;
-    const reviewToken = generationReview?.review_token ?? "";
+    const reviewToken = reviewTokenOverride ?? generationReview?.review_token ?? "";
     setGenerationReview(null);
     try {
       const result = await onGenerateProjectMemory(reviewToken);
@@ -780,8 +781,24 @@ export function MemoryPanel({
     setReviewError(null);
     try {
       setGenerationReview(await onLoadMemoryGenerationReview());
+      setShowGenerationConfirm(false);
     } catch (error) {
       setReviewError(error instanceof Error ? error.message : "Prompt review failed.");
+    } finally {
+      setIsReviewLoading(false);
+    }
+  };
+
+  const proceedWithoutReview = async () => {
+    if (!onLoadMemoryGenerationReview) return;
+    setIsReviewLoading(true);
+    setReviewError(null);
+    try {
+      const review = await onLoadMemoryGenerationReview();
+      setShowGenerationConfirm(false);
+      await createProjectMemory(review.review_token);
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : "Memory generation failed.");
     } finally {
       setIsReviewLoading(false);
     }
@@ -799,6 +816,13 @@ export function MemoryPanel({
       setReviewError(error instanceof Error ? error.message : "Prompt deletion failed.");
     } finally {
       setDeletingPromptId(null);
+    }
+  };
+
+  const removeReviewedSection = async (sessionId: string) => {
+    const prompts = generationReview?.prompts.filter((prompt) => prompt.session_id === sessionId) ?? [];
+    for (const prompt of prompts) {
+      await removeReviewedPrompt(prompt.event_id);
     }
   };
 
@@ -909,7 +933,7 @@ export function MemoryPanel({
                       if (generationReview) {
                         void createProjectMemory();
                       } else {
-                        void openGenerationReview();
+                        setShowGenerationConfirm(true);
                       }
                     }}
                     type="button"
@@ -924,9 +948,7 @@ export function MemoryPanel({
                             ? visibleGenerationRetryable
                               ? t("memory.retryUpdate")
                               : t("memory.failed")
-                            : generationReview
-                              ? t("memory.create")
-                              : "Review prompts"}
+                            : generationReview ? t("memory.create") : "Create project memory"}
                     </span>
                   </button>
                   <span>{t("memory.createHint")}</span>
@@ -968,6 +990,21 @@ export function MemoryPanel({
           </section>
         ) : null}
 
+        {showGenerationConfirm ? (
+          <div className="bh-memory-review-overlay" role="presentation">
+            <section className="bh-memory-review-dialog bh-memory-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="memory-confirm-title">
+              <h3 id="memory-confirm-title">Check captured prompts before AI summary</h3>
+              <p>Project Memory will send the pending prompts and related responses to the AI provider. Check for passwords, tokens, personal data, or other sensitive information first.</p>
+              {reviewError ? <p role="alert">{reviewError}</p> : null}
+              <footer className="bh-memory-review-actions">
+                <button type="button" onClick={() => setShowGenerationConfirm(false)}>Cancel</button>
+                <button type="button" onClick={() => void openGenerationReview()} disabled={isReviewLoading}>확인하기</button>
+                <button className="bh-memory-primary-action" type="button" onClick={() => void proceedWithoutReview()} disabled={isReviewLoading}>진행하기</button>
+              </footer>
+            </section>
+          </div>
+        ) : null}
+
         {generationReview ? (
           <div className="bh-memory-review-overlay" role="presentation">
             <section className="bh-memory-review-dialog" role="dialog" aria-modal="true" aria-labelledby="memory-review-title">
@@ -979,15 +1016,23 @@ export function MemoryPanel({
                 <button className="bh-icon-button" type="button" aria-label="Close review" onClick={() => setGenerationReview(null)}><X size={16} /></button>
               </header>
               <div className="bh-memory-review-list">
-                {generationReview.prompts.length ? generationReview.prompts.map((prompt) => (
-                  <article className="bh-memory-review-item" key={prompt.event_id}>
-                    <div><span>{prompt.tool}</span><time>{new Date(prompt.created_at).toLocaleString()}</time></div>
-                    <p>{prompt.text || "(empty prompt)"}</p>
-                    <button type="button" disabled={deletingPromptId === prompt.event_id} onClick={() => void removeReviewedPrompt(prompt.event_id)}>
-                      {deletingPromptId === prompt.event_id ? "Deleting…" : "Delete prompt"}
-                    </button>
-                  </article>
-                )) : <p>No prompts remain.</p>}
+                {generationReview.prompts.length ? Array.from(new Set(generationReview.prompts.map((prompt) => prompt.session_id))).map((sessionId) => {
+                  const sectionPrompts = generationReview.prompts.filter((prompt) => prompt.session_id === sessionId);
+                  return (
+                    <section className="bh-memory-review-section" key={sessionId}>
+                      <header><strong>Session {sessionId.slice(0, 8)}</strong><button type="button" onClick={() => void removeReviewedSection(sessionId)}>Delete section</button></header>
+                      {sectionPrompts.map((prompt) => (
+                        <article className="bh-memory-review-item" key={prompt.event_id}>
+                          <div><span>{prompt.tool}</span><time>{new Date(prompt.created_at).toLocaleString()}</time></div>
+                          <p>{prompt.text || "(empty prompt)"}</p>
+                          <button type="button" disabled={deletingPromptId === prompt.event_id} onClick={() => void removeReviewedPrompt(prompt.event_id)}>
+                            {deletingPromptId === prompt.event_id ? "Deleting…" : "Delete prompt"}
+                          </button>
+                        </article>
+                      ))}
+                    </section>
+                  );
+                }) : <p>No prompts remain.</p>}
               </div>
               {isReviewLoading ? <p>Refreshing review…</p> : null}
               {reviewError ? <p role="alert">{reviewError}</p> : null}
