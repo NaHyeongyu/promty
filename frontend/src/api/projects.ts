@@ -51,22 +51,6 @@ export type ProjectMemoryGenerationResponse = {
   status: ProjectMemoryGenerationStatus;
 };
 
-export type MemoryGenerationReviewPrompt = {
-  created_at: string;
-  event_id: string;
-  sequence: number;
-  session_id: string;
-  text: string;
-  tool: string;
-};
-
-export type MemoryGenerationReviewResponse = {
-  draft_count: number;
-  prompt_count: number;
-  prompts: MemoryGenerationReviewPrompt[];
-  review_token: string;
-};
-
 export type ProjectCreatePayload = {
   default_branch?: string | null;
   description?: string | null;
@@ -379,7 +363,6 @@ export function refreshMemoryReviewQueue(
 
 export async function generateProjectMemory(
   projectId: string,
-  reviewToken: string,
 ): Promise<ProjectMemoryGenerationResponse> {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(
@@ -394,7 +377,6 @@ export async function generateProjectMemory(
       {
         body: JSON.stringify({
           idempotency_key: projectMemoryIdempotencyKey(projectId),
-          review_token: reviewToken,
         }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -440,27 +422,6 @@ export async function generateProjectMemory(
     clearProjectMemoryIdempotencyKey(projectId);
   }
   return response;
-}
-
-export function fetchMemoryGenerationReview(
-  projectId: string,
-): Promise<MemoryGenerationReviewResponse> {
-  return requestJson<MemoryGenerationReviewResponse>(
-    `/api/projects/${encodeURIComponent(projectId)}/memory/generation-review`,
-    {},
-    { errorMessage: "Prompt review request failed" },
-  );
-}
-
-export function deleteMemoryGenerationReviewPrompt(
-  projectId: string,
-  eventId: string,
-): Promise<{ deleted_event_id: string; prompt_count: number }> {
-  return requestJson(
-    `/api/projects/${encodeURIComponent(projectId)}/memory/generation-review/prompts/${encodeURIComponent(eventId)}`,
-    { method: "DELETE" },
-    { errorMessage: "Prompt deletion failed" },
-  );
 }
 
 export function approveProjectMemory(projectId: string): Promise<unknown> {

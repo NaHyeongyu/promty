@@ -153,4 +153,3 @@ class ProjectMemoryUpdateRequest(BaseModel):
 
 class ProjectMemoryGenerateRequest(BaseModel):
     idempotency_key: UUID
-    review_token: str = ""

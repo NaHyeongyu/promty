@@ -138,22 +138,6 @@ class MemoryGenerationPreviewResponse(StrictResponse):
     session_count: int
 
 
-class MemoryReviewPromptResponse(StrictResponse):
-    created_at: str
-    event_id: str
-    sequence: int
-    session_id: str
-    text: str
-    tool: str
-
-
-class MemoryGenerationReviewResponse(StrictResponse):
-    draft_count: int
-    prompt_count: int
-    prompts: list[MemoryReviewPromptResponse]
-    review_token: str
-
-
 class MemoryArtifactResponse(MemoryArtifactSummaryResponse):
     prompt_event_ids: list[str]
 
