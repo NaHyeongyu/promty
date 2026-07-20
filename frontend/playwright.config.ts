@@ -9,6 +9,7 @@ export default defineConfig({
   reporter: "list",
   retries: 0,
   timeout: 30_000,
+  workers: 1,
   use: {
     ...devices["Desktop Chrome"],
     baseURL: "http://127.0.0.1:5173",

@@ -6,8 +6,9 @@ import {
   useMemo,
   useState,
 } from "react";
+import { zh } from "./zh";
 
-export type AppLocale = "en" | "ja" | "ko";
+export type AppLocale = "en" | "ja" | "ko" | "zh";
 
 const LANGUAGE_STORAGE_KEY = "promty:language";
 
@@ -18,12 +19,14 @@ export const APP_LANGUAGES: Array<{
   { label: "English", locale: "en" },
   { label: "한국어", locale: "ko" },
   { label: "日本語", locale: "ja" },
+  { label: "简体中文", locale: "zh" },
 ];
 
 const localeTags: Record<AppLocale, string> = {
   en: "en-US",
   ja: "ja-JP",
   ko: "ko-KR",
+  zh: "zh-CN",
 };
 
 const en = {
@@ -86,6 +89,7 @@ const en = {
   "language.english": "English",
   "language.japanese": "Japanese",
   "language.korean": "Korean",
+  "language.chinese": "Simplified Chinese",
   "language.label": "Language",
   "language.savedLocally": "Saved on this device",
   "language.savedToAccount": "Saved to your account and used for AI-generated content",
@@ -104,6 +108,7 @@ const en = {
   "nav.support": "Help & support",
   "pinned.browseProjects": "Browse projects",
   "pinned.emptyDescription": "Pin important projects to keep them together here.",
+  "pinned.emptyHint": "Open a project and use the bookmark button to pin it.",
   "pinned.emptyTitle": "No pinned projects yet",
   "support.sidebarHint": "FAQ and contact",
   "support.kicker": "Help center",
@@ -340,8 +345,10 @@ const en = {
   "collector.waitingForUpdate": "Waiting for the updated Collector",
   "collector.addContext": "Add context to {name}",
   "collector.addProject": "Add a project",
+  "collector.addProjectDescription": "Choose how Promty should understand this project.",
   "collector.apiUnavailable": "API unavailable",
   "collector.attachRepo": "Attach repository context",
+  "collector.attachRepoDescription": "Add source-file context to {name} without collecting AI sessions.",
   "collector.authRepoDescription": "Authorize repository access before adding source context. This permission is separate from account sign-in and local AI collection.",
   "collector.captureAi": "Capture AI work",
   "collector.checkNow": "Check connection now",
@@ -359,6 +366,7 @@ const en = {
   "collector.connectionType": "Connection type",
   "collector.connected": "Collector connected",
   "collector.createFromRepo": "Create from a repository",
+  "collector.createFromRepoDescription": "Create a project from source files without installing the local collector.",
   "collector.creating": "Creating",
   "collector.copyCommand": "Copy command",
   "collector.copyDisabled": "Complete the privacy confirmation before copying",
@@ -371,6 +379,7 @@ const en = {
   "collector.openingProject": "Opening your project.",
   "collector.projectTerminal": "Project terminal",
   "collector.repositoryOnly": "Repository only",
+  "collector.repositoryOnlyDescription": "Use source files from an existing GitHub repository.",
   "collector.repositoryScopeDescription": "The runtime is installed once on this machine, while hooks are added only to this repository. Run this command again from each additional repository; other repositories are not collected automatically.",
   "collector.repositoryScopeTitle": "Only this repository is connected.",
   "collector.recommended": "Recommended",
@@ -1373,6 +1382,12 @@ const ko: Dictionary = {
   "project.syncIssue": "동기화 문제",
   "settings.loadFailed": "계정 설정을 불러오지 못했습니다",
   "settings.loadingAccount": "계정 설정을 불러오는 중",
+  "language.chinese": "중국어(간체)",
+  "pinned.emptyHint": "프로젝트를 열고 북마크 버튼을 눌러 고정하세요.",
+  "collector.addProjectDescription": "Promty가 이 프로젝트를 이해할 방식을 선택하세요.",
+  "collector.attachRepoDescription": "AI 세션을 수집하지 않고 {name}에 소스 파일 컨텍스트를 추가합니다.",
+  "collector.createFromRepoDescription": "로컬 Collector 설치 없이 소스 파일로 프로젝트를 생성합니다.",
+  "collector.repositoryOnlyDescription": "기존 GitHub 저장소의 소스 파일을 사용합니다.",
 };
 
 const ja: Dictionary = {
@@ -2046,17 +2061,23 @@ const ja: Dictionary = {
   "project.syncIssue": "同期の問題",
   "settings.loadFailed": "アカウント設定を読み込めませんでした",
   "settings.loadingAccount": "アカウント設定を読み込み中",
+  "language.chinese": "中国語（簡体字）",
+  "pinned.emptyHint": "プロジェクトを開き、ブックマークボタンで固定してください。",
+  "collector.addProjectDescription": "Promtyがこのプロジェクトを理解する方法を選択してください。",
+  "collector.attachRepoDescription": "AIセッションを取得せずに、{name}へソースファイルのコンテキストを追加します。",
+  "collector.createFromRepoDescription": "ローカルCollectorをインストールせず、ソースファイルからプロジェクトを作成します。",
+  "collector.repositoryOnlyDescription": "既存のGitHubリポジトリのソースファイルを使用します。",
 };
 
-const dictionaries: Record<AppLocale, Dictionary> = { en, ja, ko };
+const dictionaries: Record<AppLocale, Dictionary> = { en, ja, ko, zh };
 
 export function normalizeAppLocale(value: string | null | undefined): AppLocale {
-  return value === "ko" || value === "ja" ? value : "en";
+  return value === "ko" || value === "ja" || value === "zh" ? value : "en";
 }
 
 function matchSupportedLocale(value: string | null | undefined): AppLocale | null {
   const language = value?.trim().toLowerCase().split(/[-_]/, 1)[0];
-  return language === "en" || language === "ja" || language === "ko"
+  return language === "en" || language === "ja" || language === "ko" || language === "zh"
     ? language
     : null;
 }

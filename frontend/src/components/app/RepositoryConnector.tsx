@@ -5,7 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { FolderGit2, Laptop, X } from "lucide-react";
+import { Check, FolderGit2, Laptop, X } from "lucide-react";
 import type { EventRecord } from "../../workspace/types";
 import {
   CollectorEventWaiter,
@@ -52,7 +52,9 @@ export function RepositoryConnector({
       : t("collector.addProject")
     : t("collector.setupProject", { name: targetProjectName ?? t("collector.thisProject") });
   const connectorDescription = onManualConnect
-    ? t("collector.separateConnections")
+    ? isExistingProjectConnection
+      ? t("collector.separateConnections")
+      : t("collector.addProjectDescription")
     : t("collector.localDescription");
   const manualSubmitLabel = isExistingProjectConnection ? t("collector.connect") : t("common.create");
   const manualSavingLabel = isExistingProjectConnection ? t("collector.connecting") : t("collector.creating");
@@ -140,6 +142,7 @@ export function RepositoryConnector({
         aria-labelledby="repository-connector-title"
         aria-modal="true"
         className="repository-connector"
+        data-mode={connectionMode}
         data-onboarding="true"
         onKeyDown={handleDialogKeyDown}
         ref={dialogRef}
@@ -169,8 +172,21 @@ export function RepositoryConnector({
               onClick={() => setConnectionMode("collector")}
               type="button"
             >
-              <Laptop aria-hidden="true" size={16} strokeWidth={1.5} />
-              <span>{t("collector.captureAi")}</span>
+              <span className="repository-connector-mode-icon" aria-hidden="true">
+                <Laptop size={17} strokeWidth={1.5} />
+              </span>
+              <span className="repository-connector-mode-copy">
+                <strong>{t("collector.captureAi")}</strong>
+                <small>{t("collector.localDescription")}</small>
+              </span>
+              {connectionMode === "collector" ? (
+                <Check
+                  aria-hidden="true"
+                  className="repository-connector-mode-check"
+                  size={16}
+                  strokeWidth={1.8}
+                />
+              ) : null}
             </button>
             <button
               aria-pressed={connectionMode === "repository"}
@@ -178,92 +194,107 @@ export function RepositoryConnector({
               onClick={() => setConnectionMode("repository")}
               type="button"
             >
-              <FolderGit2 aria-hidden="true" size={16} strokeWidth={1.5} />
-              <span>{t("collector.repositoryOnly")}</span>
+              <span className="repository-connector-mode-icon" aria-hidden="true">
+                <FolderGit2 size={17} strokeWidth={1.5} />
+              </span>
+              <span className="repository-connector-mode-copy">
+                <strong>{t("collector.repositoryOnly")}</strong>
+                <small>{t("collector.repositoryOnlyDescription")}</small>
+              </span>
+              {connectionMode === "repository" ? (
+                <Check
+                  aria-hidden="true"
+                  className="repository-connector-mode-check"
+                  size={16}
+                  strokeWidth={1.8}
+                />
+              ) : null}
             </button>
           </div>
         ) : null}
 
-        {connectionMode === "collector" || !onManualConnect ? (
-          <>
-            <CollectorSetupFlow projectName={targetProjectName} />
-            {pollingEnabled ? (
-              <CollectorEventWaiter
-                eventFilter={(event) =>
-                  targetProjectId
-                    ? event.project_id === targetProjectId
-                    : !existingProjectIds.includes(event.project_id)
-                }
-                onFirstEvent={onFirstEvent}
-                waitForNewEvent
-              />
-            ) : null}
-          </>
-        ) : null}
+        <div className="repository-connector-content">
+          {connectionMode === "collector" || !onManualConnect ? (
+            <>
+              <CollectorSetupFlow projectName={targetProjectName} />
+              {pollingEnabled ? (
+                <CollectorEventWaiter
+                  eventFilter={(event) =>
+                    targetProjectId
+                      ? event.project_id === targetProjectId
+                      : !existingProjectIds.includes(event.project_id)
+                  }
+                  onFirstEvent={onFirstEvent}
+                  waitForNewEvent
+                />
+              ) : null}
+            </>
+          ) : null}
 
-        {onManualConnect &&
-        connectionMode === "repository" &&
-        !repositoryAccessAvailable ? (
-          <div className="repository-access-gate">
-            <FolderGit2 aria-hidden="true" size={20} strokeWidth={1.5} />
-            <div>
-              <strong>{t("collector.connectGithubAccess")}</strong>
-              <p>{t("collector.authRepoDescription")}</p>
-            </div>
-            {repositoryConnectUrl ? (
-              <a className="toolbar-button" href={repositoryConnectUrl}>
-                {t("files.connectGithub")}
-              </a>
-            ) : null}
-          </div>
-        ) : null}
-
-        {onManualConnect &&
-        connectionMode === "repository" &&
-        repositoryAccessAvailable ? (
-          <form
-            className="repository-url-form is-repository-only"
-            onSubmit={submitManualRepository}
-          >
-            <div className="repository-only-heading">
-              <FolderGit2 aria-hidden="true" size={18} strokeWidth={1.5} />
+          {onManualConnect &&
+          connectionMode === "repository" &&
+          !repositoryAccessAvailable ? (
+            <div className="repository-access-gate">
+              <FolderGit2 aria-hidden="true" size={20} strokeWidth={1.5} />
               <div>
+                <strong>{t("collector.connectGithubAccess")}</strong>
+                <p>{t("collector.authRepoDescription")}</p>
+              </div>
+              {repositoryConnectUrl ? (
+                <a className="toolbar-button" href={repositoryConnectUrl}>
+                  {t("files.connectGithub")}
+                </a>
+              ) : null}
+            </div>
+          ) : null}
+
+          {onManualConnect &&
+          connectionMode === "repository" &&
+          repositoryAccessAvailable ? (
+            <form
+              className="repository-url-form is-repository-only"
+              onSubmit={submitManualRepository}
+            >
+              <div className="repository-only-heading">
                 <strong>
                   {isExistingProjectConnection
                     ? t("collector.attachRepo")
                     : t("collector.createFromRepo")}
                 </strong>
                 <p>
-                  This adds source-file context to {targetProjectName ?? "the project"}. It does
-                  not install a collector or capture AI sessions.
+                  {isExistingProjectConnection
+                    ? t("collector.attachRepoDescription", {
+                        name: targetProjectName ?? t("collector.thisProject"),
+                      })
+                    : t("collector.createFromRepoDescription")}
                 </p>
               </div>
-            </div>
-            <label htmlFor="repository-url">{t("collector.githubRepoUrl")}</label>
-            <div className="repository-url-row">
-              <input
-                autoComplete="off"
-                id="repository-url"
-                inputMode="url"
-                onChange={(event) => setManualRepositoryUrl(event.target.value)}
-                placeholder="https://github.com/owner/repo"
-                spellCheck={false}
-                type="url"
-                value={manualRepositoryUrl}
-              />
-              <button
-                className="repository-url-submit"
-                disabled={!canSubmitManualRepository || isManualRepositorySaving}
-                type="submit"
-              >
-                {isManualRepositorySaving ? manualSavingLabel : manualSubmitLabel}
-              </button>
-            </div>
-            {manualRepositoryError ? (
-              <p className="repository-connector-error">{manualRepositoryError}</p>
-            ) : null}
-          </form>
-        ) : null}
+              <label htmlFor="repository-url">{t("collector.githubRepoUrl")}</label>
+              <div className="repository-url-row">
+                <input
+                  autoComplete="off"
+                  id="repository-url"
+                  inputMode="url"
+                  onChange={(event) => setManualRepositoryUrl(event.target.value)}
+                  placeholder="https://github.com/owner/repo"
+                  spellCheck={false}
+                  type="url"
+                  value={manualRepositoryUrl}
+                />
+                <button
+                  className="repository-url-submit"
+                  disabled={!canSubmitManualRepository || isManualRepositorySaving}
+                  type="submit"
+                >
+                  {isManualRepositorySaving ? manualSavingLabel : manualSubmitLabel}
+                </button>
+              </div>
+              {manualRepositoryError ? (
+                <p className="repository-connector-error">{manualRepositoryError}</p>
+              ) : null}
+            </form>
+          ) : null}
+        </div>
       </section>
     </div>
   );

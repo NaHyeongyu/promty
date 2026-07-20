@@ -128,9 +128,9 @@ def test_account_language_preference_is_saved() -> None:
 
     response = update_account_preferences_response(
         db,
-        preferred_locale="ko",
+        preferred_locale="zh",
         user=user,
     )
 
-    assert response == {"preferred_locale": "ko"}
-    assert user.preferred_locale == "ko"
+    assert response == {"preferred_locale": "zh"}
+    assert user.preferred_locale == "zh"

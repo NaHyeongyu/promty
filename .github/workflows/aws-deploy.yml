@@ -19,7 +19,7 @@ env:
   FRONTEND_S3_BUCKET: ${{ secrets.FRONTEND_S3_BUCKET }}
   CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
   VITE_PROMTY_API_URL: ${{ secrets.VITE_PROMTY_API_URL }}
-  VITE_PROMTY_PUBLISHED_FLOWS_ENABLED: "true"
+  VITE_PROMTY_PUBLISHED_FLOWS_ENABLED: "false"
 
 jobs:
   publish:
@@ -124,11 +124,11 @@ jobs:
               "docker run --rm --network promty --env-file /opt/promty/backend.env ${REGISTRY}/${ECR_REPOSITORY}:latest alembic -c alembic.ini upgrade head",
               "docker rm -f promty-memory-worker || true",
               "docker rm -f promty-backend || true",
-              "docker run -d --name promty-backend --restart unless-stopped --network promty --env-file /opt/promty/backend.env -e PROMTY_PUBLISHED_FLOWS_ENABLED=true -e PROMTY_ADMIN_GITHUB_IDS=191438254 -e PROMTY_DATABASE_POOL_SIZE=5 -e PROMTY_DATABASE_MAX_OVERFLOW=2 ${REGISTRY}/${ECR_REPOSITORY}:latest",
+              "docker run -d --name promty-backend --restart unless-stopped --network promty --env-file /opt/promty/backend.env -e PROMTY_PUBLISHED_FLOWS_ENABLED=false -e PROMTY_ADMIN_GITHUB_IDS=191438254 -e PROMTY_DATABASE_POOL_SIZE=5 -e PROMTY_DATABASE_MAX_OVERFLOW=2 ${REGISTRY}/${ECR_REPOSITORY}:latest",
               "sleep 8",
               "docker exec promty-backend python -c \"import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8011/health/ready', timeout=5).read().decode())\"",
               "docker exec promty-backend alembic -c alembic.ini current --check-heads",
-              "docker run -d --name promty-memory-worker --restart unless-stopped --network promty --env-file /opt/promty/backend.env --health-cmd 'python -m app.workers.healthcheck' --health-interval 10s --health-timeout 3s --health-retries 3 --health-start-period 10s -e PROMTY_PUBLISHED_FLOWS_ENABLED=true -e PROMTY_DATABASE_POOL_SIZE=2 -e PROMTY_DATABASE_MAX_OVERFLOW=1 ${REGISTRY}/${ECR_REPOSITORY}:latest python -m app.workers.project_memory",
+              "docker run -d --name promty-memory-worker --restart unless-stopped --network promty --env-file /opt/promty/backend.env --health-cmd 'python -m app.workers.healthcheck' --health-interval 10s --health-timeout 3s --health-retries 3 --health-start-period 10s -e PROMTY_PUBLISHED_FLOWS_ENABLED=false -e PROMTY_DATABASE_POOL_SIZE=2 -e PROMTY_DATABASE_MAX_OVERFLOW=1 ${REGISTRY}/${ECR_REPOSITORY}:latest python -m app.workers.project_memory",
               "sleep 6",
               "docker exec promty-memory-worker python -m app.workers.healthcheck",
               "docker image prune -f"

@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -28,6 +30,12 @@ from app.middleware.security_headers import APISecurityHeadersMiddleware
 from app.middleware.security_rate_limit import SecurityRateLimitMiddleware
 
 install_sensitive_access_log_filter()
+
+logger = logging.getLogger("promty.encryption")
+ENCRYPTED_DATA_UNAVAILABLE_CODE = "encrypted_data_unavailable"
+ENCRYPTED_DATA_UNAVAILABLE_DETAIL = (
+    "Some activity data is temporarily unavailable. Please try again shortly."
+)
 
 app = FastAPI(title="Promty API")
 app.add_middleware(
@@ -76,12 +84,21 @@ app.include_router(support_router)
 
 @app.exception_handler(EncryptionError)
 async def encryption_error_handler(
-    _request: Request,
+    request: Request,
     exc: EncryptionError,
 ) -> JSONResponse:
+    logger.error(
+        "Encryption operation failed for %s %s",
+        request.method,
+        request.url.path,
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        content={"detail": str(exc)},
+        content={
+            "code": ENCRYPTED_DATA_UNAVAILABLE_CODE,
+            "detail": ENCRYPTED_DATA_UNAVAILABLE_DETAIL,
+        },
     )
 
 

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  AlertCircle,
   Check,
   ChevronDown,
   Copy,
@@ -8,7 +7,6 @@ import {
   Folder,
   KeyRound,
   LogOut,
-  Minus,
   Moon,
   Pencil,
   RefreshCw,
@@ -349,24 +347,6 @@ function TokenRow({
   );
 }
 
-function StageStatus({
-  label,
-  tone,
-}: {
-  label: string;
-  tone: "attention" | "complete" | "pending";
-}) {
-  const StatusIcon =
-    tone === "complete" ? Check : tone === "attention" ? AlertCircle : Minus;
-
-  return (
-    <span className="settings-stage-status" data-tone={tone}>
-      <StatusIcon aria-hidden="true" size={14} strokeWidth={1.5} />
-      {label}
-    </span>
-  );
-}
-
 export function UserSettingsPage({
   accountError,
   accountOverview,
@@ -426,19 +406,15 @@ export function UserSettingsPage({
   const [isTokenCopied, setIsTokenCopied] = useState(false);
   const roleLabel = currentUser?.is_admin ? t("common.admin") : t("common.member");
   const themeCopy = locale === "ko"
-    ? {
+      ? {
         bright: "브라이트",
         dark: "다크",
-        description: "Promty 화면의 밝기와 분위기를 선택합니다.",
         label: "테마",
-        saved: "이 브라우저에 저장됩니다.",
       }
     : {
         bright: "Bright",
         dark: "Dark",
-        description: "Choose the brightness and mood of your Promty workspace.",
         label: "Theme",
-        saved: "Saved in this browser.",
       };
   const githubConnection = accountOverview?.github_connection;
   const collectorTokens = accountOverview?.collector_tokens ?? [];
@@ -489,29 +465,11 @@ export function UserSettingsPage({
     isCollectorRecent,
     hasProjectMemory,
   ].filter(Boolean).length;
-  const nextStage = !currentUser
-    ? 1
-    : !hasConnectedRepository
-      ? 2
-      : activeCollectorTokens.length === 0
-        ? 3
-        : !isCollectorRecent
-          ? 4
-          : !hasProjectMemory
-            ? 5
-            : null;
-  const [openStage, setOpenStage] = useState<number | null>(null);
-  useEffect(() => {
-    setOpenStage(nextStage);
-  }, [nextStage]);
   useEffect(() => {
     if (createdCollectorToken) {
       setCollectorTokenName("");
     }
   }, [createdCollectorToken]);
-  const handleStageToggle = (stage: number, isOpen: boolean) => {
-    setOpenStage((current) => (isOpen ? stage : current === stage ? null : current));
-  };
   const overallMessage = !githubConnection?.connected
     ? t("settings.message.connectGithub")
     : !hasConnectedRepository
@@ -525,6 +483,31 @@ export function UserSettingsPage({
             : pendingMemoryCount > 0
               ? t("settings.message.pendingReview", { count: pendingMemoryCount.toLocaleString() })
               : t("settings.message.upToDate");
+  const minimalCopy = locale === "ko"
+    ? {
+        accountDescription: "계정 정보와 화면 설정",
+        accountTitle: "계정 및 환경",
+        collectorDetails: "Collector 토큰 관리",
+        connectionsDescription: "GitHub와 Collector 연결",
+        connectionsTitle: "연결",
+        dataDescription: "프로젝트 데이터가 정상적으로 처리되는지 확인합니다.",
+        dataTitle: "데이터 상태",
+        ready: "워크스페이스 준비 완료",
+        review: "검토하기",
+        setupProgress: `설정 ${completedStageCount}/5 완료`,
+      }
+    : {
+        accountDescription: "Account details and display settings",
+        accountTitle: "Account & preferences",
+        collectorDetails: "Manage Collector tokens",
+        connectionsDescription: "GitHub and Collector connections",
+        connectionsTitle: "Connections",
+        dataDescription: "Check that project data is moving through Promty.",
+        dataTitle: "Data status",
+        ready: "Workspace ready",
+        review: "Review now",
+        setupProgress: `${completedStageCount}/5 settings complete`,
+      };
   const copyCreatedToken = async () => {
     if (!createdCollectorToken) {
       return;
@@ -569,13 +552,27 @@ export function UserSettingsPage({
   return (
     <section className="settings-page" aria-label={t("settings.serviceSetup")}>
       <AccountStatus error={accountError} isLoading={isAccountLoading} />
-      <section className="settings-hero" aria-labelledby="settings-title">
-        <div className="settings-hero-copy">
-          <span>{t("settings.serviceSetup")}</span>
-          <h2 id="settings-title">{t("settings.stagesReady", { ready: completedStageCount })}</h2>
+      <section className="settings-overview" aria-labelledby="settings-title">
+        <div className="settings-overview-copy">
+          <span className="settings-health" data-tone={completedStageCount === 5 ? "success" : "warning"}>
+            <span aria-hidden="true" />
+            {minimalCopy.setupProgress}
+          </span>
+          <h2 id="settings-title">
+            {completedStageCount === 5 ? minimalCopy.ready : t("settings.serviceSetup")}
+          </h2>
           <p>{overallMessage}</p>
         </div>
-        <div className="settings-hero-actions">
+        <div className="settings-overview-actions">
+          {pendingMemoryCount > 0 ? (
+            <button
+              className="toolbar-button"
+              onClick={(event) => onOpenReviewQueue(event.currentTarget)}
+              type="button"
+            >
+              {minimalCopy.review} · {pendingMemoryCount.toLocaleString()}
+            </button>
+          ) : null}
           <button
             className="toolbar-button"
             disabled={isRefreshing || isAccountLoading}
@@ -588,35 +585,28 @@ export function UserSettingsPage({
         </div>
       </section>
 
-      <div className="settings-stage-list">
-        <details
-          className="settings-stage"
-          data-status={currentUser ? "complete" : "pending"}
-          onToggle={(event) => handleStageToggle(1, event.currentTarget.open)}
-          open={openStage === 1}
-        >
-          <summary className="settings-stage-header">
-            <span className="settings-stage-marker" aria-hidden="true">01</span>
-            <div className="settings-stage-heading">
-              <h3>{t("settings.account")}</h3>
-              <p>{t("settings.accountDescription")}</p>
+      <div className="settings-simple-grid">
+        <section className="settings-simple-panel" aria-labelledby="settings-account-title">
+          <header className="settings-simple-header">
+            <div>
+              <h3 id="settings-account-title">{minimalCopy.accountTitle}</h3>
+              <p>{minimalCopy.accountDescription}</p>
             </div>
-            <StageStatus label={currentUser ? t("settings.statusComplete") : t("settings.statusUnavailable")} tone={currentUser ? "complete" : "pending"} />
-            <ChevronDown aria-hidden="true" className="settings-stage-chevron" size={16} strokeWidth={1.5} />
-          </summary>
-          <div className="settings-stage-content">
-            <dl className="settings-stage-metrics">
-              <div><dt>{t("settings.accountLabel")}</dt><dd>{currentUser?.username ?? t("common.signedIn")}</dd></div>
-              <div><dt>{t("settings.email")}</dt><dd>{currentUser?.email ?? t("settings.githubAuthenticated")}</dd></div>
-              <div><dt>{t("settings.role")}</dt><dd>{roleLabel}</dd></div>
-              <div><dt>{t("settings.access")}</dt><dd>{canUseAdmin ? t("settings.adminConsole") : t("settings.standardMember")}</dd></div>
-            </dl>
-            <div className="settings-language-setting">
-              <div>
-                <label htmlFor="settings-language">{t("language.label")}</label>
-                <span>{t("language.description")}</span>
-              </div>
-              <div>
+          </header>
+          <div className="settings-simple-row">
+            <span>{t("settings.accountLabel")}</span>
+            <div className="settings-account-value">
+              <strong>{currentUser?.username ?? t("common.signedIn")}</strong>
+              <small>{currentUser?.email ?? t("settings.githubAuthenticated")}</small>
+            </div>
+          </div>
+          <div className="settings-simple-row">
+            <span>{t("settings.role")}</span>
+            <strong>{roleLabel} · {canUseAdmin ? t("settings.adminConsole") : t("settings.standardMember")}</strong>
+          </div>
+          <div className="settings-simple-row">
+            <label htmlFor="settings-language">{t("language.label")}</label>
+            <div className="settings-simple-control">
                 <select
                   className="settings-control"
                   id="settings-language"
@@ -635,79 +625,55 @@ export function UserSettingsPage({
                     <option key={language.locale} value={language.locale}>{language.label}</option>
                   ))}
                 </select>
-                <small>{t("language.savedToAccount")}</small>
-              </div>
-            </div>
-            <div className="settings-theme-setting">
-              <div>
-                <span className="settings-theme-label">{themeCopy.label}</span>
-                <span>{themeCopy.description}</span>
-              </div>
-              <div>
-                <div
-                  aria-label={themeCopy.label}
-                  className="settings-theme-options"
-                  role="radiogroup"
-                >
-                  <button
-                    aria-checked={theme === "dark"}
-                    className="settings-theme-option"
-                    data-active={theme === "dark" ? "true" : undefined}
-                    onClick={() => setTheme("dark")}
-                    role="radio"
-                    type="button"
-                  >
-                    <span className="settings-theme-preview" data-theme-preview="dark">
-                      <Moon aria-hidden="true" size={16} strokeWidth={1.5} />
-                    </span>
-                    <strong>{themeCopy.dark}</strong>
-                  </button>
-                  <button
-                    aria-checked={theme === "bright"}
-                    className="settings-theme-option"
-                    data-active={theme === "bright" ? "true" : undefined}
-                    onClick={() => setTheme("bright")}
-                    role="radio"
-                    type="button"
-                  >
-                    <span className="settings-theme-preview" data-theme-preview="bright">
-                      <Sun aria-hidden="true" size={16} strokeWidth={1.5} />
-                    </span>
-                    <strong>{themeCopy.bright}</strong>
-                  </button>
-                </div>
-                <small>{themeCopy.saved}</small>
-              </div>
             </div>
           </div>
-        </details>
-
-        <details
-          className="settings-stage"
-          data-status={hasConnectedRepository ? "complete" : "attention"}
-          onToggle={(event) => handleStageToggle(2, event.currentTarget.open)}
-          open={openStage === 2}
-        >
-          <summary className="settings-stage-header">
-            <span className="settings-stage-marker" aria-hidden="true">02</span>
-            <div className="settings-stage-heading">
-              <h3>{t("settings.repository")}</h3>
-              <p>{t("settings.repositoryDescription")}</p>
+          <div className="settings-simple-row">
+            <span>{themeCopy.label}</span>
+            <div className="settings-theme-compact" aria-label={themeCopy.label} role="radiogroup">
+              <button
+                aria-checked={theme === "dark"}
+                data-active={theme === "dark" ? "true" : undefined}
+                onClick={() => setTheme("dark")}
+                role="radio"
+                type="button"
+              >
+                <Moon aria-hidden="true" size={14} strokeWidth={1.5} />
+                {themeCopy.dark}
+              </button>
+              <button
+                aria-checked={theme === "bright"}
+                data-active={theme === "bright" ? "true" : undefined}
+                onClick={() => setTheme("bright")}
+                role="radio"
+                type="button"
+              >
+                <Sun aria-hidden="true" size={14} strokeWidth={1.5} />
+                {themeCopy.bright}
+              </button>
             </div>
-            <StageStatus
-              label={hasConnectedRepository ? t("settings.statusComplete") : githubConnection?.connected ? t("settings.statusSelectRepository") : t("settings.statusConnectGithub")}
-              tone={hasConnectedRepository ? "complete" : "attention"}
-            />
-            <ChevronDown aria-hidden="true" className="settings-stage-chevron" size={16} strokeWidth={1.5} />
-          </summary>
-          <div className="settings-stage-content">
-            <dl className="settings-stage-metrics">
-              <div><dt>{t("settings.repositories")}</dt><dd>{repositoryCoverage}</dd></div>
-              <div><dt>{t("settings.githubAccess")}</dt><dd>{githubConnection?.connected ? t("common.authorized") : t("common.notAuthorized")}</dd></div>
-              <div><dt>{t("settings.scopes")}</dt><dd>{githubConnection?.scopes.join(", ") || t("common.notAvailable")}</dd></div>
-              <div><dt>{t("settings.updated")}</dt><dd>{formatOptionalTimestamp(githubConnection?.updated_at, t("common.never"))}</dd></div>
-            </dl>
-            <div className="settings-stage-actions">
+          </div>
+        </section>
+
+        <section className="settings-simple-panel" aria-labelledby="settings-connections-title">
+          <header className="settings-simple-header">
+            <div>
+              <h3 id="settings-connections-title">{minimalCopy.connectionsTitle}</h3>
+              <p>{minimalCopy.connectionsDescription}</p>
+            </div>
+          </header>
+          <div className="settings-connection-block">
+            <div className="settings-connection-heading">
+              <GitHubIcon />
+              <div>
+                <strong>GitHub</strong>
+                <span>{repositoryCoverage} {t("settings.repositories").toLowerCase()}</span>
+              </div>
+              <span className="settings-health" data-tone={hasConnectedRepository ? "success" : "warning"}>
+                <span aria-hidden="true" />
+                {hasConnectedRepository ? t("settings.statusComplete") : t("settings.statusConnectGithub")}
+              </span>
+            </div>
+            <div className="settings-connection-actions">
               <button className="toolbar-button" onClick={onOpenRepositoryConnector} type="button">
                 <Folder aria-hidden="true" size={15} strokeWidth={1.5} />
                 <span>{t("settings.manageRepositories")}</span>
@@ -735,33 +701,31 @@ export function UserSettingsPage({
               ) : null}
             </div>
           </div>
-        </details>
-
-        <details
-          className="settings-stage"
-          data-status={activeCollectorTokens.length > 0 ? "complete" : "attention"}
-          onToggle={(event) => handleStageToggle(3, event.currentTarget.open)}
-          open={openStage === 3}
-        >
-          <summary className="settings-stage-header">
-            <span className="settings-stage-marker" aria-hidden="true">03</span>
-            <div className="settings-stage-heading">
-              <h3>{t("settings.collector")}</h3>
-              <p>{t("settings.collectorDescription")}</p>
+          <div className="settings-connection-block">
+            <div className="settings-connection-heading">
+              <Database aria-hidden="true" size={17} strokeWidth={1.5} />
+              <div>
+                <strong>{t("settings.collector")}</strong>
+                <span>{activeCollectorTokens.length} {t("common.active")} · {tokenDateLabel(latestCollectorUse, t("common.never"))}</span>
+              </div>
+              <span className="settings-health" data-tone={collectorIngestion.tone}>
+                <span aria-hidden="true" />
+                {collectorIngestion.label}
+              </span>
             </div>
-            <StageStatus
-              label={activeCollectorTokens.length > 0 ? `${activeCollectorTokens.length} ${t("common.active")}` : t("settings.statusCreateToken")}
-              tone={activeCollectorTokens.length > 0 ? "complete" : "attention"}
-            />
-            <ChevronDown aria-hidden="true" className="settings-stage-chevron" size={16} strokeWidth={1.5} />
-          </summary>
-          <div className="settings-stage-content">
-            <dl className="settings-stage-metrics">
+          </div>
+          <details className="settings-disclosure">
+            <summary>
+              <span>{minimalCopy.collectorDetails}</span>
+              <ChevronDown aria-hidden="true" size={16} strokeWidth={1.5} />
+            </summary>
+            <div className="settings-disclosure-content">
+              <dl className="settings-compact-metrics">
               <div><dt>{t("settings.apiEndpoint")}</dt><dd><code>{apiUrl}</code></dd></div>
               <div><dt>{t("settings.ingestion")}</dt><dd><span className="settings-value-chip" data-tone={collectorIngestion.tone}>{collectorIngestion.label}</span></dd></div>
               <div><dt>{t("settings.latestVersion")}</dt><dd>{accountOverview?.latest_collector_version ?? t("settings.checking")}</dd></div>
               <div><dt>{t("settings.lastTokenUse")}</dt><dd>{tokenDateLabel(latestCollectorUse, t("common.never"))}</dd></div>
-            </dl>
+              </dl>
             <form
               className="settings-token-create"
               onSubmit={(event) => {
@@ -849,82 +813,49 @@ export function UserSettingsPage({
                 </ul>
               </details>
             ) : null}
-          </div>
-        </details>
-
-        <details
-          className="settings-stage"
-          data-status={isCollectorRecent ? "complete" : activeCollectorTokens.length > 0 ? "attention" : "pending"}
-          onToggle={(event) => handleStageToggle(4, event.currentTarget.open)}
-          open={openStage === 4}
-        >
-          <summary className="settings-stage-header">
-            <span className="settings-stage-marker" aria-hidden="true">04</span>
-            <div className="settings-stage-heading">
-              <h3>{t("settings.activity")}</h3>
-              <p>{t("settings.activityDescription")}</p>
             </div>
-            <StageStatus
-              label={isCollectorRecent ? t("settings.statusLive") : activeCollectorTokens.length > 0 ? t("settings.statusWaitingActivity") : t("settings.statusBlocked")}
-              tone={isCollectorRecent ? "complete" : activeCollectorTokens.length > 0 ? "attention" : "pending"}
-            />
-            <ChevronDown aria-hidden="true" className="settings-stage-chevron" size={16} strokeWidth={1.5} />
-          </summary>
-          <div className="settings-stage-content">
-            <dl className="settings-stage-metrics">
-              <div><dt>{t("settings.collectorSync")}</dt><dd>{tokenDateLabel(latestCollectorUse, t("common.never"))}</dd></div>
-              <div><dt>{t("settings.projectActivity")}</dt><dd>{latestActivityLabel}</dd></div>
-              <div><dt>{t("settings.projectsDetected")}</dt><dd>{projectCount.toLocaleString()}</dd></div>
-              <div><dt>{t("settings.connectionHealth")}</dt><dd>{collectorIngestion.label}</dd></div>
-            </dl>
-            {!isCollectorRecent ? (
-              <p className="settings-stage-guidance">
-                {activeCollectorTokens.length > 0
-                  ? t("settings.runCollectorGuidance")
-                  : t("settings.completeCollectorGuidance")}
-              </p>
-            ) : null}
-          </div>
-        </details>
+          </details>
+        </section>
 
-        <details
-          className="settings-stage"
-          data-status={pendingMemoryCount > 0 ? "attention" : hasProjectMemory ? "complete" : isCollectorRecent ? "attention" : "pending"}
-          onToggle={(event) => handleStageToggle(5, event.currentTarget.open)}
-          open={openStage === 5}
-        >
-          <summary className="settings-stage-header">
-            <span className="settings-stage-marker" aria-hidden="true">05</span>
-            <div className="settings-stage-heading">
-              <h3>{t("settings.memory")}</h3>
-              <p>{t("settings.memoryDescription")}</p>
+        <section className="settings-simple-panel settings-simple-panel-wide" aria-labelledby="settings-data-title">
+          <header className="settings-simple-header">
+            <div>
+              <h3 id="settings-data-title">{minimalCopy.dataTitle}</h3>
+              <p>{minimalCopy.dataDescription}</p>
             </div>
-            <StageStatus
-              label={pendingMemoryCount > 0 ? t("settings.statusReviewNeeded") : memoryCount > 0 ? t("settings.statusComplete") : isCollectorRecent ? t("settings.statusAvailable") : t("settings.statusBlocked")}
-              tone={pendingMemoryCount > 0 ? "attention" : memoryCount > 0 ? "complete" : isCollectorRecent ? "attention" : "pending"}
-            />
-            <ChevronDown aria-hidden="true" className="settings-stage-chevron" size={16} strokeWidth={1.5} />
-          </summary>
-          <div className="settings-stage-content">
-            <dl className="settings-stage-metrics">
-              <div><dt>{t("settings.generatedMemories")}</dt><dd>{memoryCount.toLocaleString()}</dd></div>
-              <div><dt>{t("settings.readyForReview")}</dt><dd>{pendingMemoryCount.toLocaleString()}</dd></div>
-              <div><dt>{t("settings.latestMemory")}</dt><dd>{latestMemoryLabel}</dd></div>
-              <div><dt>{t("settings.workspaceProjects")}</dt><dd>{projectCount.toLocaleString()}</dd></div>
-            </dl>
             {pendingMemoryCount > 0 ? (
-              <div className="settings-stage-actions">
-                <button
-                  className="toolbar-button"
-                  onClick={(event) => onOpenReviewQueue(event.currentTarget)}
-                  type="button"
-                >
-                  {t("settings.openReviewQueue")}
-                </button>
-              </div>
+              <button
+                className="settings-text-action"
+                onClick={(event) => onOpenReviewQueue(event.currentTarget)}
+                type="button"
+              >
+                {t("settings.openReviewQueue")} · {pendingMemoryCount.toLocaleString()}
+              </button>
             ) : null}
-          </div>
-        </details>
+          </header>
+          <dl className="settings-data-list">
+            <div>
+              <dt>{t("settings.repository")}</dt>
+              <dd>{repositoryCoverage}</dd>
+              <dd className="settings-data-health"><span className="settings-health" data-tone={hasConnectedRepository ? "success" : "warning"}><span aria-hidden="true" />{hasConnectedRepository ? t("settings.statusComplete") : t("settings.statusSelectRepository")}</span></dd>
+            </div>
+            <div>
+              <dt>{t("settings.collector")}</dt>
+              <dd>{tokenDateLabel(latestCollectorUse, t("common.never"))}</dd>
+              <dd className="settings-data-health"><span className="settings-health" data-tone={collectorIngestion.tone}><span aria-hidden="true" />{collectorIngestion.label}</span></dd>
+            </div>
+            <div>
+              <dt>{t("settings.activity")}</dt>
+              <dd>{latestActivityLabel}</dd>
+              <dd className="settings-data-health"><span className="settings-health" data-tone={isCollectorRecent ? "success" : "warning"}><span aria-hidden="true" />{projectCount.toLocaleString()} {t("settings.projectsDetected").toLowerCase()}</span></dd>
+            </div>
+            <div>
+              <dt>{t("settings.memory")}</dt>
+              <dd>{memoryCount.toLocaleString()} · {latestMemoryLabel}</dd>
+              <dd className="settings-data-health"><span className="settings-health" data-tone={pendingMemoryCount > 0 ? "warning" : hasProjectMemory ? "success" : "neutral"}><span aria-hidden="true" />{pendingMemoryCount > 0 ? `${pendingMemoryCount.toLocaleString()} ${t("settings.readyForReview").toLowerCase()}` : t("settings.statusComplete")}</span></dd>
+            </div>
+          </dl>
+        </section>
       </div>
     </section>
   );

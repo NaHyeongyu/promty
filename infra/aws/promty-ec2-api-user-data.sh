@@ -209,7 +209,7 @@ docker run -d \
   --restart unless-stopped \
   --network promty \
   --env-file "${APP_DIR}/backend.env" \
-  -e PROMTY_PUBLISHED_FLOWS_ENABLED=true \
+  -e PROMTY_PUBLISHED_FLOWS_ENABLED=false \
   -e PROMTY_DATABASE_POOL_SIZE=5 \
   -e PROMTY_DATABASE_MAX_OVERFLOW=2 \
   "${BACKEND_IMAGE}"
@@ -230,7 +230,7 @@ docker run -d \
   --health-timeout 3s \
   --health-retries 3 \
   --health-start-period 10s \
-  -e PROMTY_PUBLISHED_FLOWS_ENABLED=true \
+  -e PROMTY_PUBLISHED_FLOWS_ENABLED=false \
   -e PROMTY_DATABASE_POOL_SIZE=2 \
   -e PROMTY_DATABASE_MAX_OVERFLOW=1 \
   "${BACKEND_IMAGE}" \

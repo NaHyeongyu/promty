@@ -24,16 +24,12 @@ import {
   recordPublicProjectView,
   updatePublicProjectSave,
 } from "../../api/projects";
-import {
-  fetchPublishedFlowDetailsForProject,
-} from "../../api/publishedFlows";
 import { UnauthorizedError } from "../../api/client";
 import { useI18n } from "../../i18n/I18nProvider";
 import { copyTextToClipboard } from "../../lib/clipboard";
 import { safeExternalHttpUrl } from "../../lib/urls";
 import {
   formatCompactNumber,
-  formatOptionalTimestamp,
   formatRelativeTimestamp,
 } from "../../lib/formatters";
 import { projectDetailDataFromApi } from "../../workspace/projectDetailMappers";
@@ -44,16 +40,13 @@ import type {
   PublicProjectPage,
   PublicProjectSummary,
   PublicProfileResponse,
-  PublishedFlowDetailResponse,
 } from "../../workspace/types";
 import {
   AiModelBadge,
   ProjectTabs,
   type ProjectDetailTab,
   type ProjectDetailTabId,
-  type PromptActivityItem,
 } from "../project-detail";
-import { ActivityPanel } from "../project-detail/ActivityPanel";
 import { FilesPanel } from "../project-detail/FilesPanel";
 import { MemoryPanel } from "../project-detail/MemoryPanel";
 import { OverviewPanel } from "../project-detail/OverviewPanel";
@@ -102,9 +95,6 @@ export function PublicProjectsPage({
   const [profileReturnProjectId, setProfileReturnProjectId] = useState<string | null>(null);
   const [isSaveUpdating, setIsSaveUpdating] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [projectFlowDetails, setProjectFlowDetails] = useState<PublishedFlowDetailResponse[]>([]);
-  const [isProjectFlowsLoading, setIsProjectFlowsLoading] = useState(false);
-  const [projectFlowsError, setProjectFlowsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!copiedProjectId) return undefined;
@@ -188,30 +178,6 @@ export function PublicProjectsPage({
       })
       .finally(() => {
         if (!controller.signal.aborted) setIsDetailLoading(false);
-      });
-    return () => controller.abort();
-  }, [selectedProjectId]);
-
-  useEffect(() => {
-    setProjectFlowDetails([]);
-    setProjectFlowsError(null);
-    if (!selectedProjectId) return undefined;
-    const controller = new AbortController();
-    setIsProjectFlowsLoading(true);
-    void fetchPublishedFlowDetailsForProject(selectedProjectId, controller.signal)
-      .then(setProjectFlowDetails)
-      .catch((error) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        if (error instanceof UnauthorizedError) {
-          onUnauthorized();
-          return;
-        }
-        setProjectFlowsError(
-          error instanceof Error ? error.message : t("community.flowsLoadFailed"),
-        );
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setIsProjectFlowsLoading(false);
       });
     return () => controller.abort();
   }, [selectedProjectId]);
@@ -347,9 +313,6 @@ export function PublicProjectsPage({
                 copied={copiedProjectId === detail.project.id}
                 copyError={copyError}
                 detail={detail}
-                flowDetails={projectFlowDetails}
-                flowsError={projectFlowsError}
-                isFlowsLoading={isProjectFlowsLoading}
                 isSaveUpdating={isSaveUpdating}
                 key={detail.project.id}
                 onBack={() => onSelectProject(null)}
@@ -564,9 +527,6 @@ function PublicProjectDetail({
   copied,
   copyError,
   detail,
-  flowDetails,
-  flowsError,
-  isFlowsLoading,
   isSaveUpdating,
   onBack,
   onOpenProfile,
@@ -577,9 +537,6 @@ function PublicProjectDetail({
   copied: boolean;
   copyError: string | null;
   detail: PublicProjectDetailResponse;
-  flowDetails: PublishedFlowDetailResponse[];
-  flowsError: string | null;
-  isFlowsLoading: boolean;
   isSaveUpdating: boolean;
   onBack: () => void;
   onOpenProfile: () => void;
@@ -596,45 +553,8 @@ function PublicProjectDetail({
   const [activeTab, setActiveTab] = useState<ProjectDetailTabId>("overview");
   const viewCount = detail.view_count ?? 0;
   const mappedData = projectDetailDataFromApi(detail, null);
-  const publishedPromptActivities: PromptActivityItem[] = flowDetails.flatMap((flow) =>
-    flow.items.map((item) => ({
-      fileChanges: flow.files.map((file) => ({
-        additions: file.additions,
-        deletions: file.deletions,
-        oldPath: null,
-        patch: null,
-        patchOmittedReason: "public_redacted",
-        path: file.file_path,
-        status: file.change_type ?? "modified",
-      })),
-      filesChanged: flow.files.length,
-      id: item.id,
-      model: item.model_name ?? flow.model_name ?? item.tool_name ?? t("project.modelNotCaptured"),
-      prompt: item.prompt_text,
-      response: item.response_text,
-      responseReceivedAt: item.response_received_at
-        ? formatOptionalTimestamp(item.response_received_at, "")
-        : null,
-      responseSource: "published-flow",
-      sequence: item.sequence,
-      sessionId: flow.id,
-      submittedAt: formatOptionalTimestamp(item.submitted_at, t("project.notProvided")),
-    })),
-  );
   const data = {
     ...mappedData,
-    activities: flowDetails.map((flow) => ({
-      events: flow.items.length,
-      filesChanged: flow.files.length,
-      id: flow.id,
-      label: flow.title,
-      lastActivity: formatOptionalTimestamp(flow.published_at ?? flow.updated_at, t("project.notProvided")),
-      model: flow.model_name ?? flow.tool_name ?? t("project.modelNotCaptured"),
-      prompts: flow.items.length,
-      responses: flow.items.filter((item) => Boolean(item.response_text)).length,
-      startedAt: formatOptionalTimestamp(flow.created_at, t("project.notProvided")),
-    })),
-    promptActivities: publishedPromptActivities,
     project: {
       ...mappedData.project,
       isBookmarked: detail.is_saved,
@@ -643,7 +563,6 @@ function PublicProjectDetail({
   const tabs: ProjectDetailTab[] = [
     { id: "overview", label: t("project.overview") },
     { id: "memory", label: t("project.memory") },
-    { id: "ai-activity", label: t("project.prompts") },
     {
       externalHref: repositoryUrl ?? undefined,
       externalIcon: repositoryUrl ? "github" : undefined,
@@ -655,16 +574,6 @@ function PublicProjectDetail({
   let panel = <OverviewPanel data={data} hidePublicListingLink />;
   if (activeTab === "memory") {
     panel = <MemoryPanel data={data} />;
-  } else if (activeTab === "ai-activity") {
-    panel = (
-      <ActivityPanel
-        data={data}
-        notice={t("community.curatedPromptNotice")}
-        providedDataError={flowsError}
-        providedDataLoading={isFlowsLoading}
-        useProvidedData
-      />
-    );
   } else if (activeTab === "files") {
     panel = <FilesPanel data={data} />;
   }

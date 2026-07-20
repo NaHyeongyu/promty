@@ -113,6 +113,11 @@
     width: fit-content;
   }
 
+  .pinned-projects-empty {
+    min-height: 360px;
+    padding: var(--bh-space-12) var(--bh-space-4);
+  }
+
   .community-layout {
     grid-template-columns: 1fr;
   }

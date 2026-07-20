@@ -37,4 +37,35 @@ describe("API session refresh", () => {
     expect(fetchMock.mock.calls.filter(([url]) =>
       String(url).endsWith("/api/auth/refresh"))).toHaveLength(1);
   });
+
+  it("replaces encryption failures with a localized user-safe message", async () => {
+    vi.stubGlobal("document", { documentElement: { lang: "ko" } });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      code: "encrypted_data_unavailable",
+      detail: "Some activity data is temporarily unavailable. Please try again shortly.",
+    }), {
+      headers: { "Content-Type": "application/json" },
+      status: 503,
+    })));
+    const { requestJson } = await import("./client");
+
+    await expect(requestJson("/api/events")).rejects.toThrow(
+      "일부 활동 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
+    );
+  });
+
+  it("also hides the legacy encryption detail returned by older backends", async () => {
+    vi.stubGlobal("document", { documentElement: { lang: "en" } });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      detail: "Application encryption key cannot decrypt stored data",
+    }), {
+      headers: { "Content-Type": "application/json" },
+      status: 503,
+    })));
+    const { requestJson } = await import("./client");
+
+    await expect(requestJson("/api/events")).rejects.toThrow(
+      "Some activity data is temporarily unavailable. Please try again shortly.",
+    );
+  });
 });

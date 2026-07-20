@@ -152,10 +152,10 @@
   position: relative;
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr);
-  align-items: start;
+  align-items: center;
   gap: var(--bh-space-2);
   min-width: 0;
-  min-height: 76px;
+  min-height: 58px;
   box-sizing: border-box;
   border: 1px solid var(--bh-color-border);
   border-radius: var(--bh-radius-sm);
@@ -209,38 +209,42 @@
   background: var(--bh-color-background);
 }
 
-.collector-tool-option > span:last-child {
-  display: grid;
+.collector-tool-title {
+  display: flex;
   min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--bh-space-1);
 }
 
 .collector-tool-option strong {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--bh-space-1);
   color: var(--bh-color-text-primary);
   font-size: var(--bh-font-size-small);
   font-weight: var(--bh-font-weight-label);
   line-height: var(--bh-line-height-heading);
 }
 
-.collector-tool-option em {
-  border-radius: 999px;
-  padding: 2px 5px;
-  color: var(--bh-color-primary-hover);
-  background: var(--bh-color-primary-subtle);
-  font-size: 10px;
-  font-style: normal;
-  font-weight: var(--bh-font-weight-label);
-  line-height: 1.2;
+.collector-tool-brand-icons {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  margin-right: var(--bh-space-1);
 }
 
-.collector-tool-option small {
-  color: var(--bh-color-text-muted);
-  font-size: var(--bh-font-size-caption);
-  line-height: var(--bh-line-height-body);
+.collector-tool-brand-icon {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  fill: currentcolor;
+}
+
+.collector-tool-brand-icon[data-brand="codex"] {
+  color: var(--bh-color-text-primary);
+}
+
+.collector-tool-brand-icon[data-brand="claude"] {
+  color: #d97757;
 }
 
 .collector-command-scope {
@@ -412,32 +416,86 @@
 .repository-connector-modes {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--bh-space-1);
-  border: 1px solid var(--bh-color-border);
-  border-radius: var(--bh-radius-sm);
-  padding: var(--bh-space-1);
-  background: var(--bh-color-background);
+  gap: var(--bh-space-2);
 }
 
 .repository-connector-modes button {
-  display: inline-flex;
-  min-height: 38px;
-  align-items: center;
-  justify-content: center;
+  position: relative;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 16px;
+  min-height: 84px;
+  align-items: start;
   gap: var(--bh-space-2);
-  border: 0;
-  border-radius: calc(var(--bh-radius-sm) - 2px);
+  border: 1px solid var(--bh-color-border);
+  border-radius: var(--bh-radius-sm);
+  padding: var(--bh-space-3);
   color: var(--bh-color-text-muted);
-  background: transparent;
+  background: var(--bh-color-background);
   font: inherit;
-  font-size: var(--bh-font-size-small);
-  font-weight: var(--bh-font-weight-label);
+  text-align: left;
   cursor: pointer;
+  transition:
+    border-color var(--bh-duration-fast) var(--bh-ease-out),
+    background-color var(--bh-duration-fast) var(--bh-ease-out);
+}
+
+.repository-connector-modes button:hover {
+  border-color: var(--bh-color-border-hover);
+  background: var(--bh-color-surface-hover);
 }
 
 .repository-connector-modes button[data-active="true"] {
   color: var(--bh-color-text-primary);
+  border-color: var(--bh-color-primary-border);
+  background: var(--bh-color-primary-subtle);
+}
+
+.repository-connector-mode-icon {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: var(--bh-radius-sm);
+  color: var(--bh-color-text-secondary);
   background: var(--bh-color-surface-secondary);
+}
+
+.repository-connector-modes button[data-active="true"]
+  .repository-connector-mode-icon {
+  color: var(--bh-color-primary-hover);
+  background: var(--bh-color-surface);
+}
+
+.repository-connector-mode-copy {
+  display: grid;
+  min-width: 0;
+  gap: var(--bh-space-1);
+}
+
+.repository-connector-mode-copy strong {
+  color: var(--bh-color-text-primary);
+  font-size: var(--bh-font-size-small);
+  font-weight: var(--bh-font-weight-section);
+  line-height: var(--bh-line-height-heading);
+}
+
+.repository-connector-mode-copy small {
+  color: var(--bh-color-text-muted);
+  font-size: var(--bh-font-size-caption);
+  line-height: var(--bh-line-height-body);
+}
+
+.repository-connector-mode-check {
+  margin-top: 1px;
+  color: var(--bh-color-primary-hover);
+}
+
+.repository-connector-content {
+  display: grid;
+  min-width: 0;
+  gap: var(--bh-space-4);
+  border-top: 1px solid var(--bh-color-border);
+  padding-top: var(--bh-space-4);
 }
 
 .repository-access-gate {
@@ -445,9 +503,7 @@
   grid-template-columns: 28px minmax(0, 1fr) auto;
   align-items: start;
   gap: var(--bh-space-3);
-  border-top: 1px solid var(--bh-color-border);
-  border-bottom: 1px solid var(--bh-color-border);
-  padding: var(--bh-space-5) 0;
+  padding: var(--bh-space-2) 0;
 }
 
 .repository-access-gate > svg {
@@ -474,26 +530,32 @@
 
 .repository-url-form.is-repository-only {
   border-top: 0;
-  padding-top: var(--bh-space-2);
+  padding-top: 0;
+}
+
+.repository-url-form.is-repository-only .repository-url-submit {
+  border-color: var(--bh-color-primary);
+  color: var(--bh-button-primary-text);
+  background: var(--bh-button-primary-bg);
+}
+
+.repository-url-form.is-repository-only .repository-url-submit:hover {
+  border-color: var(--bh-color-primary-hover);
+  background: var(--bh-button-primary-bg-hover);
+}
+
+.repository-url-form.is-repository-only .repository-url-submit:disabled {
+  border-color: var(--bh-color-border);
+  color: var(--bh-color-text-disabled);
+  background: var(--bh-color-surface-secondary);
 }
 
 .repository-only-heading {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  gap: var(--bh-space-3);
+  gap: var(--bh-space-1);
   margin-bottom: var(--bh-space-2);
   padding-bottom: var(--bh-space-4);
   border-bottom: 1px solid var(--bh-color-border);
-}
-
-.repository-only-heading > svg {
-  margin-top: 2px;
-  color: var(--bh-color-text-muted);
-}
-
-.repository-only-heading div {
-  display: grid;
-  gap: var(--bh-space-1);
 }
 
 .repository-only-heading strong {
