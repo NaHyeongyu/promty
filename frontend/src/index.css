@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:wght@600;700&display=swap");
 @import "./tokens.css";
 
 :root {
@@ -24,6 +25,11 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background: var(--bh-color-background);
+}
+
+::selection {
+  color: var(--bh-color-text-primary);
+  background: color-mix(in srgb, var(--bh-color-primary) 28%, transparent);
 }
 
 button {

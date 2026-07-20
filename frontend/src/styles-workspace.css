@@ -856,7 +856,7 @@ h1 {
 }
 
 .project-search-control input::placeholder {
-  color: var(--bh-color-text-disabled);
+  color: var(--bh-input-placeholder);
 }
 
 .project-sort-control {

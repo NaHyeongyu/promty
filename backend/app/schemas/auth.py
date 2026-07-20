@@ -11,9 +11,13 @@ class CurrentUserResponse(BaseModel):
     github_repository_access: bool
     id: str
     is_admin: bool
-    preferred_locale: Literal["en", "ja", "ko"]
+    preferred_locale: Literal["en", "ja", "ko", "zh"]
     username: str
 
 
 class LogoutResponse(BaseModel):
+    status: Literal["ok"]
+
+
+class RefreshSessionResponse(BaseModel):
     status: Literal["ok"]

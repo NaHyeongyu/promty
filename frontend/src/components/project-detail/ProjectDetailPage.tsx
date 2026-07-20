@@ -281,7 +281,6 @@ export function ProjectDetailPage({
     { id: "memory", label: t("project.memory") },
     { id: "ai-activity", label: t("project.prompts") },
     {
-      externalHref: repositoryUrl ?? undefined,
       externalIcon: repositoryUrl ? "github" : undefined,
       id: "files",
       label: t("project.files"),

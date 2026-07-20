@@ -49,7 +49,7 @@ export type AuthUser = {
   avatar_url: string | null;
   github_repository_access: boolean;
   is_admin: boolean;
-  preferred_locale: "en" | "ja" | "ko";
+  preferred_locale: "en" | "ja" | "ko" | "zh";
 };
 
 export type AccountGithubConnection = {

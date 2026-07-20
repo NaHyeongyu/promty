@@ -15,7 +15,7 @@ class User(Base):
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint(
-            "preferred_locale in ('en', 'ja', 'ko')",
+            "preferred_locale in ('en', 'ja', 'ko', 'zh')",
             name="ck_users_preferred_locale",
         ),
         Index("ix_users_suspended_at", "suspended_at"),

@@ -12,6 +12,7 @@ import {
   Radio,
   Share2,
   Settings,
+  User,
   X,
 } from "lucide-react";
 import type { AuthUser, SidebarItemId } from "../../workspace/types";
@@ -278,6 +279,10 @@ export function WorkspaceSidebar({
 
             {isAccountMenuOpen ? (
               <div className="sidebar-account-menu" id="sidebar-account-actions">
+                <button onClick={() => selectItem("profile")} type="button">
+                  <User aria-hidden="true" size={16} strokeWidth={1.5} />
+                  <span>{t("settings.account")}</span>
+                </button>
                 <button onClick={() => selectItem("settings")} type="button">
                   <Settings aria-hidden="true" size={16} strokeWidth={1.5} />
                   <span>{t("common.settings")}</span>

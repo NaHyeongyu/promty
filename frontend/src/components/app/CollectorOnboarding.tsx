@@ -1,11 +1,13 @@
 import { useId, useState } from "react";
 import { Check, RefreshCw } from "lucide-react";
+import { siClaudecode } from "simple-icons";
 import { BRAND_NAME } from "../../config";
 import {
   type FirstEventPollingStatus,
   useFirstEventPolling,
 } from "../../hooks/useFirstEventPolling";
 import type { EventRecord } from "../../workspace/types";
+import { OPENAI_MARK_PATH } from "../project-detail/AiModelBadge";
 import {
   type CollectorInstallTarget,
   setupCommandText,
@@ -23,24 +25,22 @@ export function CollectorSetupFlow({
   const toolGroupName = useId();
   const [installTarget, setInstallTarget] = useState<CollectorInstallTarget>("codex-cli");
   const toolOptions: Array<{
-    description: string;
+    brands: Array<"claude" | "codex">;
     label: string;
-    recommended?: boolean;
     value: CollectorInstallTarget;
   }> = [
     {
-      description: t("collector.toolCodexDescription"),
+      brands: ["codex"],
       label: t("collector.toolCodex"),
-      recommended: true,
       value: "codex-cli",
     },
     {
-      description: t("collector.toolClaudeDescription"),
+      brands: ["claude"],
       label: t("collector.toolClaude"),
       value: "claude-code",
     },
     {
-      description: t("collector.toolBothDescription"),
+      brands: ["codex", "claude"],
       label: t("collector.toolBoth"),
       value: "all",
     },
@@ -74,12 +74,31 @@ export function CollectorSetupFlow({
                 value={option.value}
               />
               <span className="collector-tool-radio" aria-hidden="true" />
-              <span>
-                <strong>
-                  {option.label}
-                  {option.recommended ? <em>{t("collector.recommended")}</em> : null}
-                </strong>
-                <small>{option.description}</small>
+              <span className="collector-tool-title">
+                <span className="collector-tool-brand-icons" aria-hidden="true">
+                  {option.brands.map((brand) =>
+                    brand === "codex" ? (
+                      <svg
+                        className="collector-tool-brand-icon"
+                        data-brand="codex"
+                        key={brand}
+                        viewBox="0 0 41 41"
+                      >
+                        <path d={OPENAI_MARK_PATH} />
+                      </svg>
+                    ) : (
+                      <svg
+                        className="collector-tool-brand-icon"
+                        data-brand="claude"
+                        key={brand}
+                        viewBox="0 0 24 24"
+                      >
+                        <path d={siClaudecode.path} />
+                      </svg>
+                    ),
+                  )}
+                </span>
+                <strong>{option.label}</strong>
               </span>
             </label>
           ))}

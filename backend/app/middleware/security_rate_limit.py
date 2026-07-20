@@ -129,7 +129,7 @@ class SecurityRateLimitMiddleware:
         if scope.get("type") != "http" or scope.get("method") == "OPTIONS":
             return None
         path = str(scope.get("path", ""))
-        if path.startswith("/api/auth/github/"):
+        if path.startswith("/api/auth/github/") or path == "/api/auth/refresh":
             return "auth", self.auth_requests, self.auth_window_seconds
         if path == "/api/admin" or path.startswith("/api/admin/"):
             return "admin", self.admin_requests, self.admin_window_seconds

@@ -2,15 +2,16 @@ from __future__ import annotations
 
 from typing import Literal
 
-AppLocale = Literal["en", "ja", "ko"]
+AppLocale = Literal["en", "ja", "ko", "zh"]
 
 DEFAULT_APP_LOCALE: AppLocale = "en"
-SUPPORTED_APP_LOCALES = frozenset({"en", "ja", "ko"})
+SUPPORTED_APP_LOCALES = frozenset({"en", "ja", "ko", "zh"})
 
 LOCALE_NAMES: dict[AppLocale, str] = {
     "en": "English",
     "ja": "Japanese (日本語)",
     "ko": "Korean (한국어)",
+    "zh": "Simplified Chinese (简体中文)",
 }
 
 

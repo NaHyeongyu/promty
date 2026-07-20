@@ -512,7 +512,35 @@ class Settings:
             maximum=28_800,
         )
     )
+    refresh_token_ttl_seconds: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMTY_REFRESH_TOKEN_TTL_SECONDS",
+            15_552_000,
+            minimum=86_400,
+            maximum=31_536_000,
+        )
+    )
+    refresh_token_idle_ttl_seconds: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMTY_REFRESH_TOKEN_IDLE_TTL_SECONDS",
+            2_592_000,
+            minimum=3600,
+            maximum=15_552_000,
+        )
+    )
+    refresh_token_rotation_grace_seconds: int = field(
+        default_factory=lambda: _bounded_int_env(
+            "PROMTY_REFRESH_TOKEN_ROTATION_GRACE_SECONDS",
+            30,
+            minimum=5,
+            maximum=300,
+        )
+    )
     session_cookie_name: str = os.environ.get("PROMTY_SESSION_COOKIE_NAME", "promty_session")
+    refresh_cookie_name: str = os.environ.get(
+        "PROMTY_REFRESH_COOKIE_NAME",
+        "promty_refresh",
+    )
     oauth_state_cookie_name: str = os.environ.get(
         "PROMTY_OAUTH_STATE_COOKIE_NAME",
         "promty_oauth_state",

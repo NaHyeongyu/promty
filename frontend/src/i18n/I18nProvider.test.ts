@@ -14,15 +14,16 @@ describe("i18n", () => {
     expect(translateMessage("fr", "nav.projects")).toBe("Projects");
   });
 
-  it("supports Korean and Japanese locale values", () => {
+  it("supports Korean, Japanese, and Simplified Chinese locale values", () => {
     expect(normalizeAppLocale("ko")).toBe("ko");
     expect(normalizeAppLocale("ja")).toBe("ja");
+    expect(normalizeAppLocale("zh")).toBe("zh");
   });
 
   it("uses the first supported browser language when no preference is saved", () => {
     expect(detectBrowserLocale(["ko-KR", "en-US"])).toBe("ko");
     expect(detectBrowserLocale(["fr-FR", "ja-JP", "en-US"])).toBe("ja");
-    expect(detectBrowserLocale(["zh-CN", "fr-FR"])).toBe("en");
+    expect(detectBrowserLocale(["zh-CN", "fr-FR"])).toBe("zh");
   });
 
   it("keeps a saved preference ahead of the browser language", () => {
@@ -36,6 +37,10 @@ describe("i18n", () => {
       "5단계 중 3단계 준비됨",
     );
     expect(translateMessage("ja", "nav.projects")).toBe("プロジェクト");
+    expect(translateMessage("zh", "nav.projects")).toBe("项目");
+    expect(translateMessage("zh", "settings.token.lastUsedSentence", { date: "今天" })).toBe(
+      "最近使用：今天。",
+    );
     expect(
       translateMessage("ko", "review.reviewGenerateFor", { name: "Promty" }),
     ).toBe("Promty 메모리 리뷰 및 생성");

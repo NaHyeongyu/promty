@@ -39,8 +39,12 @@ services:
       PROMTY_DATABASE_MAX_OVERFLOW: "2"
       PROMTY_DATABASE_POOL_TIMEOUT_SECONDS: "5"
       PROMTY_DATABASE_POOL_RECYCLE_SECONDS: "300"
+      PROMTY_ACCESS_TOKEN_TTL_SECONDS: "3600"
+      PROMTY_REFRESH_TOKEN_TTL_SECONDS: "15552000"
+      PROMTY_REFRESH_TOKEN_IDLE_TTL_SECONDS: "2592000"
+      PROMTY_REFRESH_TOKEN_ROTATION_GRACE_SECONDS: "30"
       PROMTY_SESSION_COOKIE_SECURE: "false"
-      PROMTY_PUBLISHED_FLOWS_ENABLED: "true"
+      PROMTY_PUBLISHED_FLOWS_ENABLED: "false"
     ports:
       - "8011:8011"
     depends_on:
@@ -92,7 +96,7 @@ services:
     command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
     environment:
       VITE_PROMTY_API_URL: http://127.0.0.1:8011
-      VITE_PROMTY_PUBLISHED_FLOWS_ENABLED: "true"
+      VITE_PROMTY_PUBLISHED_FLOWS_ENABLED: "false"
     volumes:
       - .:/app
       - frontend-node-modules:/app/frontend/node_modules

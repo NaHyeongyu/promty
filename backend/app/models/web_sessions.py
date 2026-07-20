@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Index
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -30,6 +30,12 @@ class WebSession(Base):
         nullable=False,
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    idle_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    refresh_token_hash: Mapped[str | None] = mapped_column(String(64))
+    previous_refresh_token_hash: Mapped[str | None] = mapped_column(String(64))
+    previous_refresh_token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user = relationship("User", back_populates="web_sessions")

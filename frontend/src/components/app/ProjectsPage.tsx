@@ -132,29 +132,32 @@ export function ProjectsPage({
             </button>
           </EmptyState>
         ) : displayProjects.length === 0 && view === "pinned" ? (
-          <div className="project-list-panel project-list-empty-panel">
-            <section
-              className="project-search-empty pinned-projects-empty"
-              aria-labelledby="pinned-projects-empty-title"
+          <section
+            className="pinned-projects-empty"
+            aria-describedby="pinned-projects-empty-description pinned-projects-empty-hint"
+            aria-labelledby="pinned-projects-empty-title"
+          >
+            <div className="pinned-projects-empty-icon" aria-hidden="true">
+              <Bookmark size={22} strokeWidth={1.5} />
+            </div>
+            <div className="pinned-projects-empty-copy">
+              <h2 id="pinned-projects-empty-title">{t("pinned.emptyTitle")}</h2>
+              <p id="pinned-projects-empty-description">
+                {t("pinned.emptyDescription")}
+              </p>
+            </div>
+            <button
+              className="toolbar-button pinned-projects-empty-action"
+              onClick={onBrowseProjects}
+              type="button"
             >
-              <div className="project-search-empty-icon" aria-hidden="true">
-                <Bookmark size={20} strokeWidth={1.5} />
-              </div>
-              <div className="project-search-empty-copy">
-                <span>{t("nav.pinned")}</span>
-                <h2 id="pinned-projects-empty-title">{t("pinned.emptyTitle")}</h2>
-                <p>{t("pinned.emptyDescription")}</p>
-              </div>
-              <button
-                className="toolbar-button"
-                onClick={onBrowseProjects}
-                type="button"
-              >
-                <Folder aria-hidden="true" size={16} strokeWidth={1.5} />
-                <span>{t("pinned.browseProjects")}</span>
-              </button>
-            </section>
-          </div>
+              <span>{t("pinned.browseProjects")}</span>
+              <ArrowRight aria-hidden="true" size={16} strokeWidth={1.5} />
+            </button>
+            <p className="pinned-projects-empty-hint" id="pinned-projects-empty-hint">
+              {t("pinned.emptyHint")}
+            </p>
+          </section>
         ) : displayProjects.length === 0 ? (
           <EmptyProjectsState
             onFirstEvent={onFirstEvent}

@@ -1,5 +1,10 @@
 import { siGithub, type SimpleIcon } from "simple-icons";
-import { BRAND_LOGO_SRC, BRAND_NAME } from "../../config";
+import {
+  BRAND_LOGO_BRIGHT_SRC,
+  BRAND_LOGO_SRC,
+  BRAND_NAME,
+} from "../../config";
+import { useTheme } from "../../theme";
 
 function SimpleBrandIcon({
   icon,
@@ -25,6 +30,7 @@ export function GitHubIcon() {
 }
 
 export function BrandLogo({ className = "" }: { className?: string }) {
+  const { theme } = useTheme();
   const classNames = ["brand-logo", className].filter(Boolean).join(" ");
 
   return (
@@ -32,7 +38,7 @@ export function BrandLogo({ className = "" }: { className?: string }) {
       alt=""
       aria-hidden="true"
       className={classNames}
-      src={BRAND_LOGO_SRC}
+      src={theme === "bright" ? BRAND_LOGO_BRIGHT_SRC : BRAND_LOGO_SRC}
     />
   );
 }

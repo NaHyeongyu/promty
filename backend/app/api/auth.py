@@ -20,13 +20,16 @@ from app.core.security import (
     issue_web_access_token,
     is_admin_user,
     require_web_user,
+    revoke_web_refresh_token,
     revoke_web_session_token,
+    rotate_web_refresh_token,
+    web_session_for_refresh,
 )
 from app.db.session import get_db
 from app.models.tokens import CollectorToken
 from app.models.users import User
 from app.models.web_sessions import WebSession
-from app.schemas.auth import CurrentUserResponse, LogoutResponse
+from app.schemas.auth import CurrentUserResponse, LogoutResponse, RefreshSessionResponse
 from app.services.github_oauth import (
     GITHUB_CLI_SCOPE,
     GITHUB_REPOSITORY_SCOPE,
@@ -48,6 +51,54 @@ from app.services.oauth_state import (
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+REFRESH_COOKIE_PATH = "/api/auth"
+
+
+def _set_access_cookie(response: Response, user: User, web_session: WebSession) -> None:
+    response.set_cookie(
+        key=settings.session_cookie_name,
+        value=issue_web_access_token(user, session_id=web_session.id),
+        httponly=True,
+        secure=settings.session_cookie_secure,
+        samesite=settings.session_cookie_samesite,
+        max_age=settings.access_token_ttl_seconds,
+        path="/",
+    )
+
+
+def _set_refresh_cookie(
+    response: Response,
+    refresh_token: str,
+    web_session: WebSession,
+) -> None:
+    expires_at = web_session.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    max_age = max(0, int((expires_at - datetime.now(timezone.utc)).total_seconds()))
+    response.set_cookie(
+        key=settings.refresh_cookie_name,
+        value=refresh_token,
+        httponly=True,
+        secure=settings.session_cookie_secure,
+        samesite=settings.session_cookie_samesite,
+        max_age=max_age,
+        path=REFRESH_COOKIE_PATH,
+    )
+
+
+def _delete_session_cookies(response: Response) -> None:
+    response.delete_cookie(
+        key=settings.session_cookie_name,
+        path="/",
+        secure=settings.session_cookie_secure,
+        samesite=settings.session_cookie_samesite,
+    )
+    response.delete_cookie(
+        key=settings.refresh_cookie_name,
+        path=REFRESH_COOKIE_PATH,
+        secure=settings.session_cookie_secure,
+        samesite=settings.session_cookie_samesite,
+    )
 
 
 @router.get("/github/start")
@@ -248,25 +299,19 @@ def finish_github_login(
         )
 
     if mode == "web":
+        now = datetime.now(timezone.utc)
         web_session = WebSession(
             id=uuid4(),
             user_id=user.id,
-            expires_at=datetime.now(timezone.utc)
-            + timedelta(seconds=settings.access_token_ttl_seconds),
+            expires_at=now + timedelta(seconds=settings.refresh_token_ttl_seconds),
         )
+        refresh_token = rotate_web_refresh_token(web_session, now=now)
         db.add(web_session)
         db.commit()
         return_to = validate_web_return_to(str(payload.get("return_to", "")))
         response = RedirectResponse(return_to, status_code=status.HTTP_302_FOUND)
-        response.set_cookie(
-            key=settings.session_cookie_name,
-            value=issue_web_access_token(user, session_id=web_session.id),
-            httponly=True,
-            secure=settings.session_cookie_secure,
-            samesite=settings.session_cookie_samesite,
-            max_age=settings.access_token_ttl_seconds,
-            path="/",
-        )
+        _set_access_cookie(response, user, web_session)
+        _set_refresh_cookie(response, refresh_token, web_session)
         response.delete_cookie(
             key=settings.oauth_state_cookie_name,
             path="/",
@@ -312,6 +357,46 @@ def read_current_user(user: User = Depends(require_web_user)) -> dict[str, Any]:
     }
 
 
+@router.post("/refresh", response_model=RefreshSessionResponse)
+def refresh_session(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    refresh_token = request.cookies.get(settings.refresh_cookie_name)
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Promty refresh session required",
+        )
+    refresh_result = web_session_for_refresh(db, refresh_token, lock=True)
+    if refresh_result is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Promty refresh session expired",
+        )
+    web_session, token_generation = refresh_result
+    user = web_session.user
+    if user.suspended_at is not None:
+        web_session.revoked_at = datetime.now(timezone.utc)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Promty account is suspended",
+        )
+
+    rotated_refresh_token = (
+        rotate_web_refresh_token(web_session)
+        if token_generation == "current"
+        else None
+    )
+    db.commit()
+    _set_access_cookie(response, user, web_session)
+    if rotated_refresh_token is not None:
+        _set_refresh_cookie(response, rotated_refresh_token, web_session)
+    return {"status": "ok"}
+
+
 @router.post("/logout", response_model=LogoutResponse)
 def logout(
     request: Request,
@@ -326,11 +411,7 @@ def logout(
         else request.cookies.get(settings.session_cookie_name)
     )
     revoke_web_session_token(db, token)
+    revoke_web_refresh_token(db, request.cookies.get(settings.refresh_cookie_name))
     db.commit()
-    response.delete_cookie(
-        key=settings.session_cookie_name,
-        path="/",
-        secure=settings.session_cookie_secure,
-        samesite=settings.session_cookie_samesite,
-    )
+    _delete_session_cookies(response)
     return {"status": "ok"}

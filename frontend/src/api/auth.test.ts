@@ -48,7 +48,33 @@ describe("current user preload", () => {
     preloadCurrentUser();
 
     await expect(fetchCurrentUser()).rejects.toMatchObject({ status: 401 });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:8011/api/auth/me",
+      "http://127.0.0.1:8011/api/auth/refresh",
+    ]);
+  });
+
+  it("refreshes an expired access token and retries the session request", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "ok" }), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(currentUser), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { fetchCurrentUser } = await import("./auth");
+
+    await expect(fetchCurrentUser()).resolves.toEqual(currentUser);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:8011/api/auth/me",
+      "http://127.0.0.1:8011/api/auth/refresh",
+      "http://127.0.0.1:8011/api/auth/me",
+    ]);
   });
 
   it("requests the user again after the in-memory session cache is cleared", async () => {

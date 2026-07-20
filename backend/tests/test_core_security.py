@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -12,12 +13,16 @@ import app.core.security as security
 from app.core.security import (
     JWTError,
     get_optional_web_user,
+    hash_web_refresh_token,
     issue_web_access_token,
+    rotate_web_refresh_token,
     require_ingest_token,
     require_web_user,
+    revoke_web_refresh_token,
     revoke_web_session_token,
     verify_web_access_token,
     verify_web_access_token_claims,
+    web_session_for_refresh,
 )
 from app.models.web_sessions import WebSession
 
@@ -52,7 +57,12 @@ class WebSessionDatabaseStub:
         self.web_session = web_session
         self.flushed = False
 
-    def get(self, model: type[object], _session_id: object) -> object | None:
+    def get(
+        self,
+        model: type[object],
+        _session_id: object,
+        **_kwargs: object,
+    ) -> object | None:
         return self.web_session if model is WebSession else None
 
     def flush(self) -> None:
@@ -132,6 +142,10 @@ def test_web_auth_requires_an_active_server_side_session() -> None:
         {
             "expires_at": datetime.now(timezone.utc).replace(year=2099),
             "id": session_id,
+            "idle_expires_at": datetime.now(timezone.utc).replace(year=2099),
+            "previous_refresh_token_expires_at": None,
+            "previous_refresh_token_hash": None,
+            "refresh_token_hash": None,
             "revoked_at": None,
             "user": user,
             "user_id": user.id,
@@ -159,6 +173,61 @@ def test_web_auth_requires_an_active_server_side_session() -> None:
         )
         is None
     )
+
+
+def test_refresh_token_rotates_and_allows_a_short_previous_token_grace() -> None:
+    now = datetime.now(timezone.utc)
+    user = UserStub()
+    web_session = SimpleNamespace(
+        expires_at=now + timedelta(days=180),
+        id=uuid4(),
+        idle_expires_at=now + timedelta(days=30),
+        previous_refresh_token_expires_at=None,
+        previous_refresh_token_hash=None,
+        refresh_token_hash=None,
+        revoked_at=None,
+        user=user,
+        user_id=user.id,
+    )
+    db = WebSessionDatabaseStub(web_session)
+
+    first_token = rotate_web_refresh_token(web_session, now=now)
+    assert web_session_for_refresh(db, first_token, now=now) == (web_session, "current")  # type: ignore[arg-type]
+
+    second_token = rotate_web_refresh_token(web_session, now=now + timedelta(seconds=1))
+    assert web_session_for_refresh(db, second_token, now=now + timedelta(seconds=2)) == (  # type: ignore[arg-type]
+        web_session,
+        "current",
+    )
+    assert web_session_for_refresh(db, first_token, now=now + timedelta(seconds=2)) == (  # type: ignore[arg-type]
+        web_session,
+        "previous",
+    )
+    assert web_session_for_refresh(db, first_token, now=now + timedelta(minutes=1)) is None  # type: ignore[arg-type]
+
+
+def test_refresh_token_respects_idle_expiry_and_can_revoke_the_session() -> None:
+    now = datetime.now(timezone.utc)
+    user = UserStub()
+    web_session = SimpleNamespace(
+        expires_at=now + timedelta(days=180),
+        id=uuid4(),
+        idle_expires_at=now - timedelta(seconds=1),
+        previous_refresh_token_expires_at=None,
+        previous_refresh_token_hash=None,
+        refresh_token_hash=None,
+        revoked_at=None,
+        user=user,
+        user_id=user.id,
+    )
+    refresh_token = f"{web_session.id}.{'x' * 64}"
+    web_session.refresh_token_hash = hash_web_refresh_token(refresh_token)
+    db = WebSessionDatabaseStub(web_session)
+
+    assert web_session_for_refresh(db, refresh_token, now=now) is None  # type: ignore[arg-type]
+    assert revoke_web_refresh_token(db, refresh_token) is True  # type: ignore[arg-type]
+    assert web_session.revoked_at is not None
+    assert db.flushed is True
 
 
 def test_ingest_requires_authorization_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
