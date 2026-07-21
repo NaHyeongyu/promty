@@ -387,3 +387,21 @@ def require_admin_user(
             detail="Promty admin access required",
         )
     return user
+
+
+def require_external_ai_consent(
+    user: User = Depends(require_web_user),
+) -> User:
+    from app.core.policies import user_allows_external_ai, user_has_current_policy_acceptance
+
+    if not user_has_current_policy_acceptance(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accept the current Terms and Privacy Notice before using AI generation.",
+        )
+    if not user_allows_external_ai(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="External AI processing is disabled for this account.",
+        )
+    return user

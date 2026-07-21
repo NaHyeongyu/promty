@@ -15,7 +15,7 @@ class SupportInquiry(Base):
     __tablename__ = "support_inquiries"
     __table_args__ = (
         CheckConstraint(
-            "category in ('question', 'bug', 'feature', 'privacy', 'other')",
+            "category in ('question', 'bug', 'feature', 'privacy', 'content_report', 'other')",
             name="ck_support_inquiries_category",
         ),
         CheckConstraint(

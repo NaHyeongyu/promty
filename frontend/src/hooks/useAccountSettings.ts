@@ -1,13 +1,15 @@
 import { useState } from "react";
 import {
   createAccountCollectorToken,
+  deleteCurrentAccount,
   disconnectAccountGithubConnection,
   fetchAccountOverview,
   renameAccountCollectorToken,
   revokeAccountCollectorToken,
   updateAccountPreferences,
+  updateAccountPolicyConsents,
 } from "../api/account";
-import { updateCachedCurrentUser } from "../api/auth";
+import { clearCurrentUserCache, updateCachedCurrentUser } from "../api/auth";
 import type { AppLocale } from "../i18n/I18nProvider";
 import { UnauthorizedError } from "../api/client";
 import type {
@@ -103,6 +105,23 @@ export function useAccountSettings({ onUnauthorized }: UseAccountSettingsOptions
     }
   };
 
+  const deleteAccount = async (confirmation: string): Promise<boolean> => {
+    setIsAccountSaving(true);
+    setAccountError(null);
+    try {
+      await deleteCurrentAccount(confirmation);
+      clearCurrentUserCache();
+      setAccountOverview(null);
+      onUnauthorized();
+      return true;
+    } catch (error) {
+      handleAccountError(error, "Account deletion failed");
+      return false;
+    } finally {
+      setIsAccountSaving(false);
+    }
+  };
+
   const renameCollectorToken = async (tokenId: string, name: string) => {
     setIsAccountSaving(true);
     setAccountError(null);
@@ -188,12 +207,30 @@ export function useAccountSettings({ onUnauthorized }: UseAccountSettingsOptions
     }
   };
 
+  const updatePolicyConsents = async (allowExternalAi: boolean) => {
+    setIsAccountSaving(true);
+    setAccountError(null);
+    try {
+      const policyConsents = await updateAccountPolicyConsents(allowExternalAi);
+      setAccountOverview((current) =>
+        current ? { ...current, policy_consents: policyConsents } : current,
+      );
+      return true;
+    } catch (error) {
+      handleAccountError(error, "Policy preferences could not be saved");
+      return false;
+    } finally {
+      setIsAccountSaving(false);
+    }
+  };
+
   return {
     accountError,
     accountOverview,
     clearAccountSettings,
     createCollectorToken,
     createdCollectorToken,
+    deleteAccount,
     disconnectGithubConnection,
     isAccountLoading,
     isAccountSaving,
@@ -203,6 +240,7 @@ export function useAccountSettings({ onUnauthorized }: UseAccountSettingsOptions
     revokeCollectorToken,
     setCreatedCollectorToken,
     updatePreferredLocale,
+    updatePolicyConsents,
   };
 }
 

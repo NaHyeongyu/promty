@@ -76,6 +76,7 @@ const CATEGORY_OPTIONS: Array<{
   { label: "support.category.bug", value: "bug" },
   { label: "support.category.feature", value: "feature" },
   { label: "support.category.privacy", value: "privacy" },
+  { label: "support.category.contentReport", value: "content_report" },
   { label: "support.category.other", value: "other" },
 ];
 
@@ -88,10 +89,16 @@ export function SupportPage({
 }) {
   const { t } = useI18n();
   const [faqQuery, setFaqQuery] = useState("");
-  const [category, setCategory] = useState<SupportInquiryCategory>("question");
+  const requestedCategory = new URLSearchParams(window.location.search).get("category");
+  const [category, setCategory] = useState<SupportInquiryCategory>(
+    requestedCategory === "content_report" ? "content_report" : "question",
+  );
   const [replyEmail, setReplyEmail] = useState(currentUser.email ?? "");
-  const [subject, setSubject] = useState("");
+  const [subject, setSubject] = useState(() =>
+    requestedCategory === "content_report" ? t("support.contentReportSubject") : "",
+  );
   const [message, setMessage] = useState("");
+  const reportedContentUrl = new URLSearchParams(window.location.search).get("content");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submittedInquiryId, setSubmittedInquiryId] = useState<string | null>(null);
@@ -118,7 +125,10 @@ export function SupportPage({
     try {
       const response = await submitSupportInquiry({
         category,
-        message,
+        message:
+          category === "content_report" && reportedContentUrl
+            ? `${message}\n\nContent URL: ${reportedContentUrl}`
+            : message,
         reply_email: replyEmail,
         subject,
       });

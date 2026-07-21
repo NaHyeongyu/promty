@@ -17,7 +17,7 @@ export function MarketingShell({
   current,
 }: {
   children: ReactNode;
-  current: "home" | "product";
+  current: "home" | "legal" | "product";
 }) {
   const isFigmaHome = current === "home";
 
@@ -76,7 +76,7 @@ export function MarketingShell({
             </>
           ) : (
             <>
-              <a aria-current="page" href="/product">Product</a>
+              <a aria-current={current === "product" ? "page" : undefined} href="/product">Product</a>
               <a href="/about#product">How it works</a>
               <a href="/about#security">Security</a>
               <a href="/docs/collector">Docs</a>
@@ -102,6 +102,9 @@ export function MarketingShell({
               <a href="#security">Security</a>
               <a href="#faq">FAQ</a>
               <a href="/?view=support">Contact</a>
+              <a href="/privacy">Privacy</a>
+              <a href="/terms">Terms</a>
+              <a href="/security">Security</a>
             </nav>
           </div>
           <div className="figma-footer-meta">
@@ -121,6 +124,9 @@ export function MarketingShell({
             <a href="/product">Product</a>
             <a href="/docs/collector"><BookOpen aria-hidden="true" size={14} /> Docs</a>
             <a href="/?view=community"><GitBranch aria-hidden="true" size={14} /> Community</a>
+            <a href="/privacy">Privacy</a>
+            <a href="/terms">Terms</a>
+            <a href="/security">Security</a>
             <a href="/">Workspace <ArrowRight aria-hidden="true" size={14} /></a>
           </div>
         </footer>

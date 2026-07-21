@@ -40,6 +40,15 @@ class User(Base):
     )
     suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     suspension_reason: Mapped[str | None] = mapped_column(String(500))
+    policy_version: Mapped[str | None] = mapped_column(String(32))
+    policy_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    eligibility_confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    external_ai_consent_version: Mapped[str | None] = mapped_column(String(32))
+    external_ai_consented_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
 
     devices = relationship("Device", back_populates="user", cascade="all, delete-orphan")
     projects = relationship("Project", back_populates="owner", cascade="all, delete-orphan")

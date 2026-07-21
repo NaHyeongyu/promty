@@ -61,3 +61,7 @@ requirement.
 - deleting a user cascades to that user's inquiries so account deletion does not
   retain the support message or reply address.
 - inquiry bodies are never included in the public API response or access logs.
+
+Account-level deletion requests are now self-service from **Profile → Data &
+Privacy → Delete account**. See [Account deletion policy](account-deletion-policy.md)
+for the deletion scope, confirmation requirements, and limited residual copies.

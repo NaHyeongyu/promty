@@ -12,7 +12,9 @@ EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 class SupportInquiryCreateRequest(BaseModel):
-    category: Literal["question", "bug", "feature", "privacy", "other"]
+    category: Literal[
+        "question", "bug", "feature", "privacy", "content_report", "other"
+    ]
     reply_email: str = Field(min_length=3, max_length=320)
     subject: str = Field(min_length=4, max_length=160)
     message: str = Field(min_length=20, max_length=5_000)

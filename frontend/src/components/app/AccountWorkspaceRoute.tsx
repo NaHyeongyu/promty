@@ -56,8 +56,11 @@ export function AccountWorkspaceRoute({
           connectedRepositoryCount={connectedRepositoryCount}
           currentUser={currentUser}
           isAccountLoading={account.isAccountLoading}
+          isSaving={account.isAccountSaving}
           latestActivityLabel={latestActivityLabel}
+          onDeleteAccount={account.deleteAccount}
           onLogout={onLogout}
+          onUpdatePolicyConsents={account.updatePolicyConsents}
           projectCount={projectCount}
         />
       ) : (

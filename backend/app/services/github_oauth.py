@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 from typing import Any
 from urllib import error, parse, request
@@ -18,9 +19,39 @@ GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
 GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
 GITHUB_USER_URL = "https://api.github.com/user"
 GITHUB_EMAILS_URL = "https://api.github.com/user/emails"
+GITHUB_APP_TOKEN_URL = "https://api.github.com/applications/{client_id}/token"
 GITHUB_CLI_SCOPE = "read:user user:email"
 GITHUB_WEB_SCOPE = "read:user user:email"
 GITHUB_REPOSITORY_SCOPE = "read:user user:email repo"
+
+
+def revoke_github_access_token(access_token: str) -> bool:
+    """Best-effort revocation of a Promty GitHub OAuth token."""
+
+    if not settings.github_client_id or not settings.github_client_secret:
+        return False
+    credentials = base64.b64encode(
+        f"{settings.github_client_id}:{settings.github_client_secret}".encode("utf-8")
+    ).decode("ascii")
+    req = request.Request(
+        GITHUB_APP_TOKEN_URL.format(client_id=settings.github_client_id),
+        data=json.dumps({"access_token": access_token}).encode("utf-8"),
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Basic {credentials}",
+            "Content-Type": "application/json",
+            "User-Agent": "Promty",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+        method="DELETE",
+    )
+    try:
+        with request.urlopen(req, timeout=10) as response:
+            return response.status in {204, 404}
+    except error.HTTPError as exc:
+        return exc.code == 404
+    except error.URLError:
+        return False
 
 
 def require_github_oauth_configured() -> None:

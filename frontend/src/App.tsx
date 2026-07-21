@@ -12,6 +12,7 @@ const loadAuthenticatedApp = () => import("./AuthenticatedApp");
 const loadAuthScreens = () => import("./components/app/AuthScreens");
 const loadCollectorDocsPage = () => import("./components/docs/CollectorDocsPage");
 const loadLandingPage = () => import("./components/marketing/LandingPage");
+const loadLegalPage = () => import("./components/legal/LegalPage");
 const loadProductPage = () => import("./components/marketing/ProductPage");
 
 const AdminApp = lazy(() =>
@@ -37,6 +38,9 @@ const LandingPage = lazy(() =>
     default: module.LandingPage,
   })),
 );
+const LegalPage = lazy(() =>
+  loadLegalPage().then((module) => ({ default: module.LegalPage })),
+);
 const ProductPage = lazy(() =>
   loadProductPage().then((module) => ({
     default: module.ProductPage,
@@ -49,6 +53,10 @@ const routePreloaders: Partial<Record<AppRoute, () => Promise<unknown>>> = {
   "collector-docs": loadCollectorDocsPage,
   "collector-docs-ai": loadCollectorDocsPage,
   landing: loadLandingPage,
+  "legal-acceptable-use": loadLegalPage,
+  "legal-privacy": loadLegalPage,
+  "legal-security": loadLegalPage,
+  "legal-terms": loadLegalPage,
   product: loadProductPage,
   workspace: loadAuthenticatedApp,
 };
@@ -136,6 +144,10 @@ function App() {
   else if (route === "workspace") page = <AuthenticatedApp />;
   else if (route === "landing") page = <LandingPage />;
   else if (route === "product") page = <ProductPage />;
+  else if (route === "legal-privacy") page = <LegalPage document="privacy" />;
+  else if (route === "legal-terms") page = <LegalPage document="terms" />;
+  else if (route === "legal-acceptable-use") page = <LegalPage document="acceptable-use" />;
+  else if (route === "legal-security") page = <LegalPage document="security" />;
   else page = <NotFoundPage />;
 
   return <Suspense fallback={<AppLoadingPage />}>{page}</Suspense>;

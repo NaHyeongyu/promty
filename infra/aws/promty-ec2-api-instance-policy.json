@@ -44,6 +44,7 @@
       ],
       "Resource": [
         "arn:aws:s3:::promty-prod-assets-435917083683/published-flow-assets/*",
+        "arn:aws:s3:::promty-prod-assets-435917083683/account-deletion-ledger/*",
         "arn:aws:s3:::promty-prod-assets-435917083683/database-backups/*"
       ]
     }

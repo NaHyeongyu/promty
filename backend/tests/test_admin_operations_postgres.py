@@ -28,6 +28,8 @@ from app.models.artifacts import Artifact
 from app.models.events import Event
 from app.models.project_memory_batches import ProjectMemoryBatch, ProjectMemoryBatchItem
 from app.models.projects import Project
+from app.models.public_project_views import PublicProjectView
+from app.models.published_flows import PublishedFlow, PublishedFlowComment, PublishedFlowReaction
 from app.models.sessions import Session as PromptSession
 from app.models.tokens import CollectorToken
 from app.models.users import User
@@ -292,3 +294,78 @@ def test_admin_system_telemetry_and_user_owned_data_cascade(db: Session) -> None
     assert deleted["counts"]["projects"] == 1
     assert db.get(User, managed_id) is None
     assert db.get(Project, project_id) is None
+
+
+def test_user_delete_removes_published_and_community_identity_data(db: Session) -> None:
+    marker = str(uuid4())
+    actor = _user(marker, "community-actor")
+    managed = _user(marker, "community-managed")
+    other = _user(marker, "community-other")
+    managed_project = Project(
+        name="Managed publication source",
+        owner=managed,
+        slug=f"managed-publication-{marker}",
+        visibility="private",
+    )
+    other_project = Project(
+        name="Other public project",
+        owner=other,
+        slug=f"other-public-{marker}",
+        visibility="public",
+    )
+    managed_flow = PublishedFlow(
+        author=managed,
+        file_count=0,
+        prompt_count=0,
+        slug=f"managed-flow-{marker}",
+        status="draft",
+        title="Managed flow",
+        visibility="private",
+    )
+    other_flow = PublishedFlow(
+        author=other,
+        file_count=0,
+        prompt_count=0,
+        slug=f"other-flow-{marker}",
+        status="published",
+        title="Other flow",
+        visibility="public",
+    )
+    db.add_all((actor, managed, other, managed_project, other_project, managed_flow, other_flow))
+    db.flush()
+    comment = PublishedFlowComment(
+        author_id=managed.id,
+        body="Remove this comment with the account",
+        published_flow_id=other_flow.id,
+    )
+    reaction = PublishedFlowReaction(
+        author_id=managed.id,
+        published_flow_id=other_flow.id,
+        reaction_type="like",
+    )
+    view = PublicProjectView(
+        project_id=other_project.id,
+        source="community",
+        viewer_id=managed.id,
+    )
+    db.add_all((comment, reaction, view))
+    db.flush()
+    managed_id = managed.id
+    managed_flow_id = managed_flow.id
+    comment_id = comment.id
+    reaction_id = reaction.id
+    view_id = view.id
+
+    delete_admin_user_response(
+        db,
+        actor=actor,
+        confirmation=managed.username,
+        user_id=managed.id,
+    )
+
+    assert db.get(User, managed_id) is None
+    assert db.get(PublishedFlow, managed_flow_id) is None
+    assert db.get(PublishedFlowComment, comment_id) is None
+    assert db.get(PublishedFlowReaction, reaction_id) is None
+    assert db.get(PublicProjectView, view_id) is None
+    assert db.get(PublishedFlow, other_flow.id) is not None

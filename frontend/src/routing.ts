@@ -4,6 +4,10 @@ export type AppRoute =
   | "collector-docs"
   | "collector-docs-ai"
   | "landing"
+  | "legal-acceptable-use"
+  | "legal-privacy"
+  | "legal-security"
+  | "legal-terms"
   | "not-found"
   | "product"
   | "workspace";
@@ -20,6 +24,10 @@ export function appRouteFromPathname(pathname: string): AppRoute {
   if (normalizedPathname === "/product") {
     return "product";
   }
+  if (normalizedPathname === "/privacy") return "legal-privacy";
+  if (normalizedPathname === "/terms") return "legal-terms";
+  if (normalizedPathname === "/acceptable-use") return "legal-acceptable-use";
+  if (normalizedPathname === "/security") return "legal-security";
   if (normalizedPathname === "/app") {
     return "workspace";
   }

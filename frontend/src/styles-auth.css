@@ -175,3 +175,15 @@
     animation: none;
   }
 }
+.auth-legal-notice {
+  color: var(--text-muted, #667085);
+  font-size: 0.76rem;
+  line-height: 1.55;
+  margin: -4px 0 0;
+  text-align: center;
+}
+
+.auth-legal-notice a {
+  color: inherit;
+  font-weight: 650;
+}

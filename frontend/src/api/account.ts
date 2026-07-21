@@ -1,7 +1,9 @@
 import type {
   AccountCollectorToken,
   AccountCollectorTokenCreateResponse,
+  AccountDeletionResponse,
   AccountOverview,
+  AccountPolicyConsents,
 } from "../workspace/types";
 import type { AppLocale } from "../i18n/I18nProvider";
 import { requestJson, requestJsonBody } from "./client";
@@ -17,6 +19,23 @@ export function fetchAccountOverview(signal?: AbortSignal): Promise<AccountOverv
   );
 }
 
+export function deleteCurrentAccount(
+  confirmation: string,
+): Promise<AccountDeletionResponse> {
+  return requestJsonBody<AccountDeletionResponse>(
+    "/api/account",
+    "DELETE",
+    {
+      acknowledge_permanent_deletion: true,
+      confirmation,
+    },
+    {
+      errorMessage: "Account deletion failed",
+      unauthorizedMessage: "Sign in again before deleting your account.",
+    },
+  );
+}
+
 export function updateAccountPreferences(
   preferredLocale: AppLocale,
 ): Promise<{ preferred_locale: AppLocale }> {
@@ -27,6 +46,25 @@ export function updateAccountPreferences(
     {
       errorMessage: "Account language update failed",
       unauthorizedMessage: "Sign in again before changing your language.",
+    },
+  );
+}
+
+export function updateAccountPolicyConsents(
+  allowExternalAi: boolean,
+): Promise<AccountPolicyConsents> {
+  return requestJsonBody<AccountPolicyConsents>(
+    "/api/account/policy-consents",
+    "PUT",
+    {
+      accept_privacy_notice: true,
+      accept_terms: true,
+      allow_external_ai: allowExternalAi,
+      confirm_age_and_business_use: true,
+    },
+    {
+      errorMessage: "Policy preferences could not be saved",
+      unauthorizedMessage: "Sign in again before saving policy preferences.",
     },
   );
 }

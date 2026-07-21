@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session as DBSession
 
 
-from app.core.security import require_web_user
+from app.core.security import require_external_ai_consent, require_web_user
 from app.db.session import get_db
 from app.models.users import User
 from app.schemas.memory import ProjectMemoryGenerateRequest, ProjectMemoryUpdateRequest
@@ -117,7 +117,7 @@ def complete_project_session(
 def generate_project_memory(
     project_id: UUID,
     payload: ProjectMemoryGenerateRequest,
-    current_user: User = Depends(require_web_user),
+    current_user: User = Depends(require_external_ai_consent),
     db: DBSession = Depends(get_db),
 ) -> dict[str, Any]:
     response = generate_project_memory_response(

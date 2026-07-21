@@ -46,6 +46,39 @@ class AccountPreferencesResponse(BaseModel):
     preferred_locale: Literal["en", "ja", "ko", "zh"]
 
 
+class AccountPolicyConsentRequest(BaseModel):
+    accept_privacy_notice: Literal[True]
+    accept_terms: Literal[True]
+    allow_external_ai: bool
+    confirm_age_and_business_use: Literal[True]
+
+
+class AccountPolicyConsentsResponse(BaseModel):
+    current_policy_version: str
+    eligibility_confirmed: bool
+    external_ai_allowed: bool
+    external_ai_consented_at: str | None
+    external_ai_providers: list[Literal["gemini", "openai"]]
+    policy_accepted: bool
+    policy_accepted_at: str | None
+
+
+class AccountDeletionRequest(BaseModel):
+    confirmation: str = Field(..., min_length=1, max_length=255)
+    acknowledge_permanent_deletion: Literal[True]
+
+
+class AccountDeletionCountsResponse(BaseModel):
+    collector_tokens: int
+    projects: int
+    published_flows: int
+
+
+class AccountDeletionResponse(BaseModel):
+    counts: AccountDeletionCountsResponse
+    status: Literal["deleted"]
+
+
 class GitHubConnectionResponse(BaseModel):
     connected: bool
     created_at: str | None
@@ -70,6 +103,7 @@ class AccountOverviewResponse(BaseModel):
     collector_tokens: list[CollectorTokenResponse]
     github_connection: GitHubConnectionResponse
     latest_collector_version: str
+    policy_consents: AccountPolicyConsentsResponse
     user: AccountUserResponse
 
 
