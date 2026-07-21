@@ -11,3 +11,7 @@ dist/
 build/
 .DS_Store
 .claude/
+
+# Generated analytics report bundles (keep source notes and SQL only)
+reports/*/report.html
+reports/*/artifact.json
