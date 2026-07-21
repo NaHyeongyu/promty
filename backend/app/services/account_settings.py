@@ -7,12 +7,13 @@ from fastapi import HTTPException, status
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from app.core.locales import normalize_app_locale
+from app.core.policies import CURRENT_POLICY_VERSION, serialize_policy_consents
 from app.core.security import hash_collector_token, issue_collector_token, is_admin_user
 from app.core.time import utc_now
 from app.models.github_connections import GitHubConnection
 from app.models.tokens import CollectorToken
 from app.models.users import User
-from app.core.locales import normalize_app_locale
 from app.services.collector_versions import get_latest_collector_version
 
 
@@ -120,8 +121,29 @@ def account_overview_response(db: Session, *, user: User) -> dict[str, Any]:
         "latest_collector_version": get_latest_collector_version(fallback=LATEST_COLLECTOR_VERSION),
         "collector_tokens": list_collector_tokens(db, user=user),
         "github_connection": github_connection,
+        "policy_consents": serialize_policy_consents(user),
         "user": serialized_user,
     }
+
+
+def update_policy_consents_response(
+    db: Session,
+    *,
+    allow_external_ai: bool,
+    user: User,
+) -> dict[str, Any]:
+    accepted_at = utc_now()
+    user.policy_version = CURRENT_POLICY_VERSION
+    user.policy_accepted_at = accepted_at
+    user.eligibility_confirmed_at = accepted_at
+    if allow_external_ai:
+        user.external_ai_consent_version = CURRENT_POLICY_VERSION
+        user.external_ai_consented_at = accepted_at
+    else:
+        user.external_ai_consent_version = None
+        user.external_ai_consented_at = None
+    db.flush()
+    return serialize_policy_consents(user)
 
 
 def create_collector_token_response(

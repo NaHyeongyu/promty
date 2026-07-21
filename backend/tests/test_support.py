@@ -72,6 +72,14 @@ def test_support_request_normalizes_fields_and_rejects_invalid_email() -> None:
     assert payload.subject == "Collector setup help"
     assert payload.message == "Please help me connect the collector correctly."
 
+    content_report = SupportInquiryCreateRequest(
+        category="content_report",
+        message="This published flow exposes private repository information.",
+        reply_email="member@example.com",
+        subject="Community content report",
+    )
+    assert content_report.category == "content_report"
+
     with pytest.raises(ValidationError):
         SupportInquiryCreateRequest(
             category="question",

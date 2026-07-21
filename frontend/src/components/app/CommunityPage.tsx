@@ -3,6 +3,7 @@ import {
   Archive,
   Check,
   Copy,
+  Flag,
   ImagePlus,
   Pencil,
   RefreshCw,
@@ -307,7 +308,15 @@ export function CommunityPage({
                             <Archive aria-hidden="true" size={15} /><span>{t("community.archive")}</span>
                           </button>
                         </>
-                      ) : null}
+                      ) : (
+                        <a
+                          className="toolbar-button"
+                          href={`/?view=support&category=content_report&content=${encodeURIComponent(window.location.href)}`}
+                        >
+                          <Flag aria-hidden="true" size={15} />
+                          <span>{t("community.report")}</span>
+                        </a>
+                      )}
                     </div>
                   </div>
                   <h2>{selectedFlow.title}</h2>

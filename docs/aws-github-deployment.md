@@ -737,6 +737,24 @@ aws s3 ls s3://promty-prod-assets-435917083683/database-backups/ \
   --region ap-southeast-2
 ```
 
+The private bucket lifecycle is source-controlled in
+`infra/aws/promty-assets-lifecycle.json`. It expires database backups after 30
+days, removes noncurrent versions of deleted published assets after 30 days, and
+keeps account-deletion replay tombstones for 35 days. Inspect the current rules
+before applying because `put-bucket-lifecycle-configuration` replaces the full
+bucket lifecycle configuration:
+
+```bash
+aws s3api get-bucket-lifecycle-configuration \
+  --bucket promty-prod-assets-435917083683 \
+  --profile promty-prod
+
+aws s3api put-bucket-lifecycle-configuration \
+  --bucket promty-prod-assets-435917083683 \
+  --lifecycle-configuration file://infra/aws/promty-assets-lifecycle.json \
+  --profile promty-prod
+```
+
 Confirm App Runner has no remaining services or VPC connectors:
 
 ```bash
@@ -859,11 +877,13 @@ Restore a backup onto EC2 only during a controlled maintenance window. The basic
 shape is:
 
 ```text
-1. stop promty-backend
+1. stop promty-backend and promty-memory-worker
 2. download the selected S3 dump
 3. restore into promty-postgres with pg_restore
-4. restart promty-backend
-5. verify /health/ready and one user flow
+4. run `python scripts/replay_account_deletions.py` and inspect its dry-run output
+5. run the same command with `--apply`
+6. restart promty-backend and promty-memory-worker
+7. verify /health/ready and one user flow
 ```
 
 ## GitHub OAuth Configuration

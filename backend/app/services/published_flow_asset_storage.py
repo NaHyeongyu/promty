@@ -114,7 +114,7 @@ def save_published_flow_asset(
     path.write_bytes(content)
 
 
-def delete_published_flow_asset(storage_key: str) -> None:
+def delete_published_flow_asset(storage_key: str) -> bool:
     if _storage_backend() == "s3":
         try:
             _s3_client().delete_object(
@@ -122,13 +122,16 @@ def delete_published_flow_asset(storage_key: str) -> None:
                 Key=_s3_object_key(storage_key),
             )
         except Exception:
-            pass
-        return
+            return False
+        return True
 
     try:
         _local_asset_path(storage_key).unlink()
+    except FileNotFoundError:
+        return True
     except OSError:
-        pass
+        return False
+    return True
 
 
 def read_published_flow_asset(storage_key: str) -> StoredAsset:

@@ -15,6 +15,7 @@ import { ProjectsPage } from "./components/app/ProjectsPage";
 import { CommunityHubPage } from "./components/app/CommunityHubPage";
 import { CollectorUpdateModal } from "./components/app/CollectorUpdateModal";
 import { PublicProjectsPage } from "./components/app/PublicProjectsPage";
+import { PolicyConsentModal } from "./components/app/PolicyConsentModal";
 import { ReviewQueueDrawer } from "./components/app/ReviewQueueDrawer";
 import { RepositoryConnector } from "./components/app/RepositoryConnector";
 import { SupportPage } from "./components/app/SupportPage";
@@ -834,6 +835,14 @@ export function AuthenticatedApp() {
 
   return (
     <div className="app-shell">
+      {accountSettings.accountOverview &&
+      !accountSettings.accountOverview.policy_consents.policy_accepted ? (
+        <PolicyConsentModal
+          consents={accountSettings.accountOverview.policy_consents}
+          isSaving={accountSettings.isAccountSaving}
+          onSave={accountSettings.updatePolicyConsents}
+        />
+      ) : null}
       <WorkspaceSidebar
         activeItem={activeItem}
         adminAlertCount={adminOverview?.action_summary?.unread ?? adminOverview?.action_items.length ?? 0}
@@ -879,19 +888,6 @@ export function AuthenticatedApp() {
               type="button"
             >
               <X aria-hidden="true" size={16} strokeWidth={1.5} />
-            </button>
-          </div>
-        ) : null}
-        {collectorHealth.state === "disconnected" ? (
-          <div className="collector-disconnected-notice" role="alert">
-            <span>
-              <strong>{t("collector.alertTitle")}</strong>
-              <small>
-                {t("collector.alertDescription", { time: collectorLastSeen })}
-              </small>
-            </span>
-            <button onClick={() => selectSidebarItem("settings")} type="button">
-              {t("collector.openSettings")}
             </button>
           </div>
         ) : null}

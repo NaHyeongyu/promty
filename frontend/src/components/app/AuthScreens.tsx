@@ -166,6 +166,11 @@ export function WebLoginPage({
           <ArrowRight aria-hidden="true" size={17} strokeWidth={1.5} />
         </a>
 
+        <p className="auth-legal-notice">
+          {t("auth.legalNotice")} <a href="/terms">{t("policyConsent.terms")}</a>{" · "}
+          <a href="/privacy">{t("policyConsent.privacy")}</a>
+        </p>
+
         <div className="cli-login-footer">
           <ShieldCheck aria-hidden="true" size={16} strokeWidth={1.5} />
           <span>{t("auth.signInScope")}</span>

@@ -10,6 +10,10 @@ describe("appRouteFromPathname", () => {
     expect(appRouteFromPathname("/")).toBe("workspace");
     expect(appRouteFromPathname("/about/")).toBe("landing");
     expect(appRouteFromPathname("/product/")).toBe("product");
+    expect(appRouteFromPathname("/privacy")).toBe("legal-privacy");
+    expect(appRouteFromPathname("/terms/")).toBe("legal-terms");
+    expect(appRouteFromPathname("/acceptable-use")).toBe("legal-acceptable-use");
+    expect(appRouteFromPathname("/security")).toBe("legal-security");
     expect(appRouteFromPathname("/app")).toBe("workspace");
     expect(appRouteFromPathname("/admin/")).toBe("admin");
     expect(appRouteFromPathname("/docs/collector")).toBe("collector-docs");

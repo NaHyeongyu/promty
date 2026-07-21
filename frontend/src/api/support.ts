@@ -5,6 +5,7 @@ export type SupportInquiryCategory =
   | "bug"
   | "feature"
   | "privacy"
+  | "content_report"
   | "other";
 
 export type SupportInquiryResponse = {

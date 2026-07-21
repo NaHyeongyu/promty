@@ -76,12 +76,32 @@ export type AccountOverview = {
   collector_tokens: AccountCollectorToken[];
   github_connection: AccountGithubConnection;
   latest_collector_version: string;
+  policy_consents: AccountPolicyConsents;
   user: AuthUser;
+};
+
+export type AccountPolicyConsents = {
+  current_policy_version: string;
+  eligibility_confirmed: boolean;
+  external_ai_allowed: boolean;
+  external_ai_consented_at: string | null;
+  external_ai_providers: Array<"gemini" | "openai">;
+  policy_accepted: boolean;
+  policy_accepted_at: string | null;
 };
 
 export type AccountCollectorTokenCreateResponse = {
   collector_token: AccountCollectorToken;
   token: string;
+};
+
+export type AccountDeletionResponse = {
+  counts: {
+    collector_tokens: number;
+    projects: number;
+    published_flows: number;
+  };
+  status: "deleted";
 };
 
 export type SupportedTool = "claude-code" | "codex-cli" | "cursor" | "gemini-cli";

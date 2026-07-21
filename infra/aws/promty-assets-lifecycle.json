@@ -1,0 +1,45 @@
+{
+  "Rules": [
+    {
+      "ID": "PromtyDatabaseBackups30Days",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "database-backups/" },
+      "Expiration": { "Days": 30 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 1 },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 }
+    },
+    {
+      "ID": "PromtyDatabaseBackupDeleteMarkers",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "database-backups/" },
+      "Expiration": { "ExpiredObjectDeleteMarker": true }
+    },
+    {
+      "ID": "PromtyPublishedAssetDeletedVersions30Days",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "published-flow-assets/" },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 30 },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 }
+    },
+    {
+      "ID": "PromtyPublishedAssetDeleteMarkers",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "published-flow-assets/" },
+      "Expiration": { "ExpiredObjectDeleteMarker": true }
+    },
+    {
+      "ID": "PromtyAccountDeletionLedger35Days",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "account-deletion-ledger/" },
+      "Expiration": { "Days": 35 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 1 },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 }
+    },
+    {
+      "ID": "PromtyAccountDeletionLedgerDeleteMarkers",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "account-deletion-ledger/" },
+      "Expiration": { "ExpiredObjectDeleteMarker": true }
+    }
+  ]
+}

@@ -30,6 +30,15 @@ function overview(
       updated_at: null,
     },
     latest_collector_version: "0.1.5",
+    policy_consents: {
+      current_policy_version: "2026-07-21",
+      eligibility_confirmed: true,
+      external_ai_allowed: true,
+      external_ai_consented_at: "2026-07-01T00:00:00.000Z",
+      external_ai_providers: ["openai"],
+      policy_accepted: true,
+      policy_accepted_at: "2026-07-01T00:00:00.000Z",
+    },
     user: {
       avatar_url: null,
       email: null,

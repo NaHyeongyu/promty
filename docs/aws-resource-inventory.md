@@ -146,6 +146,9 @@ infra/aws/promty-ec2-api-instance-trust.json
 infra/aws/promty-ec2-api-instance-policy.json
 ```
 
+The `promty-ec2-api-runtime` inline policy was synchronized and verified on
+2026-07-21, including scoped access to `account-deletion-ledger/*`.
+
 ## Database
 
 Active database:
@@ -191,6 +194,12 @@ Versioning: enabled
 Default encryption: AES256
 Application asset prefix: published-flow-assets/
 Database backup prefix: database-backups/
+Account deletion replay prefix: account-deletion-ledger/
+Lifecycle configuration: infra/aws/promty-assets-lifecycle.json
+Lifecycle status: applied and verified on 2026-07-21 (6 rules enabled)
+Database backup retention: 30 days
+Deleted asset noncurrent-version retention: 30 days
+Deletion tombstone retention: 35 days
 ```
 
 ## Networking

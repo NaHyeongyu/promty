@@ -12,7 +12,9 @@ import {
   RefreshCw,
   ShieldCheck,
   Sun,
+  Trash2,
   User,
+  X,
 } from "lucide-react";
 import { formatOptionalTimestamp } from "../../lib/formatters";
 import { getCollectorHealth } from "../../lib/collectorHealth";
@@ -76,8 +78,11 @@ export function UserProfilePage({
   connectedRepositoryCount,
   currentUser,
   isAccountLoading,
+  isSaving,
   latestActivityLabel,
+  onDeleteAccount,
   onLogout,
+  onUpdatePolicyConsents,
   projectCount,
 }: {
   accountError?: string | null;
@@ -85,10 +90,17 @@ export function UserProfilePage({
   connectedRepositoryCount: number;
   currentUser: AuthUser | null;
   isAccountLoading?: boolean;
+  isSaving?: boolean;
   latestActivityLabel: string;
+  onDeleteAccount: (confirmation: string) => Promise<boolean>;
   onLogout: () => void;
+  onUpdatePolicyConsents: (allowExternalAi: boolean) => Promise<boolean>;
   projectCount: number;
 }) {
+  const { t } = useI18n();
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [hasAcknowledgedDeletion, setHasAcknowledgedDeletion] = useState(false);
   const displayName = accountDisplayName(currentUser);
   const email = currentUser?.email ?? "GitHub authenticated";
   const roleLabel = currentUser?.is_admin ? "Admin" : "Member";
@@ -98,6 +110,19 @@ export function UserProfilePage({
   const activeTokenCount =
     accountOverview?.collector_tokens.filter((token) => token.status === "active")
       .length ?? 0;
+  const canDeleteAccount =
+    !currentUser?.is_admin
+    && deleteConfirmation === currentUser?.username
+    && hasAcknowledgedDeletion
+    && !isSaving;
+  const closeDeleteDialog = () => {
+    if (isSaving) {
+      return;
+    }
+    setIsDeleteDialogOpen(false);
+    setDeleteConfirmation("");
+    setHasAcknowledgedDeletion(false);
+  };
 
   return (
     <section className="profile-page" aria-label="Profile settings">
@@ -242,9 +267,110 @@ export function UserProfilePage({
               <dt>GitHub token</dt>
               <dd>{githubConnection?.connected ? "Encrypted at rest" : "Not stored"}</dd>
             </div>
+            <div className="profile-setting-row">
+              <dt>{t("policyConsent.aiTitle")}</dt>
+              <dd>
+                <label className="settings-inline-toggle">
+                  <input
+                    checked={accountOverview?.policy_consents.external_ai_allowed ?? false}
+                    disabled={isSaving || !accountOverview?.policy_consents.policy_accepted}
+                    onChange={(event) => void onUpdatePolicyConsents(event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>
+                    {accountOverview?.policy_consents.external_ai_allowed
+                      ? t("common.authorized")
+                      : t("common.notAuthorized")}
+                  </span>
+                </label>
+              </dd>
+            </div>
           </dl>
+          <div className="profile-section-actions">
+            <a className="toolbar-button" href="/privacy">{t("policyConsent.privacy")}</a>
+            <a className="toolbar-button" href="/terms">{t("policyConsent.terms")}</a>
+            <button
+              className="toolbar-button settings-danger-action"
+              disabled={currentUser?.is_admin || isSaving}
+              onClick={() => setIsDeleteDialogOpen(true)}
+              type="button"
+            >
+              <Trash2 aria-hidden="true" size={15} strokeWidth={1.5} />
+              <span>{t("accountDeletion.open")}</span>
+            </button>
+          </div>
         </section>
       </div>
+
+      {isDeleteDialogOpen ? (
+        <div className="account-delete-backdrop" role="presentation">
+          <section
+            aria-labelledby="account-delete-title"
+            aria-modal="true"
+            className="account-delete-dialog"
+            role="dialog"
+          >
+            <header>
+              <div>
+                <span>{t("accountDeletion.eyebrow")}</span>
+                <h2 id="account-delete-title">{t("accountDeletion.title")}</h2>
+              </div>
+              <button
+                aria-label={t("common.close")}
+                disabled={isSaving}
+                onClick={closeDeleteDialog}
+                type="button"
+              >
+                <X aria-hidden="true" size={17} />
+              </button>
+            </header>
+            <p>{t("accountDeletion.description")}</p>
+            <ul>
+              <li>{t("accountDeletion.dataProjects")}</li>
+              <li>{t("accountDeletion.dataCommunity")}</li>
+              <li>{t("accountDeletion.dataAccess")}</li>
+            </ul>
+            <label>
+              <span>
+                {t("accountDeletion.confirmation", {
+                  username: currentUser?.username ?? "",
+                })}
+              </span>
+              <input
+                autoComplete="off"
+                autoFocus
+                disabled={isSaving}
+                onChange={(event) => setDeleteConfirmation(event.target.value)}
+                spellCheck="false"
+                value={deleteConfirmation}
+              />
+            </label>
+            <label className="account-delete-acknowledgement">
+              <input
+                checked={hasAcknowledgedDeletion}
+                disabled={isSaving}
+                onChange={(event) => setHasAcknowledgedDeletion(event.target.checked)}
+                type="checkbox"
+              />
+              <span>{t("accountDeletion.acknowledgement")}</span>
+            </label>
+            <div className="account-delete-actions">
+              <button disabled={isSaving} onClick={closeDeleteDialog} type="button">
+                {t("common.cancel")}
+              </button>
+              <button
+                className="is-danger"
+                disabled={!canDeleteAccount}
+                onClick={() => void onDeleteAccount(deleteConfirmation)}
+                type="button"
+              >
+                <Trash2 aria-hidden="true" size={15} />
+                {isSaving ? t("common.saving") : t("accountDeletion.confirm")}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }

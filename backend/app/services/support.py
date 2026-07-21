@@ -22,6 +22,7 @@ CATEGORY_LABELS = {
     "bug": "오류 신고",
     "feature": "기능 제안",
     "privacy": "개인정보 및 데이터",
+    "content_report": "커뮤니티 콘텐츠 신고",
     "other": "기타",
 }
 SUPPORT_MESSAGE_PURPOSE = "support_inquiry.message"

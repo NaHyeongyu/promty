@@ -76,6 +76,10 @@ from app.services.admin.operations import (
     suspend_admin_user_response,
     update_admin_project_response,
 )
+from app.services.account_deletion_ledger import (
+    record_account_deletion_tombstone,
+    remove_account_deletion_tombstone,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -420,7 +424,17 @@ def delete_admin_user(
         confirmation=payload.confirmation,
         user_id=user_id,
     )
-    _commit_or_conflict(db, detail="User and owned data could not be deleted.")
+    if not record_account_deletion_tombstone(user_id):
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="User deletion could not be safely recorded. No database deletion was committed.",
+        )
+    try:
+        _commit_or_conflict(db, detail="User and owned data could not be deleted.")
+    except Exception:
+        remove_account_deletion_tombstone(user_id)
+        raise
     return response
 
 

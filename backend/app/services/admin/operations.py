@@ -18,14 +18,14 @@ from app.core.time import utc_now
 from app.db.session import engine
 from app.models.artifacts import Artifact
 from app.models.events import Event
-from app.models.project_memory_batches import (
-    ProjectMemoryBatch,
-    ProjectMemoryBatchItem,
-)
+from app.models.project_memory_batches import ProjectMemoryBatch, ProjectMemoryBatchItem
 from app.models.projects import Project
 from app.models.sessions import Session as PromptSession
-from app.models.tokens import CollectorToken
 from app.models.users import User
+from app.services.account_deletion import (
+    delete_memory_batch_items_for_projects as _delete_memory_batch_items_for_projects,
+)
+from app.services.account_deletion import delete_user_account_data
 from app.services.account_settings import create_collector_token_response
 from app.services.event_payload_security import decrypt_event_payload
 from app.services.projects.management import slugify_project_name
@@ -82,11 +82,6 @@ def _normalize_tags(tags: list[str]) -> list[str]:
         if len(normalized) >= 12:
             break
     return normalized
-
-
-def _delete_memory_batch_items_for_projects(db: Session, project_ids: Any) -> None:
-    batch_ids = select(ProjectMemoryBatch.id).where(ProjectMemoryBatch.project_id.in_(project_ids))
-    db.execute(delete(ProjectMemoryBatchItem).where(ProjectMemoryBatchItem.batch_id.in_(batch_ids)))
 
 
 def _available_slug(
@@ -178,25 +173,12 @@ def delete_admin_user_response(
     user = _user_or_404(db, user_id)
     _prevent_admin_self_action(actor, user, "deleted")
     _confirm(user.username, confirmation)
-    counts = {
-        "collector_tokens": int(
-            db.scalar(
-                select(func.count(CollectorToken.id)).where(CollectorToken.user_id == user.id)
-            )
-            or 0
-        ),
-        "projects": int(
-            db.scalar(select(func.count(Project.id)).where(Project.owner_id == user.id)) or 0
-        ),
-    }
+    counts = delete_user_account_data(db, user=user)
     deleted = {"counts": counts, "user_id": str(user.id), "username": user.username}
-    owned_project_ids = select(Project.id).where(Project.owner_id == user.id)
-    _delete_memory_batch_items_for_projects(db, owned_project_ids)
-    db.execute(
-        delete(User).where(User.id == user.id).execution_options(synchronize_session="fetch")
-    )
-    db.flush()
-    db.expire_all()
+    deleted["counts"] = {
+        "collector_tokens": counts["collector_tokens"],
+        "projects": counts["projects"],
+    }
     return deleted
 
 

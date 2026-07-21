@@ -993,8 +993,8 @@ export function MemoryPanel({
         {showGenerationConfirm ? (
           <div className="bh-memory-review-overlay" role="presentation">
             <section className="bh-memory-review-dialog bh-memory-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="memory-confirm-title">
-              <h3 id="memory-confirm-title">Check captured prompts before AI summary</h3>
-              <p>Project Memory will send the pending prompts and related responses to the AI provider. Check for passwords, tokens, personal data, or other sensitive information first.</p>
+              <h3 id="memory-confirm-title">AI 요약 전에 확인해 주세요</h3>
+              <p>대기 중인 프롬프트와 관련 응답이 AI 제공자에게 전송됩니다. 비밀번호, 토큰, 개인정보, 비공개 코드를 먼저 확인해 주세요.</p>
               {reviewError ? <p role="alert">{reviewError}</p> : null}
               <footer className="bh-memory-review-actions">
                 <button type="button" onClick={() => setShowGenerationConfirm(false)}>Cancel</button>
@@ -1010,8 +1010,8 @@ export function MemoryPanel({
             <section className="bh-memory-review-dialog" role="dialog" aria-modal="true" aria-labelledby="memory-review-title">
               <header className="bh-memory-review-header">
                 <div>
-                  <h3 id="memory-review-title">Review prompts before AI summary</h3>
-                  <p>{generationReview.prompt_count} prompt{generationReview.prompt_count === 1 ? "" : "s"} will be sent.</p>
+                  <h3 id="memory-review-title">대기 중인 프롬프트 확인</h3>
+                  <p>{generationReview.prompt_count.toLocaleString()}개 프롬프트와 관련 응답이 요약 대기 중입니다.</p>
                 </div>
                 <button className="bh-icon-button" type="button" aria-label="Close review" onClick={() => setGenerationReview(null)}><X size={16} /></button>
               </header>
@@ -1020,13 +1020,13 @@ export function MemoryPanel({
                   const sectionPrompts = generationReview.prompts.filter((prompt) => prompt.session_id === sessionId);
                   return (
                     <section className="bh-memory-review-section" key={sessionId}>
-                      <header><strong>Session {sessionId.slice(0, 8)}</strong><button type="button" onClick={() => void removeReviewedSection(sessionId)}>Delete section</button></header>
+                      <header><strong>세션 · {sessionId.slice(0, 8)}</strong><button type="button" onClick={() => void removeReviewedSection(sessionId)}>섹션 삭제</button></header>
                       {sectionPrompts.map((prompt) => (
                         <article className="bh-memory-review-item" key={prompt.event_id}>
                           <div><span>{prompt.tool}</span><time>{new Date(prompt.created_at).toLocaleString()}</time></div>
                           <p>{prompt.text || "(empty prompt)"}</p>
                           <button type="button" disabled={deletingPromptId === prompt.event_id} onClick={() => void removeReviewedPrompt(prompt.event_id)}>
-                            {deletingPromptId === prompt.event_id ? "Deleting…" : "Delete prompt"}
+                            {deletingPromptId === prompt.event_id ? "삭제 중…" : "프롬프트 삭제"}
                           </button>
                         </article>
                       ))}
@@ -1037,8 +1037,8 @@ export function MemoryPanel({
               {isReviewLoading ? <p>Refreshing review…</p> : null}
               {reviewError ? <p role="alert">{reviewError}</p> : null}
               <footer className="bh-memory-review-actions">
-                <button type="button" onClick={() => setGenerationReview(null)}>Cancel</button>
-                <button className="bh-memory-primary-action" type="button" disabled={isGenerating || generationReview.prompt_count === 0} onClick={() => void createProjectMemory()}>Send for AI summary</button>
+                <button type="button" onClick={() => setGenerationReview(null)}>취소</button>
+                <button className="bh-memory-primary-action" type="button" disabled={isGenerating || generationReview.prompt_count === 0} onClick={() => void createProjectMemory()}>AI 요약 보내기</button>
               </footer>
             </section>
           </div>
