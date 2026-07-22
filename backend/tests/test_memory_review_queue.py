@@ -133,12 +133,22 @@ def test_project_memory_generation_preview_route_is_exposed() -> None:
 def test_memory_generation_is_project_scoped() -> None:
     from app.main import app
 
-    paths = app.openapi()["paths"]
+    schema = app.openapi()
+    paths = schema["paths"]
 
     assert "post" in paths["/api/projects/{project_id}/memory/generate"]
     assert "get" in paths["/api/projects/{project_id}/memory/batches/latest"]
     assert "get" in paths["/api/projects/{project_id}/memory/batches/{batch_id}"]
+    assert "get" in paths["/api/projects/{project_id}/memory/generation-review"]
+    assert (
+        "/api/projects/{project_id}/memory/generation-review/prompts/{event_id}"
+        not in paths
+    )
     assert "/api/projects/{project_id}/sessions/{session_id}/checkpoint" not in paths
+
+    request_schema = schema["components"]["schemas"]["ProjectMemoryGenerateRequest"]
+    assert "review_token" in request_schema["required"]
+    assert "excluded_prompt_event_ids" in request_schema["properties"]
 
 
 def test_generation_rejects_unconfigured_provider_without_consuming_drafts(

@@ -36,7 +36,6 @@ from app.services.memory.artifacts import (
 from app.services.memory.batches import (
     ProjectMemoryReviewRequiredError,
     build_project_memory_generation_review,
-    delete_pending_prompt_before_generation,
     generate_project_memory_batch,
     lock_project_memory,
     preview_project_memory_batch,
@@ -244,6 +243,7 @@ def generate_project_memory_response(
     idempotency_key: str,
     project_id: UUID,
     user: User,
+    excluded_prompt_event_ids: list[UUID] | None = None,
     review_token: str = "",
 ) -> dict[str, Any]:
     project = project_for_user(db, project_id, user)
@@ -260,6 +260,7 @@ def generate_project_memory_response(
             idempotency_key=idempotency_key,
             project_id=project.id,
             user_id=user.id,
+            excluded_prompt_event_ids=excluded_prompt_event_ids,
             review_token=review_token,
         )
     except ProjectMemoryReviewRequiredError as exc:
@@ -278,24 +279,6 @@ def project_memory_generation_review_response(
         project_id=project.id,
         user_id=user.id,
     )
-
-
-def delete_project_memory_review_prompt_response(
-    db: DBSession,
-    *,
-    project_id: UUID,
-    event_id: UUID,
-    user: User,
-) -> dict[str, Any]:
-    project = project_for_user(db, project_id, user)
-    try:
-        return delete_pending_prompt_before_generation(
-            db,
-            project_id=project.id,
-            event_id=event_id,
-        )
-    except ProjectMemoryReviewRequiredError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 def read_latest_project_memory_batch_response(

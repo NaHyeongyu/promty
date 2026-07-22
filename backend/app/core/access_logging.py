@@ -10,13 +10,31 @@ _SENSITIVE_QUERY_PATHS = frozenset(
     }
 )
 
+_SENSITIVE_PROJECT_QUERY_SUFFIXES = (
+    "/context-graph",
+    "/prompt-activities",
+)
+
+
+def _is_sensitive_query_path(path: str) -> bool:
+    normalized_path = path.rstrip("/") or "/"
+    if normalized_path in _SENSITIVE_QUERY_PATHS:
+        return True
+    if normalized_path.startswith("/api/projects/") and normalized_path.endswith(
+        _SENSITIVE_PROJECT_QUERY_SUFFIXES
+    ):
+        return True
+    return normalized_path.startswith("/api/agent/projects/") and normalized_path.endswith(
+        "/context/search"
+    )
+
 
 def _redact_sensitive_query(target: object) -> object:
     if not isinstance(target, str):
         return target
 
     parsed = urlsplit(target)
-    if parsed.path not in _SENSITIVE_QUERY_PATHS or not parsed.query:
+    if not _is_sensitive_query_path(parsed.path) or not parsed.query:
         return target
     return f"{parsed.path}?[REDACTED]"
 

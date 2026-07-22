@@ -152,5 +152,6 @@ class ProjectMemoryUpdateRequest(BaseModel):
 
 
 class ProjectMemoryGenerateRequest(BaseModel):
+    excluded_prompt_event_ids: list[UUID] = Field(default_factory=list, max_length=500)
     idempotency_key: UUID
-    review_token: str = ""
+    review_token: str = Field(min_length=1, max_length=4_096)

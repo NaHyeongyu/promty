@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Literal
 from uuid import UUID
 
@@ -10,6 +11,7 @@ from app.api.transactions import commit_or_conflict as _commit_or_conflict
 from app.core.security import require_web_user
 from app.db.session import get_db
 from app.models.users import User
+from app.schemas.context_graph import ContextGraphResponse
 from app.schemas.projects import (
     ProjectBookmarkUpdateRequest,
     ProjectCreateRequest,
@@ -37,6 +39,7 @@ from app.services.github_repositories import (
     read_github_repository_file_content,
     read_github_repository_tree,
 )
+from app.services.context_graph import read_project_context_graph
 from app.services.projects.management import (
     create_project_summary,
     delete_project as delete_project_for_user,
@@ -53,14 +56,29 @@ from app.services.projects.public import (
     update_public_project_save,
 )
 from app.services.projects.analytics import record_public_project_view
+from app.services.projects.activity_deletion import (
+    delete_prompt_activity as delete_prompt_activity_for_user,
+    delete_session_activity as delete_session_activity_for_user,
+)
 from app.services.projects.views import (
     project_for_user as _project_for_user,
     read_project_detail_response,
     read_project_files_response,
     read_project_prompt_activities_response,
 )
+from app.services.published_flow_asset_storage import delete_published_flow_asset
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
+logger = logging.getLogger(__name__)
+
+
+def _cleanup_deleted_activity_assets(storage_keys: tuple[str, ...]) -> None:
+    for storage_key in storage_keys:
+        if not delete_published_flow_asset(storage_key):
+            logger.warning(
+                "Published-flow asset cleanup was not confirmed after activity deletion: %s",
+                storage_key,
+            )
 
 
 @router.get("", response_model=list[ProjectSummaryResponse])
@@ -186,6 +204,48 @@ def delete_project(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.delete(
+    "/{project_id}/prompt-activities/{prompt_event_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_prompt_activity(
+    project_id: UUID,
+    prompt_event_id: UUID,
+    current_user: User = Depends(require_web_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    result = delete_prompt_activity_for_user(
+        db,
+        project_id=project_id,
+        prompt_event_id=prompt_event_id,
+        user=current_user,
+    )
+    _commit_or_conflict(db, detail="Prompt activity could not be deleted.")
+    _cleanup_deleted_activity_assets(result.asset_storage_keys)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
+    "/{project_id}/sessions/{session_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_session_activity(
+    project_id: UUID,
+    session_id: UUID,
+    current_user: User = Depends(require_web_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    result = delete_session_activity_for_user(
+        db,
+        project_id=project_id,
+        session_id=session_id,
+        user=current_user,
+    )
+    _commit_or_conflict(db, detail="Session activity could not be deleted.")
+    _cleanup_deleted_activity_assets(result.asset_storage_keys)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/github/repositories", response_model=GithubRepositoriesResponse)
 def read_project_github_repositories(
     search: str | None = Query(default=None, max_length=120),
@@ -202,6 +262,26 @@ def read_project_detail(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     return read_project_detail_response(project_id, current_user, db)
+
+
+@router.get(
+    "/{project_id}/context-graph",
+    response_model=ContextGraphResponse,
+)
+def read_project_context_graph_route(
+    project_id: UUID,
+    q: str | None = Query(default=None, max_length=120),
+    limit: int = Query(default=20, ge=1, le=40),
+    current_user: User = Depends(require_web_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return read_project_context_graph(
+        db,
+        limit=limit,
+        project_id=project_id,
+        query=q,
+        user=current_user,
+    )
 
 
 @router.get(

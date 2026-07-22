@@ -141,6 +141,9 @@ class MemoryGenerationPreviewResponse(StrictResponse):
 class MemoryReviewPromptResponse(StrictResponse):
     created_at: str
     event_id: str
+    prompt_truncated: bool
+    response_preview: str | None
+    response_truncated: bool
     sequence: int
     session_id: str
     text: str
@@ -148,10 +151,15 @@ class MemoryReviewPromptResponse(StrictResponse):
 
 
 class MemoryGenerationReviewResponse(StrictResponse):
+    changed_file_count: int
+    commit_count: int
     draft_count: int
     prompt_count: int
     prompts: list[MemoryReviewPromptResponse]
+    providers: list[Literal["gemini", "openai"]]
+    response_count: int
     review_token: str
+    source_code_included: Literal[False]
 
 
 class MemoryArtifactResponse(MemoryArtifactSummaryResponse):

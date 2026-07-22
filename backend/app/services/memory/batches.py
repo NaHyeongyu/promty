@@ -22,13 +22,13 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
-from app.core.time import utc_now
 from app.core.config import settings
 from app.core.encoding import base64_urldecode, base64_urlencode
+from app.core.policies import configured_external_ai_providers
+from app.core.time import utc_now
 from app.db.session import SessionLocal
 from app.models.artifact_versions import ArtifactVersion
 from app.models.artifacts import Artifact
-from app.models.events import Event
 from app.models.project_memory_batches import (
     ProjectMemoryBatch,
     ProjectMemoryBatchItem,
@@ -59,8 +59,7 @@ from app.services.memory.project_memory import (
 )
 from app.services.memory.providers import provider_name
 from app.services.memory.repository import write_memory_artifact_payload
-from app.services.event_payload_security import decrypt_event_payload, encrypt_event_payload
-from app.services.projects.search import upsert_prompt_search_document
+from app.services.memory.text import truncate
 
 
 logger = logging.getLogger(__name__)
@@ -74,7 +73,6 @@ MEMORY_GROUPING_CHRONOLOGICAL = "chronological"
 HTTP_STATUS_PATTERN = re.compile(r"\bHTTP(?: status)?\s+([1-5][0-9]{2})\b")
 MEMORY_REVIEW_TOKEN_TTL_SECONDS = 15 * 60
 MEMORY_REVIEW_TOKEN_MAX_CHARS = 4_096
-DELETED_PROMPT_MARKER = "[Deleted by user before AI memory generation]"
 
 
 class ProjectMemoryBatchError(RuntimeError):
@@ -529,11 +527,12 @@ def _decode_memory_review_token(token: str) -> dict[str, Any]:
 def _validate_memory_review_token(
     *,
     drafts: list[Artifact],
+    excluded_prompt_event_ids: set[str],
     project_id: UUID,
     review_token: str = "",
     user_id: UUID,
     versions: dict[UUID, ArtifactVersion],
-) -> None:
+) -> set[str]:
     payload = _decode_memory_review_token(review_token)
     expected_digest = _review_manifest_digest(drafts, versions)
     if (
@@ -545,10 +544,23 @@ def _validate_memory_review_token(
             "Captured work changed; review prompts again before generating memory"
         )
 
+    reviewable_prompt_ids = {
+        str(prompt_id)
+        for draft in drafts
+        for prompt_id in _prompt_event_ids_from_version(versions[draft.id])
+    }
+    unexpected_ids = excluded_prompt_event_ids - reviewable_prompt_ids
+    if unexpected_ids:
+        raise ProjectMemoryReviewRequiredError(
+            "Prompt exclusions changed; review the AI input again before generating memory"
+        )
+    return excluded_prompt_event_ids
+
 
 def _prompt_event_ids_from_version(version: ArtifactVersion) -> list[UUID]:
-    raw_ids: list[Any] = list(version.prompt_event_ids or [])
-    metadata = version.metadata_ if isinstance(version.metadata_, dict) else {}
+    raw_ids: list[Any] = list(getattr(version, "prompt_event_ids", None) or [])
+    raw_metadata = getattr(version, "metadata_", None)
+    metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
     evidence = metadata.get("draft_evidence")
     if isinstance(evidence, dict):
         prompts = evidence.get("prompts")
@@ -569,6 +581,77 @@ def _prompt_event_ids_from_version(version: ArtifactVersion) -> list[UUID]:
     return event_ids
 
 
+def _review_evidence(version: ArtifactVersion) -> dict[str, Any]:
+    raw_metadata = getattr(version, "metadata_", None)
+    metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
+    evidence = metadata.get("draft_evidence")
+    return evidence if isinstance(evidence, dict) else {}
+
+
+def _review_prompt_records(
+    draft: Artifact,
+    version: ArtifactVersion,
+) -> list[dict[str, Any]]:
+    evidence = _review_evidence(version)
+    prompts = evidence.get("prompts") if isinstance(evidence.get("prompts"), list) else []
+    responses = (
+        evidence.get("responses") if isinstance(evidence.get("responses"), list) else []
+    )
+    events = evidence.get("events") if isinstance(evidence.get("events"), list) else []
+    responses_by_id = {
+        str(response.get("event_id")): response
+        for response in responses
+        if isinstance(response, dict) and response.get("event_id")
+    }
+    timestamps_by_sequence = {
+        event.get("sequence"): event.get("timestamp")
+        for event in events
+        if isinstance(event, dict)
+        and event.get("event_type") == "PromptSubmitted"
+        and isinstance(event.get("timestamp"), str)
+    }
+    metadata = version.metadata_ if isinstance(version.metadata_, dict) else {}
+    records: list[dict[str, Any]] = []
+    for prompt in prompts:
+        if not isinstance(prompt, dict) or not prompt.get("event_id"):
+            continue
+        ai_input = prompt.get("ai_input") if isinstance(prompt.get("ai_input"), dict) else {}
+        raw_text = ai_input.get("text") or prompt.get("original_input") or ""
+        text = raw_text if isinstance(raw_text, str) else ""
+        response = responses_by_id.get(str(prompt.get("paired_response_event_id")))
+        raw_response = None
+        if response is not None:
+            raw_response = response.get("output_preview") or response.get("original_output")
+        response_text = raw_response if isinstance(raw_response, str) else None
+        created_at = timestamps_by_sequence.get(prompt.get("sequence"))
+        if not isinstance(created_at, str):
+            created_at = version.created_at.isoformat()
+        records.append(
+            {
+                "created_at": created_at,
+                "event_id": str(prompt["event_id"]),
+                "prompt_truncated": (
+                    ai_input.get("truncated_for_ai") is True
+                    or prompt.get("storage_truncated") is True
+                    or len(text) > 700
+                ),
+                "response_preview": truncate(response_text, 320),
+                "response_truncated": bool(
+                    response_text
+                    and (
+                        (response or {}).get("storage_truncated") is True
+                        or len(response_text) > 320
+                    )
+                ),
+                "sequence": int(prompt.get("sequence") or 0),
+                "session_id": str(draft.session_id),
+                "text": truncate(text, 700) or "",
+                "tool": str(metadata.get("tool") or "unknown"),
+            }
+        )
+    return records
+
+
 def build_project_memory_generation_review(
     db: DBSession,
     *,
@@ -577,159 +660,51 @@ def build_project_memory_generation_review(
 ) -> dict[str, Any]:
     drafts = _available_pending_drafts(db, project_id)
     versions = _latest_versions_by_artifact(db, [draft.id for draft in drafts])
-    event_ids = list(
-        dict.fromkeys(
-            event_id
-            for draft in drafts
-            for event_id in _prompt_event_ids_from_version(versions[draft.id])
+    missing_versions = [str(draft.id) for draft in drafts if draft.id not in versions]
+    if missing_versions:
+        raise ProjectMemoryBatchInvariantError(
+            f"Pending drafts have no immutable version: {', '.join(missing_versions)}"
         )
+
+    prompts_by_id: dict[str, dict[str, Any]] = {}
+    response_ids: set[str] = set()
+    changed_file_paths: set[str] = set()
+    commit_keys: set[tuple[str, str]] = set()
+    for draft in drafts:
+        version = versions[draft.id]
+        for prompt in _review_prompt_records(draft, version):
+            prompts_by_id.setdefault(prompt["event_id"], prompt)
+        evidence = _review_evidence(version)
+        for response in evidence.get("responses") or []:
+            if isinstance(response, dict) and response.get("event_id"):
+                response_ids.add(str(response["event_id"]))
+        for changed_file in evidence.get("changed_files") or []:
+            if isinstance(changed_file, dict) and changed_file.get("path"):
+                changed_file_paths.add(str(changed_file["path"]))
+        for commit in evidence.get("commits") or []:
+            if isinstance(commit, dict):
+                commit_keys.add((str(commit.get("hash") or ""), str(commit.get("message") or "")))
+
+    prompts = sorted(
+        prompts_by_id.values(),
+        key=lambda prompt: (prompt["created_at"], prompt["sequence"], prompt["event_id"]),
     )
-    events = list(
-        db.execute(
-            select(Event)
-            .where(
-                Event.id.in_(event_ids),
-                Event.project_id == project_id,
-                Event.event_type == "PromptSubmitted",
-            )
-            .order_by(Event.created_at, Event.sequence, Event.id)
-        ).scalars()
-    ) if event_ids else []
-    prompts: list[dict[str, Any]] = []
-    for event in events:
-        payload = decrypt_event_payload(event.event_type, event.payload)
-        if payload.get("deleted_before_ai_generation") is True:
-            continue
-        prompt = payload.get("prompt")
-        prompts.append(
-            {
-                "created_at": event.created_at.isoformat(),
-                "event_id": str(event.id),
-                "sequence": event.sequence,
-                "session_id": str(event.session_id),
-                "text": prompt if isinstance(prompt, str) else "",
-                "tool": event.tool,
-            }
-        )
     digest = _review_manifest_digest(drafts, versions)
     return {
+        "changed_file_count": len(changed_file_paths),
+        "commit_count": len(commit_keys),
         "draft_count": len(drafts),
         "prompt_count": len(prompts),
         "prompts": prompts,
+        "providers": configured_external_ai_providers(),
+        "response_count": len(response_ids),
         "review_token": _encode_memory_review_token(
             digest=digest,
             project_id=project_id,
             user_id=user_id,
         ),
+        "source_code_included": False,
     }
-
-
-def delete_pending_prompt_before_generation(
-    db: DBSession,
-    *,
-    project_id: UUID,
-    event_id: UUID,
-) -> dict[str, Any]:
-    lock_project_memory(db, project_id)
-    active = _active_batch(db, project_id=project_id)
-    if active is not None:
-        raise ProjectMemoryReviewRequiredError("Generation is already in progress")
-    event = db.get(Event, event_id)
-    if event is None or event.project_id != project_id or event.event_type != "PromptSubmitted":
-        raise ProjectMemoryReviewRequiredError("Prompt is no longer available for review")
-    selected = _available_pending_drafts(db, project_id)
-    versions = _latest_versions_by_artifact(db, [draft.id for draft in selected])
-    visible_ids = {
-        prompt_id
-        for draft in selected
-        for prompt_id in _prompt_event_ids_from_version(versions[draft.id])
-    }
-    if event_id not in visible_ids:
-        raise ProjectMemoryReviewRequiredError("Prompt is no longer available for review")
-
-    response_ids: set[UUID] = set()
-    prompt_payload = decrypt_event_payload(event.event_type, event.payload)
-    turn_id = prompt_payload.get("turn_id")
-    session_events = list(
-        db.execute(
-            select(Event)
-            .where(Event.session_id == event.session_id, Event.project_id == project_id)
-            .order_by(Event.sequence, Event.id)
-        ).scalars()
-    )
-    for candidate in session_events:
-        if candidate.sequence <= event.sequence or candidate.event_type != "ResponseReceived":
-            continue
-        candidate_payload = decrypt_event_payload(candidate.event_type, candidate.payload)
-        if turn_id is not None and candidate_payload.get("turn_id") == turn_id:
-            response_ids.add(candidate.id)
-            break
-        if turn_id is None:
-            response_ids.add(candidate.id)
-            break
-
-    for candidate in session_events:
-        if candidate.id != event_id and candidate.id not in response_ids:
-            continue
-        payload = decrypt_event_payload(candidate.event_type, candidate.payload)
-        if candidate.event_type == "PromptSubmitted":
-            payload["prompt"] = DELETED_PROMPT_MARKER
-            payload["deleted_before_ai_generation"] = True
-        elif candidate.event_type == "ResponseReceived":
-            payload["response"] = DELETED_PROMPT_MARKER
-            payload["deleted_before_ai_generation"] = True
-        candidate.payload = encrypt_event_payload(candidate.event_type, payload)
-        if candidate.event_type == "PromptSubmitted":
-            upsert_prompt_search_document(db, candidate, payload)
-
-    for draft in selected:
-        version = versions[draft.id]
-        if event_id not in _prompt_event_ids_from_version(version):
-            continue
-        for historical in db.execute(
-            select(ArtifactVersion).where(ArtifactVersion.artifact_id == draft.id)
-        ).scalars():
-            historical.prompt_event_ids = [
-                str(item)
-                for item in (historical.prompt_event_ids or [])
-                if str(item) != str(event_id)
-            ]
-            metadata = deepcopy(historical.metadata_ or {})
-            evidence = metadata.get("draft_evidence")
-            if isinstance(evidence, dict):
-                prompts = evidence.get("prompts")
-                if isinstance(prompts, list):
-                    evidence["prompts"] = [
-                        prompt
-                        for prompt in prompts
-                        if str(prompt.get("event_id")) != str(event_id)
-                    ]
-                responses = evidence.get("responses")
-                if isinstance(responses, list) and response_ids:
-                    evidence["responses"] = [
-                        response
-                        for response in responses
-                        if str(response.get("event_id")) not in {str(item) for item in response_ids}
-                    ]
-                metadata["draft_evidence"] = evidence
-            metadata["deleted_prompt_event_ids"] = sorted(
-                set(metadata.get("deleted_prompt_event_ids") or []) | {str(event_id)}
-            )
-            historical.metadata_ = metadata
-            historical.title = "Pending memory draft"
-        draft.prompt_event_ids = [
-            str(item) for item in (draft.prompt_event_ids or []) if str(item) != str(event_id)
-        ]
-        draft.title = "Pending memory draft"
-        draft.metadata_ = {
-            **(draft.metadata_ if isinstance(draft.metadata_, dict) else {}),
-            "deleted_prompt_event_ids": sorted(
-                set((draft.metadata_ or {}).get("deleted_prompt_event_ids") or [])
-                | {str(event_id)}
-            ),
-        }
-    db.flush()
-    return {"deleted_event_id": str(event_id), "prompt_count": len(visible_ids) - 1}
 
 
 def _pending_draft_claim_statement(project_id: UUID, snapshot_at: Any):
@@ -753,6 +728,7 @@ def _prepare_batch(
     idempotency_key: str,
     project_id: UUID,
     user_id: UUID,
+    excluded_prompt_event_ids: list[UUID] | None = None,
     review_token: str = "",
 ) -> ProjectMemoryBatch:
     snapshot_at = utc_now()
@@ -761,18 +737,27 @@ def _prepare_batch(
         raise ProjectMemoryBatchInvariantError("Project not found")
     drafts = list(db.execute(_pending_draft_claim_statement(project_id, snapshot_at)).scalars())
     versions = _latest_versions_by_artifact(db, [draft.id for draft in drafts])
+    missing_versions = [str(draft.id) for draft in drafts if draft.id not in versions]
+    if missing_versions:
+        raise ProjectMemoryBatchInvariantError(
+            f"Pending drafts have no immutable version: {', '.join(missing_versions)}"
+        )
+
+    requested_exclusions = {
+        str(event_id) for event_id in (excluded_prompt_event_ids or [])
+    }
     if review_token:
         _validate_memory_review_token(
             drafts=drafts,
+            excluded_prompt_event_ids=requested_exclusions,
             project_id=project_id,
             review_token=review_token,
             user_id=user_id,
             versions=versions,
         )
-    missing_versions = [str(draft.id) for draft in drafts if draft.id not in versions]
-    if missing_versions:
-        raise ProjectMemoryBatchInvariantError(
-            f"Pending drafts have no immutable version: {', '.join(missing_versions)}"
+    elif requested_exclusions:
+        raise ProjectMemoryReviewRequiredError(
+            "Review the AI input before excluding prompts from memory generation"
         )
 
     source_session_ids = list(
@@ -790,6 +775,13 @@ def _prepare_batch(
             {
                 "draft_id": str(draft.id),
                 "draft_version_id": str(versions[draft.id].id),
+                "excluded_prompt_event_ids": sorted(
+                    requested_exclusions
+                    & {
+                        str(event_id)
+                        for event_id in _prompt_event_ids_from_version(versions[draft.id])
+                    }
+                ),
                 "ordinal": ordinal,
                 "source_session_id": str(draft.session_id) if draft.session_id else None,
             }
@@ -1083,6 +1075,15 @@ def _load_batch_snapshots(
     *,
     lock_drafts: bool = False,
 ) -> list[tuple[ProjectMemoryBatchItem, Artifact, PendingDraftSnapshot, Session]]:
+    exclusions_by_draft_id = {
+        str(entry.get("draft_id")): {
+            str(event_id)
+            for event_id in entry.get("excluded_prompt_event_ids", [])
+            if event_id
+        }
+        for entry in (batch.snapshot_manifest or [])
+        if isinstance(entry, dict) and entry.get("draft_id")
+    }
     statement = (
         select(
             ProjectMemoryBatchItem,
@@ -1120,6 +1121,11 @@ def _load_batch_snapshots(
             raise ProjectMemoryBatchInvariantError(
                 f"Session {session.id} does not belong to the batch project"
             )
+        excluded_prompt_ids = exclusions_by_draft_id.get(str(draft.id), set())
+        snapshot_title, snapshot_summary, snapshot_metadata = _filtered_snapshot_values(
+            version,
+            excluded_prompt_ids=excluded_prompt_ids,
+        )
         snapshots.append(
             (
                 item,
@@ -1127,9 +1133,9 @@ def _load_batch_snapshots(
                 PendingDraftSnapshot(
                     id=draft.id,
                     version_id=version.id,
-                    title=version.title,
-                    summary=version.summary,
-                    metadata_=version.metadata_ if isinstance(version.metadata_, dict) else {},
+                    title=snapshot_title,
+                    summary=snapshot_summary,
+                    metadata_=snapshot_metadata,
                     created_at=version.created_at,
                 ),
                 session,
@@ -1138,6 +1144,113 @@ def _load_batch_snapshots(
     if len(snapshots) != _item_count(db, batch.id):
         raise ProjectMemoryBatchInvariantError("Batch source sessions are incomplete")
     return snapshots
+
+
+def _filtered_snapshot_values(
+    version: ArtifactVersion,
+    *,
+    excluded_prompt_ids: set[str],
+) -> tuple[str, str | None, dict[str, Any]]:
+    metadata = deepcopy(version.metadata_) if isinstance(version.metadata_, dict) else {}
+    if not excluded_prompt_ids:
+        return version.title, version.summary, metadata
+
+    evidence = metadata.get("draft_evidence")
+    if not isinstance(evidence, dict):
+        raise ProjectMemoryBatchInvariantError(
+            f"Draft version {version.id} has no reviewable evidence"
+        )
+
+    prompts = evidence.get("prompts") if isinstance(evidence.get("prompts"), list) else []
+    removed_prompts = [
+        prompt
+        for prompt in prompts
+        if isinstance(prompt, dict)
+        and str(prompt.get("event_id")) in excluded_prompt_ids
+    ]
+    found_prompt_ids = {
+        str(prompt.get("event_id")) for prompt in removed_prompts if prompt.get("event_id")
+    }
+    missing_prompt_ids = excluded_prompt_ids - found_prompt_ids
+    if missing_prompt_ids:
+        raise ProjectMemoryBatchInvariantError(
+            "Reviewed prompt exclusions no longer match the captured evidence"
+        )
+
+    removed_response_ids = {
+        str(prompt.get("paired_response_event_id"))
+        for prompt in removed_prompts
+        if prompt.get("paired_response_event_id")
+    }
+    removed_turn_ids = {
+        str(prompt.get("turn_id"))
+        for prompt in removed_prompts
+        if prompt.get("turn_id") is not None
+    }
+    removed_prompt_sequences = {
+        prompt.get("sequence")
+        for prompt in removed_prompts
+        if isinstance(prompt.get("sequence"), int)
+    }
+
+    responses = (
+        evidence.get("responses") if isinstance(evidence.get("responses"), list) else []
+    )
+    removed_responses = [
+        response
+        for response in responses
+        if isinstance(response, dict)
+        and (
+            str(response.get("event_id")) in removed_response_ids
+            or (
+                response.get("turn_id") is not None
+                and str(response.get("turn_id")) in removed_turn_ids
+            )
+        )
+    ]
+    removed_response_sequences = {
+        response.get("sequence")
+        for response in removed_responses
+        if isinstance(response.get("sequence"), int)
+    }
+
+    evidence["prompts"] = [
+        prompt
+        for prompt in prompts
+        if not (
+            isinstance(prompt, dict)
+            and str(prompt.get("event_id")) in excluded_prompt_ids
+        )
+    ]
+    evidence["responses"] = [
+        response
+        for response in responses
+        if response not in removed_responses
+    ]
+    events = evidence.get("events") if isinstance(evidence.get("events"), list) else []
+
+    def event_was_excluded(event: Any) -> bool:
+        if not isinstance(event, dict):
+            return False
+        event_type = event.get("event_type")
+        sequence = event.get("sequence")
+        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+        turn_id = payload.get("turn_id")
+        if event_type == "PromptSubmitted":
+            return sequence in removed_prompt_sequences or (
+                turn_id is not None and str(turn_id) in removed_turn_ids
+            )
+        if event_type == "ResponseReceived":
+            return sequence in removed_response_sequences or (
+                turn_id is not None and str(turn_id) in removed_turn_ids
+            )
+        return False
+
+    evidence["events"] = [event for event in events if not event_was_excluded(event)]
+    metadata["draft_evidence"] = evidence
+    metadata["review_excluded_prompt_event_ids"] = sorted(excluded_prompt_ids)
+    metadata["event_count"] = len(evidence["events"])
+    return "Reviewed pending activity", None, metadata
 
 
 def _chunks(values: list[Any], size: int) -> list[list[Any]]:
@@ -2149,6 +2262,7 @@ def generate_project_memory_batch(
     idempotency_key: str,
     project_id: UUID,
     user_id: UUID,
+    excluded_prompt_event_ids: list[UUID] | None = None,
     review_token: str = "",
 ) -> dict[str, Any]:
     in_progress = _in_progress_batch_by_idempotency_key(
@@ -2195,6 +2309,7 @@ def generate_project_memory_batch(
         idempotency_key=idempotency_key,
         project_id=project_id,
         user_id=user_id,
+        excluded_prompt_event_ids=excluded_prompt_event_ids,
         review_token=review_token,
     )
     if batch.status == "succeeded":
