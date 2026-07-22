@@ -1,12 +1,26 @@
 {
   "name": "promty-collector",
   "version": "0.1.5",
-  "description": "Promty local event collector",
+  "description": "Capture AI coding work and build reviewable project memory with Promty",
   "license": "UNLICENSED",
+  "homepage": "https://promty.org",
+  "bugs": {
+    "url": "https://github.com/NaHyeongyu/promty/issues"
+  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/NaHyeongyu/promty.git"
+    "url": "git+https://github.com/NaHyeongyu/promty.git",
+    "directory": "collector"
   },
+  "keywords": [
+    "ai",
+    "coding-agent",
+    "project-memory",
+    "codex",
+    "claude-code",
+    "mcp",
+    "developer-tools"
+  ],
   "type": "module",
   "bin": {
     "promty": "bin/promty.js",
@@ -14,7 +28,8 @@
   },
   "files": [
     "bin",
-    "src/**/*.py"
+    "src/**/*.py",
+    "README.md"
   ],
   "engines": {
     "node": ">=20"
