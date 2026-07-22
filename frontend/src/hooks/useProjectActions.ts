@@ -4,6 +4,8 @@ import {
   approveProjectMemory as requestProjectMemoryApproval,
   createProject,
   deleteProject,
+  deleteProjectPromptActivity as requestPromptActivityDeletion,
+  deleteProjectSessionActivity as requestSessionActivityDeletion,
   fetchProjectSummaries,
   generateProjectMemory as requestProjectMemoryGeneration,
   updateProjectBookmark,
@@ -103,6 +105,51 @@ export function useProjectActions({
     }
   };
 
+  const refreshSelectedProjectAfterActivityDeletion = async (projectId: string) => {
+    const shouldApplyDetail = () => selectedProjectIdRef.current === projectId;
+    const [projectSummaries] = await Promise.all([
+      fetchProjectSummaries(),
+      shouldApplyDetail()
+        ? loadProjectDetail(
+            projectId,
+            selectedProjectRef.current,
+            undefined,
+            shouldApplyDetail,
+          )
+        : Promise.resolve(),
+    ]);
+    const updatedProject = projectSummaries.find((project) => project.id === projectId);
+    if (updatedProject) {
+      mergeProjectState(updatedProject);
+    }
+  };
+
+  const deleteSelectedPromptActivity = async (promptEventId: string) => {
+    const projectId = selectedProjectIdRef.current;
+    if (!projectId) {
+      throw new Error("Select a project before deleting prompt activity.");
+    }
+    try {
+      await requestPromptActivityDeletion(projectId, promptEventId);
+      await refreshSelectedProjectAfterActivityDeletion(projectId);
+    } catch (error) {
+      return rethrowAfterUnauthorized(error);
+    }
+  };
+
+  const deleteSelectedSessionActivity = async (sessionId: string) => {
+    const projectId = selectedProjectIdRef.current;
+    if (!projectId) {
+      throw new Error("Select a project before deleting session activity.");
+    }
+    try {
+      await requestSessionActivityDeletion(projectId, sessionId);
+      await refreshSelectedProjectAfterActivityDeletion(projectId);
+    } catch (error) {
+      return rethrowAfterUnauthorized(error);
+    }
+  };
+
   const toggleProjectBookmark = async (
     project: Project,
     nextIsBookmarked = !project.isBookmarked,
@@ -127,10 +174,18 @@ export function useProjectActions({
     }
   };
 
-  const runProjectMemoryGeneration = async (projectId: string, reviewToken: string) => {
+  const runProjectMemoryGeneration = async (
+    projectId: string,
+    reviewToken: string,
+    excludedPromptEventIds: string[],
+  ) => {
     let payload: ProjectMemoryGenerationResponse;
     try {
-      payload = await requestProjectMemoryGeneration(projectId, reviewToken);
+      payload = await requestProjectMemoryGeneration(
+        projectId,
+        reviewToken,
+        excludedPromptEventIds,
+      );
     } catch (error) {
       return rethrowAfterUnauthorized(error);
     }
@@ -192,6 +247,7 @@ export function useProjectActions({
   const generateProjectMemory = (
     projectId: string,
     reviewToken: string,
+    excludedPromptEventIds: string[],
   ): Promise<ProjectMemoryGenerationResponse> => {
     const existingRequest = projectMemoryGenerationRequestsRef.current.get(projectId);
     if (existingRequest) {
@@ -204,7 +260,11 @@ export function useProjectActions({
       return next;
     });
 
-    const request = runProjectMemoryGeneration(projectId, reviewToken).then((result) => {
+    const request = runProjectMemoryGeneration(
+      projectId,
+      reviewToken,
+      excludedPromptEventIds,
+    ).then((result) => {
       setDelayedProjectMemoryGenerationIds((current) => {
         const next = new Set(current);
         if (result.status === "generation_delayed") {
@@ -312,7 +372,9 @@ export function useProjectActions({
     approveProjectMemoryForAgents,
     bookmarkUpdatingProjectId,
     createProjectFromRepository,
+    deleteSelectedPromptActivity,
     deleteSelectedProject,
+    deleteSelectedSessionActivity,
     delayedProjectMemoryGenerationIds,
     generateProjectMemory,
     saveProjectDescription,

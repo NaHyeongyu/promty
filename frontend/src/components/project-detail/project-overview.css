@@ -345,6 +345,7 @@
 }
 
 .bh-project-context-link {
+  box-sizing: border-box;
   display: inline-flex;
   width: fit-content;
   max-width: 100%;

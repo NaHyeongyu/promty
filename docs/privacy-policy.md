@@ -24,7 +24,9 @@ Promty uses information to authenticate users; operate, support, and secure the 
 
 ## External AI processing
 
-External AI processing is optional and separately controlled. If enabled, reviewed project context may be sent to the configured provider—OpenAI or Google Gemini—to generate Project Memory. The account confirmation screen identifies configured providers. Disabling the choice blocks external AI generation without disabling ordinary workspace features.
+External AI processing is optional and separately controlled. Promty requests this permission at the point of first Project Memory generation rather than bundling it with required account terms. The confirmation and review screens identify the configured provider—OpenAI or Google Gemini—and let the user exclude prompt previews from a generation. An excluded prompt and its linked response sample remain in the user's private Promty activity history unless the project or account is deleted.
+
+Provider requests may include bounded prompt previews and related AI response samples; project and repository metadata; changed-file paths, status and change counts; commit metadata; existing Project Memory; and generated intermediate summaries. Project Memory generation does not send raw source-file contents or patches. Disabling the choice blocks external AI generation without disabling ordinary workspace features.
 
 OpenAI API requests use `store: false` where supported. Provider security, abuse-monitoring, and legally required retention can still apply. Provider terms and data controls may change independently of Promty.
 

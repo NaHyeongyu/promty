@@ -103,29 +103,31 @@ Agent Context bridge is owner-scoped and read-only.
 Run the setup command from the repository you want Promty to remember:
 
 ```bash
-npx promty-collector init --tool codex-cli
+npx promty-collector@latest init --tool codex-cli --profile prod
 ```
 
-Setup opens Promty sign-in, stores a revocable collector credential on your machine,
-installs repository-local hooks, and starts the background uploader.
+The production profile connects to `https://promty.org` and
+`https://api.promty.org`. Setup opens Promty sign-in, stores a revocable collector
+credential on your machine, installs repository-local hooks, and starts the
+background uploader.
 
 For Claude Code:
 
 ```bash
-npx promty-collector init --tool claude-code
+npx promty-collector@latest init --tool claude-code --profile prod
 ```
 
 Check the local installation:
 
 ```bash
-promty doctor --tool codex-cli
+npx promty-collector@latest doctor --tool codex-cli --profile prod
 ```
 
 After Project Memory has been generated and reviewed, read it from the repository:
 
 ```bash
-promty context
-promty context --format json
+npx promty-collector@latest context --profile prod
+npx promty-collector@latest context --profile prod --format json
 ```
 
 Promty installs hooks only in the repository where `init` runs. Run the command again
@@ -138,20 +140,22 @@ Configure the client to start:
 
 ```json
 {
-  "command": "promty",
-  "args": ["mcp"]
+  "command": "npx",
+  "args": ["-y", "promty-collector@latest", "mcp", "--profile", "prod"]
 }
 ```
 
-The server exposes one owner-scoped, read-only tool:
+The server exposes two owner-scoped, read-only tools:
 
 ```text
 get_project_context
+search_project_context
 ```
 
-It returns the latest Project Memory as Markdown and structured JSON. It cannot modify
-the project or write back into memory. See the [Agent Context guide](./docs/agent-context.md)
-for details.
+The first returns the latest approved Project Memory. The second searches approved memory
+nodes and their safe file references with recorded relationship provenance. Neither tool can
+return raw prompts, responses, or patch bodies, modify the project, or write back into memory.
+See the [Agent Context guide](./docs/agent-context.md) for details.
 
 ## What gets captured
 
@@ -292,15 +296,15 @@ belong in the dedicated runbooks rather than this README:
 Profiles isolate credentials, queues, logs, and uploader processes between environments:
 
 ```bash
-npx promty-collector init --tool codex-cli --profile dev
-npx promty-collector init --tool codex-cli --profile prod
-npx promty-collector init --tool codex-cli --profiles dev,prod
+npx promty-collector@latest init --tool codex-cli --profile dev
+npx promty-collector@latest init --tool codex-cli --profile prod
+npx promty-collector@latest init --tool codex-cli --profiles dev,prod
 ```
 
 Verify multiple targets:
 
 ```bash
-npx promty-collector doctor --profiles dev,prod --tool codex-cli
+npx promty-collector@latest doctor --profiles dev,prod --tool codex-cli
 ```
 
 Automatic updates are opt-in. Pass `--auto-update` to `init` or `start-uploader` when you
@@ -313,18 +317,18 @@ npx promty-collector@latest init --tool codex-cli --profile prod
 Useful maintenance commands:
 
 ```bash
-promty install-hooks --tool codex-cli
-promty install-hooks --tool claude-code
-promty uninstall-hooks --tool claude-code
-promty upload --api-url http://127.0.0.1:8011
-promty doctor
+npx promty-collector@latest install-hooks --profile prod --tool codex-cli
+npx promty-collector@latest install-hooks --profile prod --tool claude-code
+npx promty-collector@latest uninstall-hooks --tool claude-code
+npx promty-collector@latest upload --profile dev --api-url http://127.0.0.1:8011
+npx promty-collector@latest doctor --profile prod
 ```
 
-The default local runtime lives under `~/.promty`. Events are queued by project and
-session at:
+The local runtime lives under `~/.promty`. Named profiles keep credentials, logs,
+and queued events separate. Events are queued by project and session at:
 
 ```text
-~/.promty/events/<project_id>/<session_id>/events.jsonl
+~/.promty/profiles/<profile>/events/<project_id>/<session_id>/events.jsonl
 ```
 
 ## Documentation
@@ -336,6 +340,7 @@ session at:
 | [Collector verification](./docs/codex-hook-verification.md) | Real Codex hook smoke path |
 | [Memory architecture](./docs/memory-architecture.md) | Project Memory model and roadmap |
 | [Agent Context](./docs/agent-context.md) | CLI and MCP context retrieval |
+| [Context graph storage](./docs/context-graph-storage.md) | Safe graph projection, deletion, embeddings, and context packs |
 | [Artifact model](./docs/artifact-model.md) | Generated and reviewed memory artifacts |
 | [Database](./docs/database.md) | PostgreSQL schema and migrations |
 | [Deployment](./docs/aws-github-deployment.md) | AWS and GitHub Actions production runbook |

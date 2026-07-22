@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  appRouteFromLocation,
   appRouteFromPathname,
   isLegacyWorkspaceSearch,
   navigateToAppUrl,
@@ -7,8 +8,8 @@ import {
 
 describe("appRouteFromPathname", () => {
   it("matches supported application routes", () => {
-    expect(appRouteFromPathname("/")).toBe("workspace");
-    expect(appRouteFromPathname("/about/")).toBe("landing");
+    expect(appRouteFromPathname("/")).toBe("landing");
+    expect(appRouteFromPathname("/about/")).toBe("about");
     expect(appRouteFromPathname("/product/")).toBe("product");
     expect(appRouteFromPathname("/privacy")).toBe("legal-privacy");
     expect(appRouteFromPathname("/terms/")).toBe("legal-terms");
@@ -29,8 +30,27 @@ describe("appRouteFromPathname", () => {
   it("keeps legacy root workspace links working", () => {
     expect(isLegacyWorkspaceSearch("?view=community&public_project=project-id")).toBe(true);
     expect(isLegacyWorkspaceSearch("?project=project-id&tab=memory")).toBe(true);
+    expect(isLegacyWorkspaceSearch("?preview=project-loading")).toBe(true);
+    expect(isLegacyWorkspaceSearch("?auth_error=github_authorization_cancelled")).toBe(true);
     expect(isLegacyWorkspaceSearch("?utm_source=launch")).toBe(false);
     expect(isLegacyWorkspaceSearch("")).toBe(false);
+
+    expect(appRouteFromLocation("/", "?view=community")).toBe("workspace");
+    expect(appRouteFromLocation("/", "?project=project-id&tab=memory")).toBe(
+      "workspace",
+    );
+    expect(appRouteFromLocation("/", "?preview=project-loading")).toBe(
+      "workspace",
+    );
+    expect(
+      appRouteFromLocation("/", "?auth_error=github_authorization_cancelled"),
+    ).toBe("workspace");
+  });
+
+  it("keeps ordinary root visits and campaigns on the landing page", () => {
+    expect(appRouteFromLocation("/", "")).toBe("landing");
+    expect(appRouteFromLocation("/", "?utm_source=launch")).toBe("landing");
+    expect(appRouteFromLocation("/about", "?project=project-id")).toBe("about");
   });
 });
 

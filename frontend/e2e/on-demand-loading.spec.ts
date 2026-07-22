@@ -13,7 +13,7 @@ test("workspace initial load skips eager event history", async ({ page }) => {
     new URL(response.url()).pathname === "/api/projects",
   );
 
-  await page.goto("/");
+  await page.goto("/app");
   await initialProjectsResponse;
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
   expect(eagerEventRequests).toEqual([]);

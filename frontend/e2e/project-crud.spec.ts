@@ -6,7 +6,7 @@ test("project CRUD works through the authenticated browser workspace", async ({ 
   const renamedProjectName = `${repositoryName}-renamed`;
   const repositoryUrl = `https://github.com/promty/${repositoryName}`;
 
-  await page.goto("/");
+  await page.goto("/app");
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
 
   const created = await page.evaluate(async ({ repositoryUrl }) => {
@@ -26,20 +26,19 @@ test("project CRUD works through the authenticated browser workspace", async ({ 
   await expect(page.getByRole("heading", { name: repositoryName })).toBeVisible();
 
   await page.getByRole("tab", { name: "Prompts" }).click();
-  await page.getByRole("button", { name: "Edit project" }).click();
-  await page.getByLabel("Project name").fill(renamedProjectName);
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByRole("heading", { name: renamedProjectName })).toBeVisible();
+  await expect(page.getByText("No activity yet", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "Overview" }).click();
 
   await page.getByRole("button", { name: "Edit", exact: true }).first().click();
   const editor = page.getByRole("dialog", { name: "Edit project" });
+  await editor.getByLabel("Project name").fill(renamedProjectName);
   await editor.getByLabel("Project URL").fill("https://example.com/e2e-project");
   await editor.getByLabel("Tags").fill("e2e, crud");
   await editor.getByRole("radio", { name: "Chronological" }).click();
-  await editor.getByRole("radio", { name: "Public in Community" }).click();
+  await editor.getByRole("radio", { name: "Public in Discovery" }).click();
   await editor.getByRole("button", { name: "Save", exact: true }).click();
 
+  await expect(page.getByRole("heading", { name: renamedProjectName })).toBeVisible();
   await expect(page.getByRole("link", { name: "https://example.com/e2e-project" })).toBeVisible();
   await expect(page.getByText("e2e", { exact: true })).toBeVisible();
   await expect(page.getByText("crud", { exact: true })).toBeVisible();
@@ -52,7 +51,7 @@ test("project CRUD works through the authenticated browser workspace", async ({ 
   await page.getByRole("button", { name: /^View .+'s profile$/ }).click();
   await expect(page).toHaveURL(/\?view=community&profile=/);
   const publicProfileUrl = page.url();
-  await expect(page.getByText("Community profile", { exact: true })).toBeVisible();
+  await expect(page.getByText("Public profile", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: new RegExp(renamedProjectName) }).click();
   await expect(page).toHaveURL(new RegExp(`public_project=${created.id}`));
   await expect(page.getByRole("heading", { name: renamedProjectName })).toBeVisible();
@@ -70,7 +69,7 @@ test("project CRUD works through the authenticated browser workspace", async ({ 
   await expect(page.getByRole("heading", { name: "No public projects" })).toBeVisible();
   await expect(page.getByRole("button", { name: new RegExp(renamedProjectName) })).toHaveCount(0);
 
-  await page.goto(`/?project=${created.id}&tab=overview`);
+  await page.goto(`/app?project=${created.id}&tab=overview`);
   await expect(page.getByRole("heading", { name: renamedProjectName })).toBeVisible();
 
   await page.getByRole("button", { name: "Edit", exact: true }).first().click();
@@ -85,7 +84,7 @@ test("project CRUD works through the authenticated browser workspace", async ({ 
 
 
 test("workspace exposes loading, request-error, and not-found states", async ({ page }) => {
-  await page.goto("/?preview=project-loading");
+  await page.goto("/app?preview=project-loading");
   await expect(page.getByRole("status", { name: "Loading projects" })).toBeVisible();
 
   await page.route("**/api/projects", (route) =>
@@ -95,7 +94,7 @@ test("workspace exposes loading, request-error, and not-found states", async ({ 
       status: 500,
     }),
   );
-  await page.goto("/");
+  await page.goto("/app");
   await expect(page.getByRole("heading", { name: "Projects could not be loaded" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
 
@@ -104,10 +103,20 @@ test("workspace exposes loading, request-error, and not-found states", async ({ 
 });
 
 
-test("legacy Explore links open the unified Community projects tab", async ({ page }) => {
-  await page.goto("/?view=explore");
+test("legacy Explore links open the unified Discovery projects tab", async ({ page }) => {
+  await page.goto("/app?view=explore");
 
-  await expect(page.getByRole("heading", { name: "Community" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Discovery" })).toBeVisible();
+  const workspaceNavigation = page.getByRole("navigation", { name: "Workspace" });
+  const workspaceNavigationLabels = await workspaceNavigation
+    .getByRole("button")
+    .allTextContents();
+  expect(workspaceNavigationLabels.findIndex((label) => label.includes("Discovery"))).toBeLessThan(
+    workspaceNavigationLabels.findIndex((label) => label.includes("Saved")),
+  );
+  await expect(workspaceNavigation.getByRole("button", { name: /^Saved/ })).not.toHaveClass(
+    /sidebar-item-quiet/,
+  );
   await expect(page.getByRole("searchbox", { name: /Search public projects/ })).toBeVisible();
   await expect(page.getByRole("tablist")).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Primary navigation" })
@@ -117,16 +126,16 @@ test("legacy Explore links open the unified Community projects tab", async ({ pa
 });
 
 
-test("Community preview shows project rows, details, and public profiles", async ({ page }) => {
+test("Discovery preview shows project rows, details, and public profiles", async ({ page }) => {
   const publishedFlowRequests: string[] = [];
   page.on("request", (request) => {
     if (new URL(request.url()).pathname.startsWith("/api/published-flows")) {
       publishedFlowRequests.push(request.url());
     }
   });
-  await page.goto("/?view=community&preview=community");
+  await page.goto("/app?view=community&preview=community");
 
-  await expect(page.getByRole("heading", { name: "Community" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Discovery" })).toBeVisible();
   await expect(page.getByText("Preview data", { exact: true })).toHaveCount(0);
   const projectCard = page.getByRole("article", { name: "Context Atlas" });
   const projectRow = projectCard.getByRole("button", { name: /Context Atlas/ });
@@ -140,7 +149,7 @@ test("Community preview shows project rows, details, and public profiles", async
 
   await projectRow.click();
   await expect(page.getByRole("heading", { name: "Context Atlas" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Community" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Discovery" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Back to public projects" })).toBeVisible();
   await expect(page.getByText("1.3K views", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Project view analytics")).toHaveCount(0);
@@ -160,7 +169,7 @@ test("Community preview shows project rows, details, and public profiles", async
   await page.getByRole("button", { name: "Back to public projects" }).click();
   await expect(page.getByRole("heading", { name: "Context Atlas" })).toBeVisible();
   await page.getByRole("button", { name: "Back to public projects" }).click();
-  await page.getByRole("button", { name: "Saved" }).click();
+  await page.getByRole("main").getByRole("button", { name: "Saved" }).click();
   await expect(page.getByRole("article", { name: "Context Atlas" })).toBeVisible();
   await expect(page.getByLabel("Saved project").first()).toBeVisible();
 });

@@ -143,6 +143,12 @@ export function WorkspaceSidebar({
             onClick={() => selectItem("projects")}
           />
           <SidebarNavItem
+            active={activeItem === "community"}
+            icon={Share2}
+            label={t("nav.community")}
+            onClick={() => selectItem("community")}
+          />
+          <SidebarNavItem
             active={activeItem === "pinned"}
             ariaLabel={
               savedProjectCount > 0
@@ -154,13 +160,6 @@ export function WorkspaceSidebar({
             icon={Bookmark}
             label={t("nav.pinned")}
             onClick={() => selectItem("pinned")}
-            quiet
-          />
-          <SidebarNavItem
-            active={activeItem === "community"}
-            icon={Share2}
-            label={t("nav.community")}
-            onClick={() => selectItem("community")}
           />
           <SidebarNavItem
             active={isReviewQueueOpen}

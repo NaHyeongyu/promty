@@ -319,6 +319,8 @@ export function AuthenticatedApp() {
     bookmarkUpdatingProjectId,
     createProjectFromRepository,
     deleteSelectedProject,
+    deleteSelectedPromptActivity,
+    deleteSelectedSessionActivity,
     delayedProjectMemoryGenerationIds,
     generateProjectMemory,
     saveProjectDescription,
@@ -838,9 +840,8 @@ export function AuthenticatedApp() {
       {accountSettings.accountOverview &&
       !accountSettings.accountOverview.policy_consents.policy_accepted ? (
         <PolicyConsentModal
-          consents={accountSettings.accountOverview.policy_consents}
           isSaving={accountSettings.isAccountSaving}
-          onSave={accountSettings.updatePolicyConsents}
+          onAccept={accountSettings.acceptPolicies}
         />
       ) : null}
       <WorkspaceSidebar
@@ -906,6 +907,13 @@ export function AuthenticatedApp() {
               errorTitle={
                 unresolvedProjectRouteKey ? t("project.notFoundTitle") : undefined
               }
+              externalAiAllowed={
+                accountSettings.accountOverview?.policy_consents.external_ai_allowed ?? false
+              }
+              externalAiProviders={
+                accountSettings.accountOverview?.policy_consents.external_ai_providers ?? []
+              }
+              isExternalAiConsentSaving={accountSettings.isAccountSaving}
               isProjectResolving={isResolvingProjectDetail}
               isLoading={
                 isResolvingProjectDetail ||
@@ -938,7 +946,12 @@ export function AuthenticatedApp() {
               }
               onGenerateProjectMemory={
                 selectedProject
-                  ? (reviewToken) => generateProjectMemory(selectedProject.id, reviewToken)
+                  ? (reviewToken, excludedPromptEventIds) =>
+                    generateProjectMemory(
+                      selectedProject.id,
+                      reviewToken,
+                      excludedPromptEventIds,
+                    )
                   : undefined
               }
               onLoadMemoryGenerationReview={
@@ -946,12 +959,19 @@ export function AuthenticatedApp() {
                   ? () => fetchMemoryGenerationReview(selectedProject.id)
                   : undefined
               }
+              onUpdateExternalAiConsent={accountSettings.updateExternalAiConsent}
               onConnectRepository={
                 selectedProject
                   ? () => openRepositoryConnectorOverlay(selectedProject.id)
                   : undefined
               }
               onDeleteProject={selectedProject ? deleteSelectedProject : undefined}
+              onDeletePromptActivity={
+                selectedProject ? deleteSelectedPromptActivity : undefined
+              }
+              onDeleteSessionActivity={
+                selectedProject ? deleteSelectedSessionActivity : undefined
+              }
               onLoadMemoryArtifacts={
                 activeProjectId
                   ? (limit) => loadProjectMemoryArtifacts(activeProjectId, limit)

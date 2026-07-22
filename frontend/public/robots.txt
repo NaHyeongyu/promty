@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /app
+Disallow: /cli/
+
+Sitemap: https://promty.org/sitemap.xml

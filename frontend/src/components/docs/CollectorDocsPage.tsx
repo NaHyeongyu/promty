@@ -27,14 +27,19 @@ const TOOL_LABELS: Record<DocsInstallTarget, string> = {
 };
 
 function profileSetupCommand(profile: "dev" | "prod", tool: DocsInstallTarget) {
-  return `npx promty-collector init --tool ${tool} --profile ${profile}`;
+  return `npx promty-collector@latest init --tool ${tool} --profile ${profile}`;
+}
+
+function currentProfile() {
+  return window.location.hostname === "promty.org" ||
+    window.location.hostname === "www.promty.org"
+    ? "prod"
+    : "dev";
 }
 
 function currentSetupCommand(tool: DocsInstallTarget) {
-  const profile = window.location.hostname === "promty.org" || window.location.hostname === "www.promty.org"
-    ? "prod"
-    : "dev";
-  return `npx promty-collector init --tool ${tool} --profile ${profile} --app-url ${window.location.origin} --api-url ${API_URL}`;
+  const profile = currentProfile();
+  return `npx promty-collector@latest init --tool ${tool} --profile ${profile} --app-url ${window.location.origin} --api-url ${API_URL}`;
 }
 
 export function CollectorDocsPage({
@@ -78,6 +83,7 @@ function DocsHeader({ audience }: { audience: DocsAudience }) {
 
 function HumanCollectorGuide() {
   const [installTarget, setInstallTarget] = useState<DocsInstallTarget>("codex-cli");
+  const profile = currentProfile();
   const setupCommand = currentSetupCommand(installTarget);
   const selectedTools = installTarget === "all"
     ? ["codex-cli", "claude-code"]
@@ -93,6 +99,7 @@ function HumanCollectorGuide() {
           <a href="#codex">Codex</a>
           <a href="#claude-code">Claude Code</a>
           <a href="#verify">Verify the connection</a>
+          <a href="#use-memory">Use Project Memory</a>
           <a href="#switch-environment">Switch environments</a>
           <a href="#troubleshooting">Troubleshooting</a>
           <a href="#privacy">Privacy & files</a>
@@ -237,7 +244,9 @@ function HumanCollectorGuide() {
 
           <DocsSection id="verify" kicker="04" title="Verify the connection">
             <p>Run diagnostics for the integration selected above from the same repository.</p>
-            <CommandBlock command={`npx promty-collector doctor --tool ${installTarget}`} />
+            <CommandBlock
+              command={`npx promty-collector@latest doctor --profile ${profile} --tool ${installTarget}`}
+            />
             <p>Healthy output reports these checks as <InlineCode>ok</InlineCode>:</p>
             <div className="docs-check-grid">
               {[
@@ -259,7 +268,43 @@ function HumanCollectorGuide() {
             </p>
           </DocsSection>
 
-          <DocsSection id="switch-environment" kicker="05" title="Switch environments">
+          <DocsSection id="use-memory" kicker="05" title="Use Project Memory in the next session">
+            <p>
+              Captured activity becomes useful when you turn completed work into Project Memory,
+              review it, and read the approved result from a later session.
+            </p>
+            <ol className="docs-steps">
+              <Step title="Finish a meaningful coding turn">
+                Use a non-sensitive task that produces a response and a file change, then wait for
+                the work to appear in the Memory review queue.
+              </Step>
+              <Step title="Review and approve Project Memory">
+                Open the project Memory tab, exclude anything that should not be sent for
+                generation, create the Memory, and approve the result before an agent can read it.
+              </Step>
+              <Step title="Verify the handoff">
+                Run the read-only context command from the same repository in a later terminal or
+                AI session.
+              </Step>
+            </ol>
+            <CommandBlock
+              command={`npx promty-collector@latest context --profile ${profile}`}
+              label="Read approved Project Memory"
+            />
+            <p>
+              MCP clients can start the same read-only bridge with this server configuration:
+            </p>
+            <CommandBlock
+              command={`{"command":"npx","args":["-y","promty-collector@latest","mcp","--profile","${profile}"]}`}
+              label="MCP server configuration"
+            />
+            <Callout icon={<ShieldCheck size={18} />} title="Only approved memory is shared">
+              The context command and MCP tool cannot modify your project or Memory. Unreviewed
+              Project Memory stays unavailable to agents.
+            </Callout>
+          </DocsSection>
+
+          <DocsSection id="switch-environment" kicker="06" title="Switch environments">
             <Callout icon={<RefreshCw size={18} />} title="Choose explicit destinations">
               Use one profile for a single destination, or initialize both profiles explicitly to
               save the same captured event to independent development and production queues.
@@ -269,7 +314,7 @@ function HumanCollectorGuide() {
               <CommandBlock command={profileSetupCommand("prod", installTarget)} label="Production" />
             </div>
             <CommandBlock
-              command={`npx promty-collector init --tool ${installTarget} --profiles dev,prod`}
+              command={`npx promty-collector@latest init --tool ${installTarget} --profiles dev,prod`}
               label="Development and production"
             />
             <p>
@@ -277,16 +322,16 @@ function HumanCollectorGuide() {
               destination, and reports each backend and uploader independently through doctor.
             </p>
             <CommandBlock
-              command={`npx promty-collector doctor --profiles dev,prod --tool ${installTarget}`}
+              command={`npx promty-collector@latest doctor --profiles dev,prod --tool ${installTarget}`}
               label="Verify both profiles"
             />
           </DocsSection>
 
-          <DocsSection id="troubleshooting" kicker="06" title="Troubleshooting">
+          <DocsSection id="troubleshooting" kicker="07" title="Troubleshooting">
             <TroubleshootingList />
           </DocsSection>
 
-          <DocsSection id="privacy" kicker="07" title="Privacy & generated files">
+          <DocsSection id="privacy" kicker="08" title="Privacy & generated files">
             <p>
               Promty may capture prompts, responses, repository paths, and code changes. Test with
               non-sensitive content and review your organization’s policy before connecting a
@@ -334,7 +379,7 @@ Follow these instructions from the repository root.
   - API URL: ${API_URL}
 - Connect only the AI tool handling this task unless the user explicitly asks for both.
 - Run exactly one init command for the selected tool and environment.
-- Do not display, read aloud, commit, or paste collector tokens, ~/.promty/config.json, raw event queues, or private uploader logs.
+- Do not display, read aloud, commit, or paste collector tokens, ~/.promty/profiles/*/config.json, raw event queues, or private uploader logs.
 - Preserve existing hooks and unrelated repository changes.
 - Browser-based GitHub authorization and hook trust require the user's confirmation.
 
@@ -360,6 +405,9 @@ Follow these instructions from the repository root.
 10. Run doctor with the same --tool value used for init.
 11. Report each diagnostic status. Do not claim success if any check says "needs-action".
 12. Ask the user to submit one non-sensitive test prompt in the selected tool, then confirm the new activity in Promty.
+13. When completed work is ready, ask the user to review and approve Project Memory in Promty.
+14. From a later session in the same repository, verify the approved handoff with:
+    npx promty-collector@latest context --profile ${currentProfile()}
 
 ## Expected hooks
 - Codex: UserPromptSubmit, Stop
@@ -377,6 +425,7 @@ State:
 - selected AI tool and unchanged tool settings
 - selected tool session restart still required or completed
 - doctor results
+- Project Memory review and context verification still required or completed
 - any action the user must complete`;
 
   return (
@@ -565,6 +614,7 @@ function FileItem({ path, text }: { path: string; text: string }) {
 }
 
 function TroubleshootingList() {
+  const profile = currentProfile();
   const items = [
     [
       "Codex does not capture prompts",
@@ -576,7 +626,7 @@ function TroubleshootingList() {
     ],
     [
       "Backend or uploader needs action",
-      <>Check <InlineCode>~/.promty/uploader.log</InlineCode> locally. Confirm the selected API is reachable, then run <InlineCode>npx promty-collector start-uploader</InlineCode>.</>,
+      <>Check <InlineCode>~/.promty/profiles/{profile}/uploader.log</InlineCode> locally. Confirm the selected API is reachable, then run <InlineCode>npx promty-collector@latest start-uploader --profile {profile}</InlineCode>.</>,
     ],
     [
       "The wrong environment receives events",

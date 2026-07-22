@@ -7,7 +7,8 @@ import {
   renameAccountCollectorToken,
   revokeAccountCollectorToken,
   updateAccountPreferences,
-  updateAccountPolicyConsents,
+  acceptAccountPolicies,
+  updateAccountExternalAiConsent,
 } from "../api/account";
 import { clearCurrentUserCache, updateCachedCurrentUser } from "../api/auth";
 import type { AppLocale } from "../i18n/I18nProvider";
@@ -207,22 +208,37 @@ export function useAccountSettings({ onUnauthorized }: UseAccountSettingsOptions
     }
   };
 
-  const updatePolicyConsents = async (allowExternalAi: boolean) => {
+  const savePolicyConsents = async (
+    update: () => Promise<AccountOverview["policy_consents"]>,
+    fallbackMessage: string,
+  ) => {
     setIsAccountSaving(true);
     setAccountError(null);
     try {
-      const policyConsents = await updateAccountPolicyConsents(allowExternalAi);
+      const policyConsents = await update();
       setAccountOverview((current) =>
         current ? { ...current, policy_consents: policyConsents } : current,
       );
       return true;
     } catch (error) {
-      handleAccountError(error, "Policy preferences could not be saved");
+      handleAccountError(error, fallbackMessage);
       return false;
     } finally {
       setIsAccountSaving(false);
     }
   };
+
+  const acceptPolicies = () =>
+    savePolicyConsents(
+      acceptAccountPolicies,
+      "Policy acceptance could not be saved",
+    );
+
+  const updateExternalAiConsent = (allowExternalAi: boolean) =>
+    savePolicyConsents(
+      () => updateAccountExternalAiConsent(allowExternalAi),
+      "External AI preference could not be saved",
+    );
 
   return {
     accountError,
@@ -240,7 +256,8 @@ export function useAccountSettings({ onUnauthorized }: UseAccountSettingsOptions
     revokeCollectorToken,
     setCreatedCollectorToken,
     updatePreferredLocale,
-    updatePolicyConsents,
+    acceptPolicies,
+    updateExternalAiConsent,
   };
 }
 

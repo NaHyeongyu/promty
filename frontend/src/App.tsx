@@ -1,13 +1,14 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { AppLoadingPage, NotFoundPage } from "./components/app/AppStatusPages";
 import {
-  appRouteFromPathname,
+  appRouteFromLocation,
   navigateToAppUrl,
   type AppRoute,
 } from "./routing";
 import "./App.css";
 
 const loadAdminApp = () => import("./AdminApp");
+const loadAboutPage = () => import("./components/marketing/AboutPage");
 const loadAuthenticatedApp = () => import("./AuthenticatedApp");
 const loadAuthScreens = () => import("./components/app/AuthScreens");
 const loadCollectorDocsPage = () => import("./components/docs/CollectorDocsPage");
@@ -15,6 +16,9 @@ const loadLandingPage = () => import("./components/marketing/LandingPage");
 const loadLegalPage = () => import("./components/legal/LegalPage");
 const loadProductPage = () => import("./components/marketing/ProductPage");
 
+const AboutPage = lazy(() =>
+  loadAboutPage().then((module) => ({ default: module.AboutPage })),
+);
 const AdminApp = lazy(() =>
   loadAdminApp().then((module) => ({ default: module.AdminApp })),
 );
@@ -48,6 +52,7 @@ const ProductPage = lazy(() =>
 );
 
 const routePreloaders: Partial<Record<AppRoute, () => Promise<unknown>>> = {
+  about: loadAboutPage,
   admin: loadAdminApp,
   "cli-login": loadAuthScreens,
   "collector-docs": loadCollectorDocsPage,
@@ -65,18 +70,22 @@ function preloadAppHref(href: string) {
   try {
     const target = new URL(href, window.location.origin);
     if (target.origin !== window.location.origin) return;
-    void routePreloaders[appRouteFromPathname(target.pathname)]?.();
+    void routePreloaders[appRouteFromLocation(target.pathname, target.search)]?.();
   } catch {
     // Invalid and non-web links use the browser's default behavior.
   }
 }
 
 function App() {
-  const [route, setRoute] = useState(() => appRouteFromPathname(window.location.pathname));
+  const [route, setRoute] = useState(() =>
+    appRouteFromLocation(window.location.pathname, window.location.search),
+  );
 
   useEffect(() => {
     const handleLocationChange = (event: PopStateEvent) => {
-      setRoute(appRouteFromPathname(window.location.pathname));
+      setRoute(
+        appRouteFromLocation(window.location.pathname, window.location.search),
+      );
       if (!event.state?.promtyAppNavigation) {
         return;
       }
@@ -137,7 +146,8 @@ function App() {
   }, []);
 
   let page;
-  if (route === "admin") page = <AdminApp />;
+  if (route === "about") page = <AboutPage />;
+  else if (route === "admin") page = <AdminApp />;
   else if (route === "collector-docs") page = <CollectorDocsPage />;
   else if (route === "collector-docs-ai") page = <CollectorDocsPage audience="ai" />;
   else if (route === "cli-login") page = <CliLoginPage />;
