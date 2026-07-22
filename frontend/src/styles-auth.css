@@ -3,9 +3,12 @@
 }
 
 .cli-login-shell {
+  box-sizing: border-box;
   display: grid;
+  width: 100%;
   min-height: 100vh;
   min-height: 100dvh;
+  grid-template-columns: minmax(0, 1fr);
   place-items: center;
   padding: var(--bh-space-6);
   color: var(--bh-color-text-primary);
@@ -13,13 +16,63 @@
 }
 
 .cli-login-panel {
+  box-sizing: border-box;
   display: grid;
   width: min(100%, 420px);
+  min-width: 0;
   gap: var(--bh-space-6);
   border: 1px solid var(--bh-color-border-hover);
   border-radius: var(--bh-radius-md);
   padding: var(--bh-space-8);
   background: var(--bh-card-bg);
+}
+
+.auth-login-panel {
+  width: min(100%, 520px);
+  gap: var(--bh-space-5);
+}
+
+.auth-role-list {
+  display: grid;
+  border-top: 1px solid var(--bh-color-border);
+  border-bottom: 1px solid var(--bh-color-border);
+}
+
+.auth-role-item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--bh-space-3);
+  padding: var(--bh-space-3) 0;
+  color: var(--bh-color-text-muted);
+}
+
+.auth-role-item + .auth-role-item {
+  border-top: 1px solid var(--bh-color-border);
+}
+
+.auth-role-item > svg {
+  margin-top: 2px;
+  color: var(--bh-color-text-secondary);
+}
+
+.auth-role-item > div {
+  display: grid;
+  min-width: 0;
+  gap: var(--bh-space-1);
+}
+
+.auth-role-item strong {
+  color: var(--bh-color-text-primary);
+  font-size: var(--bh-font-size-small);
+  font-weight: var(--bh-font-weight-label);
+  line-height: var(--bh-line-height-heading);
+}
+
+.auth-role-item span {
+  color: var(--bh-color-text-muted);
+  font-size: var(--bh-font-size-caption);
+  line-height: var(--bh-line-height-body);
 }
 
 .cli-login-kicker {
@@ -36,6 +89,14 @@
   font-size: var(--bh-font-size-caption);
   font-weight: var(--bh-font-weight-page);
   line-height: var(--bh-line-height-heading);
+}
+
+.cli-login-kicker .brand-logo {
+  display: block;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  object-fit: contain;
 }
 
 .cli-login-copy {
@@ -76,6 +137,13 @@
   transition:
     background-color var(--bh-duration-fast) var(--bh-ease-out),
     border-color var(--bh-duration-fast) var(--bh-ease-out);
+}
+
+.github-login-button .brand-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  fill: currentcolor;
 }
 
 .github-login-button:hover {
@@ -173,6 +241,12 @@
 @media (prefers-reduced-motion: reduce) {
   .auth-loading-spinner {
     animation: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .auth-login-panel {
+    width: 100%;
   }
 }
 .auth-legal-notice {

@@ -13,13 +13,17 @@ function FigmaBrand() {
 }
 
 export function MarketingShell({
+  appearance = "default",
   children,
   current,
 }: {
+  appearance?: "default" | "figma";
   children: ReactNode;
-  current: "home" | "legal" | "product";
+  current: "about" | "home" | "legal" | "product";
 }) {
   const isFigmaHome = current === "home";
+  const isAbout = current === "about";
+  const usesFigmaAppearance = appearance === "figma";
 
   useEffect(() => {
     function scrollToCurrentHash() {
@@ -58,64 +62,78 @@ export function MarketingShell({
   }, []);
 
   return (
-    <div className={`marketing-site${isFigmaHome ? " marketing-site--figma-home" : ""}`}>
+    <div
+      className={`marketing-site${usesFigmaAppearance ? " marketing-site--figma-home" : ""}${isAbout ? " marketing-site--about" : ""}`}
+    >
       <a className="marketing-skip-link" href="#main-content">
         Skip to content
       </a>
-      {!isFigmaHome ? <div className="marketing-scroll-progress" aria-hidden="true"><i /></div> : null}
+      {!usesFigmaAppearance ? <div className="marketing-scroll-progress" aria-hidden="true"><i /></div> : null}
       <header className="marketing-header">
-        <a aria-label="Promty introduction" className="marketing-brand" href="/about">
-          {isFigmaHome ? <FigmaBrand /> : <BrandLockup />}
+        <a aria-label="Promty introduction" className="marketing-brand" href="/">
+          {usesFigmaAppearance ? <FigmaBrand /> : <BrandLockup />}
         </a>
         <nav aria-label="Primary navigation" className="marketing-nav">
-          {isFigmaHome ? (
+          {isAbout ? (
+            <>
+              <a href="/product">Product</a>
+              <a href="#how-it-works">How it works</a>
+              <a href="#review">Review</a>
+              <a href="/docs/collector">Docs</a>
+            </>
+          ) : isFigmaHome ? (
             <>
               <a href="#product">Product</a>
-              <a href="/?view=community">Community</a>
+              <a href="/about">About</a>
+              <a href="/app?view=community">Community</a>
               <a href="#security">Security</a>
             </>
           ) : (
             <>
               <a aria-current={current === "product" ? "page" : undefined} href="/product">Product</a>
-              <a href="/about#product">How it works</a>
-              <a href="/about#security">Security</a>
+              <a href="/about">About</a>
+              <a href="/#product">How it works</a>
+              <a href="/#security">Security</a>
               <a href="/docs/collector">Docs</a>
             </>
           )}
         </nav>
-        <a className="marketing-header-cta" href="/">
-          {!isFigmaHome ? <LayoutDashboard aria-hidden="true" size={15} /> : null}
-          {isFigmaHome ? "Open Promty" : "Open workspace"}
+        <a className="marketing-header-cta" href="/app">
+          {!usesFigmaAppearance ? <LayoutDashboard aria-hidden="true" size={15} /> : null}
+          {usesFigmaAppearance ? "Open Promty" : "Open workspace"}
         </a>
       </header>
       <main id="main-content">{children}</main>
-      {isFigmaHome ? (
+      {usesFigmaAppearance ? (
         <footer className="marketing-footer figma-footer">
           <div className="figma-footer-main">
-            <a aria-label="Promty introduction" className="marketing-brand" href="/about">
+            <a aria-label="Promty introduction" className="marketing-brand" href="/">
               <FigmaBrand />
             </a>
             <nav aria-label="Footer navigation" className="marketing-footer-links">
-              <a href="#product">Product</a>
+              <a href={isAbout ? "/product" : "#product"}>Product</a>
+              <a aria-current={isAbout ? "page" : undefined} href="/about">About</a>
+              {isAbout ? <a href="#how-it-works">How it works</a> : null}
+              {isAbout ? <a href="#review">Review</a> : null}
               <a href="/docs/collector">Docs</a>
-              <a href="/?view=community">Community</a>
-              <a href="#security">Security</a>
-              <a href="#faq">FAQ</a>
-              <a href="/?view=support">Contact</a>
+              <a href="/app?view=community">Community</a>
+              {!isAbout ? <a href="#security">Security</a> : null}
+              {!isAbout ? <a href="#faq">FAQ</a> : null}
+              <a href="/app?view=support">Contact</a>
               <a href="/privacy">Privacy</a>
               <a href="/terms">Terms</a>
               <a href="/security">Security</a>
             </nav>
           </div>
           <div className="figma-footer-meta">
-            <p>Project memory for AI-native development.</p>
-            <p>© 2026 Promty.</p>
+            <p>Project memory for continuous AI work.</p>
+            <p>© 2026 Promty. Keep context moving.</p>
           </div>
         </footer>
       ) : (
         <footer className="marketing-footer">
           <div>
-            <a aria-label="Promty introduction" className="marketing-brand" href="/about">
+            <a aria-label="Promty introduction" className="marketing-brand" href="/">
               <BrandLockup />
             </a>
             <p>Project memory for humans and AI agents.</p>
@@ -123,11 +141,11 @@ export function MarketingShell({
           <div className="marketing-footer-links">
             <a href="/product">Product</a>
             <a href="/docs/collector"><BookOpen aria-hidden="true" size={14} /> Docs</a>
-            <a href="/?view=community"><GitBranch aria-hidden="true" size={14} /> Community</a>
+            <a href="/app?view=community"><GitBranch aria-hidden="true" size={14} /> Community</a>
             <a href="/privacy">Privacy</a>
             <a href="/terms">Terms</a>
             <a href="/security">Security</a>
-            <a href="/">Workspace <ArrowRight aria-hidden="true" size={14} /></a>
+            <a href="/app">Workspace <ArrowRight aria-hidden="true" size={14} /></a>
           </div>
         </footer>
       )}

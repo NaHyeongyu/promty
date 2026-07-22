@@ -1,4 +1,5 @@
 export type AppRoute =
+  | "about"
   | "admin"
   | "cli-login"
   | "collector-docs"
@@ -16,10 +17,10 @@ export function appRouteFromPathname(pathname: string): AppRoute {
   const normalizedPathname = pathname.replace(/\/+$/, "") || "/";
 
   if (normalizedPathname === "/") {
-    return "workspace";
+    return "landing";
   }
   if (normalizedPathname === "/about") {
-    return "landing";
+    return "about";
   }
   if (normalizedPathname === "/product") {
     return "product";
@@ -78,12 +79,14 @@ export function navigateToAppUrl(
 
 const LEGACY_WORKSPACE_QUERY_KEYS = new Set([
   "activity",
+  "auth_error",
   "author",
   "community",
   "file",
   "profile",
   "project",
   "prompt",
+  "preview",
   "public_project",
   "session",
   "tab",
@@ -93,4 +96,19 @@ const LEGACY_WORKSPACE_QUERY_KEYS = new Set([
 export function isLegacyWorkspaceSearch(search: string) {
   const params = new URLSearchParams(search);
   return [...params.keys()].some((key) => LEGACY_WORKSPACE_QUERY_KEYS.has(key));
+}
+
+export function appRouteFromLocation(pathname: string, search = ""): AppRoute {
+  const route = appRouteFromPathname(pathname);
+  const normalizedPathname = pathname.replace(/\/+$/, "") || "/";
+
+  if (
+    route === "landing" &&
+    normalizedPathname === "/" &&
+    isLegacyWorkspaceSearch(search)
+  ) {
+    return "workspace";
+  }
+
+  return route;
 }

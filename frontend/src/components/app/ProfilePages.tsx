@@ -82,7 +82,7 @@ export function UserProfilePage({
   latestActivityLabel,
   onDeleteAccount,
   onLogout,
-  onUpdatePolicyConsents,
+  onUpdateExternalAiConsent,
   projectCount,
 }: {
   accountError?: string | null;
@@ -94,7 +94,7 @@ export function UserProfilePage({
   latestActivityLabel: string;
   onDeleteAccount: (confirmation: string) => Promise<boolean>;
   onLogout: () => void;
-  onUpdatePolicyConsents: (allowExternalAi: boolean) => Promise<boolean>;
+  onUpdateExternalAiConsent: (allowExternalAi: boolean) => Promise<boolean>;
   projectCount: number;
 }) {
   const { t } = useI18n();
@@ -274,7 +274,7 @@ export function UserProfilePage({
                   <input
                     checked={accountOverview?.policy_consents.external_ai_allowed ?? false}
                     disabled={isSaving || !accountOverview?.policy_consents.policy_accepted}
-                    onChange={(event) => void onUpdatePolicyConsents(event.target.checked)}
+                    onChange={(event) => void onUpdateExternalAiConsent(event.target.checked)}
                     type="checkbox"
                   />
                   <span>

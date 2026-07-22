@@ -16,7 +16,7 @@ Install the Promty collector in the user's intended Git repository, configure th
 - When this task is running in Codex, select `codex-cli`. When it is running in Claude Code, select `claude-code`.
 - Select `all` only when the user explicitly asks to connect both tools.
 - Run exactly one `init` command with the environment or environments selected by the user.
-- Do not display, read aloud, commit, or paste collector tokens, `~/.promty/config.json`, raw event queues, or private uploader logs.
+- Do not display, read aloud, commit, or paste collector tokens, `~/.promty/profiles/*/config.json`, raw event queues, or private uploader logs.
 - Do not claim completion while a diagnostic reports `needs-action`.
 - GitHub authorization, Codex repository trust, and any tool permission prompt require the user's review and confirmation.
 - Promty may capture prompts, responses, repository paths, and code changes. Tell the user to use non-sensitive test content.
@@ -46,13 +46,13 @@ Use exactly one tool value:
 Production:
 
 ```bash
-npx promty-collector init --tool <selected-tool> --profile prod
+npx promty-collector@latest init --tool <selected-tool> --profile prod
 ```
 
 Local development:
 
 ```bash
-npx promty-collector init --tool <selected-tool> --profile dev
+npx promty-collector@latest init --tool <selected-tool> --profile dev
 ```
 
 If the user supplied different app and API URLs, pass them together with a profile. Production and local profiles keep their credentials, queues, logs, and uploader processes separate.
@@ -60,7 +60,7 @@ If the user supplied different app and API URLs, pass them together with a profi
 To save the same captured events to local development and production, use the explicit multi-profile form:
 
 ```bash
-npx promty-collector init --tool <selected-tool> --profiles dev,prod
+npx promty-collector@latest init --tool <selected-tool> --profiles dev,prod
 ```
 
 Multi-profile mode writes the same event ID to independent queues and runs an uploader for each destination. Do not combine `--profiles` with singular URL, path, or token overrides; configure each profile separately first.
@@ -85,17 +85,37 @@ Each uploader sends a lightweight heartbeat every minute. If a reboot stops the 
 10. Run the verification command:
 
 ```bash
-npx promty-collector doctor --profile <dev-or-prod> --tool <selected-tool>
+npx promty-collector@latest doctor --profile <dev-or-prod> --tool <selected-tool>
 ```
 
 For multi-profile installations, run:
 
 ```bash
-npx promty-collector doctor --profiles dev,prod --tool <selected-tool>
+npx promty-collector@latest doctor --profiles dev,prod --tool <selected-tool>
 ```
 
 11. Report the status of `config`, `login`, the selected hook check, `queue`, `backend`, and `uploader`.
 12. Ask the user to submit one small, non-sensitive prompt in the selected tool and confirm that the new activity appears in Promty.
+13. When completed work is ready, ask the user to review and approve Project Memory in Promty.
+14. From a later session in the same repository, verify the approved handoff:
+
+```bash
+npx promty-collector@latest context --profile <dev-or-prod>
+```
+
+For MCP clients, configure the read-only server with:
+
+```json
+{
+  "command": "npx",
+  "args": ["-y", "promty-collector@latest", "mcp", "--profile", "<dev-or-prod>"]
+}
+```
+
+The server exposes two read-only tools: `get_project_context` reads the latest approved Project
+Memory, and `search_project_context` searches approved memory nodes and safe file references.
+Search requires a `query`; optional `limit` accepts 1-20 results. Raw prompts, responses, and
+patch bodies are never returned through the agent search boundary.
 
 ## Updates
 
@@ -119,13 +139,9 @@ Claude Code writes `.claude/settings.local.json` with:
 
 Named `dev` and `prod` profiles use separate configuration, queue, PID, and log paths. Re-running `init --tool <selected-tool> --profile ...` updates the selected repository hooks to that single profile; `init --tool <selected-tool> --profiles dev,prod` updates them to write to both queues.
 
-Custom unprofiled installations still use the legacy shared uploader path. Stop that uploader before changing its app or API URL:
-
-```bash
-kill "$(cat ~/.promty/uploader.pid)"
-```
-
-Then run the new `init` command and restart the selected AI tool session.
+When using custom app and API URLs, keep an explicit profile so the matching credential,
+queue, uploader, diagnostics, context command, and MCP server continue to use one destination.
+Re-run the selected profile's `init` command and restart the selected AI tool session.
 
 ## Troubleshooting
 
@@ -139,13 +155,13 @@ Exit the Claude Code session that was open during installation and launch a new 
 
 ### Backend or uploader reports `needs-action`
 
-Confirm the selected API is reachable. The user may inspect `~/.promty/uploader.log` locally. Do not paste private log contents into the conversation. Start the uploader if needed:
+Confirm the selected API is reachable. The user may inspect `~/.promty/profiles/<profile>/uploader.log` locally. Do not paste private log contents into the conversation. Start the uploader if needed:
 
 ```bash
-npx promty-collector start-uploader
+npx promty-collector@latest start-uploader --profile <dev-or-prod>
 ```
 
-Then run `doctor --tool <selected-tool>` again.
+Then run `npx promty-collector@latest doctor --profile <dev-or-prod> --tool <selected-tool>` again.
 
 ### Events go to the wrong environment
 
@@ -162,6 +178,7 @@ Report all of the following:
 - Codex hook trust required or confirmed
 - selected tool session restart required or completed
 - every selected-tool `doctor` result
+- Project Memory review and read-only context verification required or completed
 - remaining user action, if any
 
 Do not report the integration as complete until installation succeeded, the selected hook configuration exists, unselected tool settings remained unchanged, and all selected diagnostics are healthy. Treat manual hook trust and test prompts as explicit follow-up actions when they have not yet been confirmed.

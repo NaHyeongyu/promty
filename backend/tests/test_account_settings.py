@@ -14,16 +14,18 @@ from app.models.users import User
 from app.schemas.account import (
     AccountDeletionRequest,
     AccountDeletionResponse,
-    AccountPolicyConsentRequest,
+    AccountExternalAIConsentRequest,
+    AccountPolicyAcceptanceRequest,
     AccountPolicyConsentsResponse,
 )
 from app.services import account_settings
 from app.services.account_settings import (
     LATEST_COLLECTOR_VERSION,
+    accept_current_policies_response,
     account_overview_response,
     create_collector_token_response,
     update_account_preferences_response,
-    update_policy_consents_response,
+    update_external_ai_consent_response,
 )
 
 
@@ -51,7 +53,12 @@ def test_account_routes_publish_response_contracts() -> None:
     assert paths["/api/account"]["delete"]["responses"]["200"]["content"][
         "application/json"
     ]["schema"]["$ref"].endswith("AccountDeletionResponse")
-    assert paths["/api/account/policy-consents"]["put"]["responses"]["200"][
+    assert paths["/api/account/policy-acceptance"]["put"]["responses"]["200"][
+        "content"
+    ]["application/json"]["schema"]["$ref"].endswith(
+        "AccountPolicyConsentsResponse"
+    )
+    assert paths["/api/account/external-ai-consent"]["put"]["responses"]["200"][
         "content"
     ]["application/json"]["schema"]["$ref"].endswith(
         "AccountPolicyConsentsResponse"
@@ -157,24 +164,30 @@ def test_account_language_preference_is_saved() -> None:
     assert user.preferred_locale == "zh"
 
 
-def test_policy_acceptance_and_external_ai_choice_are_recorded() -> None:
+def test_policy_acceptance_and_external_ai_choice_are_recorded_separately() -> None:
     user = _user()
     db = FakeSession()
 
-    response = update_policy_consents_response(
-        db,  # type: ignore[arg-type]
-        allow_external_ai=True,
-        user=user,
-    )
+    response = accept_current_policies_response(db, user=user)  # type: ignore[arg-type]
 
     AccountPolicyConsentsResponse.model_validate(response)
     assert response["policy_accepted"] is True
     assert response["eligibility_confirmed"] is True
-    assert response["external_ai_allowed"] is True
+    assert response["external_ai_allowed"] is False
     assert user.policy_version == response["current_policy_version"]
+    policy_accepted_at = user.policy_accepted_at
+
+    allowed = update_external_ai_consent_response(
+        db,  # type: ignore[arg-type]
+        allow_external_ai=True,
+        user=user,
+    )
+    assert allowed["policy_accepted"] is True
+    assert allowed["external_ai_allowed"] is True
+    assert user.policy_accepted_at == policy_accepted_at
     assert user.external_ai_consent_version == response["current_policy_version"]
 
-    revoked = update_policy_consents_response(
+    revoked = update_external_ai_consent_response(
         db,  # type: ignore[arg-type]
         allow_external_ai=False,
         user=user,
@@ -186,14 +199,14 @@ def test_policy_acceptance_and_external_ai_choice_are_recorded() -> None:
 
 def test_policy_request_requires_explicit_required_confirmations() -> None:
     with pytest.raises(ValueError):
-        AccountPolicyConsentRequest.model_validate(
+        AccountPolicyAcceptanceRequest.model_validate(
             {
                 "accept_privacy_notice": True,
                 "accept_terms": False,
-                "allow_external_ai": False,
                 "confirm_age_and_business_use": True,
             }
         )
+    assert AccountExternalAIConsentRequest(allow_external_ai=False).allow_external_ai is False
 
 
 def test_external_ai_generation_requires_current_separate_consent() -> None:
@@ -202,16 +215,12 @@ def test_external_ai_generation_requires_current_separate_consent() -> None:
         require_external_ai_consent(user)
     assert not_accepted.value.status_code == 403
 
-    update_policy_consents_response(
-        FakeSession(),  # type: ignore[arg-type]
-        allow_external_ai=False,
-        user=user,
-    )
+    accept_current_policies_response(FakeSession(), user=user)  # type: ignore[arg-type]
     with pytest.raises(HTTPException) as disabled:
         require_external_ai_consent(user)
     assert disabled.value.status_code == 403
 
-    update_policy_consents_response(
+    update_external_ai_consent_response(
         FakeSession(),  # type: ignore[arg-type]
         allow_external_ai=True,
         user=user,

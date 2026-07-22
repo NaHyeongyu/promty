@@ -8,14 +8,19 @@ from sqlalchemy.orm import Session
 
 from app.api.transactions import commit_or_conflict as _commit_or_conflict
 from app.core.config import settings
-from app.core.security import is_admin_user, require_web_user
+from app.core.security import (
+    is_admin_user,
+    require_current_policy_acceptance,
+    require_web_user,
+)
 from app.db.session import get_db
 from app.models.users import User
 from app.schemas.account import (
     AccountDeletionRequest,
     AccountDeletionResponse,
     AccountOverviewResponse,
-    AccountPolicyConsentRequest,
+    AccountExternalAIConsentRequest,
+    AccountPolicyAcceptanceRequest,
     AccountPolicyConsentsResponse,
     AccountPreferencesResponse,
     AccountPreferencesUpdateRequest,
@@ -37,7 +42,8 @@ from app.services.account_settings import (
     revoke_collector_token_response,
     update_collector_token_response,
     update_account_preferences_response,
-    update_policy_consents_response,
+    accept_current_policies_response,
+    update_external_ai_consent_response,
 )
 
 router = APIRouter(prefix="/api/account", tags=["account"])
@@ -108,18 +114,32 @@ def update_account_preferences(
     return response
 
 
-@router.put("/policy-consents", response_model=AccountPolicyConsentsResponse)
-def update_policy_consents(
-    payload: AccountPolicyConsentRequest,
+@router.put("/policy-acceptance", response_model=AccountPolicyConsentsResponse)
+def accept_current_policies(
+    payload: AccountPolicyAcceptanceRequest,
     current_user: User = Depends(require_web_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    response = update_policy_consents_response(
+    response = accept_current_policies_response(
+        db,
+        user=current_user,
+    )
+    _commit_or_conflict(db, detail="Policy acceptance could not be saved.")
+    return response
+
+
+@router.put("/external-ai-consent", response_model=AccountPolicyConsentsResponse)
+def update_external_ai_consent(
+    payload: AccountExternalAIConsentRequest,
+    current_user: User = Depends(require_current_policy_acceptance),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    response = update_external_ai_consent_response(
         db,
         allow_external_ai=payload.allow_external_ai,
         user=current_user,
     )
-    _commit_or_conflict(db, detail="Policy preferences could not be saved.")
+    _commit_or_conflict(db, detail="External AI preference could not be saved.")
     return response
 
 

@@ -252,6 +252,7 @@
 .support-form input,
 .support-form select,
 .support-form textarea {
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
   border: 1px solid var(--bh-color-border);

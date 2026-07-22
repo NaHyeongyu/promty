@@ -2374,3 +2374,235 @@ button.bh-file-tree-row:focus-visible {
     transform: translateX(250%);
   }
 }
+
+.bh-header-action-button.is-danger-quiet {
+  border-color: color-mix(in srgb, var(--bh-color-danger) 28%, var(--bh-color-border));
+  color: var(--bh-color-danger);
+  background: color-mix(in srgb, var(--bh-color-danger) 6%, var(--bh-color-surface));
+}
+
+.bh-header-action-button.is-danger-quiet:hover {
+  border-color: color-mix(in srgb, var(--bh-color-danger) 54%, var(--bh-color-border));
+  background: color-mix(in srgb, var(--bh-color-danger) 11%, var(--bh-color-surface));
+}
+
+.bh-session-conversation-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bh-space-3);
+  padding-bottom: var(--bh-space-3);
+  border-bottom: 1px solid var(--bh-color-border);
+}
+
+.bh-session-conversation-toolbar > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.bh-session-conversation-toolbar > div > span {
+  color: var(--bh-color-text-secondary);
+  font-size: 11px;
+  font-weight: var(--bh-font-weight-label);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.bh-session-conversation-toolbar > div > strong {
+  overflow: hidden;
+  color: var(--bh-color-text-primary);
+  font-size: var(--bh-font-size-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bh-activity-delete-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: clamp(16px, 4vw, 48px);
+  background: color-mix(in srgb, #020409 76%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.bh-activity-delete-dialog {
+  box-sizing: border-box;
+  display: grid;
+  width: min(560px, 100%);
+  max-height: min(760px, 90dvh);
+  overflow: auto;
+  gap: var(--bh-space-4);
+  padding: clamp(20px, 3vw, 28px);
+  border: 1px solid color-mix(in srgb, var(--bh-color-danger) 28%, var(--bh-color-border));
+  border-radius: var(--bh-radius-lg);
+  background: var(--bh-color-surface);
+  box-shadow: var(--bh-shadow-overlay);
+  overscroll-behavior: contain;
+}
+
+.bh-activity-delete-header {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--bh-space-3);
+}
+
+.bh-activity-delete-header > span {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--bh-color-danger) 35%, var(--bh-color-border));
+  border-radius: var(--bh-radius-md);
+  color: var(--bh-color-danger);
+  background: color-mix(in srgb, var(--bh-color-danger) 9%, transparent);
+}
+
+.bh-activity-delete-header > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.bh-activity-delete-header small {
+  color: var(--bh-color-danger);
+  font-size: 11px;
+  font-weight: var(--bh-font-weight-label);
+  letter-spacing: .1em;
+}
+
+.bh-activity-delete-header h2 {
+  margin: 0;
+  color: var(--bh-color-text-primary);
+  font-family: var(--bh-font-brand);
+  font-size: var(--bh-font-size-title);
+  line-height: var(--bh-line-height-heading);
+}
+
+.bh-activity-delete-header > button {
+  display: grid;
+  width: var(--bh-interactive-min-size);
+  height: var(--bh-interactive-min-size);
+  place-items: center;
+  border: 0;
+  border-radius: var(--bh-radius-sm);
+  color: var(--bh-color-text-secondary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.bh-activity-delete-header > button:hover {
+  color: var(--bh-color-text-primary);
+  background: var(--bh-color-surface-hover);
+}
+
+.bh-activity-delete-dialog > p {
+  margin: 0;
+  color: var(--bh-color-text-secondary);
+  font-size: var(--bh-font-size-body);
+  line-height: var(--bh-line-height-body);
+}
+
+.bh-activity-delete-scope {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--bh-color-border);
+  border-radius: var(--bh-radius-md);
+  background: var(--bh-color-surface-secondary);
+}
+
+.bh-activity-delete-scope > div {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: var(--bh-space-3);
+  padding: var(--bh-space-3) var(--bh-space-4);
+  color: var(--bh-color-danger);
+}
+
+.bh-activity-delete-scope > div + div {
+  border-top: 1px solid var(--bh-color-border);
+}
+
+.bh-activity-delete-scope > div[data-preserved="true"] {
+  color: var(--bh-color-success);
+}
+
+.bh-activity-delete-scope > div > svg {
+  margin-top: 2px;
+}
+
+.bh-activity-delete-scope > div > span:last-child {
+  display: grid;
+  gap: 3px;
+  color: var(--bh-color-text-secondary);
+  font-size: var(--bh-font-size-caption);
+  line-height: var(--bh-line-height-body);
+}
+
+.bh-activity-delete-scope strong {
+  color: var(--bh-color-text-primary);
+  font-size: var(--bh-font-size-body);
+}
+
+.bh-activity-delete-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--bh-space-2);
+  padding: var(--bh-space-3);
+  border: 1px solid color-mix(in srgb, var(--bh-color-danger) 30%, var(--bh-color-border));
+  border-radius: var(--bh-radius-sm);
+  color: var(--bh-color-danger);
+  background: color-mix(in srgb, var(--bh-color-danger) 7%, transparent);
+  font-size: var(--bh-font-size-caption);
+  line-height: var(--bh-line-height-body);
+}
+
+.bh-activity-delete-warning > svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.bh-activity-delete-error {
+  padding: var(--bh-space-3);
+  border-radius: var(--bh-radius-sm);
+  color: var(--bh-color-danger) !important;
+  background: var(--bh-color-danger-subtle);
+  font-size: var(--bh-font-size-caption) !important;
+}
+
+.bh-activity-delete-dialog > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--bh-space-2);
+}
+
+.bh-activity-delete-dialog > footer button {
+  display: inline-flex;
+  min-height: var(--bh-interactive-min-size);
+  align-items: center;
+  justify-content: center;
+  gap: var(--bh-space-2);
+  border: 1px solid var(--bh-color-border);
+  border-radius: var(--bh-radius-sm);
+  padding: 0 var(--bh-space-4);
+  color: var(--bh-color-text-primary);
+  background: var(--bh-color-surface-secondary);
+  font: inherit;
+  font-size: var(--bh-font-size-caption);
+  font-weight: var(--bh-font-weight-label);
+  cursor: pointer;
+}
+
+.bh-activity-delete-dialog > footer button.is-danger {
+  border-color: var(--bh-color-danger);
+  color: #fff;
+  background: var(--bh-color-danger);
+}
+
+.bh-activity-delete-dialog button:disabled {
+  cursor: progress;
+  opacity: .58;
+}

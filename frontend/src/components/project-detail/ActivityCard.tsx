@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Share2 } from "lucide-react";
+import { Share2, Trash2 } from "lucide-react";
 import { AiModelBadge } from "./AiModelBadge";
 import type { ActivityItem, PromptActivityItem } from "./types";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -174,6 +174,7 @@ export function PromptActivityCard({
 
 type PromptChangeDetailProps = {
   activity: PromptActivityItem | null;
+  onDeletePrompt?: (activity: PromptActivityItem) => void;
   onSharePrompt?: (activity: PromptActivityItem) => void;
 };
 
@@ -228,6 +229,7 @@ function DiffViewer({ patch }: { patch: string }) {
 
 export function PromptChangeDetail({
   activity,
+  onDeletePrompt,
   onSharePrompt,
 }: PromptChangeDetailProps) {
   const { t } = useI18n();
@@ -258,6 +260,16 @@ export function PromptChangeDetail({
           <h2 id="activity-detail-placeholder-title">{t("activity.promptDetail")}</h2>
         </div>
         <div className="bh-prompt-change-header-actions">
+          {onDeletePrompt ? (
+            <button
+              className="bh-header-action-button is-danger-quiet"
+              onClick={() => onDeletePrompt(activity)}
+              type="button"
+            >
+              <Trash2 aria-hidden="true" size={15} strokeWidth={1.6} />
+              <span>{t("activity.deletePrompt")}</span>
+            </button>
+          ) : null}
           {onSharePrompt ? (
             <button
               className="bh-header-action-button is-primary"

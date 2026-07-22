@@ -420,7 +420,7 @@ export function navigateToWorkspaceUrl(
 }
 
 export function currentWorkspaceReturnUrl() {
-  return `${window.location.origin}${window.location.pathname}${buildUrlNavigationSearch(
+  return `${window.location.origin}/app${buildUrlNavigationSearch(
     readUrlNavigationState(),
   )}`;
 }

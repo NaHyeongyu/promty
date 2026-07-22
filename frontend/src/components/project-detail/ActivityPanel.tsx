@@ -1,5 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
-import { Activity, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertTriangle,
+  Activity,
+  LoaderCircle,
+  Search,
+  Share2,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 import { fetchProjectPromptActivities } from "../../api/projects";
 import { promptActivityPageFromApi } from "../../workspace/projectDetailMappers";
 import {
@@ -21,6 +30,7 @@ import type {
 } from "./types";
 import { WorkTypeFilterControl } from "./WorkTypeFilterControl";
 import { useI18n } from "../../i18n/I18nProvider";
+import { focusableModalElements } from "./modalFocus";
 
 const PROMPT_ACTIVITY_PAGE_LIMIT = 50;
 
@@ -46,6 +56,10 @@ type ActivityFeedItem =
       sequenceIndex: number;
       timestamp: number | null;
     };
+
+type ActivityDeletionTarget =
+  | { activity: PromptActivityItem; kind: "prompt" }
+  | { activity: ActivityItem; kind: "session" };
 
 function displayTimeValue(value: string) {
   const timestamp = Date.parse(value);
@@ -123,6 +137,8 @@ export function ActivityPanel({
   activityNavigation,
   data,
   onActivityNavigationChange,
+  onDeletePromptActivity,
+  onDeleteSessionActivity,
   onSharePrompt,
   notice,
   providedDataError = null,
@@ -132,6 +148,8 @@ export function ActivityPanel({
   activityNavigation?: ActivityNavigationState;
   data: ProjectDetailData;
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
+  onDeletePromptActivity?: (promptEventId: string) => Promise<void>;
+  onDeleteSessionActivity?: (sessionId: string) => Promise<void>;
   onSharePrompt?: (activity: PromptActivityItem) => void;
   notice?: string;
   providedDataError?: string | null;
@@ -172,6 +190,16 @@ export function ActivityPanel({
   const [isSessionPromptLoadingMore, setIsSessionPromptLoadingMore] = useState(false);
   const [sessionPromptError, setSessionPromptError] = useState<string | null>(null);
   const [sessionPromptRequestVersion, setSessionPromptRequestVersion] = useState(0);
+  const [deletedSessionIds, setDeletedSessionIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [deletionTarget, setDeletionTarget] =
+    useState<ActivityDeletionTarget | null>(null);
+  const [deletionError, setDeletionError] = useState<string | null>(null);
+  const [isDeletingActivity, setIsDeletingActivity] = useState(false);
+  const isDeletingActivityRef = useRef(false);
+  const deletionDialogRef = useRef<HTMLElement | null>(null);
+  const deletionReturnFocusRef = useRef<HTMLElement | null>(null);
   const currentActivityNavigation =
     activityNavigation ?? localActivityNavigation;
   const updateActivityNavigation = (state: Partial<ActivityNavigationState>) => {
@@ -188,12 +216,130 @@ export function ActivityPanel({
     setLocalActivityNavigation(nextActivityNavigation);
   };
   const view = currentActivityNavigation.view;
+
+  useEffect(() => {
+    setDeletedSessionIds(new Set());
+  }, [data.project.id]);
+
+  useEffect(() => {
+    if (!deletionTarget) {
+      return;
+    }
+    const dialog = deletionDialogRef.current;
+    if (!dialog) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      focusableModalElements(dialog)[0]?.focus();
+    }, 0);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isDeletingActivityRef.current) {
+        event.preventDefault();
+        setDeletionTarget(null);
+        setDeletionError(null);
+        return;
+      }
+      if (event.key !== "Tab") {
+        return;
+      }
+      const focusable = focusableModalElements(dialog);
+      if (!focusable.length) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("keydown", handleKeyDown);
+      deletionReturnFocusRef.current?.focus();
+    };
+  }, [deletionTarget]);
+
+  const openDeletionDialog = (target: ActivityDeletionTarget) => {
+    deletionReturnFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setDeletionError(null);
+    setDeletionTarget(target);
+  };
+
+  const closeDeletionDialog = () => {
+    if (isDeletingActivity) {
+      return;
+    }
+    setDeletionTarget(null);
+    setDeletionError(null);
+  };
+
+  const confirmActivityDeletion = async () => {
+    if (!deletionTarget) {
+      return;
+    }
+    isDeletingActivityRef.current = true;
+    setIsDeletingActivity(true);
+    setDeletionError(null);
+    try {
+      if (deletionTarget.kind === "prompt") {
+        if (!onDeletePromptActivity) {
+          return;
+        }
+        const promptId = deletionTarget.activity.id;
+        await onDeletePromptActivity(promptId);
+        setPromptActivities((items) => items.filter((item) => item.id !== promptId));
+        setSessionPrompts((items) => items.filter((item) => item.id !== promptId));
+        setPromptActivityTotal((count) => count === null ? null : Math.max(count - 1, 0));
+        setSessionPromptTotal((count) => count === null ? null : Math.max(count - 1, 0));
+        setPromptActivityRequestVersion((version) => version + 1);
+        setSessionPromptRequestVersion((version) => version + 1);
+      } else {
+        if (!onDeleteSessionActivity) {
+          return;
+        }
+        await onDeleteSessionActivity(deletionTarget.activity.id);
+        setDeletedSessionIds((current) => {
+          const next = new Set(current);
+          next.add(deletionTarget.activity.id);
+          return next;
+        });
+        setSessionPrompts([]);
+        setSessionPromptTotal(null);
+        setPromptActivityRequestVersion((version) => version + 1);
+      }
+      updateActivityNavigation({
+        selectedPromptId: null,
+        selectedSessionId: null,
+        selectedSessionPromptId: null,
+      });
+      setDeletionTarget(null);
+    } catch (error) {
+      setDeletionError(
+        error instanceof Error ? error.message : t("activity.deleteFailed"),
+      );
+    } finally {
+      isDeletingActivityRef.current = false;
+      setIsDeletingActivity(false);
+    }
+  };
   const selectedPromptId = currentActivityNavigation.selectedPromptId;
   const selectedSessionId = currentActivityNavigation.selectedSessionId;
   const selectedSessionPromptId =
     currentActivityNavigation.selectedSessionPromptId;
   const hasPromptActivity = promptActivities.length > 0;
-  const hasSessionActivity = data.activities.length > 0;
+  const visibleSessionActivities = useMemo(
+    () => data.activities.filter((activity) => !deletedSessionIds.has(activity.id)),
+    [data.activities, deletedSessionIds],
+  );
+  const hasSessionActivity = visibleSessionActivities.length > 0;
+  const hasActivityForView = view === "prompts" ? hasPromptActivity : hasSessionActivity;
   const unfilteredActivityFeedItems = useMemo<ActivityFeedItem[]>(() => {
     const promptItems: ActivityFeedItem[] = promptActivities.map(
       (activity, index) => ({
@@ -204,7 +350,7 @@ export function ActivityPanel({
         timestamp: displayTimeValue(activity.submittedAt),
       }),
     );
-    const sessionItems: ActivityFeedItem[] = data.activities.map(
+    const sessionItems: ActivityFeedItem[] = visibleSessionActivities.map(
       (activity, index) => ({
         activity,
         key: `session-${activity.id}`,
@@ -216,7 +362,7 @@ export function ActivityPanel({
     const items = view === "sessions" ? sessionItems : promptItems;
 
     return [...items].sort(sortActivityFeedItems);
-  }, [data.activities, promptActivities, view]);
+  }, [promptActivities, view, visibleSessionActivities]);
   const searchMatchedActivityFeedItems = useMemo(() => {
     const query = promptSearchQuery.trim().toLowerCase();
 
@@ -509,9 +655,9 @@ export function ActivityPanel({
     null;
 
   if (
+    view === "prompts" &&
     promptActivityError &&
     !hasPromptActivity &&
-    !hasSessionActivity &&
     hasLoadedPromptActivityPage &&
     !isPromptActivityLoading
   ) {
@@ -533,10 +679,9 @@ export function ActivityPanel({
   }
 
   if (
-    !hasPromptActivity &&
-    !hasSessionActivity &&
-    hasLoadedPromptActivityPage &&
-    !isPromptActivityLoading
+    !hasActivityForView &&
+    (view === "sessions" || hasLoadedPromptActivityPage) &&
+    (view === "sessions" ? !isSessionPromptLoading : !isPromptActivityLoading)
   ) {
     return (
       <EmptyState
@@ -682,6 +827,25 @@ export function ActivityPanel({
             >
               {selectedSession ? (
                 <>
+                  <div className="bh-session-conversation-toolbar">
+                    <div>
+                      <span>{t("activity.selectedSession")}</span>
+                      <strong>{t("activity.session", { id: selectedSession.id.slice(0, 8) })}</strong>
+                    </div>
+                    {onDeleteSessionActivity ? (
+                      <button
+                        className="bh-header-action-button is-danger-quiet"
+                        onClick={() => openDeletionDialog({
+                          activity: selectedSession,
+                          kind: "session",
+                        })}
+                        type="button"
+                      >
+                        <Trash2 aria-hidden="true" size={15} strokeWidth={1.6} />
+                        <span>{t("activity.deleteSession")}</span>
+                      </button>
+                    ) : null}
+                  </div>
                   <label className="bh-prompt-search">
                     <Search aria-hidden="true" size={15} strokeWidth={1.7} />
                     <input
@@ -774,14 +938,123 @@ export function ActivityPanel({
               )}
             </section>
 
-            <PromptChangeDetail activity={selectedSessionPrompt} onSharePrompt={onSharePrompt} />
+            <PromptChangeDetail
+              activity={selectedSessionPrompt}
+              onDeletePrompt={onDeletePromptActivity ? (activity) =>
+                openDeletionDialog({ activity, kind: "prompt" }) : undefined}
+              onSharePrompt={onSharePrompt}
+            />
           </>
         ) : (
           <>
-            <PromptChangeDetail activity={selectedPrompt} onSharePrompt={onSharePrompt} />
+            <PromptChangeDetail
+              activity={selectedPrompt}
+              onDeletePrompt={onDeletePromptActivity ? (activity) =>
+                openDeletionDialog({ activity, kind: "prompt" }) : undefined}
+              onSharePrompt={onSharePrompt}
+            />
           </>
         )}
       </div>
+
+      {deletionTarget ? (
+        <div className="bh-activity-delete-overlay" role="presentation">
+          <section
+            aria-describedby="activity-delete-description"
+            aria-labelledby="activity-delete-title"
+            aria-modal="true"
+            className="bh-activity-delete-dialog"
+            ref={deletionDialogRef}
+            role="alertdialog"
+          >
+            <header className="bh-activity-delete-header">
+              <span aria-hidden="true"><AlertTriangle size={20} strokeWidth={1.7} /></span>
+              <div>
+                <small>{t("activity.deleteEyebrow")}</small>
+                <h2 id="activity-delete-title">
+                  {deletionTarget.kind === "prompt"
+                    ? t("activity.deletePromptTitle")
+                    : t("activity.deleteSessionTitle")}
+                </h2>
+              </div>
+              <button
+                aria-label={t("common.close")}
+                disabled={isDeletingActivity}
+                onClick={closeDeletionDialog}
+                type="button"
+              >
+                <X aria-hidden="true" size={17} />
+              </button>
+            </header>
+
+            <p id="activity-delete-description">
+              {deletionTarget.kind === "prompt"
+                ? t("activity.deletePromptDescription")
+                : t("activity.deleteSessionDescription", {
+                    count: deletionTarget.activity.prompts,
+                  })}
+            </p>
+
+            <div className="bh-activity-delete-scope">
+              <div>
+                <Trash2 aria-hidden="true" size={16} />
+                <span>
+                  <strong>{t("activity.deleteRawScopeTitle")}</strong>
+                  {deletionTarget.kind === "prompt"
+                    ? t("activity.deletePromptScope")
+                    : t("activity.deleteSessionScope")}
+                </span>
+              </div>
+              <div>
+                <Share2 aria-hidden="true" size={16} />
+                <span>
+                  <strong>{t("activity.deleteCommunityTitle")}</strong>
+                  {t("activity.deleteCommunityNotice")}
+                </span>
+              </div>
+              <div data-preserved="true">
+                <Sparkles aria-hidden="true" size={16} />
+                <span>
+                  <strong>{t("activity.deleteMemoryTitle")}</strong>
+                  {t("activity.deleteMemoryNotice")}
+                </span>
+              </div>
+            </div>
+
+            <div className="bh-activity-delete-warning">
+              <AlertTriangle aria-hidden="true" size={16} />
+              <span>{t("activity.deletePermanent")}</span>
+            </div>
+            {deletionError ? (
+              <p className="bh-activity-delete-error" role="alert">{deletionError}</p>
+            ) : null}
+            <footer>
+              <button
+                disabled={isDeletingActivity}
+                onClick={closeDeletionDialog}
+                type="button"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                className="is-danger"
+                disabled={isDeletingActivity}
+                onClick={() => void confirmActivityDeletion()}
+                type="button"
+              >
+                {isDeletingActivity ? (
+                  <LoaderCircle aria-hidden="true" className="bh-spin" size={16} />
+                ) : (
+                  <Trash2 aria-hidden="true" size={16} />
+                )}
+                {isDeletingActivity
+                  ? t("activity.deleting")
+                  : t("activity.deleteConfirm")}
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

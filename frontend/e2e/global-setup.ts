@@ -41,4 +41,25 @@ export default async function globalSetup(_config: FullConfig) {
     }),
     "utf8",
   );
+
+  const policyResponse = await fetch(
+    "http://127.0.0.1:8011/api/account/policy-acceptance",
+    {
+      body: JSON.stringify({
+        accept_privacy_notice: true,
+        accept_terms: true,
+        confirm_age_and_business_use: true,
+      }),
+      headers: {
+        Authorization: `Bearer ${session.token}`,
+        "Content-Type": "application/json",
+      },
+      method: "PUT",
+    },
+  );
+  if (!policyResponse.ok) {
+    throw new Error(
+      `E2E policy acceptance failed with ${policyResponse.status}: ${await policyResponse.text()}`,
+    );
+  }
 }

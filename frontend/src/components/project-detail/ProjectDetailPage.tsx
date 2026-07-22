@@ -35,6 +35,9 @@ type ProjectDetailPageProps = {
   isLoading?: boolean;
   isRefreshing?: boolean;
   isBookmarkUpdating?: boolean;
+  isExternalAiConsentSaving?: boolean;
+  externalAiAllowed?: boolean;
+  externalAiProviders?: Array<"gemini" | "openai">;
   isProjectMemoryGenerationActive?: boolean;
   isProjectMemoryGenerationDelayed?: boolean;
   isShareCopied?: boolean;
@@ -42,6 +45,8 @@ type ProjectDetailPageProps = {
   onApproveProjectMemory?: () => Promise<void>;
   onConnectRepository?: () => void;
   onDeleteProject?: () => Promise<void>;
+  onDeletePromptActivity?: (promptEventId: string) => Promise<void>;
+  onDeleteSessionActivity?: (sessionId: string) => Promise<void>;
   onLoadMemoryArtifacts?: (limit: number) => Promise<ProjectMemoryArtifact[]>;
   onOpenAllProjects?: () => void;
   onProjectSelect?: (projectId: string) => void;
@@ -59,8 +64,12 @@ type ProjectDetailPageProps = {
     visibility?: "private" | "public";
   }) => Promise<void>;
   onSaveDescription?: (description: string) => Promise<void>;
-  onGenerateProjectMemory?: (reviewToken: string) => Promise<MemoryGenerationResult>;
+  onGenerateProjectMemory?: (
+    reviewToken: string,
+    excludedPromptEventIds: string[],
+  ) => Promise<MemoryGenerationResult>;
   onLoadMemoryGenerationReview?: () => Promise<MemoryGenerationReviewResponse>;
+  onUpdateExternalAiConsent?: (allowExternalAi: boolean) => Promise<boolean>;
   onToggleBookmark?: () => void;
   onRetry?: () => void;
   onTabChange: (tabId: ProjectDetailTabId) => void;
@@ -110,6 +119,9 @@ function ProjectPanel({
   errorMessage,
   errorTitle,
   isLoading,
+  externalAiAllowed,
+  externalAiProviders,
+  isExternalAiConsentSaving,
   isProjectMemoryGenerationActive,
   isProjectMemoryGenerationDelayed,
   onActivityNavigationChange,
@@ -118,7 +130,10 @@ function ProjectPanel({
   onGenerateProjectMemory,
   onLoadMemoryGenerationReview,
   onLoadMemoryArtifacts,
+  onUpdateExternalAiConsent,
   onDeleteProject,
+  onDeletePromptActivity,
+  onDeleteSessionActivity,
   onSaveProjectMetadata,
   onSaveDescription,
   onRepositoryFileSelect,
@@ -138,10 +153,19 @@ function ProjectPanel({
   onActivityNavigationChange?: (state: ActivityNavigationState) => void;
   onApproveProjectMemory?: () => Promise<void>;
   onSharePrompt?: (activity: PromptActivityItem) => void;
-  onGenerateProjectMemory?: (reviewToken: string) => Promise<MemoryGenerationResult>;
+  externalAiAllowed?: boolean;
+  externalAiProviders?: Array<"gemini" | "openai">;
+  isExternalAiConsentSaving?: boolean;
+  onGenerateProjectMemory?: (
+    reviewToken: string,
+    excludedPromptEventIds: string[],
+  ) => Promise<MemoryGenerationResult>;
   onLoadMemoryGenerationReview?: () => Promise<MemoryGenerationReviewResponse>;
   onLoadMemoryArtifacts?: (limit: number) => Promise<ProjectMemoryArtifact[]>;
+  onUpdateExternalAiConsent?: (allowExternalAi: boolean) => Promise<boolean>;
   onDeleteProject?: () => Promise<void>;
+  onDeletePromptActivity?: (promptEventId: string) => Promise<void>;
+  onDeleteSessionActivity?: (sessionId: string) => Promise<void>;
   onRepositoryFileSelect?: (path: string) => void;
   onRetryRepositoryFiles?: () => void;
   onRetryTrackedFiles?: () => void;
@@ -193,9 +217,14 @@ function ProjectPanel({
     return (
       <MemoryPanel
         data={data}
+        externalAiAllowed={externalAiAllowed}
+        externalAiProviders={externalAiProviders}
+        isExternalAiConsentSaving={isExternalAiConsentSaving}
         isProjectMemoryGenerationActive={isProjectMemoryGenerationActive}
         isProjectMemoryGenerationDelayed={isProjectMemoryGenerationDelayed}
         onApproveProjectMemory={onApproveProjectMemory}
+        onDeletePromptActivity={onDeletePromptActivity}
+        onDeleteSessionActivity={onDeleteSessionActivity}
         onGenerateProjectMemory={onGenerateProjectMemory}
         onLoadMemoryGenerationReview={onLoadMemoryGenerationReview}
         onLoadMemoryArtifacts={onLoadMemoryArtifacts}
@@ -211,6 +240,7 @@ function ProjectPanel({
           }
           onTabChange("ai-activity");
         }}
+        onUpdateExternalAiConsent={onUpdateExternalAiConsent}
       />
     );
   }
@@ -221,6 +251,8 @@ function ProjectPanel({
         activityNavigation={activityNavigation}
         data={data}
         onActivityNavigationChange={onActivityNavigationChange}
+        onDeletePromptActivity={onDeletePromptActivity}
+        onDeleteSessionActivity={onDeleteSessionActivity}
         onSharePrompt={onSharePrompt}
       />
     );
@@ -253,6 +285,9 @@ export function ProjectDetailPage({
   errorMessage,
   errorTitle,
   isProjectResolving,
+  externalAiAllowed,
+  externalAiProviders,
+  isExternalAiConsentSaving,
   isLoading,
   isRefreshing,
   isBookmarkUpdating,
@@ -265,8 +300,11 @@ export function ProjectDetailPage({
   onLoadMemoryGenerationReview,
   onConnectRepository,
   onDeleteProject,
+  onDeletePromptActivity,
+  onDeleteSessionActivity,
   onOpenAllProjects,
   onLoadMemoryArtifacts,
+  onUpdateExternalAiConsent,
   onProjectSelect,
   onRepositoryFileSelect,
   onRetryRepositoryFiles,
@@ -336,18 +374,24 @@ export function ProjectDetailPage({
           activityNavigation={activityNavigation}
           activeTab={activeTab}
           data={data}
+          externalAiAllowed={externalAiAllowed}
+          externalAiProviders={externalAiProviders}
           errorMessage={errorMessage}
           errorTitle={errorTitle}
           isLoading={isLoading}
           isProjectMemoryGenerationActive={isProjectMemoryGenerationActive}
           isProjectMemoryGenerationDelayed={isProjectMemoryGenerationDelayed}
+          isExternalAiConsentSaving={isExternalAiConsentSaving}
           onActivityNavigationChange={onActivityNavigationChange}
           onApproveProjectMemory={onApproveProjectMemory}
           onSharePrompt={onSharePrompt}
           onGenerateProjectMemory={onGenerateProjectMemory}
           onLoadMemoryGenerationReview={onLoadMemoryGenerationReview}
           onLoadMemoryArtifacts={onLoadMemoryArtifacts}
+          onUpdateExternalAiConsent={onUpdateExternalAiConsent}
           onDeleteProject={onDeleteProject}
+          onDeletePromptActivity={onDeletePromptActivity}
+          onDeleteSessionActivity={onDeleteSessionActivity}
           onSaveProjectMetadata={onSaveProjectMetadata}
           onSaveDescription={onSaveDescription}
           onRepositoryFileSelect={onRepositoryFileSelect}

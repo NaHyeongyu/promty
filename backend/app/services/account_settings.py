@@ -126,16 +126,26 @@ def account_overview_response(db: Session, *, user: User) -> dict[str, Any]:
     }
 
 
-def update_policy_consents_response(
+def accept_current_policies_response(
     db: Session,
     *,
-    allow_external_ai: bool,
     user: User,
 ) -> dict[str, Any]:
     accepted_at = utc_now()
     user.policy_version = CURRENT_POLICY_VERSION
     user.policy_accepted_at = accepted_at
     user.eligibility_confirmed_at = accepted_at
+    db.flush()
+    return serialize_policy_consents(user)
+
+
+def update_external_ai_consent_response(
+    db: Session,
+    *,
+    allow_external_ai: bool,
+    user: User,
+) -> dict[str, Any]:
+    accepted_at = utc_now()
     if allow_external_ai:
         user.external_ai_consent_version = CURRENT_POLICY_VERSION
         user.external_ai_consented_at = accepted_at

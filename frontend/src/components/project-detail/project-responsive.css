@@ -313,3 +313,37 @@
     animation: none;
   }
 }
+
+@media (width <= 640px) {
+  .bh-activity-delete-overlay {
+    align-items: end;
+    padding: 0;
+  }
+
+  .bh-activity-delete-dialog {
+    width: 100%;
+    max-height: 92dvh;
+    padding: 20px 16px calc(18px + env(safe-area-inset-bottom));
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: var(--bh-radius-lg) var(--bh-radius-lg) 0 0;
+  }
+
+  .bh-activity-delete-dialog > footer {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .bh-activity-delete-dialog > footer button {
+    width: 100%;
+  }
+
+  .bh-session-conversation-toolbar {
+    align-items: flex-start;
+  }
+
+  .bh-session-conversation-toolbar .bh-header-action-button {
+    min-width: var(--bh-interactive-min-size);
+  }
+}

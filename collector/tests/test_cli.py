@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -90,11 +91,48 @@ def test_profile_uses_isolated_config_queue_and_uploader_files(
     assert args.log_path == str(profile_root / "uploader.log")
 
 
+def test_init_defaults_to_production_profile() -> None:
+    args = build_parser().parse_args(["init"])
+
+    _apply_profile_defaults(args)
+
+    profile_root = Path.home() / ".promty" / "profiles" / "prod"
+    assert args.profile == "prod"
+    assert args.app_url == "https://promty.org"
+    assert args.api_url == "https://api.promty.org"
+    assert args.config_path == str(profile_root / "config.json")
+
+
+def test_multi_profile_selection_is_not_overwritten_by_default_profile() -> None:
+    args = build_parser().parse_args(["init", "--profiles", "dev,prod"])
+
+    _apply_profile_defaults(args)
+
+    assert args.profiles == ("dev", "prod")
+    assert args.app_url is None
+    assert args.api_url is None
+    assert args.config_path is None
+
+
+@pytest.mark.parametrize("command", ("context", "mcp"))
+def test_agent_context_commands_accept_profile(command: str) -> None:
+    args = build_parser().parse_args([command, "--profile", "prod"])
+
+    _apply_profile_defaults(args)
+
+    assert args.api_url == "https://api.promty.org"
+    assert args.config_path == str(
+        Path.home() / ".promty" / "profiles" / "prod" / "config.json"
+    )
+
+
 def test_automatic_updates_require_explicit_opt_in() -> None:
     parser = build_parser()
 
     assert parser.parse_args(["upload"]).no_auto_update is True
     assert parser.parse_args(["start-uploader"]).no_auto_update is True
+    assert parser.parse_args(["start-uploader"]).restart is False
+    assert parser.parse_args(["start-uploader", "--restart"]).restart is True
     assert parser.parse_args(["init"]).no_auto_update is True
     assert parser.parse_args(["upload", "--auto-update"]).no_auto_update is False
 
@@ -230,6 +268,29 @@ def test_doctor_profiles_checks_each_profile_independently(
     assert "prod/backend: ok" in output
 
 
+def test_doctor_reports_invalid_ingest_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "_doctor_hook_checks",
+        lambda *_args, **_kwargs: [("hooks", True, "installed")],
+    )
+    monkeypatch.setattr(cli, "read_config", lambda _: {"auth": {}})
+    monkeypatch.setattr(cli, "resolve_token", lambda *_: "collector-token")
+    monkeypatch.setattr(cli, "_queue_status", lambda _: (True, "empty"))
+    monkeypatch.setattr(cli, "_health_status", lambda *_: (True, "ok"))
+    monkeypatch.setattr(cli, "_ingest_auth_status", lambda *_: (False, "HTTP 401"))
+    monkeypatch.setattr(cli, "_read_pid", lambda _: 123)
+    monkeypatch.setattr(cli, "_pid_is_running", lambda _: True)
+    args = build_parser().parse_args(["doctor", "--profile", "dev"])
+
+    assert args.func(args) == 1
+    output = capsys.readouterr().out
+    assert "ingest-auth: needs-action - HTTP 401" in output
+
+
 def test_profile_capture_restarts_a_stopped_uploader(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -285,6 +346,101 @@ def test_profile_capture_keeps_event_safe_when_restart_fails(
     cli._ensure_uploader_for_capture_queue(profile_root / "events")
 
     assert "spawn failed" in capsys.readouterr().err
+
+
+def test_start_uploader_reads_profile_config_without_inherited_overrides(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile_root = tmp_path / "profiles" / "dev"
+    config_path = profile_root / "config.json"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        json.dumps(
+            {
+                "api_url": "https://api.config.test",
+                "token": "current-config-token",
+            }
+        ),
+        encoding="utf-8",
+    )
+    pid_path = profile_root / "uploader.pid"
+    log_path = profile_root / "uploader.log"
+    seen: dict[str, object] = {}
+
+    monkeypatch.setenv("PROMTY_API_TOKEN", "stale-canonical-token")
+    monkeypatch.setenv("PROMPTHUB_API_TOKEN", "stale-legacy-token")
+    monkeypatch.setenv("PROMTY_API_URL", "https://stale-canonical.test")
+    monkeypatch.setenv("PROMPTHUB_API_URL", "https://stale-legacy.test")
+    monkeypatch.setattr(cli, "_read_pid", lambda _path: None)
+
+    def fake_popen(command: list[str], **kwargs: object) -> SimpleNamespace:
+        seen["command"] = command
+        seen["env"] = kwargs["env"]
+        return SimpleNamespace(pid=321)
+
+    monkeypatch.setattr(cli.subprocess, "Popen", fake_popen)
+    args = build_parser().parse_args(
+        [
+            "start-uploader",
+            "--config-path",
+            str(config_path),
+            "--pid-path",
+            str(pid_path),
+            "--log-path",
+            str(log_path),
+            "--queue-path",
+            str(profile_root / "events"),
+        ]
+    )
+
+    assert args.func(args) == 0
+
+    command = seen["command"]
+    env = seen["env"]
+    assert isinstance(command, list)
+    assert isinstance(env, dict)
+    assert command[command.index("--config-path") + 1] == str(config_path)
+    assert "--token" not in command
+    assert env["PROMTY_CONFIG_PATH"] == str(config_path)
+    assert "PROMTY_API_TOKEN" not in env
+    assert "PROMPTHUB_API_TOKEN" not in env
+    assert "PROMTY_API_URL" not in env
+    assert "PROMPTHUB_API_URL" not in env
+    assert pid_path.read_text(encoding="utf-8") == "321\n"
+
+
+def test_start_uploader_restart_stops_existing_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stopped: list[int] = []
+    profile_root = tmp_path / "profiles" / "dev"
+    profile_root.mkdir(parents=True)
+    monkeypatch.setattr(cli, "_read_pid", lambda _path: 123)
+    monkeypatch.setattr(cli, "_pid_is_running", lambda pid: pid == 123)
+    monkeypatch.setattr(cli, "_stop_uploader_process", stopped.append)
+    monkeypatch.setattr(
+        cli.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: SimpleNamespace(pid=456),
+    )
+    args = build_parser().parse_args(
+        [
+            "start-uploader",
+            "--restart",
+            "--config-path",
+            str(profile_root / "config.json"),
+            "--pid-path",
+            str(profile_root / "uploader.pid"),
+            "--log-path",
+            str(profile_root / "uploader.log"),
+        ]
+    )
+
+    assert args.func(args) == 0
+    assert stopped == [123]
+    assert (profile_root / "uploader.pid").read_text(encoding="utf-8") == "456\n"
 
 
 def test_runtime_launcher_uses_a_durable_copy(
@@ -475,6 +631,8 @@ def test_init_profiles_install_one_mirrored_hook_and_start_two_uploaders(
         Path.home() / ".promty" / "profiles" / "dev" / "uploader.pid",
         Path.home() / ".promty" / "profiles" / "prod" / "uploader.pid",
     ]
+    assert all(item.restart is True for item in started_uploaders)
+    assert all(item.token is None for item in started_uploaders)
 
 
 @pytest.mark.parametrize(
@@ -657,6 +815,7 @@ def test_doctor_can_check_both_hook_integrations(
     monkeypatch.setattr(cli, "resolve_token", lambda *_: "collector-token")
     monkeypatch.setattr(cli, "_queue_status", lambda _: (True, "empty"))
     monkeypatch.setattr(cli, "_health_status", lambda *_: (True, "ok"))
+    monkeypatch.setattr(cli, "_ingest_auth_status", lambda *_: (True, "authenticated"))
     monkeypatch.setattr(cli, "_read_pid", lambda _: 123)
     monkeypatch.setattr(cli, "_pid_is_running", lambda _: True)
     doctor_args = build_parser().parse_args(

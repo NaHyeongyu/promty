@@ -56,6 +56,12 @@ describe("i18n", () => {
   });
 
   it("uses natural terminology for memory and review states", () => {
+    expect(translateMessage("en", "nav.community")).toBe("Discovery");
+    expect(translateMessage("en", "nav.pinned")).toBe("Saved");
+    expect(translateMessage("ko", "nav.community")).toBe("디스커버리");
+    expect(translateMessage("ko", "pinned.emptyTitle")).toBe(
+      "아직 저장한 프로젝트가 없어요",
+    );
     expect(translateMessage("ko", "memory.compiledDocument")).toBe(
       "통합된 프로젝트 메모리",
     );

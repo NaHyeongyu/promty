@@ -46,11 +46,14 @@ class AccountPreferencesResponse(BaseModel):
     preferred_locale: Literal["en", "ja", "ko", "zh"]
 
 
-class AccountPolicyConsentRequest(BaseModel):
+class AccountPolicyAcceptanceRequest(BaseModel):
     accept_privacy_notice: Literal[True]
     accept_terms: Literal[True]
-    allow_external_ai: bool
     confirm_age_and_business_use: Literal[True]
+
+
+class AccountExternalAIConsentRequest(BaseModel):
+    allow_external_ai: bool
 
 
 class AccountPolicyConsentsResponse(BaseModel):

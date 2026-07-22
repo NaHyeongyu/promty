@@ -87,3 +87,29 @@ def test_project_delete_route_returns_no_content() -> None:
     )
 
     assert delete_route.status_code == 204
+
+
+@pytest.mark.parametrize(
+    ("path", "identifier"),
+    [
+        (
+            "/api/projects/{project_id}/prompt-activities/{prompt_event_id}",
+            "prompt_event_id",
+        ),
+        ("/api/projects/{project_id}/sessions/{session_id}", "session_id"),
+    ],
+)
+def test_activity_delete_routes_are_project_scoped_and_return_no_content(
+    path: str,
+    identifier: str,
+) -> None:
+    delete_route = next(
+        route
+        for route in router.routes
+        if getattr(route, "path", None) == path
+        and "DELETE" in getattr(route, "methods", set())
+    )
+
+    assert delete_route.status_code == 204
+    assert "project_id" in delete_route.path_format
+    assert identifier in delete_route.path_format

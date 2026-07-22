@@ -119,7 +119,7 @@ def test_validate_cli_redirect_uri_allows_only_local_callback() -> None:
 def test_validate_web_return_to_stays_on_app_origin() -> None:
     app_url = settings.app_url.rstrip("/")
 
-    assert validate_web_return_to(None) == app_url
+    assert validate_web_return_to(None) == f"{app_url}/app"
     assert validate_web_return_to(f"{app_url}/projects") == f"{app_url}/projects"
 
     for uri in (

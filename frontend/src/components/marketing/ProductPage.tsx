@@ -28,7 +28,7 @@ export function ProductPage() {
           <div className="marketing-kicker"><MemoryStick aria-hidden="true" size={14} /> PROMTY PRODUCT</div>
           <h1>The memory layer between your project and every agent.</h1>
           <p>Capture work without interrupting it. Organize the decisions that matter. Deliver current project context through the tools agents already understand.</p>
-          <div className="marketing-hero-actions"><MarketingCta href="/">Open workspace <ArrowRight aria-hidden="true" size={17} /></MarketingCta><MarketingCta href="/docs/collector" secondary>Read the setup guide</MarketingCta></div>
+          <div className="marketing-hero-actions"><MarketingCta href="/app">Open workspace <ArrowRight aria-hidden="true" size={17} /></MarketingCta><MarketingCta href="/docs/collector" secondary>Read the setup guide</MarketingCta></div>
         </div>
         <div className="product-architecture" data-marketing-reveal>
           <div className="architecture-label">PROJECT CONTEXT PIPELINE</div>
@@ -110,7 +110,7 @@ export function ProductPage() {
 
       <section className="marketing-final-cta product-final-cta" data-marketing-reveal>
         <div><span className="marketing-eyebrow">MAKE CONTEXT CONTINUOUS</span><h2>Your next agent should know what the last one learned.</h2><p>Start with one repository and let Project Memory grow with the work.</p></div>
-        <div className="marketing-final-actions"><MarketingCta href="/">Start with Promty <ArrowRight aria-hidden="true" size={17} /></MarketingCta><MarketingCta href="/docs/collector" secondary><ShieldCheck aria-hidden="true" size={16} /> Review setup</MarketingCta></div>
+        <div className="marketing-final-actions"><MarketingCta href="/app">Start with Promty <ArrowRight aria-hidden="true" size={17} /></MarketingCta><MarketingCta href="/docs/collector" secondary><ShieldCheck aria-hidden="true" size={16} /> Review setup</MarketingCta></div>
       </section>
     </MarketingShell>
   );

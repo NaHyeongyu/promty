@@ -1,51 +1,3 @@
-.auth-login-panel {
-  width: min(100%, 520px);
-  gap: var(--bh-space-5);
-}
-
-.auth-role-list {
-  display: grid;
-  border-top: 1px solid var(--bh-color-border);
-  border-bottom: 1px solid var(--bh-color-border);
-}
-
-.auth-role-item {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
-  gap: var(--bh-space-3);
-  align-items: start;
-  padding: var(--bh-space-3) 0;
-  color: var(--bh-color-text-muted);
-}
-
-.auth-role-item + .auth-role-item {
-  border-top: 1px solid var(--bh-color-border);
-}
-
-.auth-role-item > svg {
-  margin-top: 2px;
-  color: var(--bh-color-text-secondary);
-}
-
-.auth-role-item > div {
-  display: grid;
-  min-width: 0;
-  gap: var(--bh-space-1);
-}
-
-.auth-role-item strong {
-  color: var(--bh-color-text-primary);
-  font-size: var(--bh-font-size-small);
-  font-weight: var(--bh-font-weight-label);
-  line-height: var(--bh-line-height-heading);
-}
-
-.auth-role-item span {
-  color: var(--bh-color-text-muted);
-  font-size: var(--bh-font-size-caption);
-  line-height: var(--bh-line-height-body);
-}
-
 .page:has(> .projects-section > .empty-projects-state.onboarding-shell) {
   display: flex;
   flex-direction: column;
@@ -584,10 +536,6 @@
 }
 
 @media (max-width: 760px) {
-  .auth-login-panel {
-    width: 100%;
-  }
-
   .projects-section > .empty-projects-state.onboarding-shell {
     width: 100%;
     margin-top: 0;

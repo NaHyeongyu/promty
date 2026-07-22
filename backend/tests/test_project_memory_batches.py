@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 import logging
 from types import SimpleNamespace
@@ -312,6 +313,140 @@ def test_prepare_batch_claims_deterministic_cap_and_leaves_excess_pending(
     assert "LIMIT 3 FOR UPDATE" in compiled
     assert "sent_to_ai_at" in compiled
     assert "IS NULL" in compiled
+
+
+def test_generation_exclusions_are_stored_in_the_immutable_batch_manifest(
+    monkeypatch,
+) -> None:
+    project_id = uuid4()
+    prompt_id = uuid4()
+    draft = SimpleNamespace(
+        created_at=datetime(2026, 7, 13, tzinfo=UTC),
+        id=uuid4(),
+        metadata_={"review_state": REVIEW_STATE_DRAFT},
+        session_id=uuid4(),
+        updated_at=datetime(2026, 7, 13, tzinfo=UTC),
+    )
+    version = SimpleNamespace(
+        artifact_id=draft.id,
+        id=uuid4(),
+        metadata_={},
+        prompt_event_ids=[prompt_id],
+    )
+    db = FakePrepareDB([draft])
+    monkeypatch.setattr(
+        batches,
+        "settings",
+        SimpleNamespace(project_memory_batch_max_drafts=3),
+    )
+    monkeypatch.setattr(
+        batches,
+        "_latest_versions_by_artifact",
+        lambda _db, _ids: {draft.id: version},
+    )
+    monkeypatch.setattr(batches, "_attach_idempotency_key", lambda _db, batch, _key: batch)
+    validated: list[set[str]] = []
+    monkeypatch.setattr(
+        batches,
+        "_validate_memory_review_token",
+        lambda **kwargs: validated.append(kwargs["excluded_prompt_event_ids"]),
+    )
+
+    batch = batches._prepare_batch(
+        db,  # type: ignore[arg-type]
+        excluded_prompt_event_ids=[prompt_id],
+        idempotency_key="reviewed",
+        project_id=project_id,
+        review_token="signed-review",
+        user_id=uuid4(),
+    )
+
+    assert validated == [{str(prompt_id)}]
+    assert batch.snapshot_manifest[0]["excluded_prompt_event_ids"] == [str(prompt_id)]
+
+
+def test_generation_exclusions_filter_only_the_batch_snapshot() -> None:
+    prompt_id = uuid4()
+    response_id = uuid4()
+    retained_prompt_id = uuid4()
+    retained_response_id = uuid4()
+    metadata = {
+        "draft_evidence": {
+            "changed_files": [{"path": "src/app.ts", "status": "modified"}],
+            "commits": [{"hash": "abc", "message": "Keep metadata"}],
+            "events": [
+                {
+                    "event_type": "PromptSubmitted",
+                    "payload": {"prompt": "private", "turn_id": "turn-1"},
+                    "sequence": 1,
+                },
+                {
+                    "event_type": "ResponseReceived",
+                    "payload": {"response": "private response", "turn_id": "turn-1"},
+                    "sequence": 2,
+                },
+                {
+                    "event_type": "PromptSubmitted",
+                    "payload": {"prompt": "retained", "turn_id": "turn-2"},
+                    "sequence": 3,
+                },
+                {
+                    "event_type": "ResponseReceived",
+                    "payload": {"response": "retained response", "turn_id": "turn-2"},
+                    "sequence": 4,
+                },
+            ],
+            "prompts": [
+                {
+                    "event_id": str(prompt_id),
+                    "paired_response_event_id": str(response_id),
+                    "sequence": 1,
+                    "turn_id": "turn-1",
+                },
+                {
+                    "event_id": str(retained_prompt_id),
+                    "paired_response_event_id": str(retained_response_id),
+                    "sequence": 3,
+                    "turn_id": "turn-2",
+                },
+            ],
+            "responses": [
+                {"event_id": str(response_id), "sequence": 2, "turn_id": "turn-1"},
+                {
+                    "event_id": str(retained_response_id),
+                    "sequence": 4,
+                    "turn_id": "turn-2",
+                },
+            ],
+        },
+        "event_count": 4,
+    }
+    original_metadata = deepcopy(metadata)
+    version = SimpleNamespace(
+        id=uuid4(),
+        metadata_=metadata,
+        summary="Summary derived from the private prompt",
+        title="Private prompt title",
+    )
+
+    title, summary, filtered = batches._filtered_snapshot_values(
+        version,  # type: ignore[arg-type]
+        excluded_prompt_ids={str(prompt_id)},
+    )
+
+    evidence = filtered["draft_evidence"]
+    assert title == "Reviewed pending activity"
+    assert summary is None
+    assert [item["event_id"] for item in evidence["prompts"]] == [
+        str(retained_prompt_id)
+    ]
+    assert [item["event_id"] for item in evidence["responses"]] == [
+        str(retained_response_id)
+    ]
+    assert [item["sequence"] for item in evidence["events"]] == [3, 4]
+    assert evidence["changed_files"] == original_metadata["draft_evidence"]["changed_files"]
+    assert filtered["review_excluded_prompt_event_ids"] == [str(prompt_id)]
+    assert metadata == original_metadata
 
 
 @pytest.mark.parametrize("status", ["running", "failed", "succeeded", "superseded"])

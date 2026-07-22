@@ -60,7 +60,7 @@ export function AccountWorkspaceRoute({
           latestActivityLabel={latestActivityLabel}
           onDeleteAccount={account.deleteAccount}
           onLogout={onLogout}
-          onUpdatePolicyConsents={account.updatePolicyConsents}
+          onUpdateExternalAiConsent={account.updateExternalAiConsent}
           projectCount={projectCount}
         />
       ) : (

@@ -1,37 +1,62 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { useI18n } from "../../i18n/I18nProvider";
-import type { AccountPolicyConsents } from "../../workspace/types";
+import { focusableModalElements } from "../project-detail/modalFocus";
 
 export function PolicyConsentModal({
-  consents,
   isSaving,
-  onSave,
+  onAccept,
 }: {
-  consents: AccountPolicyConsents;
   isSaving: boolean;
-  onSave: (allowExternalAi: boolean) => Promise<boolean>;
+  onAccept: () => Promise<boolean>;
 }) {
   const { t } = useI18n();
   const [acceptedPolicies, setAcceptedPolicies] = useState(false);
   const [confirmedEligibility, setConfirmedEligibility] = useState(false);
-  const [allowExternalAi, setAllowExternalAi] = useState(true);
+  const dialogRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     document.body.classList.add("modal-open");
-    return () => document.body.classList.remove("modal-open");
+    const focusDialog = window.requestAnimationFrame(() => {
+      if (dialogRef.current) {
+        focusableModalElements(dialogRef.current)[0]?.focus();
+      }
+    });
+    const trapFocus = (event: KeyboardEvent) => {
+      if (event.key !== "Tab" || !dialogRef.current) {
+        return;
+      }
+      const focusable = focusableModalElements(dialogRef.current);
+      if (!focusable.length) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", trapFocus);
+    return () => {
+      window.cancelAnimationFrame(focusDialog);
+      window.removeEventListener("keydown", trapFocus);
+      document.body.classList.remove("modal-open");
+    };
   }, []);
-
-  const providers = consents.external_ai_providers
-    .map((provider) => (provider === "openai" ? "OpenAI" : "Google Gemini"))
-    .join(" / ");
 
   return (
     <div className="policy-consent-backdrop" role="presentation">
       <section
+        aria-describedby="policy-consent-description"
         aria-labelledby="policy-consent-title"
         aria-modal="true"
         className="policy-consent-modal"
+        ref={dialogRef}
         role="dialog"
       >
         <div className="policy-consent-icon" aria-hidden="true">
@@ -40,7 +65,7 @@ export function PolicyConsentModal({
         <div>
           <span className="policy-consent-eyebrow">{t("policyConsent.eyebrow")}</span>
           <h2 id="policy-consent-title">{t("policyConsent.title")}</h2>
-          <p>{t("policyConsent.description")}</p>
+          <p id="policy-consent-description">{t("policyConsent.description")}</p>
         </div>
 
         <label className="policy-consent-option">
@@ -50,8 +75,8 @@ export function PolicyConsentModal({
             type="checkbox"
           />
           <span>
-            {t("policyConsent.acceptPrefix")} <a href="/terms" target="_blank">{t("policyConsent.terms")}</a>{" "}
-            {t("policyConsent.and")} <a href="/privacy" target="_blank">{t("policyConsent.privacy")}</a>{" "}
+            {t("policyConsent.acceptPrefix")} <a href="/terms" rel="noreferrer" target="_blank">{t("policyConsent.terms")}</a>{" "}
+            {t("policyConsent.and")} <a href="/privacy" rel="noreferrer" target="_blank">{t("policyConsent.privacy")}</a>{" "}
             {t("policyConsent.acceptSuffix")}
           </span>
         </label>
@@ -65,24 +90,11 @@ export function PolicyConsentModal({
           <span>{t("policyConsent.eligibility")}</span>
         </label>
 
-        <label className="policy-consent-option is-optional">
-          <input
-            checked={allowExternalAi}
-            onChange={(event) => setAllowExternalAi(event.target.checked)}
-            type="checkbox"
-          />
-          <span>
-            <strong>{t("policyConsent.aiTitle")}</strong>
-            {t("policyConsent.aiDescription", { providers: providers || "OpenAI / Google Gemini" })}
-            <small>{t("policyConsent.aiOptional")}</small>
-          </span>
-        </label>
-
         <div className="policy-consent-actions">
-          <a href="/?view=support">{t("policyConsent.contact")}</a>
+          <a href="/app?view=support">{t("policyConsent.contact")}</a>
           <button
             disabled={!acceptedPolicies || !confirmedEligibility || isSaving}
-            onClick={() => void onSave(allowExternalAi)}
+            onClick={() => void onAccept()}
             type="button"
           >
             {isSaving ? t("common.saving") : t("policyConsent.continue")}

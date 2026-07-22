@@ -54,6 +54,9 @@ export type ProjectMemoryGenerationResponse = {
 export type MemoryGenerationReviewPrompt = {
   created_at: string;
   event_id: string;
+  prompt_truncated: boolean;
+  response_preview: string | null;
+  response_truncated: boolean;
   sequence: number;
   session_id: string;
   text: string;
@@ -61,10 +64,56 @@ export type MemoryGenerationReviewPrompt = {
 };
 
 export type MemoryGenerationReviewResponse = {
+  changed_file_count: number;
+  commit_count: number;
   draft_count: number;
   prompt_count: number;
   prompts: MemoryGenerationReviewPrompt[];
+  providers: Array<"gemini" | "openai">;
+  response_count: number;
   review_token: string;
+  source_code_included: false;
+};
+
+export type ProjectContextGraphNodeKind =
+  | "prompt"
+  | "response"
+  | "file"
+  | "memory";
+
+export type ProjectContextGraphNode = {
+  agent_visible: boolean;
+  id: string;
+  kind: ProjectContextGraphNodeKind;
+  label: string;
+  metadata: Record<string, unknown>;
+  occurred_at: string | null;
+  sequence: number | null;
+  session_id: string | null;
+  summary: string | null;
+};
+
+export type ProjectContextGraphEdgeKind =
+  | "answered_by"
+  | "changed"
+  | "captured_in"
+  | "references";
+
+export type ProjectContextGraphEdge = {
+  id: string;
+  inferred: boolean;
+  kind: ProjectContextGraphEdgeKind;
+  source: string;
+  target: string;
+};
+
+export type ProjectContextGraphResponse = {
+  edges: ProjectContextGraphEdge[];
+  facets: Record<string, number>;
+  nodes: ProjectContextGraphNode[];
+  query: string | null;
+  safety_notice: string;
+  truncated: boolean;
 };
 
 export type ProjectCreatePayload = {
@@ -291,6 +340,34 @@ export function deleteProject(projectId: string): Promise<void> {
   );
 }
 
+export function deleteProjectPromptActivity(
+  projectId: string,
+  promptEventId: string,
+): Promise<void> {
+  return requestVoid(
+    `/api/projects/${encodeURIComponent(projectId)}/prompt-activities/${encodeURIComponent(promptEventId)}`,
+    { method: "DELETE" },
+    {
+      errorMessage: "Prompt activity deletion failed",
+      unauthorizedMessage: "Sign in again before deleting prompt activity.",
+    },
+  );
+}
+
+export function deleteProjectSessionActivity(
+  projectId: string,
+  sessionId: string,
+): Promise<void> {
+  return requestVoid(
+    `/api/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}`,
+    { method: "DELETE" },
+    {
+      errorMessage: "Session activity deletion failed",
+      unauthorizedMessage: "Sign in again before deleting session activity.",
+    },
+  );
+}
+
 export function updateProjectBookmark(
   projectId: string,
   isBookmarked: boolean,
@@ -380,6 +457,7 @@ export function refreshMemoryReviewQueue(
 export async function generateProjectMemory(
   projectId: string,
   reviewToken: string,
+  excludedPromptEventIds: string[],
 ): Promise<ProjectMemoryGenerationResponse> {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(
@@ -393,6 +471,7 @@ export async function generateProjectMemory(
       `/api/projects/${encodeURIComponent(projectId)}/memory/generate`,
       {
         body: JSON.stringify({
+          excluded_prompt_event_ids: excludedPromptEventIds,
           idempotency_key: projectMemoryIdempotencyKey(projectId),
           review_token: reviewToken,
         }),
@@ -452,17 +531,6 @@ export function fetchMemoryGenerationReview(
   );
 }
 
-export function deleteMemoryGenerationReviewPrompt(
-  projectId: string,
-  eventId: string,
-): Promise<{ deleted_event_id: string; prompt_count: number }> {
-  return requestJson(
-    `/api/projects/${encodeURIComponent(projectId)}/memory/generation-review/prompts/${encodeURIComponent(eventId)}`,
-    { method: "DELETE" },
-    { errorMessage: "Prompt deletion failed" },
-  );
-}
-
 export function approveProjectMemory(projectId: string): Promise<unknown> {
   return requestJson(
     `/api/projects/${encodeURIComponent(projectId)}/memory/project/approve`,
@@ -485,6 +553,35 @@ export function fetchProjectMemoryArtifacts(
     { signal },
     {
       errorMessage: "Memory history request failed",
+    },
+  );
+}
+
+export function fetchProjectContextGraph(
+  projectId: string,
+  {
+    limit = 40,
+    query,
+    signal,
+  }: {
+    limit?: number;
+    query?: string;
+    signal?: AbortSignal;
+  } = {},
+): Promise<ProjectContextGraphResponse> {
+  const boundedLimit = Number.isFinite(limit)
+    ? Math.min(40, Math.max(1, Math.trunc(limit)))
+    : 40;
+  const params = new URLSearchParams({ limit: String(boundedLimit) });
+  if (query?.trim()) {
+    params.set("q", query.trim());
+  }
+  return requestJson<ProjectContextGraphResponse>(
+    `/api/projects/${encodeURIComponent(projectId)}/context-graph?${params}`,
+    { signal },
+    {
+      errorMessage: "Context graph request failed",
+      unauthorizedMessage: "Sign in again before loading the context graph.",
     },
   );
 }

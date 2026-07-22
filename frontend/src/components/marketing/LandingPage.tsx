@@ -10,7 +10,8 @@ import {
 import { copyTextToClipboard } from "../../lib/clipboard";
 import { MarketingShell } from "./MarketingShell";
 
-const command = "npx promty-collector init --tool codex-cli";
+export const publicCollectorCommand =
+  "npx promty-collector@latest init --tool codex-cli --profile prod";
 
 const heroStages = [
   {
@@ -392,13 +393,13 @@ export function LandingPage() {
   }, []);
 
   async function copyCommand() {
-    await copyTextToClipboard(command);
+    await copyTextToClipboard(publicCollectorCommand);
     setCopied(true);
     emitMarketingInteraction("collector_command_copy");
   }
 
   return (
-    <MarketingShell current="home">
+    <MarketingShell appearance="figma" current="home">
       <div className="figma-landing-page">
         <section className="figma-landing-hero">
           <div className="figma-landing-hero-copy" data-marketing-reveal>
@@ -412,7 +413,7 @@ export function LandingPage() {
               decisions, reasons, and open questions.
             </p>
             <div className="figma-landing-actions">
-              <a className="figma-button is-primary" href="/">
+              <a className="figma-button is-primary" href="/app">
                 Connect one repository
               </a>
               <a className="figma-button is-secondary" href="#project-memory">
@@ -425,7 +426,7 @@ export function LandingPage() {
               onClick={() => void copyCommand()}
               type="button"
             >
-              <code>{command}</code>
+              <code>{publicCollectorCommand}</code>
               <span>{copied ? <Check size={13} /> : <Copy size={13} />}{copied ? "Copied" : "Copy"}</span>
             </button>
           </div>
@@ -584,7 +585,7 @@ export function LandingPage() {
         <section className="figma-final-cta">
           <div className="figma-final-cta-panel" data-marketing-reveal>
             <div><span className="figma-landing-eyebrow">START WITH ONE PROJECT</span><h2>Stop re-explaining your project to AI.</h2></div>
-            <div><p>Connect one repository. Keep your current coding tools and workflow.</p><a className="figma-button is-primary" href="/">Connect one repository</a></div>
+            <div><p>Connect one repository. Keep your current coding tools and workflow.</p><a className="figma-button is-primary" href="/app">Connect one repository</a></div>
           </div>
         </section>
       </div>

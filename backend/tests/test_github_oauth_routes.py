@@ -119,6 +119,7 @@ def test_web_login_requests_identity_scope_only(
     assert captured["scope"] == GITHUB_WEB_SCOPE
     assert "repo" not in captured["scope"].split()
     assert payload["mode"] == "web"
+    assert payload["return_to"] == f"{settings.app_url.rstrip('/')}/app"
     assert "expected_user_id" not in payload
 
 
@@ -234,6 +235,7 @@ def test_repository_authorization_binds_signed_in_user_and_requests_repo_scope(
     assert captured["scope"] == GITHUB_REPOSITORY_SCOPE
     assert "repo" in captured["scope"].split()
     assert payload["mode"] == "web_repository"
+    assert payload["return_to"] == f"{settings.app_url.rstrip('/')}/app"
     assert payload["expected_user_id"] == str(user.id)
 
 

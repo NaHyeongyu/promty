@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildUrlNavigationSearch,
+  currentWorkspaceReturnUrl,
   navigateToWorkspaceUrl,
   normalizeUrlNavigationState,
   readUrlNavigationState,
@@ -77,6 +78,15 @@ describe("workspace navigation", () => {
 
     expect(state.activeItem).toBe("support");
     expect(buildUrlNavigationSearch(state)).toBe("?view=support");
+  });
+
+  it("uses the canonical app route as the login return URL", () => {
+    window.location.pathname = "/";
+    window.location.search = "?view=support";
+
+    expect(currentWorkspaceReturnUrl()).toBe(
+      "https://promty.org/app?view=support",
+    );
   });
 
   it("keeps the pinned projects page in a shareable workspace URL", () => {

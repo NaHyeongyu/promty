@@ -50,21 +50,32 @@ export function updateAccountPreferences(
   );
 }
 
-export function updateAccountPolicyConsents(
-  allowExternalAi: boolean,
-): Promise<AccountPolicyConsents> {
+export function acceptAccountPolicies(): Promise<AccountPolicyConsents> {
   return requestJsonBody<AccountPolicyConsents>(
-    "/api/account/policy-consents",
+    "/api/account/policy-acceptance",
     "PUT",
     {
       accept_privacy_notice: true,
       accept_terms: true,
-      allow_external_ai: allowExternalAi,
       confirm_age_and_business_use: true,
     },
     {
-      errorMessage: "Policy preferences could not be saved",
-      unauthorizedMessage: "Sign in again before saving policy preferences.",
+      errorMessage: "Policy acceptance could not be saved",
+      unauthorizedMessage: "Sign in again before accepting the policies.",
+    },
+  );
+}
+
+export function updateAccountExternalAiConsent(
+  allowExternalAi: boolean,
+): Promise<AccountPolicyConsents> {
+  return requestJsonBody<AccountPolicyConsents>(
+    "/api/account/external-ai-consent",
+    "PUT",
+    { allow_external_ai: allowExternalAi },
+    {
+      errorMessage: "External AI preference could not be saved",
+      unauthorizedMessage: "Sign in again before changing external AI access.",
     },
   );
 }

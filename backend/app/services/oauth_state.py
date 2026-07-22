@@ -91,7 +91,7 @@ def validate_cli_redirect_uri(uri: str) -> str:
 
 def validate_web_return_to(uri: str | None) -> str:
     if not uri:
-        return settings.app_url.rstrip("/")
+        return f"{settings.app_url.rstrip('/')}/app"
 
     try:
         parsed = parse.urlparse(uri)

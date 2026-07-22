@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import os
 import secrets
+import signal
 import shlex
 import subprocess
 import sys
@@ -78,8 +79,10 @@ PROFILE_URLS: dict[Profile, tuple[str, str]] = {
     "prod": ("https://promty.org", "https://api.promty.org"),
 }
 PROFILE_NAMES: tuple[Profile, ...] = tuple(PROFILE_URLS)
+DEFAULT_INIT_PROFILE: Profile = "prod"
 AUTO_UPDATE_INTERVAL_SECONDS = 6 * 60 * 60
 HEARTBEAT_INTERVAL_SECONDS = 60
+UPLOADER_STOP_TIMEOUT_SECONDS = 5.0
 CODEX_HOOKS: tuple[dict[str, Any], ...] = (
     {
         "event": "UserPromptSubmit",
@@ -210,6 +213,8 @@ def _tools_for_install_target(target: InstallTarget) -> tuple[SupportedTool, ...
 
 
 def _apply_profile_defaults(args: argparse.Namespace) -> None:
+    if getattr(args, "profiles", None):
+        return
     profile = getattr(args, "profile", None)
     if not profile:
         return
@@ -1054,6 +1059,26 @@ def _pid_is_running(pid: int) -> bool:
     return True
 
 
+def _stop_uploader_process(
+    pid: int,
+    *,
+    timeout: float = UPLOADER_STOP_TIMEOUT_SECONDS,
+) -> None:
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    except OSError as exc:
+        raise RuntimeError(f"Unable to stop Promty uploader pid {pid}: {exc}") from exc
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not _pid_is_running(pid):
+            return
+        time.sleep(0.05)
+    raise RuntimeError(f"Promty uploader pid {pid} did not stop within {timeout:g}s")
+
+
 def _read_pid(path: Path) -> int | None:
     try:
         with open_private_text(path, "r") as file:
@@ -1063,22 +1088,40 @@ def _read_pid(path: Path) -> int | None:
 
 
 def start_uploader(args: argparse.Namespace) -> int:
-    api_url = resolve_api_url(args.api_url, args.config_path)
-    token = resolve_token(args.token, args.config_path)
     pid_path = Path(args.pid_path).expanduser() if args.pid_path else DEFAULT_UPLOADER_PID_PATH
     log_path = Path(args.log_path).expanduser() if args.log_path else DEFAULT_UPLOADER_LOG_PATH
+    config_path = (
+        str(Path(args.config_path).expanduser())
+        if getattr(args, "config_path", None)
+        else None
+    )
+    restart = bool(getattr(args, "restart", False))
     with locked_file(pid_path.with_name(f"{pid_path.name}.start.lock")):
         existing_pid = _read_pid(pid_path)
         if existing_pid is not None and _pid_is_running(existing_pid):
-            print(f"Promty uploader already running: pid {existing_pid}")
-            return 0
+            if not restart:
+                print(f"Promty uploader already running: pid {existing_pid}")
+                return 0
+            print(f"Restarting Promty uploader: pid {existing_pid}")
+            _stop_uploader_process(existing_pid)
 
         env = os.environ.copy()
-        env["PROMTY_API_URL"] = api_url
-        if token:
-            env["PROMTY_API_TOKEN"] = token
-        if args.config_path:
-            env["PROMTY_CONFIG_PATH"] = str(Path(args.config_path).expanduser())
+        if config_path:
+            # A profile config is the live source of truth. Do not let credentials or
+            # endpoints inherited from the parent shell shadow later config updates.
+            for name in (
+                "PROMTY_API_TOKEN",
+                "PROMPTHUB_API_TOKEN",
+                "PROMTY_API_URL",
+                "PROMPTHUB_API_URL",
+            ):
+                env.pop(name, None)
+            env["PROMTY_CONFIG_PATH"] = config_path
+            env.pop("PROMPTHUB_CONFIG_PATH", None)
+        if getattr(args, "token", None):
+            # An explicit --token remains an intentional fixed override. Tokens loaded
+            # from config are deliberately not copied into the process environment.
+            env["PROMTY_API_TOKEN"] = args.token
 
         ensure_private_parent(log_path)
         ensure_private_parent(pid_path)
@@ -1091,6 +1134,10 @@ def start_uploader(args: argparse.Namespace) -> int:
             "--interval",
             str(max(args.interval, 0.25)),
         ]
+        if config_path:
+            command.extend(["--config-path", config_path])
+        if getattr(args, "api_url", None):
+            command.extend(["--api-url", str(args.api_url).rstrip("/")])
         if getattr(args, "queue_path", None):
             command.extend(["--queue-path", str(Path(args.queue_path).expanduser())])
         if not getattr(args, "no_auto_update", True):
@@ -1116,6 +1163,24 @@ def _health_status(api_url: str, timeout: float) -> tuple[bool, str]:
             if response.status == 200:
                 return True, "ok"
             return False, f"HTTP {response.status}"
+    except error.URLError as exc:
+        return False, str(exc.reason)
+    except OSError as exc:
+        return False, str(exc)
+
+
+def _ingest_auth_status(
+    api_url: str,
+    token: str | None,
+    timeout: float,
+) -> tuple[bool, str]:
+    if not token:
+        return False, "collector token missing"
+    try:
+        PromtyUploader(api_url=api_url, token=token, timeout=timeout).heartbeat()
+        return True, "authenticated"
+    except error.HTTPError as exc:
+        return False, f"HTTP {exc.code}"
     except error.URLError as exc:
         return False, str(exc.reason)
     except OSError as exc:
@@ -1240,6 +1305,12 @@ def _doctor_runtime_checks(
     )
     checks.append((f"{prefix}queue", *_queue_status(args.queue_path)))
     checks.append((f"{prefix}backend", *_health_status(api_url, args.timeout)))
+    checks.append(
+        (
+            f"{prefix}ingest-auth",
+            *_ingest_auth_status(api_url, token, args.timeout),
+        )
+    )
     pid_path = Path(args.pid_path).expanduser() if args.pid_path else DEFAULT_UPLOADER_PID_PATH
     pid = _read_pid(pid_path)
     checks.append(
@@ -1317,7 +1388,10 @@ def _start_uploader_for_init(args: argparse.Namespace) -> None:
         pid_path=args.pid_path,
         queue_path=args.queue_path,
         no_auto_update=args.no_auto_update,
-        token=args.token,
+        restart=True,
+        # login() persists an explicit init token in the profile config. Let the
+        # uploader reload that file instead of freezing the token in its environment.
+        token=None,
     )
     start_uploader(uploader_args)
 
@@ -1356,6 +1430,15 @@ def _init_single_profile(args: argparse.Namespace) -> int:
         return 1
 
     print("Promty init complete")
+    profile_option = f" --profile {args.profile}" if args.profile else ""
+    print(
+        "Verify setup: "
+        f"npx promty-collector@latest doctor --tool {args.tool}{profile_option}"
+    )
+    print(
+        "After Project Memory is reviewed: "
+        f"npx promty-collector@latest context{profile_option}"
+    )
     return 0
 
 
@@ -1386,6 +1469,16 @@ def _init_multiple_profiles(
 
     profile_list = ", ".join(profiles)
     print(f"Promty multi-profile init complete: {profile_list}")
+    print(
+        "Verify setup: "
+        "npx promty-collector@latest doctor "
+        f"--tool {args.tool} --profiles {','.join(profiles)}"
+    )
+    context_profile = "prod" if "prod" in profiles else profiles[0]
+    print(
+        "After Project Memory is reviewed: "
+        f"npx promty-collector@latest context --profile {context_profile}"
+    )
     return 0
 
 
@@ -1590,6 +1683,11 @@ def build_parser() -> argparse.ArgumentParser:
     start_uploader_parser.add_argument("--pid-path")
     start_uploader_parser.add_argument("--profile", choices=sorted(PROFILE_URLS))
     start_uploader_parser.add_argument("--queue-path")
+    start_uploader_parser.add_argument(
+        "--restart",
+        action="store_true",
+        help="Restart an existing uploader so it uses the current runtime and config.",
+    )
     start_uploader_updates = start_uploader_parser.add_mutually_exclusive_group()
     start_uploader_updates.add_argument(
         "--auto-update",
@@ -1640,7 +1738,12 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--no-browser", action="store_true")
     init_parser.add_argument("--pid-path")
     init_profiles = init_parser.add_mutually_exclusive_group()
-    init_profiles.add_argument("--profile", choices=PROFILE_NAMES)
+    init_profiles.add_argument(
+        "--profile",
+        choices=PROFILE_NAMES,
+        default=DEFAULT_INIT_PROFILE,
+        help="Destination profile (defaults to production).",
+    )
     init_profiles.add_argument(
         "--profiles",
         type=_parse_profiles,
@@ -1686,6 +1789,7 @@ def build_parser() -> argparse.ArgumentParser:
     context_parser.add_argument("--config-path")
     context_parser.add_argument("--cwd")
     context_parser.add_argument("--project-id")
+    context_parser.add_argument("--profile", choices=PROFILE_NAMES)
     context_parser.add_argument("--timeout", type=float, default=10)
     context_parser.add_argument("--token")
     context_parser.add_argument("--format", choices=("markdown", "json"), default="markdown")
@@ -1699,6 +1803,7 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_parser.add_argument("--config-path")
     mcp_parser.add_argument("--cwd")
     mcp_parser.add_argument("--project-id")
+    mcp_parser.add_argument("--profile", choices=PROFILE_NAMES)
     mcp_parser.add_argument("--timeout", type=float, default=10)
     mcp_parser.add_argument("--token")
     mcp_parser.set_defaults(func=mcp)
