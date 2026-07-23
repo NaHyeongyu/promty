@@ -3,6 +3,7 @@
   --context-graph-response: var(--bh-color-event-response);
   --context-graph-file: var(--bh-color-event-file);
   --context-graph-memory: var(--bh-color-info);
+
   display: grid;
   min-width: 0;
   gap: var(--bh-space-4);
@@ -151,6 +152,7 @@
 
 .context-graph-filters button {
   --context-graph-kind-color: var(--bh-color-text-muted);
+
   display: inline-flex;
   min-height: 32px;
   align-items: center;
@@ -392,6 +394,7 @@
 
 .context-graph-lane {
   --context-graph-kind-color: var(--bh-color-text-muted);
+
   min-width: 0;
   pointer-events: none;
 }
@@ -496,6 +499,7 @@
 
 .context-graph-node {
   --context-graph-kind-color: var(--bh-color-text-muted);
+
   position: relative;
   display: grid;
   align-content: center;
@@ -675,6 +679,7 @@
 
 .context-graph-inspector-icon {
   --context-graph-kind-color: var(--bh-color-text-muted);
+
   display: grid;
   width: 34px;
   height: 34px;
@@ -1051,6 +1056,7 @@
   .context-graph-mobile-focus,
   .context-graph-mobile-index {
     --context-graph-kind-color: var(--bh-color-text-muted);
+
     display: grid;
     min-width: 0;
     gap: var(--bh-space-3);
@@ -1193,6 +1199,7 @@
 
   .context-graph-mobile-index section {
     --context-graph-kind-color: var(--bh-color-text-muted);
+
     display: grid;
     min-width: 0;
     gap: var(--bh-space-2);

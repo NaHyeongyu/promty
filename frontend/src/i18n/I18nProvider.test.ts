@@ -5,6 +5,8 @@ import {
   resolveInitialAppLocale,
   translateMessage,
 } from "./I18nProvider";
+import i18nProviderSource from "./I18nProvider.tsx?raw";
+import { zh } from "./zh";
 
 describe("i18n", () => {
   it("uses English as the default locale", () => {
@@ -53,6 +55,22 @@ describe("i18n", () => {
     expect(
       translateMessage("ja", "project.nameSearchNoMatch", { query: "Promty" }),
     ).toContain("Promty");
+  });
+
+  it("keeps the complete Simplified Chinese AI consent and review flow localized", () => {
+    const requiredKeys = new Set(
+      Array.from(
+        i18nProviderSource.matchAll(
+          /^\s+"(memory\.(?:aiConsent|review)\.[^"]+)":/gm,
+        ),
+        (match) => match[1],
+      ),
+    );
+    const missingKeys = [...requiredKeys].filter(
+      (key) => !(key in zh),
+    );
+
+    expect(missingKeys).toEqual([]);
   });
 
   it("uses natural terminology for memory and review states", () => {

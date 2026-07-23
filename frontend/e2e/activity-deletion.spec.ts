@@ -131,6 +131,7 @@ test("prompt and session deletion use scoped confirmation and refresh the activi
     await promptDialog.getByRole("button", { name: "Delete permanently" }).click();
     await expect(page.getByText("Delete only this private prompt activity")).toHaveCount(0);
     await expect(page.getByText("Keep this prompt until the session is deleted").first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "By prompt" })).toBeFocused();
 
     await page.getByRole("button", { name: "By session" }).click();
     await page.getByRole("button", { name: "Delete session" }).click();
@@ -140,6 +141,7 @@ test("prompt and session deletion use scoped confirmation and refresh the activi
     await expect(sessionDialog).toContainText("All activity in this session");
     await sessionDialog.getByRole("button", { name: "Delete permanently" }).click();
     await expect(page.getByText("No activity yet", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "By session" })).toBeFocused();
   } finally {
     await page.request.delete(`${API_ORIGIN}/api/projects/${project.id}`);
   }

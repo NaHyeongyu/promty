@@ -1,7 +1,7 @@
 .marketing-site--about {
   overflow: visible;
   background: #06070a;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, system-ui, sans-serif;
 }
 
 .marketing-site--about .marketing-header {
@@ -41,6 +41,7 @@
   --about-muted: #737d8c;
   --about-accent: #9fb5d7;
   --about-accent-strong: #d3e0f3;
+
   width: 100%;
   color: var(--about-primary);
   background: var(--about-bg);
@@ -202,6 +203,7 @@
   --about-tilt-y: 0deg;
   --about-glow-x: 72%;
   --about-glow-y: 18%;
+
   position: relative;
   z-index: 1;
   width: min(100%, 560px);

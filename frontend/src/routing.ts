@@ -112,3 +112,12 @@ export function appRouteFromLocation(pathname: string, search = ""): AppRoute {
 
   return route;
 }
+
+export function shouldPreloadCurrentUser(pathname: string, search = "") {
+  const route = appRouteFromLocation(pathname, search);
+  const communityPreview =
+    route === "workspace" &&
+    new URLSearchParams(search).get("preview") === "community";
+
+  return (route === "workspace" && !communityPreview) || route === "admin";
+}

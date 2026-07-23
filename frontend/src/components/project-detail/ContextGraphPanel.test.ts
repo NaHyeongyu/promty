@@ -137,4 +137,11 @@ describe("ContextGraphPanel", () => {
     expect(componentSource).toContain('className="context-graph-edges"');
     expect(componentSource).toContain("<ol>");
   });
+
+  it("formats node timestamps with the selected application locale", () => {
+    expect(componentSource).toContain("Intl.DateTimeFormat(localeTag");
+    expect(
+      componentSource.match(/formatOccurredAt\(node\.occurred_at, localeTag\)/g),
+    ).toHaveLength(2);
+  });
 });

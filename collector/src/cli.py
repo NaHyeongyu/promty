@@ -1103,7 +1103,11 @@ def start_uploader(args: argparse.Namespace) -> int:
                 print(f"Promty uploader already running: pid {existing_pid}")
                 return 0
             print(f"Restarting Promty uploader: pid {existing_pid}")
-            _stop_uploader_process(existing_pid)
+            try:
+                _stop_uploader_process(existing_pid)
+            except RuntimeError as exc:
+                print(str(exc), file=sys.stderr)
+                return 1
 
         env = os.environ.copy()
         if config_path:

@@ -115,15 +115,44 @@ def test_multi_profile_selection_is_not_overwritten_by_default_profile() -> None
 
 
 @pytest.mark.parametrize("command", ("context", "mcp"))
-def test_agent_context_commands_accept_profile(command: str) -> None:
-    args = build_parser().parse_args([command, "--profile", "prod"])
-
-    _apply_profile_defaults(args)
-
-    assert args.api_url == "https://api.promty.org"
-    assert args.config_path == str(
+def test_agent_context_commands_accept_profile_during_execution(
+    command: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, object] = {}
+    expected_config_path = str(
         Path.home() / ".promty" / "profiles" / "prod" / "config.json"
     )
+    monkeypatch.setattr(cli, "migrate_legacy_data_root", lambda: None)
+
+    if command == "context":
+        monkeypatch.setattr(
+            cli,
+            "project_id_for_context",
+            lambda **_kwargs: "project-id",
+        )
+        monkeypatch.setattr(
+            cli,
+            "resolve_token",
+            lambda _token, config_path: seen.update(config_path=config_path) or "token",
+        )
+        monkeypatch.setattr(
+            cli,
+            "fetch_project_context",
+            lambda **kwargs: seen.update(kwargs) or {},
+        )
+        monkeypatch.setattr(cli, "render_project_context", lambda _payload: "")
+    else:
+        monkeypatch.setattr(
+            cli,
+            "PromtyMCPServer",
+            lambda **kwargs: seen.update(kwargs) or object(),
+        )
+        monkeypatch.setattr(cli, "run_mcp_server", lambda _server: 0)
+
+    assert main([command, "--profile", "prod"]) == 0
+    assert seen["api_url"] == "https://api.promty.org"
+    assert seen["config_path"] == expected_config_path
 
 
 def test_automatic_updates_require_explicit_opt_in() -> None:
@@ -441,6 +470,37 @@ def test_start_uploader_restart_stops_existing_process(
     assert args.func(args) == 0
     assert stopped == [123]
     assert (profile_root / "uploader.pid").read_text(encoding="utf-8") == "456\n"
+
+
+def test_start_uploader_restart_reports_stop_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    profile_root = tmp_path / "profiles" / "dev"
+    profile_root.mkdir(parents=True)
+    monkeypatch.setattr(cli, "_read_pid", lambda _path: 123)
+    monkeypatch.setattr(cli, "_pid_is_running", lambda pid: pid == 123)
+
+    def fail_to_stop(_pid: int) -> None:
+        raise RuntimeError("Promty uploader did not stop in time")
+
+    monkeypatch.setattr(cli, "_stop_uploader_process", fail_to_stop)
+    args = build_parser().parse_args(
+        [
+            "start-uploader",
+            "--restart",
+            "--config-path",
+            str(profile_root / "config.json"),
+            "--pid-path",
+            str(profile_root / "uploader.pid"),
+            "--log-path",
+            str(profile_root / "uploader.log"),
+        ]
+    )
+
+    assert args.func(args) == 1
+    assert "Promty uploader did not stop in time" in capsys.readouterr().err
 
 
 def test_runtime_launcher_uses_a_durable_copy(

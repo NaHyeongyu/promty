@@ -34,6 +34,26 @@ import { focusableModalElements } from "./modalFocus";
 
 const PROMPT_ACTIVITY_PAGE_LIMIT = 50;
 
+function restoreActiveActivityViewFocus() {
+  const focusIfLost = () => {
+    if (document.activeElement !== document.body) {
+      return;
+    }
+    document
+      .querySelector<HTMLElement>(
+        '.bh-activity-view-tabs [aria-pressed="true"]',
+      )
+      ?.focus();
+  };
+  const observer = new MutationObserver(focusIfLost);
+  observer.observe(document.body, { childList: true, subtree: true });
+  window.requestAnimationFrame(focusIfLost);
+  window.setTimeout(() => {
+    focusIfLost();
+    observer.disconnect();
+  }, 1_000);
+}
+
 const defaultActivityNavigation: ActivityNavigationState = {
   selectedPromptId: null,
   selectedSessionId: null,
@@ -200,6 +220,8 @@ export function ActivityPanel({
   const isDeletingActivityRef = useRef(false);
   const deletionDialogRef = useRef<HTMLElement | null>(null);
   const deletionReturnFocusRef = useRef<HTMLElement | null>(null);
+  const deletionWasConfirmedRef = useRef(false);
+  const activityViewTabsRef = useRef<HTMLDivElement | null>(null);
   const currentActivityNavigation =
     activityNavigation ?? localActivityNavigation;
   const updateActivityNavigation = (state: Partial<ActivityNavigationState>) => {
@@ -223,7 +245,16 @@ export function ActivityPanel({
 
   useEffect(() => {
     if (!deletionTarget) {
-      return;
+      if (!deletionWasConfirmedRef.current) {
+        return;
+      }
+      deletionWasConfirmedRef.current = false;
+      const focusFrame = window.requestAnimationFrame(() => {
+        activityViewTabsRef.current
+          ?.querySelector<HTMLElement>('[aria-pressed="true"]')
+          ?.focus();
+      });
+      return () => window.cancelAnimationFrame(focusFrame);
     }
     const dialog = deletionDialogRef.current;
     if (!dialog) {
@@ -261,11 +292,20 @@ export function ActivityPanel({
     return () => {
       window.clearTimeout(timer);
       document.removeEventListener("keydown", handleKeyDown);
-      deletionReturnFocusRef.current?.focus();
+      const returnTarget = deletionReturnFocusRef.current;
+      if (!deletionWasConfirmedRef.current) {
+        window.requestAnimationFrame(() => {
+          if (!returnTarget?.isConnected) {
+            return;
+          }
+          returnTarget.focus();
+        });
+      }
     };
   }, [deletionTarget]);
 
   const openDeletionDialog = (target: ActivityDeletionTarget) => {
+    deletionWasConfirmedRef.current = false;
     deletionReturnFocusRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setDeletionError(null);
@@ -294,6 +334,7 @@ export function ActivityPanel({
         }
         const promptId = deletionTarget.activity.id;
         await onDeletePromptActivity(promptId);
+        deletionWasConfirmedRef.current = true;
         setPromptActivities((items) => items.filter((item) => item.id !== promptId));
         setSessionPrompts((items) => items.filter((item) => item.id !== promptId));
         setPromptActivityTotal((count) => count === null ? null : Math.max(count - 1, 0));
@@ -305,6 +346,7 @@ export function ActivityPanel({
           return;
         }
         await onDeleteSessionActivity(deletionTarget.activity.id);
+        deletionWasConfirmedRef.current = true;
         setDeletedSessionIds((current) => {
           const next = new Set(current);
           next.add(deletionTarget.activity.id);
@@ -320,6 +362,7 @@ export function ActivityPanel({
         selectedSessionPromptId: null,
       });
       setDeletionTarget(null);
+      restoreActiveActivityViewFocus();
     } catch (error) {
       setDeletionError(
         error instanceof Error ? error.message : t("activity.deleteFailed"),
@@ -653,6 +696,31 @@ export function ActivityPanel({
     ) ??
     filteredSessionPrompts[0] ??
     null;
+  const activityViewOptions: ActivityNavigationState["view"][] = [
+    "prompts",
+    "sessions",
+  ];
+  const activityViewTabs = (
+    <div
+      aria-label={t("activity.filters")}
+      className="bh-activity-view-tabs"
+      ref={activityViewTabsRef}
+      role="group"
+    >
+      {activityViewOptions.map((activityView) => (
+        <button
+          aria-pressed={view === activityView}
+          className="bh-activity-view-tab"
+          data-active={view === activityView}
+          key={activityView}
+          onClick={() => updateActivityView(activityView)}
+          type="button"
+        >
+          {activityView === "prompts" ? t("activity.byPrompt") : t("activity.bySession")}
+        </button>
+      ))}
+    </div>
+  );
 
   if (
     view === "prompts" &&
@@ -662,19 +730,23 @@ export function ActivityPanel({
     !isPromptActivityLoading
   ) {
     return (
-      <EmptyState
-        description={promptActivityError}
-        icon={Activity}
-        title={t("activity.loadFailed")}
-      >
-        <button
-          className="bh-empty-state-button"
-          onClick={() => setPromptActivityRequestVersion((version) => version + 1)}
-          type="button"
+      <div className="bh-activity-layout" data-notice={notice ? "true" : undefined} data-view={view}>
+        {notice ? <div className="bh-activity-notice">{notice}</div> : null}
+        {activityViewTabs}
+        <EmptyState
+          description={promptActivityError}
+          icon={Activity}
+          title={t("activity.loadFailed")}
         >
-          {t("common.retry")}
-        </button>
-      </EmptyState>
+          <button
+            className="bh-empty-state-button"
+            onClick={() => setPromptActivityRequestVersion((version) => version + 1)}
+            type="button"
+          >
+            {t("common.retry")}
+          </button>
+        </EmptyState>
+      </div>
     );
   }
 
@@ -684,36 +756,22 @@ export function ActivityPanel({
     (view === "sessions" ? !isSessionPromptLoading : !isPromptActivityLoading)
   ) {
     return (
-      <EmptyState
-        description={t("activity.noActivityDescription")}
-        icon={Activity}
-        title={t("activity.noActivity")}
-      />
+      <div className="bh-activity-layout" data-notice={notice ? "true" : undefined} data-view={view}>
+        {notice ? <div className="bh-activity-notice">{notice}</div> : null}
+        {activityViewTabs}
+        <EmptyState
+          description={t("activity.noActivityDescription")}
+          icon={Activity}
+          title={t("activity.noActivity")}
+        />
+      </div>
     );
   }
-
-  const activityViewOptions: ActivityNavigationState["view"][] = [
-    "prompts",
-    "sessions",
-  ];
 
   return (
     <div className="bh-activity-layout" data-notice={notice ? "true" : undefined} data-view={view}>
       {notice ? <div className="bh-activity-notice">{notice}</div> : null}
-      <div className="bh-activity-view-tabs" role="group" aria-label={t("activity.filters")}>
-        {activityViewOptions.map((activityView) => (
-          <button
-            aria-pressed={view === activityView}
-            className="bh-activity-view-tab"
-            data-active={view === activityView}
-            key={activityView}
-            onClick={() => updateActivityView(activityView)}
-            type="button"
-          >
-            {activityView === "prompts" ? t("activity.byPrompt") : t("activity.bySession")}
-          </button>
-        ))}
-      </div>
+      {activityViewTabs}
 
       <div
         className="bh-activity-feed-layout"

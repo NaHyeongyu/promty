@@ -20,6 +20,25 @@ import type { Project, ProjectSummary } from "../workspace/types";
 
 const PROJECT_MEMORY_REFRESH_TIMEOUT_MS = 15_000;
 
+export async function settleActivityDeletionRefresh(
+  refresh: () => Promise<void>,
+  onUnauthorized: () => void,
+  warn: (message: string, error: unknown) => void = console.warn,
+) {
+  try {
+    await refresh();
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      onUnauthorized();
+      throw error;
+    }
+    warn(
+      "Activity was deleted, but the project status could not be refreshed.",
+      error,
+    );
+  }
+}
+
 type UseProjectActionsOptions = {
   applyProjectSummaryToDetail: (updatedProject: ProjectSummary) => void;
   clearRepositoryFiles: () => void;
@@ -131,10 +150,13 @@ export function useProjectActions({
     }
     try {
       await requestPromptActivityDeletion(projectId, promptEventId);
-      await refreshSelectedProjectAfterActivityDeletion(projectId);
     } catch (error) {
       return rethrowAfterUnauthorized(error);
     }
+    await settleActivityDeletionRefresh(
+      () => refreshSelectedProjectAfterActivityDeletion(projectId),
+      onUnauthorized,
+    );
   };
 
   const deleteSelectedSessionActivity = async (sessionId: string) => {
@@ -144,10 +166,13 @@ export function useProjectActions({
     }
     try {
       await requestSessionActivityDeletion(projectId, sessionId);
-      await refreshSelectedProjectAfterActivityDeletion(projectId);
     } catch (error) {
       return rethrowAfterUnauthorized(error);
     }
+    await settleActivityDeletionRefresh(
+      () => refreshSelectedProjectAfterActivityDeletion(projectId),
+      onUnauthorized,
+    );
   };
 
   const toggleProjectBookmark = async (

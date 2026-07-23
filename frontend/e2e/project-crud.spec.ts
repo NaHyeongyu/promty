@@ -128,14 +128,20 @@ test("legacy Explore links open the unified Discovery projects tab", async ({ pa
 
 test("Discovery preview shows project rows, details, and public profiles", async ({ page }) => {
   const publishedFlowRequests: string[] = [];
+  const currentUserRequests: string[] = [];
   page.on("request", (request) => {
-    if (new URL(request.url()).pathname.startsWith("/api/published-flows")) {
+    const pathname = new URL(request.url()).pathname;
+    if (pathname.startsWith("/api/published-flows")) {
       publishedFlowRequests.push(request.url());
+    }
+    if (pathname === "/api/auth/me") {
+      currentUserRequests.push(request.url());
     }
   });
   await page.goto("/app?view=community&preview=community");
 
   await expect(page.getByRole("heading", { name: "Discovery" })).toBeVisible();
+  expect(currentUserRequests).toEqual([]);
   await expect(page.getByText("Preview data", { exact: true })).toHaveCount(0);
   const projectCard = page.getByRole("article", { name: "Context Atlas" });
   const projectRow = projectCard.getByRole("button", { name: /Context Atlas/ });

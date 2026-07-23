@@ -172,15 +172,12 @@ async function acceptCurrentPolicies(page: Page, authorization: string) {
   ).toBe(true);
 }
 
-test("all public pages fit a mobile viewport", async ({ page }, testInfo) => {
-  for (const route of publicRoutes) {
-    await visitAndAudit(page, route, testInfo);
-  }
-});
-
-test("required policy acceptance fits a mobile viewport", async ({ page }, testInfo) => {
-  await authenticatePage(page);
+async function mockRequiredPolicyAcceptance(
+  page: Page,
+  overviewGate: Promise<void> = Promise.resolve(),
+) {
   await page.route("**/api/account/overview", async (route) => {
+    await overviewGate;
     const response = await route.fetch();
     const account = await response.json();
     await route.fulfill({
@@ -198,10 +195,67 @@ test("required policy acceptance fits a mobile viewport", async ({ page }, testI
       response,
     });
   });
+  await page.route("**/api/account/policy-acceptance", async (route) => {
+    await route.fulfill({
+      json: {
+        current_policy_version: "2026-07-21",
+        eligibility_confirmed: true,
+        external_ai_allowed: false,
+        external_ai_consented_at: null,
+        external_ai_providers: ["openai"],
+        policy_accepted: true,
+        policy_accepted_at: "2026-07-23T00:00:00Z",
+      },
+      status: 200,
+    });
+  });
+}
+
+async function acceptRequiredPolicyDialog(page: Page) {
+  const dialog = page.getByRole("dialog", { name: "Review before continuing" });
+  const checkboxes = dialog.getByRole("checkbox");
+  await checkboxes.nth(0).check();
+  await checkboxes.nth(1).check();
+  await dialog.getByRole("button", { name: "Save and continue" }).click();
+  await expect(dialog).toBeHidden();
+}
+
+test("all public pages fit a mobile viewport", async ({ page }, testInfo) => {
+  for (const route of publicRoutes) {
+    await visitAndAudit(page, route, testInfo);
+  }
+});
+
+test("required policy acceptance fits a mobile viewport", async ({ page }, testInfo) => {
+  await authenticatePage(page);
+  await mockRequiredPolicyAcceptance(page);
   await page.goto("/app");
   await waitForStablePage(page);
   await expect(page.getByRole("dialog", { name: "Review before continuing" })).toBeVisible();
+  await expect(page.locator(".app-shell > main")).toHaveJSProperty("inert", true);
   await expectMobileLayout(page, "policy-acceptance", testInfo);
+  await acceptRequiredPolicyDialog(page);
+  await expect(page.locator(".app-shell > main")).toHaveJSProperty("inert", false);
+});
+
+test("policy acceptance restores a pre-existing inert state", async ({ page }) => {
+  let releaseOverview: () => void = () => undefined;
+  const overviewGate = new Promise<void>((resolve) => {
+    releaseOverview = resolve;
+  });
+  await authenticatePage(page);
+  await mockRequiredPolicyAcceptance(page, overviewGate);
+  await page.goto("/app");
+  const main = page.locator(".app-shell > main");
+  await main.waitFor({ state: "visible" });
+  await main.evaluate((element) => {
+    element.inert = true;
+  });
+  releaseOverview();
+  await expect(page.getByRole("dialog", { name: "Review before continuing" })).toBeVisible();
+  await expect(main).toHaveJSProperty("inert", true);
+  await acceptRequiredPolicyDialog(page);
+  await expect(main).toHaveJSProperty("inert", true);
 });
 
 test("workspace pages fit a mobile viewport", async ({ page }, testInfo) => {
