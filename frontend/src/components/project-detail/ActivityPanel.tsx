@@ -696,6 +696,31 @@ export function ActivityPanel({
     ) ??
     filteredSessionPrompts[0] ??
     null;
+  const activityViewOptions: ActivityNavigationState["view"][] = [
+    "prompts",
+    "sessions",
+  ];
+  const activityViewTabs = (
+    <div
+      aria-label={t("activity.filters")}
+      className="bh-activity-view-tabs"
+      ref={activityViewTabsRef}
+      role="group"
+    >
+      {activityViewOptions.map((activityView) => (
+        <button
+          aria-pressed={view === activityView}
+          className="bh-activity-view-tab"
+          data-active={view === activityView}
+          key={activityView}
+          onClick={() => updateActivityView(activityView)}
+          type="button"
+        >
+          {activityView === "prompts" ? t("activity.byPrompt") : t("activity.bySession")}
+        </button>
+      ))}
+    </div>
+  );
 
   if (
     view === "prompts" &&
@@ -705,19 +730,23 @@ export function ActivityPanel({
     !isPromptActivityLoading
   ) {
     return (
-      <EmptyState
-        description={promptActivityError}
-        icon={Activity}
-        title={t("activity.loadFailed")}
-      >
-        <button
-          className="bh-empty-state-button"
-          onClick={() => setPromptActivityRequestVersion((version) => version + 1)}
-          type="button"
+      <div className="bh-activity-layout" data-notice={notice ? "true" : undefined} data-view={view}>
+        {notice ? <div className="bh-activity-notice">{notice}</div> : null}
+        {activityViewTabs}
+        <EmptyState
+          description={promptActivityError}
+          icon={Activity}
+          title={t("activity.loadFailed")}
         >
-          {t("common.retry")}
-        </button>
-      </EmptyState>
+          <button
+            className="bh-empty-state-button"
+            onClick={() => setPromptActivityRequestVersion((version) => version + 1)}
+            type="button"
+          >
+            {t("common.retry")}
+          </button>
+        </EmptyState>
+      </div>
     );
   }
 
@@ -727,41 +756,22 @@ export function ActivityPanel({
     (view === "sessions" ? !isSessionPromptLoading : !isPromptActivityLoading)
   ) {
     return (
-      <EmptyState
-        description={t("activity.noActivityDescription")}
-        icon={Activity}
-        title={t("activity.noActivity")}
-      />
+      <div className="bh-activity-layout" data-notice={notice ? "true" : undefined} data-view={view}>
+        {notice ? <div className="bh-activity-notice">{notice}</div> : null}
+        {activityViewTabs}
+        <EmptyState
+          description={t("activity.noActivityDescription")}
+          icon={Activity}
+          title={t("activity.noActivity")}
+        />
+      </div>
     );
   }
-
-  const activityViewOptions: ActivityNavigationState["view"][] = [
-    "prompts",
-    "sessions",
-  ];
 
   return (
     <div className="bh-activity-layout" data-notice={notice ? "true" : undefined} data-view={view}>
       {notice ? <div className="bh-activity-notice">{notice}</div> : null}
-      <div
-        aria-label={t("activity.filters")}
-        className="bh-activity-view-tabs"
-        ref={activityViewTabsRef}
-        role="group"
-      >
-        {activityViewOptions.map((activityView) => (
-          <button
-            aria-pressed={view === activityView}
-            className="bh-activity-view-tab"
-            data-active={view === activityView}
-            key={activityView}
-            onClick={() => updateActivityView(activityView)}
-            type="button"
-          >
-            {activityView === "prompts" ? t("activity.byPrompt") : t("activity.bySession")}
-          </button>
-        ))}
-      </div>
+      {activityViewTabs}
 
       <div
         className="bh-activity-feed-layout"

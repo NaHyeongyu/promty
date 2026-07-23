@@ -141,6 +141,7 @@ test("prompt and session deletion use scoped confirmation and refresh the activi
     await expect(sessionDialog).toContainText("All activity in this session");
     await sessionDialog.getByRole("button", { name: "Delete permanently" }).click();
     await expect(page.getByText("No activity yet", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "By session" })).toBeFocused();
   } finally {
     await page.request.delete(`${API_ORIGIN}/api/projects/${project.id}`);
   }
