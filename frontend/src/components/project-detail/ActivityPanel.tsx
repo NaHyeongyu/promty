@@ -34,6 +34,26 @@ import { focusableModalElements } from "./modalFocus";
 
 const PROMPT_ACTIVITY_PAGE_LIMIT = 50;
 
+function restoreActiveActivityViewFocus() {
+  const focusIfLost = () => {
+    if (document.activeElement !== document.body) {
+      return;
+    }
+    document
+      .querySelector<HTMLElement>(
+        '.bh-activity-view-tabs [aria-pressed="true"]',
+      )
+      ?.focus();
+  };
+  const observer = new MutationObserver(focusIfLost);
+  observer.observe(document.body, { childList: true, subtree: true });
+  window.requestAnimationFrame(focusIfLost);
+  window.setTimeout(() => {
+    focusIfLost();
+    observer.disconnect();
+  }, 1_000);
+}
+
 const defaultActivityNavigation: ActivityNavigationState = {
   selectedPromptId: null,
   selectedSessionId: null,
@@ -200,6 +220,8 @@ export function ActivityPanel({
   const isDeletingActivityRef = useRef(false);
   const deletionDialogRef = useRef<HTMLElement | null>(null);
   const deletionReturnFocusRef = useRef<HTMLElement | null>(null);
+  const deletionWasConfirmedRef = useRef(false);
+  const activityViewTabsRef = useRef<HTMLDivElement | null>(null);
   const currentActivityNavigation =
     activityNavigation ?? localActivityNavigation;
   const updateActivityNavigation = (state: Partial<ActivityNavigationState>) => {
@@ -223,7 +245,16 @@ export function ActivityPanel({
 
   useEffect(() => {
     if (!deletionTarget) {
-      return;
+      if (!deletionWasConfirmedRef.current) {
+        return;
+      }
+      deletionWasConfirmedRef.current = false;
+      const focusFrame = window.requestAnimationFrame(() => {
+        activityViewTabsRef.current
+          ?.querySelector<HTMLElement>('[aria-pressed="true"]')
+          ?.focus();
+      });
+      return () => window.cancelAnimationFrame(focusFrame);
     }
     const dialog = deletionDialogRef.current;
     if (!dialog) {
@@ -261,11 +292,20 @@ export function ActivityPanel({
     return () => {
       window.clearTimeout(timer);
       document.removeEventListener("keydown", handleKeyDown);
-      deletionReturnFocusRef.current?.focus();
+      const returnTarget = deletionReturnFocusRef.current;
+      if (!deletionWasConfirmedRef.current) {
+        window.requestAnimationFrame(() => {
+          if (!returnTarget?.isConnected) {
+            return;
+          }
+          returnTarget.focus();
+        });
+      }
     };
   }, [deletionTarget]);
 
   const openDeletionDialog = (target: ActivityDeletionTarget) => {
+    deletionWasConfirmedRef.current = false;
     deletionReturnFocusRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setDeletionError(null);
@@ -294,6 +334,7 @@ export function ActivityPanel({
         }
         const promptId = deletionTarget.activity.id;
         await onDeletePromptActivity(promptId);
+        deletionWasConfirmedRef.current = true;
         setPromptActivities((items) => items.filter((item) => item.id !== promptId));
         setSessionPrompts((items) => items.filter((item) => item.id !== promptId));
         setPromptActivityTotal((count) => count === null ? null : Math.max(count - 1, 0));
@@ -305,6 +346,7 @@ export function ActivityPanel({
           return;
         }
         await onDeleteSessionActivity(deletionTarget.activity.id);
+        deletionWasConfirmedRef.current = true;
         setDeletedSessionIds((current) => {
           const next = new Set(current);
           next.add(deletionTarget.activity.id);
@@ -320,6 +362,7 @@ export function ActivityPanel({
         selectedSessionPromptId: null,
       });
       setDeletionTarget(null);
+      restoreActiveActivityViewFocus();
     } catch (error) {
       setDeletionError(
         error instanceof Error ? error.message : t("activity.deleteFailed"),
@@ -700,7 +743,12 @@ export function ActivityPanel({
   return (
     <div className="bh-activity-layout" data-notice={notice ? "true" : undefined} data-view={view}>
       {notice ? <div className="bh-activity-notice">{notice}</div> : null}
-      <div className="bh-activity-view-tabs" role="group" aria-label={t("activity.filters")}>
+      <div
+        aria-label={t("activity.filters")}
+        className="bh-activity-view-tabs"
+        ref={activityViewTabsRef}
+        role="group"
+      >
         {activityViewOptions.map((activityView) => (
           <button
             aria-pressed={view === activityView}

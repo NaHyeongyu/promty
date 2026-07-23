@@ -131,6 +131,7 @@ test("prompt and session deletion use scoped confirmation and refresh the activi
     await promptDialog.getByRole("button", { name: "Delete permanently" }).click();
     await expect(page.getByText("Delete only this private prompt activity")).toHaveCount(0);
     await expect(page.getByText("Keep this prompt until the session is deleted").first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "By prompt" })).toBeFocused();
 
     await page.getByRole("button", { name: "By session" }).click();
     await page.getByRole("button", { name: "Delete session" }).click();

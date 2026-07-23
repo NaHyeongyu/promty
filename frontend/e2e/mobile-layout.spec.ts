@@ -201,6 +201,7 @@ test("required policy acceptance fits a mobile viewport", async ({ page }, testI
   await page.goto("/app");
   await waitForStablePage(page);
   await expect(page.getByRole("dialog", { name: "Review before continuing" })).toBeVisible();
+  await expect(page.locator(".app-shell > main")).toHaveJSProperty("inert", true);
   await expectMobileLayout(page, "policy-acceptance", testInfo);
 });
 

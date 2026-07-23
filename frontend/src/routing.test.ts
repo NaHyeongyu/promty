@@ -4,6 +4,7 @@ import {
   appRouteFromPathname,
   isLegacyWorkspaceSearch,
   navigateToAppUrl,
+  shouldPreloadCurrentUser,
 } from "./routing";
 
 describe("appRouteFromPathname", () => {
@@ -51,6 +52,24 @@ describe("appRouteFromPathname", () => {
     expect(appRouteFromLocation("/", "")).toBe("landing");
     expect(appRouteFromLocation("/", "?utm_source=launch")).toBe("landing");
     expect(appRouteFromLocation("/about", "?project=project-id")).toBe("about");
+  });
+});
+
+describe("shouldPreloadCurrentUser", () => {
+  it("skips authentication preloading for every public Discovery preview URL", () => {
+    expect(shouldPreloadCurrentUser("/", "?preview=community")).toBe(false);
+    expect(
+      shouldPreloadCurrentUser(
+        "/app",
+        "?view=community&preview=community",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps preloading for authenticated workspace and admin routes", () => {
+    expect(shouldPreloadCurrentUser("/app", "?view=projects")).toBe(true);
+    expect(shouldPreloadCurrentUser("/admin", "?section=users")).toBe(true);
+    expect(shouldPreloadCurrentUser("/about")).toBe(false);
   });
 });
 

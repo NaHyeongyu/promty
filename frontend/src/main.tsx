@@ -6,18 +6,17 @@ import "./styles-warm-human.css";
 import { preloadCurrentUser } from "./api/auth";
 import { AppErrorBoundary } from "./components/app/AppStatusPages";
 import { I18nProvider } from "./i18n/I18nProvider";
-import { appRouteFromLocation } from "./routing";
+import { appRouteFromLocation, shouldPreloadCurrentUser } from "./routing";
 import { initializeTheme } from "./theme";
 
 initializeTheme();
 
 if (import.meta.env.PROD) {
-  const pathname = window.location.pathname;
-  const route = appRouteFromLocation(pathname, window.location.search);
-  const communityPreview =
-    pathname === "/" &&
-    new URLSearchParams(window.location.search).get("preview") === "community";
-  if ((route === "workspace" && !communityPreview) || route === "admin") {
+  const route = appRouteFromLocation(
+    window.location.pathname,
+    window.location.search,
+  );
+  if (shouldPreloadCurrentUser(window.location.pathname, window.location.search)) {
     preloadCurrentUser();
   }
   if (route === "admin") {

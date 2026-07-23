@@ -260,7 +260,7 @@ function formatMetadataValue(value: unknown) {
   return String(value);
 }
 
-function formatOccurredAt(value: string | null) {
+function formatOccurredAt(value: string | null, localeTag: string) {
   if (!value) {
     return null;
   }
@@ -268,7 +268,7 @@ function formatOccurredAt(value: string | null) {
   if (Number.isNaN(date.getTime())) {
     return null;
   }
-  return Intl.DateTimeFormat(undefined, {
+  return Intl.DateTimeFormat(localeTag, {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
@@ -336,10 +336,10 @@ function ContextNodeButton({
   node: ProjectContextGraphNode;
   onSelect: (nodeId: string) => void;
 }) {
-  const { t } = useI18n();
+  const { localeTag, t } = useI18n();
   const definition = laneDefinition(node.kind);
   const Icon = definition.icon;
-  const occurredAt = formatOccurredAt(node.occurred_at);
+  const occurredAt = formatOccurredAt(node.occurred_at, localeTag);
 
   return (
     <button
@@ -615,7 +615,7 @@ function ContextNodeInspector({
   onOpenSession?: (sessionId: string) => void;
   onSelectNode: (nodeId: string) => void;
 }) {
-  const { t } = useI18n();
+  const { localeTag, t } = useI18n();
   if (!node) {
     return (
       <aside
@@ -632,7 +632,7 @@ function ContextNodeInspector({
 
   const definition = laneDefinition(node.kind);
   const Icon = definition.icon;
-  const occurredAt = formatOccurredAt(node.occurred_at);
+  const occurredAt = formatOccurredAt(node.occurred_at, localeTag);
   const metadata = visibleContextGraphMetadata(node.metadata);
 
   return (

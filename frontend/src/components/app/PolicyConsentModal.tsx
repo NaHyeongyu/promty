@@ -17,6 +17,20 @@ export function PolicyConsentModal({
 
   useEffect(() => {
     document.body.classList.add("modal-open");
+    const backdrop = dialogRef.current?.closest<HTMLElement>(
+      ".policy-consent-backdrop",
+    );
+    const inertSiblingStates = backdrop?.parentElement
+      ? Array.from(backdrop.parentElement.children)
+          .filter(
+            (element): element is HTMLElement =>
+              element instanceof HTMLElement && element !== backdrop,
+          )
+          .map((element) => ({ element, wasInert: element.inert }))
+      : [];
+    inertSiblingStates.forEach(({ element }) => {
+      element.inert = true;
+    });
     const focusDialog = window.requestAnimationFrame(() => {
       if (dialogRef.current) {
         focusableModalElements(dialogRef.current)[0]?.focus();
@@ -45,6 +59,9 @@ export function PolicyConsentModal({
     return () => {
       window.cancelAnimationFrame(focusDialog);
       window.removeEventListener("keydown", trapFocus);
+      inertSiblingStates.forEach(({ element, wasInert }) => {
+        element.inert = wasInert;
+      });
       document.body.classList.remove("modal-open");
     };
   }, []);
