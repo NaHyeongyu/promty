@@ -1,9 +1,9 @@
 # Promty Collector
 
-Promty turns completed AI coding sessions into durable, reviewable **Project
+Promty turns continuous AI coding activity into durable, reviewable **Project
 Memory**. The collector connects an explicitly selected Git repository to Promty,
-captures structured session activity from supported coding tools, and keeps a local
-queue so hook execution does not depend on the service being online.
+saves submitted work as it happens, links continuation prompts, and keeps a durable
+local queue so hook execution does not depend on the service being online.
 
 ## Install
 

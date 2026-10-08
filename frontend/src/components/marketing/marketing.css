@@ -2802,7 +2802,7 @@
 .figma-workflow-steps,
 .figma-audience-cards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   margin-top: 54px;
 }
@@ -2888,6 +2888,85 @@
   font-family: var(--bh-font-code);
   font-size: 9px;
   font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.figma-capability-section {
+  min-height: 710px;
+  padding: 84px 96px 86px;
+  background: #0d0f13;
+}
+
+.figma-capability-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.65fr);
+  align-items: end;
+  gap: 80px;
+}
+
+.figma-capability-intro > p {
+  padding-bottom: 4px;
+  font-size: 15px;
+  line-height: 25px;
+}
+
+.figma-capability-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-top: 54px;
+}
+
+.figma-capability-grid article {
+  min-height: 245px;
+  border: 1px solid var(--figma-line);
+  padding: 24px;
+  background: var(--figma-surface);
+}
+
+.figma-capability-grid article > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.figma-capability-grid article > div span {
+  color: var(--figma-muted);
+  font-family: var(--bh-font-code);
+  font-size: 10px;
+}
+
+.figma-capability-grid article > div small {
+  color: var(--figma-accent);
+  font-family: var(--bh-font-code);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+
+.figma-capability-grid h3 {
+  margin-top: 42px;
+  font-size: 20px;
+  font-weight: 540;
+  line-height: 28px;
+  letter-spacing: -0.018em;
+}
+
+.figma-capability-grid p {
+  margin-top: 12px;
+  color: var(--figma-muted);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.figma-capability-link {
+  display: inline-flex;
+  margin-top: 30px;
+  border-bottom: 1px solid var(--figma-accent);
+  padding-bottom: 4px;
+  color: var(--figma-secondary);
+  font-family: var(--bh-font-code);
+  font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -3121,7 +3200,7 @@
 
 .figma-trust-flow {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   margin-top: 52px;
 }
@@ -3299,6 +3378,7 @@
   .figma-landing-hero,
   .figma-problem-section,
   .figma-workflow-section,
+  .figma-capability-section,
   .figma-memory-section,
   .figma-audience-section,
   .figma-trust-section,
@@ -3334,6 +3414,7 @@
   }
 
   .figma-workflow-intro,
+  .figma-capability-intro,
   .figma-audience-intro {
     grid-template-columns: minmax(0, 1.5fr) minmax(300px, 0.8fr);
     gap: 64px;
@@ -3380,6 +3461,7 @@
   .figma-landing-hero,
   .figma-problem-section,
   .figma-workflow-section,
+  .figma-capability-section,
   .figma-memory-section,
   .figma-audience-section,
   .figma-trust-section,
@@ -3415,6 +3497,7 @@
   }
 
   .figma-workflow-intro,
+  .figma-capability-intro,
   .figma-audience-intro,
   .figma-trust-intro,
   .figma-final-cta-panel {
@@ -3422,6 +3505,7 @@
   }
 
   .figma-workflow-intro > p,
+  .figma-capability-intro > p,
   .figma-audience-intro > p,
   .figma-trust-intro > p {
     grid-column: 1;
@@ -3432,6 +3516,7 @@
   }
 
   .figma-workflow-steps,
+  .figma-capability-grid,
   .figma-audience-cards,
   .figma-trust-flow {
     grid-template-columns: 1fr;
@@ -3439,6 +3524,7 @@
   }
 
   .figma-workflow-steps article,
+  .figma-capability-grid article,
   .figma-audience-cards article,
   .figma-trust-flow article {
     min-height: auto;
@@ -3483,6 +3569,7 @@
   .figma-landing-hero,
   .figma-problem-section,
   .figma-workflow-section,
+  .figma-capability-section,
   .figma-memory-section,
   .figma-audience-section,
   .figma-trust-section,

@@ -3,15 +3,15 @@
     "route": "landing",
     "path": "/",
     "index": true,
-    "title": "Promty — Project Memory for AI-Assisted Development",
-    "description": "Promty captures completed AI coding work and compiles it into durable, reviewable Project Memory for the next human or coding agent.",
-    "eyebrow": "PROJECT MEMORY FOR AI-ASSISTED DEVELOPMENT",
-    "heading": "Every AI session should start where the last one ended.",
-    "summary": "Capture completed work, keep the reasoning that shaped it, and give the next human or coding agent current project context.",
+    "title": "Promty — Pick up where you left off with AI",
+    "description": "Promty keeps project decisions, open questions, and next steps ready so every teammate and AI session can continue without starting over.",
+    "eyebrow": "PROJECT CONTINUITY FOR AI DEVELOPMENT",
+    "heading": "Pick up where you left off—without starting over.",
+    "summary": "Return to a task with its current direction, important decisions, open questions, and next step already clear.",
     "highlights": [
-      "Capture completed work from repositories you explicitly connect.",
-      "Review decisions, rejected paths, open questions, and next steps.",
-      "Continue in Codex CLI, Claude Code, or another agent without starting over."
+      "Resume with the current goal and next step already clear.",
+      "Keep decisions and trade-offs alongside the result.",
+      "Stay aligned across teammates, Codex, and Claude Code."
     ],
     "image": "/marketing/promty-product-memory.png"
   },
@@ -19,15 +19,15 @@
     "route": "about",
     "path": "/about",
     "index": true,
-    "title": "About Promty — Keep AI project context moving",
-    "description": "Promty turns completed AI coding work into reviewable Project Memory, so every human and AI agent can continue with the right decisions and next steps.",
+    "title": "About Promty — Context belongs to the project",
+    "description": "Promty exists because project context should outlive a chat, a tool, and a handoff.",
     "eyebrow": "WHY PROMTY",
-    "heading": "Explain it once. Keep moving with any AI.",
-    "summary": "Promty preserves the decisions, failed paths, and next steps that disappear between AI coding sessions.",
+    "heading": "AI should move your project forward—not make you explain it again.",
+    "summary": "A project should remember where it is, why it got there, and what should happen next.",
     "highlights": [
-      "Work normally with the coding tools you already use.",
-      "Review what becomes durable Project Memory.",
-      "Hand current context to the next person or read-only agent."
+      "Context outlives individual chats and tools.",
+      "Decisions keep their reasons instead of becoming another transcript.",
+      "People choose what carries forward."
     ],
     "image": "/marketing/promty-product-overview.png"
   },
@@ -35,15 +35,15 @@
     "route": "product",
     "path": "/product",
     "index": true,
-    "title": "Promty Product — Project Memory for AI Coding Agents",
-    "description": "See how Promty captures AI coding activity, compiles reviewable Project Memory, and delivers current context through CLI and read-only MCP access.",
+    "title": "Promty Product — One project memory for every AI session",
+    "description": "See what happened, keep what mattered, and give the next teammate or AI session a clear place to begin.",
     "eyebrow": "PROMTY PRODUCT",
-    "heading": "The memory layer between your project and every agent.",
-    "summary": "Promty turns completed AI work into a compact model of current direction, important decisions, rejected approaches, assumptions, and open questions.",
+    "heading": "One project memory for every AI session.",
+    "summary": "Promty keeps AI activity, project knowledge, decisions, questions, and next steps connected.",
     "highlights": [
-      "Repository-scoped capture from Codex CLI and Claude Code.",
-      "Human-reviewed memory with links to supporting work.",
-      "Owner-scoped context through the Promty CLI and read-only MCP."
+      "Follow interrupted and resumed work as one readable timeline.",
+      "Keep current direction, decisions, questions, and next steps together.",
+      "Give every new session the right starting point."
     ],
     "image": "/marketing/promty-product-memory.png"
   },
@@ -51,11 +51,11 @@
     "route": "collector-docs",
     "path": "/docs/collector",
     "index": true,
-    "title": "Connect Codex CLI and Claude Code to Promty",
+    "title": "Connect Codex and Claude Code to Promty",
     "description": "Install the Promty Collector, connect an explicit repository, verify captured sessions, and make approved Project Memory available to future coding agents.",
     "eyebrow": "COLLECTOR DOCUMENTATION",
     "heading": "Connect your AI coding tool.",
-    "summary": "Follow the setup guide for Codex CLI or Claude Code, authorize the Collector, test the connection, and review Project Memory before sharing it with another agent.",
+    "summary": "Follow the setup guide for Codex or Claude Code, authorize the Collector, test the connection, and review Project Memory before sharing it with another agent.",
     "highlights": [
       "One repository-scoped installation command.",
       "User-controlled browser authorization and revocable tokens.",

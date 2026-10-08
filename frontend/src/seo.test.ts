@@ -9,12 +9,12 @@ import routeSeoSource from "./seo.ts?raw";
 
 const productionOrigin = "https://promty.org";
 const description =
-  "Promty captures completed AI coding work and compiles it into durable, reviewable Project Memory for the next human or coding agent.";
+  "Promty keeps project decisions, open questions, and next steps ready so every teammate and AI session can continue without starting over.";
 
 describe("static search metadata", () => {
   it("publishes one consistent canonical identity and share image", () => {
     expect(indexHtml).toContain(
-      "<title>Promty — Project Memory for AI-Assisted Development</title>",
+      "<title>Promty — Pick up where you left off with AI</title>",
     );
     expect(indexHtml).toContain(
       `<link rel="canonical" href="${productionOrigin}/" />`,

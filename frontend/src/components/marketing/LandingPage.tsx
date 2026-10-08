@@ -1,593 +1,168 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  Check,
-  ChevronDown,
-  Copy,
-  Pause,
-  Play,
-  RotateCcw,
-} from "lucide-react";
-import { copyTextToClipboard } from "../../lib/clipboard";
-import { MarketingShell } from "./MarketingShell";
+import { useState } from "react";
+import { ArrowDown, ArrowRight, Check, ChevronDown, Copy, GitBranch, LockKeyhole, ShieldCheck, Terminal } from "lucide-react";
+import { MarketingShell, MarketingCta } from "./MarketingShell";
+import { LandingProductPreview, LandingWorkflow } from "./LandingPreview";
+import { MarketingToolIcon } from "./MarketingToolIcon";
+import "./landing-redesign.css";
 
 export const publicCollectorCommand =
   "npx promty-collector@latest init --tool codex-cli --profile prod";
 
-const heroStages = [
+const questions = [
   {
-    label: "SESSION COMPLETE",
-    status: "Completed",
-    duration: 1_000,
+    question: "Is Promty free to use?",
+    answer: "Yes. Promty is free to use. Sign in with GitHub to get started.",
   },
   {
-    label: "EXTRACT",
-    status: "3 context fragments",
-    duration: 1_800,
+    question: "What is Project Memory?",
+    answer: "A structured account of your project’s current direction, decisions and their reasons, rejected approaches, open questions, and next steps. It is generated from selected work records and can be reviewed before you approve it for agent use.",
   },
   {
-    label: "COMPILE",
-    status: "Project Memory built",
-    duration: 2_000,
+    question: "Which tools can I use with Promty?",
+    answer: "The Collector supports Codex and Claude Code. You can retrieve approved Project Memory through the Promty CLI or a configured MCP-compatible client. Connecting a tool for capture and configuring it to read memory are separate steps.",
   },
   {
-    label: "REVIEW",
-    status: "Source linked",
-    duration: 1_200,
+    question: "Does it collect every project on my computer?",
+    answer: "Collection starts in the Git repositories where you explicitly install the Collector. It captures prompts, emitted responses, session events, and file-change information from those connected repositories. Other projects are not automatically scanned.",
   },
   {
-    label: "CONTINUE",
-    status: "Ready for next agent",
-    duration: 2_000,
+    question: "What is sent to an external AI provider?",
+    answer: "Memory generation requires a separate choice to enable external AI processing. You can review and exclude prompt previews before generation. Requests can include selected prompt previews, related response samples, project metadata, and existing memory. Generation does not send raw source-file contents or patches. Excluding a generation input does not delete the original activity stored in Promty.",
   },
-] as const;
+  {
+    question: "Does the next agent receive my entire chat history?",
+    answer: "The owner-scoped, read-only Agent Context bridge returns the latest Project Memory you approved for agents. It does not expose raw prompts, responses, or patch bodies, and cannot modify the memory. Set up the CLI or MCP bridge to make that context available to your next session.",
+  },
+  {
+    question: "How is this different from an AGENTS.md file?",
+    answer: "An AGENTS.md file is useful for instructions and conventions you maintain in a repository. Promty adds a reviewable record of decisions and unresolved work from your AI coding sessions. You can use both: standing instructions in your repository, and approved project context from Promty.",
+  },
+];
 
-const problemCosts = [
-  {
-    number: "01",
-    title: "Explain the architecture again",
-    description:
-      "The agent can read the files, but it cannot see the decisions that shaped them.",
-  },
-  {
-    number: "02",
-    title: "Repeat rejected approaches",
-    description:
-      "Failed experiments and trade-offs vanish, so the same detours return.",
-  },
-  {
-    number: "03",
-    title: "Lose the open questions",
-    description:
-      "What remained uncertain is buried in an old transcript instead of guiding the next step.",
-  },
-] as const;
+function CollectorSetup() {
+  const [tool, setTool] = useState<"codex-cli" | "claude-code">("codex-cli");
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const command = publicCollectorCommand.replace("codex-cli", tool);
 
-const workflowSteps = [
-  {
-    number: "01",
-    eyebrow: "CAPTURE",
-    title: "Capture completed work",
-    description:
-      "Install the collector in one repository and keep working in Codex CLI or Claude Code.",
-    outcome: "Repository scoped",
-  },
-  {
-    number: "02",
-    eyebrow: "COMPILE",
-    title: "Compile durable context",
-    description:
-      "Promty condenses outcomes, decisions, rejected paths, and open questions into memory you can review.",
-    outcome: "Human reviewable",
-  },
-  {
-    number: "03",
-    eyebrow: "CONTINUE",
-    title: "Continue with intent",
-    description:
-      "The next session reads the latest Project Memory through the CLI or owner-scoped, read-only MCP access.",
-    outcome: "Agent ready",
-  },
-] as const;
-
-const memoryEntries = [
-  {
-    key: "direction",
-    label: "CURRENT DIRECTION",
-    body:
-      "Keep collection repository-scoped and make every generated memory reviewable before it becomes shared context.",
-    source: "Collector onboarding · completed session",
-  },
-  {
-    key: "decision",
-    label: "DECISION",
-    body:
-      "Use durable summaries of reasoning instead of replaying raw transcripts in the next session.",
-    source: "Architecture decision · 3 supporting memories",
-  },
-  {
-    key: "question",
-    label: "OPEN QUESTION",
-    body:
-      "How should conflicting context from the CLI and dashboard be reconciled?",
-    source: "Unresolved product question",
-  },
-  {
-    key: "instruction",
-    label: "NEXT INSTRUCTION",
-    body:
-      "Read the latest memory first, then continue the collector onboarding UX from the unresolved state.",
-    source: "Instruction for the next human or agent",
-    mono: true,
-  },
-] as const;
-
-const audiences = [
-  {
-    number: "01",
-    label: "SOLO BUILDERS",
-    title: "Return to a project without reloading it from scratch.",
-    description:
-      "Move between days, branches, and AI sessions with the current direction already preserved.",
-  },
-  {
-    number: "02",
-    label: "AI-NATIVE TEAMS",
-    title: "Hand work off with the reason trail intact.",
-    description:
-      "Share decisions and unresolved questions across people, Codex, Claude Code, and future tools.",
-  },
-  {
-    number: "03",
-    label: "OPEN PROJECTS",
-    title: "Help contributors understand where the work is going.",
-    description:
-      "Offer a concise orientation layer without asking newcomers to read old chat histories.",
-  },
-] as const;
-
-const trustPrinciples = [
-  {
-    number: "01",
-    kicker: "SELECTED REPOSITORY",
-    title: "Only explicit repositories",
-    description:
-      "Collection starts where you enable it. Unrelated projects stay out.",
-  },
-  {
-    number: "02",
-    kicker: "PROJECT MEMORY",
-    title: "Human-reviewable memory",
-    description: "See and correct the context before it guides more work.",
-  },
-  {
-    number: "03",
-    kicker: "READ-ONLY MCP",
-    title: "Read-only, owner-scoped access",
-    description:
-      "Let approved tools retrieve memory without writing back into it.",
-  },
-] as const;
-
-const faqs = [
-  {
-    question: "Does Promty read every repository on my machine?",
-    answer:
-      "No. Collection begins only in repositories where you explicitly install Promty hooks.",
-  },
-  {
-    question: "Why are Codex and Claude Code hooks both shown?",
-    answer:
-      "Promty supports both tools, but only the hook installed for a tool runs with that tool. Installing Codex support does not make a Claude Code hook run automatically.",
-  },
-  {
-    question: "Is Project Memory just a transcript summary?",
-    answer:
-      "No. It is structured around current direction, decisions, rejected paths, open questions, and instructions that future humans and agents can review.",
-  },
-  {
-    question: "Does an MCP agent get write access?",
-    answer:
-      "No. The Agent Context bridge is read-only and owner-scoped. It retrieves the latest compiled Project Memory without writing back into it.",
-  },
-] as const;
-
-function emitMarketingInteraction(name: string) {
-  window.dispatchEvent(
-    new CustomEvent("promty:marketing-interaction", { detail: { name } }),
-  );
-}
-
-function usePrefersReducedMotion() {
-  const [reducedMotion, setReducedMotion] = useState(
-    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-  );
-
-  useEffect(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReducedMotion(media.matches);
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
-
-  return reducedMotion;
-}
-
-function HeroMemoryDemo() {
-  const reducedMotion = usePrefersReducedMotion();
-  const rootRef = useRef<HTMLDivElement>(null);
-  const hasAutoplayed = useRef(false);
-  const [stage, setStage] = useState(reducedMotion ? heroStages.length - 1 : 0);
-  const [playing, setPlaying] = useState(false);
-
-  useEffect(() => {
-    if (!reducedMotion) return;
-    setStage(heroStages.length - 1);
-    setPlaying(false);
-  }, [reducedMotion]);
-
-  useEffect(() => {
-    if (reducedMotion || hasAutoplayed.current || !rootRef.current) return;
-    if (!("IntersectionObserver" in window)) {
-      hasAutoplayed.current = true;
-      setPlaying(true);
-      return;
+  async function copyCommand() {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
     }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry.isIntersecting || entry.intersectionRatio < 0.5) return;
-        hasAutoplayed.current = true;
-        setStage(0);
-        setPlaying(true);
-        observer.disconnect();
-      },
-      { threshold: [0.5] },
-    );
-    observer.observe(rootRef.current);
-    return () => observer.disconnect();
-  }, [reducedMotion]);
-
-  useEffect(() => {
-    if (!playing || reducedMotion) return undefined;
-    const timer = window.setTimeout(() => {
-      if (stage === heroStages.length - 1) {
-        setPlaying(false);
-        return;
-      }
-      setStage((current) => current + 1);
-    }, heroStages[stage].duration);
-    return () => window.clearTimeout(timer);
-  }, [playing, reducedMotion, stage]);
-
-  function replay() {
-    setStage(0);
-    setPlaying(!reducedMotion);
-    emitMarketingInteraction("hero_demo_replay");
-  }
-
-  function togglePlayback() {
-    if (stage === heroStages.length - 1 && !playing) {
-      replay();
-      return;
-    }
-    setPlaying((current) => !current);
-    emitMarketingInteraction(playing ? "hero_demo_pause" : "hero_demo_play");
   }
 
   return (
-    <div
-      className="figma-hero-demo"
-      data-playing={playing ? "true" : "false"}
-      data-stage={stage}
-      ref={rootRef}
-    >
-      <div className="figma-hero-demo-header">
-        <div>
-          <span>PROJECT MEMORY</span>
-          <strong>promty / collector</strong>
-        </div>
-        <small>{heroStages[stage].status}</small>
-      </div>
-
-      <div className="figma-hero-demo-viewport" aria-live="polite">
-        <article aria-hidden={stage !== 0} className={stage === 0 ? "is-active" : ""}>
-          <div className="figma-session-complete-mark"><Check size={22} /></div>
-          <span>SESSION COMPLETE</span>
-          <h3>Collector onboarding finished</h3>
-          <p>3 files changed · 1 decision · 1 open question</p>
-        </article>
-
-        <article aria-hidden={stage !== 1} className={stage === 1 ? "is-active" : ""}>
-          <span>EXTRACTING CONTEXT</span>
-          <div className="figma-context-fragments">
-            <div><small>DECISION</small><strong>Keep collection repository-scoped</strong></div>
-            <div><small>OUTCOME</small><strong>Setup flow completed successfully</strong></div>
-            <div><small>OPEN QUESTION</small><strong>Reconcile CLI and dashboard context</strong></div>
-          </div>
-        </article>
-
-        <article aria-hidden={stage !== 2} className={stage === 2 ? "is-active" : ""}>
-          <span>COMPILING MEMORY</span>
-          <div className="figma-compiled-memory">
-            <small>CURRENT DIRECTION</small>
-            <strong>Keep every generated memory reviewable.</strong>
-            <p>Preserve decisions, reasons, and unresolved questions.</p>
-            <i>3 context fragments joined</i>
-          </div>
-        </article>
-
-        <article aria-hidden={stage !== 3} className={stage === 3 ? "is-active" : ""}>
-          <span>REVIEWABLE CONTEXT</span>
-          <div className="figma-review-state">
-            <div><Check size={15} /><span>Current direction</span><small>reviewed</small></div>
-            <div><Check size={15} /><span>Decision and reason</span><small>source linked</small></div>
-            <div><Check size={15} /><span>Open question</span><small>kept visible</small></div>
-          </div>
-        </article>
-
-        <article aria-hidden={stage !== 4} className={stage === 4 ? "is-active" : ""}>
-          <span>NEXT AGENT</span>
-          <div className="figma-agent-ready">
-            <small>promty context</small>
-            <strong>Project Memory loaded</strong>
-            <p>Start from the current direction and continue the unresolved onboarding UX.</p>
-            <i><Check size={13} /> Ready for the next session</i>
-          </div>
-        </article>
-      </div>
-
-      <div className="figma-hero-demo-footer">
-        <div className="figma-demo-progress" aria-hidden="true">
-          {heroStages.map((item, index) => (
-            <i className={index <= stage ? "is-complete" : ""} key={item.label} />
+    <div className="lp-install">
+      <div className="lp-install-toolbar">
+        <div className="lp-tool-choice" aria-label="Choose your coding tool">
+          {(["codex-cli", "claude-code"] as const).map((value) => (
+            <button key={value} type="button" aria-pressed={tool === value} onClick={() => { setTool(value); setCopyState("idle"); }}>
+              <MarketingToolIcon tool={value === "codex-cli" ? "codex" : "claude"} size={15} />
+              {value === "codex-cli" ? "Codex" : "Claude Code"}
+            </button>
           ))}
         </div>
-        <span>{String(stage + 1).padStart(2, "0")} / 05 · {heroStages[stage].label}</span>
-        <div>
-          <button
-            aria-label={playing ? "Pause Project Memory demo" : "Play Project Memory demo"}
-            onClick={togglePlayback}
-            type="button"
-          >
-            {playing ? <Pause size={15} /> : <Play size={15} />}
-          </button>
-          <button aria-label="Replay Project Memory demo" onClick={replay} type="button">
-            <RotateCcw size={15} />
-          </button>
-        </div>
+        <span>RUN IN YOUR REPOSITORY</span>
+      </div>
+      <div className="lp-install-command">
+        <span aria-hidden="true">$</span>
+        <code>{command}</code>
+        <button aria-label="Copy install command" onClick={copyCommand} type="button">
+          {copyState === "copied" ? <Check size={17} aria-hidden="true" /> : <Copy size={17} aria-hidden="true" />}
+        </button>
+      </div>
+      <div className="lp-install-footer">
+        <span>Git repository · Node.js 20+ · Python 3.12+</span>
+        <span role="status">{copyState === "copied" ? "Command copied" : copyState === "failed" ? "Select the command to copy it manually." : ""}</span>
       </div>
     </div>
   );
 }
 
 export function LandingPage() {
-  const workflowRef = useRef<HTMLDivElement>(null);
-  const [copied, setCopied] = useState(false);
-  const [activeWorkflow, setActiveWorkflow] = useState(0);
-  const [activeMemory, setActiveMemory] = useState<
-    (typeof memoryEntries)[number]["key"]
-  >(memoryEntries[0].key);
-
-  useEffect(() => {
-    if (!copied) return undefined;
-    const timer = window.setTimeout(() => setCopied(false), 1_800);
-    return () => window.clearTimeout(timer);
-  }, [copied]);
-
-  useEffect(() => {
-    const root = workflowRef.current;
-    if (!root || !("IntersectionObserver" in window)) return undefined;
-    const cards = [...root.querySelectorAll<HTMLElement>("[data-workflow-step]")];
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-        if (!visible) return;
-        setActiveWorkflow(Number((visible.target as HTMLElement).dataset.workflowStep));
-      },
-      { threshold: [0.35, 0.65] },
-    );
-    cards.forEach((card) => observer.observe(card));
-    return () => observer.disconnect();
-  }, []);
-
-  async function copyCommand() {
-    await copyTextToClipboard(publicCollectorCommand);
-    setCopied(true);
-    emitMarketingInteraction("collector_command_copy");
-  }
-
   return (
     <MarketingShell appearance="figma" current="home">
-      <div className="figma-landing-page">
-        <section className="figma-landing-hero">
-          <div className="figma-landing-hero-copy" data-marketing-reveal>
-            <span className="figma-landing-eyebrow">
-              PROJECT MEMORY FOR AI-NATIVE DEVELOPMENT
-            </span>
-            <h1>Every AI session should start where the last one ended.</h1>
-            <p>
-              Promty turns completed AI coding sessions into reviewable project
-              memory, so the next human or agent can continue with the right
-              decisions, reasons, and open questions.
-            </p>
-            <div className="figma-landing-actions">
-              <a className="figma-button is-primary" href="/app">
-                Connect one repository
-              </a>
-              <a className="figma-button is-secondary" href="#project-memory">
-                See what the next agent receives
-              </a>
+      <div className="lp-page" data-page="landing">
+        <section className="lp-hero lp-container" id="overview">
+          <div className="lp-hero-copy">
+            <a className="lp-announcement" href="#workflow"><span className="lp-status-dot" /> PROJECT MEMORY FOR AI BUILDERS <ArrowRight size={13} aria-hidden="true" /></a>
+            <h1>Pick up where <span>you left off.</span></h1>
+            <p>Turn Codex and Claude Code sessions into project memory. Review the decisions, then bring approved context into your next session.</p>
+            <div className="lp-actions">
+              <MarketingCta href="/app">Get started <ArrowRight size={16} aria-hidden="true" /></MarketingCta>
+              <a className="lp-text-link" href="#get-started">View setup steps <ArrowDown size={15} aria-hidden="true" /></a>
             </div>
-            <button
-              aria-label="Copy Promty collector install command"
-              className="figma-command"
-              onClick={() => void copyCommand()}
-              type="button"
-            >
-              <code>{publicCollectorCommand}</code>
-              <span>{copied ? <Check size={13} /> : <Copy size={13} />}{copied ? "Copied" : "Copy"}</span>
-            </button>
+            <div className="lp-hero-tools"><span className="lp-free-note"><Check size={13} aria-hidden="true" /> Free to use</span><i /><span>WORKS WITH</span><strong><MarketingToolIcon tool="codex" /> Codex</strong><i /><strong><MarketingToolIcon tool="claude" /> Claude Code</strong></div>
           </div>
-          <HeroMemoryDemo />
-        </section>
-
-        <section className="figma-problem-section">
-          <div className="figma-section-copy" data-marketing-reveal>
-            <span className="figma-landing-eyebrow">THE CONTEXT GAP</span>
-            <h2>Code shows what changed. It does not explain why.</h2>
-            <p>
-              When a session ends, the reasoning behind the work usually
-              disappears with it. The next session starts by reconstructing
-              context instead of moving the project forward.
-            </p>
-          </div>
-          <div className="figma-problem-costs" data-marketing-reveal>
-            {problemCosts.map((cost) => (
-              <article key={cost.number}>
-                <span>{cost.number}</span>
-                <div><h3>{cost.title}</h3><p>{cost.description}</p></div>
-              </article>
-            ))}
+          <div className="lp-hero-visual">
+            <LandingProductPreview />
           </div>
         </section>
 
-        <section className="figma-workflow-section" id="product">
-          <div className="figma-workflow-intro" data-marketing-reveal>
-            <div>
-              <span className="figma-landing-eyebrow">FROM ACTIVITY TO CONTINUITY</span>
-              <h2>Capture the work. Keep the reasoning. Continue anywhere.</h2>
+        <div className="lp-promise-strip lp-container">
+          <span><GitBranch size={16} aria-hidden="true" /> Capture only the projects you connect</span>
+          <span><ShieldCheck size={16} aria-hidden="true" /> Review what carries forward</span>
+          <span><Terminal size={16} aria-hidden="true" /> Bring context to your next tool</span>
+        </div>
+
+        <section className="lp-workflow-section" id="workflow">
+          <div className="lp-container">
+            <div className="lp-section-heading">
+              <div><span className="lp-eyebrow">HOW PROMTY FITS INTO YOUR WORK</span><h2>Connect. Review.<br />Continue.</h2></div>
+              <p>Start in your repository. Review the collected work in Promty. Set up your next agent to read the memory you approve.</p>
             </div>
-            <p>
-              Promty creates a compact, reviewable layer of project context
-              without replacing your repository, issue tracker, or coding agent.
-            </p>
-          </div>
-          <div
-            className="figma-workflow-steps"
-            data-active-step={activeWorkflow}
-            data-marketing-reveal
-            ref={workflowRef}
-          >
-            {workflowSteps.map((step, index) => (
-              <article
-                aria-current={activeWorkflow === index ? "step" : undefined}
-                data-workflow-step={index}
-                key={step.number}
-                onFocus={() => setActiveWorkflow(index)}
-                onMouseEnter={() => setActiveWorkflow(index)}
-                tabIndex={0}
-              >
-                <div><span>{step.number}</span><small>{step.eyebrow}</small></div>
-                <h3>{step.title}</h3>
-                <p>{step.description}</p>
-                <strong>{step.outcome}</strong>
-              </article>
-            ))}
+            <LandingWorkflow />
           </div>
         </section>
 
-        <section className="figma-memory-section" id="project-memory">
-          <div className="figma-memory-copy" data-marketing-reveal>
-            <span className="figma-landing-eyebrow">WHAT THE NEXT AGENT RECEIVES</span>
-            <h2>Not another transcript. A working model of the project.</h2>
-            <p>
-              Project Memory gives the next collaborator the smallest useful
-              set of context: what matters now, why the team chose it, and what
-              should happen next.
-            </p>
-            <ul>
-              <li>Decisions with their reasons</li>
-              <li>Open questions and next instructions</li>
-              <li>Source links back to the completed work</li>
-            </ul>
+        <section className="lp-section lp-container lp-memory-section" id="memory">
+          <div className="lp-section-intro">
+            <span className="lp-eyebrow">WHAT PROJECT MEMORY KEEPS</span>
+            <h2>Decisions, reasons,<br /><span>and next steps.</span></h2>
+            <p>A concise record of what the project is doing and why, with sources you can revisit. Review it before making it available to agents.</p>
+            <a className="lp-text-link" href="/product">Explore Project Memory <ArrowRight size={16} aria-hidden="true" /></a>
           </div>
-          <div className="figma-memory-panel" data-marketing-reveal>
-            <div className="figma-memory-header">
-              <div><span>PROJECT MEMORY</span><h3>promty / collector</h3></div>
-              <strong>CURRENT</strong>
+          <div className="lp-memory-anatomy">
+            {[
+              ["01", "Current direction", "What you’re building and what matters now."],
+              ["02", "Decisions & reasons", "What you chose, why, and which paths you ruled out."],
+              ["03", "Open questions", "The uncertainties that still need an answer."],
+              ["04", "A clear next step", "Where the next human or AI should begin."],
+            ].map(([number, title, body]) => <article key={number}><span>{number}</span><div><h3>{title}</h3><p>{body}</p></div><ArrowRight size={16} aria-hidden="true" /></article>)}
+          </div>
+        </section>
+
+        <section className="lp-trust-section" id="security">
+          <div className="lp-container">
+            <div className="lp-section-heading"><div><span className="lp-eyebrow">YOUR PROJECT. YOUR BOUNDARIES.</span><h2>Useful memory.<br />Deliberate control.</h2></div><a className="lp-text-link" href="/privacy">Read our privacy notice <ArrowRight size={16} aria-hidden="true" /></a></div>
+            <div className="lp-trust-grid">
+              <article><GitBranch size={23} aria-hidden="true" /><h3>Choose what connects.</h3><p>Install the Collector in the repositories you choose. Collection starts there, and projects are private by default.</p></article>
+              <article><ShieldCheck size={23} aria-hidden="true" /><h3>Decide what gets used.</h3><p>Review generation inputs, choose whether to enable external AI processing, and approve memory separately for agents.</p></article>
+              <article><LockKeyhole size={23} aria-hidden="true" /><h3>Share approved context.</h3><p>The read-only Agent Context bridge retrieves your approved memory. Raw chats and patches stay outside that response.</p></article>
             </div>
-            <div className="figma-memory-entries">
-              {memoryEntries.map((entry) => (
-                <button
-                  aria-pressed={activeMemory === entry.key}
-                  className={"mono" in entry && entry.mono ? "is-mono" : undefined}
-                  key={entry.key}
-                  onClick={() => {
-                    setActiveMemory(entry.key);
-                    emitMarketingInteraction(`memory_field_${entry.key}`);
-                  }}
-                  type="button"
-                >
-                  <span>{entry.label}</span>
-                  <p>{entry.body}</p>
-                  <small>{entry.source}</small>
-                </button>
-              ))}
-            </div>
-            <div className="figma-memory-footer"><span>Source linked</span><small>Updated after a successful session</small></div>
+            <p className="lp-trust-note">Collection uploads activity to Promty. Reviewing generation inputs and approving agent memory are separate controls.</p>
           </div>
         </section>
 
-        <section className="figma-audience-section">
-          <div className="figma-audience-intro" data-marketing-reveal>
-            <div><span className="figma-landing-eyebrow">WHO PROMTY HELPS</span><h2>Built for projects where context compounds.</h2></div>
-            <p>The longer a project lives, the more valuable its reasoning becomes. Promty keeps that value available to whoever continues next.</p>
-          </div>
-          <div className="figma-audience-cards" data-marketing-reveal>
-            {audiences.map((audience) => (
-              <article key={audience.number}>
-                <div><span>{audience.number}</span><small>{audience.label}</small></div>
-                <h3>{audience.title}</h3><p>{audience.description}</p>
-              </article>
-            ))}
-          </div>
+        <section className="lp-section lp-container lp-start" id="get-started">
+          <div className="lp-section-heading"><div><span className="lp-eyebrow">CONNECT YOUR FIRST REPOSITORY</span><h2>Sign in. Run setup.<br /><span>Start your next task.</span></h2></div><p>You’ll need a GitHub account, a local Git repository, Node.js 20+, and Python 3.12+. Choose your coding tool below to begin.</p></div>
+          <ol className="lp-setup-steps">
+            <li><span>01</span><div><h3>Run inside your repository</h3><p>Open a terminal at your project’s root. Select Codex or Claude Code, then run the command below.</p></div></li>
+            <li><span>02</span><div><h3>Authorize with GitHub</h3><p>Complete the browser authorization, then return to the terminal and wait for “Promty init complete”.</p></div></li>
+            <li><span>03</span><div><h3>Start a new coding session</h3><p>Open your selected tool in that repository. Send a test prompt, then check that activity appears in Promty.</p></div></li>
+          </ol>
+          <CollectorSetup />
+          <p className="lp-setup-next">To bring approved memory into your next session, follow the <a href="/docs/collector">CLI or MCP context setup</a>.</p>
+          <div className="lp-start-actions"><span className="lp-free-note"><Check size={13} aria-hidden="true" /> Free to use</span><MarketingCta href="/app">Get started <ArrowRight size={16} aria-hidden="true" /></MarketingCta><a className="lp-text-link" href="/docs/collector">Read the setup guide <ArrowRight size={16} aria-hidden="true" /></a></div>
         </section>
 
-        <section className="figma-trust-section" id="security">
-          <div className="figma-trust-intro" data-marketing-reveal>
-            <span className="figma-landing-eyebrow">TRUST BY DEFAULT</span>
-            <h2>Your project context stays under your control.</h2>
-            <p>Continuity should stay useful, inspectable, and limited to the projects you choose.</p>
-          </div>
-          <div className="figma-trust-flow" data-marketing-reveal>
-            {trustPrinciples.map((principle) => (
-              <article key={principle.number} tabIndex={0}>
-                <div><span>{principle.number}</span><small>{principle.kicker}</small></div>
-                <h3>{principle.title}</h3><p>{principle.description}</p>
-              </article>
-            ))}
-          </div>
+        <section className="lp-section lp-container lp-faq" id="faq">
+          <div><span className="lp-eyebrow">A FEW THINGS WORTH KNOWING</span><h2>Before you <br />connect.</h2><p>More detail in the <a href="/docs/collector">setup guide</a>.</p></div>
+          <div className="lp-faq-list">{questions.map(({ question, answer }) => <details key={question}><summary>{question}<ChevronDown size={18} aria-hidden="true" /></summary><p>{answer}</p></details>)}</div>
         </section>
-
-        <section className="figma-faq-section" id="faq">
-          <div data-marketing-reveal>
-            <span className="figma-landing-eyebrow">QUESTIONS</span>
-            <h2>The important details, up front.</h2>
-            <p>Understand collection scope, hooks, memory, and agent permissions before connecting a repository.</p>
-          </div>
-          <div className="figma-faq-list" data-marketing-reveal>
-            {faqs.map((faq) => (
-              <details
-                key={faq.question}
-                onToggle={(event) => {
-                  if (event.currentTarget.open) emitMarketingInteraction("faq_open");
-                }}
-              >
-                <summary>{faq.question}<ChevronDown aria-hidden="true" size={18} /></summary>
-                <p>{faq.answer}</p>
-              </details>
-            ))}
-          </div>
-        </section>
-
-        <section className="figma-final-cta">
-          <div className="figma-final-cta-panel" data-marketing-reveal>
-            <div><span className="figma-landing-eyebrow">START WITH ONE PROJECT</span><h2>Stop re-explaining your project to AI.</h2></div>
-            <div><p>Connect one repository. Keep your current coding tools and workflow.</p><a className="figma-button is-primary" href="/app">Connect one repository</a></div>
-          </div>
-        </section>
+        <section className="lp-closing lp-container"><div><span className="lp-eyebrow">READY FOR YOUR FIRST PROJECT?</span><h2>Keep your project moving.</h2></div><MarketingCta href="/app">Get started <ArrowRight size={16} aria-hidden="true" /></MarketingCta></section>
       </div>
     </MarketingShell>
   );
