@@ -37,23 +37,6 @@
   color: var(--bh-color-danger);
 }
 
-.app-status-loading-icon {
-  color: var(--bh-color-primary);
-  animation: app-status-spin 900ms linear infinite;
-}
-
-@keyframes app-status-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .app-status-loading-icon {
-    animation: none;
-  }
-}
-
 .app-status-card h1,
 .app-status-card p {
   margin: 0;

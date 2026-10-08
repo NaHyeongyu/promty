@@ -1,3 +1,4 @@
+import { LoadingIndicator, ContentSkeleton } from "./LoadingState";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CalendarClock,
@@ -10,7 +11,6 @@ import {
   FileText,
   GitBranch,
   Languages,
-  LoaderCircle,
   MessageCircle,
   Network,
   Plus,
@@ -292,7 +292,7 @@ export function MarketingContentStudio() {
   const content = editor && isBilingualContent(editor.content) ? editor.content : null;
 
   if (isLoading && items.length === 0) {
-    return <div className="ops-loading"><LoaderCircle className="is-spinning" size={20} /><span>{text("Loading marketing studio…", "마케팅 스튜디오를 불러오는 중…")}</span></div>;
+    return <ContentSkeleton label={text("Loading marketing studio…", "마케팅 스튜디오를 불러오는 중…")} variant="cards" rows={6} />;
   }
 
   return (
@@ -305,7 +305,7 @@ export function MarketingContentStudio() {
         </div>
         <div className="marketing-studio-actions">
           <button className="toolbar-button" onClick={() => setShowCreate(true)} type="button"><Plus size={16} /> {text("New story", "새 사례")}</button>
-          <button className="toolbar-button" disabled={isLoading} onClick={() => void load()} type="button"><RefreshCw className={isLoading ? "is-spinning" : undefined} size={16} /> {text("Refresh", "새로고침")}</button>
+          <button className="toolbar-button" disabled={isLoading} onClick={() => void load()} type="button" aria-busy={isLoading || undefined}>{isLoading ? <LoadingIndicator size={16} /> : <RefreshCw size={16} />} {text("Refresh", "새로고침")}</button>
         </div>
       </header>
 
@@ -340,9 +340,9 @@ export function MarketingContentStudio() {
                 <div><span>{editor.source_type}</span><h3>{editor.campaign_name}</h3><p>{editor.source_summary}</p></div>
                 <div className="marketing-editor-controls">
                   <span className="marketing-status" data-status={editor.status}>{statusLabel(editor.status, ko)}</span>
-                  <button disabled={isMutating} onClick={generate} type="button"><Sparkles size={15} /> {text("Regenerate", "다시 생성")}</button>
-                  <button disabled={!isDirty || isMutating} onClick={() => void mutate(async () => { await save(); })} type="button"><Save size={15} /> {text("Save", "저장")}</button>
-                  <button disabled={!content || isMutating} onClick={approve} type="button"><Check size={15} /> {text("Approve both", "두 언어 승인")}</button>
+                  <button disabled={isMutating} onClick={generate} type="button" aria-busy={isMutating || undefined}><Sparkles size={15} /> {text("Regenerate", "다시 생성")}</button>
+                  <button disabled={!isDirty || isMutating} onClick={() => void mutate(async () => { await save(); })} type="button" aria-busy={isMutating || undefined}><Save size={15} /> {text("Save", "저장")}</button>
+                  <button disabled={!content || isMutating} onClick={approve} type="button" aria-busy={isMutating || undefined}><Check size={15} /> {text("Approve both", "두 언어 승인")}</button>
                   <button className="is-danger" disabled={isMutating} onClick={() => { setDeleteTarget(editor); setDeleteConfirmation(""); }} type="button"><Trash2 size={15} /> {text("Delete", "삭제")}</button>
                 </div>
               </header>
@@ -388,15 +388,15 @@ export function MarketingContentStudio() {
                   })}
                 </div>
               ) : (
-                <div className="marketing-empty-editor"><Sparkles size={22} /><h3>{text("Generate both languages", "한국어·영어 콘텐츠 생성")}</h3><p>{text("The source brief is saved. Generate channel-specific Korean and English drafts to continue.", "소스 브리프가 저장되었습니다. 채널별 한국어·영어 초안을 생성해주세요.")}</p><button disabled={isMutating} onClick={generate} type="button"><Sparkles size={15} /> {text("Generate", "생성")}</button></div>
+                <div className="marketing-empty-editor"><Sparkles size={22} /><h3>{text("Generate both languages", "한국어·영어 콘텐츠 생성")}</h3><p>{text("The source brief is saved. Generate channel-specific Korean and English drafts to continue.", "소스 브리프가 저장되었습니다. 채널별 한국어·영어 초안을 생성해주세요.")}</p><button disabled={isMutating} onClick={generate} type="button" aria-busy={isMutating || undefined}><Sparkles size={15} /> {text("Generate", "생성")}</button></div>
               )}
 
               {CHANNEL_META[activeChannel].type === "social" ? (
                 <div className="marketing-schedule-bar">
                   <CalendarClock size={16} />
                   <label>{text("Exact Buffer time", "Buffer 예약 시간")}<input min={new Date().toISOString().slice(0, 16)} onChange={(event) => setScheduleAt(event.target.value)} type="datetime-local" value={scheduleAt} /></label>
-                  <button disabled={!canDeliver || !integrations?.buffer.configured || !scheduleAt || isMutating} onClick={() => deliver("ko", "buffer_schedule")} type="button">KO {text("schedule", "예약")}</button>
-                  <button disabled={!canDeliver || !integrations?.buffer.configured || !scheduleAt || isMutating} onClick={() => deliver("en", "buffer_schedule")} type="button">EN {text("schedule", "예약")}</button>
+                  <button disabled={!canDeliver || !integrations?.buffer.configured || !scheduleAt || isMutating} onClick={() => deliver("ko", "buffer_schedule")} type="button" aria-busy={isMutating || undefined}>KO {text("schedule", "예약")}</button>
+                  <button disabled={!canDeliver || !integrations?.buffer.configured || !scheduleAt || isMutating} onClick={() => deliver("en", "buffer_schedule")} type="button" aria-busy={isMutating || undefined}>EN {text("schedule", "예약")}</button>
                 </div>
               ) : null}
             </>
@@ -419,7 +419,7 @@ export function MarketingContentStudio() {
               <label>{text("CTA URL", "CTA URL")}<input onChange={(event) => setCreateForm((current) => ({ ...current, cta_url: event.target.value }))} placeholder="https://promty.org/app" type="url" value={createForm.cta_url ?? ""} /></label>
             </div>
             <fieldset><legend>{text("Channels", "채널")}</legend><div className="marketing-create-channels">{MARKETING_CHANNELS.map((channel) => <label key={channel}><input checked={createForm.channels.includes(channel)} onChange={(event) => setCreateForm((current) => ({ ...current, channels: event.target.checked ? [...current.channels, channel] : current.channels.filter((item) => item !== channel) }))} type="checkbox" />{CHANNEL_META[channel].label}</label>)}</div></fieldset>
-            <footer><button onClick={() => setShowCreate(false)} type="button">{text("Cancel", "취소")}</button><button disabled={isMutating || createForm.channels.length === 0} type="submit">{isMutating ? <LoaderCircle className="is-spinning" size={15} /> : <Sparkles size={15} />} {text("Create and generate KO + EN", "생성하고 한국어·영어 만들기")}</button></footer>
+            <footer><button onClick={() => setShowCreate(false)} type="button">{text("Cancel", "취소")}</button><button disabled={isMutating || createForm.channels.length === 0} type="submit" aria-busy={isMutating || undefined}>{isMutating ? <LoadingIndicator size={15} /> : <Sparkles size={15} />} {text("Create and generate KO + EN", "생성하고 한국어·영어 만들기")}</button></footer>
           </form>
         </div>
       ) : null}
@@ -429,7 +429,7 @@ export function MarketingContentStudio() {
             <header><div><span>{text("DESTRUCTIVE ACTION", "삭제 작업")}</span><h3>{text("Delete marketing content", "마케팅 콘텐츠 삭제")}</h3></div><button aria-label={text("Close", "닫기")} onClick={() => setDeleteTarget(null)} type="button"><X size={18} /></button></header>
             <p>{text("This permanently deletes the story, generated variants, and recorded delivery results.", "원본 사례, 생성된 콘텐츠, 전송 기록을 영구적으로 삭제합니다.")}</p>
             <label>{text("Type", "확인을 위해")} <strong>{deleteTarget.campaign_name}</strong>{text(" to confirm", " 입력")}<input autoFocus maxLength={255} onChange={(event) => setDeleteConfirmation(event.target.value)} spellCheck="false" value={deleteConfirmation} /></label>
-            <footer><button onClick={() => setDeleteTarget(null)} type="button">{text("Cancel", "취소")}</button><button className="is-danger" disabled={isMutating || deleteConfirmation !== deleteTarget.campaign_name} type="submit">{isMutating ? <LoaderCircle className="is-spinning" size={15} /> : <Trash2 size={15} />} {text("Delete permanently", "영구 삭제")}</button></footer>
+            <footer><button onClick={() => setDeleteTarget(null)} type="button">{text("Cancel", "취소")}</button><button className="is-danger" disabled={isMutating || deleteConfirmation !== deleteTarget.campaign_name} type="submit" aria-busy={isMutating || undefined}>{isMutating ? <LoadingIndicator size={15} /> : <Trash2 size={15} />} {text("Delete permanently", "영구 삭제")}</button></footer>
           </form>
         </div>
       ) : null}

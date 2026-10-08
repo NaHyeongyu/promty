@@ -366,7 +366,6 @@
   width: 42%;
   border-radius: inherit;
   background: var(--bh-button-primary-bg-hover);
-  animation: bh-memory-generation-progress 1.2s var(--bh-ease-out) infinite;
   content: "";
 }
 
@@ -1586,7 +1585,6 @@
   height: 36px;
   border-radius: var(--bh-radius-sm);
   background: color-mix(in srgb, var(--bh-color-surface-hover) 78%, transparent);
-  animation: loading-pulse 1.8s ease-in-out infinite;
 }
 
 .bh-overview-card-skeleton {

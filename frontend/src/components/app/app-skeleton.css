@@ -1,0 +1,54 @@
+/* Eagerly loaded: the same shell covers the bundle and authentication waits. */
+.app-skeleton {
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+  background: var(--bh-color-background);
+  --skeleton-line: color-mix(in srgb, var(--bh-color-border) 48%, transparent);
+}
+.app-skeleton *, .app-skeleton *::before, .app-skeleton *::after { box-sizing: border-box; }
+.app-skeleton-block {
+  display: block;
+  max-width: 100%;
+  flex-shrink: 0;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--bh-color-surface-hover) 55%, var(--bh-color-background));
+  position: relative;
+  overflow: hidden;
+}
+.app-skeleton-header { height: 76px; display: flex; justify-content: space-between; align-items: center; gap: 24px; padding-inline: max(24px, calc((100% - 1200px) / 2)); border-bottom: 1px solid var(--skeleton-line); }
+.app-skeleton-nav { display: flex; gap: 28px; }
+.app-skeleton-marketing { width: min(1200px, calc(100% - 80px)); margin: auto; padding-top: 48px; display: flex; align-items: center; flex-direction: column; gap: 28px; }
+.app-skeleton-copy { width: min(560px, 90%); display: grid; justify-items: center; gap: 14px; }
+.app-skeleton-product { margin-top: 34px; width: 100%; min-height: 500px; border: 1px solid var(--skeleton-line); border-radius: 10px; padding: 28px; display: flex; flex-direction: column; align-items: flex-start; gap: 24px; }
+.app-skeleton-product > div:first-child { display: flex; justify-content: space-between; width: 100%; padding-bottom: 24px; margin-bottom: 8px; border-bottom: 1px solid var(--skeleton-line); }
+.app-skeleton-preview-lines { width: 100%; display: grid; gap: 34px; margin-top: 16px; }
+.app-skeleton-workspace { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; min-height: 100dvh; }
+.app-skeleton-sidebar { display: flex; flex-direction: column; gap: 44px; padding: 22px 20px; border-right: 1px solid var(--skeleton-line); }
+.app-skeleton-brand, .app-skeleton-sidebar-links > div, .app-skeleton-profile { display: flex; align-items: center; gap: 12px; }
+.app-skeleton-sidebar-links { display: grid; gap: 28px; }
+.app-skeleton-profile { margin-top: auto; padding-block: 20px 8px; }
+.app-skeleton-workspace-main { min-width: 0; padding: 36px 40px; }
+.app-skeleton-heading, .app-skeleton-tools { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.app-skeleton-heading { margin-bottom: 40px; }
+.app-skeleton-tools { margin-bottom: 22px; }
+.app-skeleton-table { border-top: 1px solid var(--skeleton-line); }
+.app-skeleton-row { display: grid; grid-template-columns: 2.3fr 1fr 1fr 1fr; align-items: center; gap: 24px; min-height: 88px; border-bottom: 1px solid var(--skeleton-line); }
+.app-skeleton-row > div { display: grid; gap: 12px; }
+.app-skeleton-auth { width: min(400px, calc(100% - 48px)); margin: 15vh auto 0; display: grid; gap: 24px; }
+.app-skeleton-document { width: min(820px, calc(100% - 64px)); margin: 64px auto; display: grid; gap: 24px; }
+.app-skeleton-document > div { display: grid; gap: 18px; margin-top: 26px; }
+@media (max-width: 760px) {
+  .app-skeleton-nav { display: none; }
+  .app-skeleton-header { height: 66px; padding-inline: 20px; }
+  .app-skeleton-marketing { width: calc(100% - 40px); gap: 24px; }
+  .app-skeleton-product { padding: 20px; min-height: 360px; }
+  .app-skeleton-workspace { grid-template-columns: 1fr; grid-template-rows: 64px 1fr; }
+  .app-skeleton-sidebar { padding: 18px 20px; border-right: 0; border-bottom: 1px solid var(--skeleton-line); }
+  .app-skeleton-sidebar-links, .app-skeleton-profile { display: none; }
+  .app-skeleton-workspace-main { padding: 28px 20px; }
+  .app-skeleton-heading { align-items: flex-start; flex-direction: column; gap: 18px; margin-bottom: 30px; }
+  .app-skeleton-tools > .app-skeleton-block:last-child { width: 24% !important; }
+  .app-skeleton-row { grid-template-columns: 1.8fr 1fr; gap: 16px; }
+  .app-skeleton-row > .app-skeleton-block:nth-last-child(-n+2) { display: none; }
+}

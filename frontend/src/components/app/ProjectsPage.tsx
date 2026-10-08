@@ -125,7 +125,7 @@ export function ProjectsPage({
               className="empty-state-button"
               disabled={isEventsLoading}
               onClick={onRetry}
-              type="button"
+              type="button" aria-busy={isEventsLoading || undefined}
             >
               <RefreshCw aria-hidden="true" size={16} strokeWidth={1.5} />
               <span>{isEventsLoading ? t("common.refreshing") : t("common.retry")}</span>

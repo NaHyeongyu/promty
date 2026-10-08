@@ -292,7 +292,6 @@
   border-radius: 50%;
   background: var(--bh-color-warning);
   box-shadow: 0 0 0 4px rgb(245 158 11 / 10%);
-  animation: collector-waiting-pulse 1.8s ease-in-out infinite;
 }
 
 .first-event-waiter[data-status="retrying"] .first-event-indicator {
@@ -522,17 +521,6 @@
   color: var(--bh-color-text-muted);
   font-size: var(--bh-font-size-small);
   line-height: var(--bh-line-height-body);
-}
-
-@keyframes collector-waiting-pulse {
-  0%,
-  100% {
-    opacity: 0.55;
-  }
-
-  50% {
-    opacity: 1;
-  }
 }
 
 @media (max-width: 760px) {

@@ -545,7 +545,7 @@ export function OverviewPanel({
                     onClick={() => {
                       void deleteCurrentProject();
                     }}
-                    type="button"
+                    type="button" aria-busy={isProjectDeleting || isProjectMetadataSaving || undefined}
                   >
                     {isProjectDeleting ? t("project.deleting") : t("project.delete")}
                   </button>
@@ -567,7 +567,7 @@ export function OverviewPanel({
                   onClick={() => {
                     setProjectTagsDraft("");
                     void saveProjectMetadata("");
-                  }}
+                  }} aria-busy={isProjectDeleting || isProjectMetadataSaving || undefined}
                 >
                   Clear tags
                 </button>
@@ -577,7 +577,7 @@ export function OverviewPanel({
                     isProjectMetadataSaving ||
                     projectNameDraft.trim().length === 0
                   }
-                  type="submit"
+                  type="submit" aria-busy={isProjectDeleting || isProjectMetadataSaving || undefined}
                 >
                   {isProjectMetadataSaving ? t("common.saving") : t("common.save")}
                 </button>
@@ -654,11 +654,11 @@ export function OverviewPanel({
                   onClick={() => {
                     setDescriptionDraft("");
                     void saveDescription("");
-                  }}
+                  }} aria-busy={isDescriptionSaving || undefined}
                 >
                   Delete
                 </button>
-                <button disabled={isDescriptionSaving} type="submit">
+                <button disabled={isDescriptionSaving} type="submit" aria-busy={isDescriptionSaving || undefined}>
                   {isDescriptionSaving ? t("common.saving") : t("common.save")}
                 </button>
               </div>

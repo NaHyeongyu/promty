@@ -229,13 +229,6 @@
 
 .auth-loading-spinner {
   color: var(--bh-color-primary);
-  animation: auth-loading-spin 900ms linear infinite;
-}
-
-@keyframes auth-loading-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

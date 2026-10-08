@@ -1,3 +1,4 @@
+import { LoadingIndicator, ContentSkeleton } from "./LoadingState";
 import { useEffect, useState } from "react";
 import {
   Activity,
@@ -11,7 +12,6 @@ import {
   ExternalLink,
   Eye,
   Globe2,
-  LoaderCircle,
   Search,
   Share2,
   TrendingUp,
@@ -393,8 +393,8 @@ export function PublicProjectsPage({
           ) : null}
           {page.total > PAGE_SIZE ? (
             <div className="public-project-pagination">
-              <button disabled={offset === 0 || isLoading} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))} type="button"><ArrowLeft size={14} /> {t("explore.previous")}</button>
-              <button disabled={offset + PAGE_SIZE >= page.total || isLoading} onClick={() => setOffset(offset + PAGE_SIZE)} type="button">{t("explore.next")} <ArrowRight size={14} /></button>
+              <button disabled={offset === 0 || isLoading} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))} type="button" aria-busy={isLoading || undefined}><ArrowLeft size={14} /> {t("explore.previous")}</button>
+              <button disabled={offset + PAGE_SIZE >= page.total || isLoading} onClick={() => setOffset(offset + PAGE_SIZE)} type="button" aria-busy={isLoading || undefined}>{t("explore.next")} <ArrowRight size={14} /></button>
             </div>
           ) : null}
         </section>
@@ -625,9 +625,9 @@ function PublicProjectDetail({
               disabled={isSaveUpdating}
               onClick={onToggleSave}
               title={detail.is_saved ? t("project.removeSaved") : t("project.saveProject")}
-              type="button"
+              type="button" aria-busy={isSaveUpdating || undefined}
             >
-              {isSaveUpdating ? <LoaderCircle aria-hidden="true" className="is-spinning" size={17} /> : <Bookmark aria-hidden="true" fill={detail.is_saved ? "currentColor" : "none"} size={17} strokeWidth={1.5} />}
+              {isSaveUpdating ? <LoadingIndicator aria-hidden="true" size={17} /> : <Bookmark aria-hidden="true" fill={detail.is_saved ? "currentColor" : "none"} size={17} strokeWidth={1.5} />}
             </button>
           ) : null}
           <button
@@ -761,8 +761,8 @@ function PublicProfileDetail({
 
       {page.total > PROFILE_PAGE_SIZE ? (
         <div className="public-project-pagination public-profile-pagination">
-          <button disabled={page.offset === 0 || isLoading} onClick={onPrevious} type="button"><ArrowLeft size={14} /> {t("explore.previous")}</button>
-          <button disabled={page.offset + PROFILE_PAGE_SIZE >= page.total || isLoading} onClick={onNext} type="button">{t("explore.next")} <ArrowRight size={14} /></button>
+          <button disabled={page.offset === 0 || isLoading} onClick={onPrevious} type="button" aria-busy={isLoading || undefined}><ArrowLeft size={14} /> {t("explore.previous")}</button>
+          <button disabled={page.offset + PROFILE_PAGE_SIZE >= page.total || isLoading} onClick={onNext} type="button" aria-busy={isLoading || undefined}>{t("explore.next")} <ArrowRight size={14} /></button>
         </div>
       ) : null}
     </section>
@@ -771,12 +771,12 @@ function PublicProfileDetail({
 
 function PublicProjectListSkeleton() {
   const { t } = useI18n();
-  return <div className="public-project-skeleton-list" aria-label={t("explore.loadingList")}>{Array.from({ length: 5 }, (_, index) => <span key={index} />)}</div>;
+  return <ContentSkeleton label={t("explore.loadingList")} rows={5} />;
 }
 
 function PublicProjectDetailSkeleton() {
   const { t } = useI18n();
-  return <div className="public-project-detail-skeleton" aria-label={t("explore.loadingDetail")}><LoaderCircle className="is-spinning" size={20} /><span /><span /><span /></div>;
+  return <ContentSkeleton label={t("explore.loadingDetail")} variant="detail" rows={4} />;
 }
 
 function PublicProjectError({ message }: { message: string }) {

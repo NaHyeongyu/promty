@@ -2571,16 +2571,6 @@ button.bh-file-tree-row:focus-visible {
   outline-offset: 2px;
 }
 
-@keyframes bh-memory-generation-progress {
-  0% {
-    transform: translateX(-110%);
-  }
-
-  100% {
-    transform: translateX(250%);
-  }
-}
-
 .bh-header-action-button.is-danger-quiet {
   border-color: color-mix(in srgb, var(--bh-color-danger) 28%, var(--bh-color-border));
   color: var(--bh-color-danger);

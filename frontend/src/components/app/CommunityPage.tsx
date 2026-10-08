@@ -304,7 +304,7 @@ export function CommunityPage({
                             {isEditing ? <X aria-hidden="true" size={15} /> : <Pencil aria-hidden="true" size={15} />}
                             <span>{isEditing ? t("common.cancel") : t("community.edit")}</span>
                           </button>
-                          <button className="toolbar-button" disabled={isSaving || selectedFlow.status === "archived"} onClick={() => void archive()} type="button">
+                          <button className="toolbar-button" disabled={isSaving || selectedFlow.status === "archived"} onClick={() => void archive()} type="button" aria-busy={isSaving || undefined}>
                             <Archive aria-hidden="true" size={15} /><span>{t("community.archive")}</span>
                           </button>
                         </>
@@ -349,7 +349,7 @@ export function CommunityPage({
                     <label><span>{t("community.summary")}</span><textarea maxLength={2000} onChange={(event) => setEditState({ ...editState, summary: event.target.value })} rows={3} value={editState.summary} /></label>
                     <label><span>{t("community.context")}</span><textarea maxLength={4000} onChange={(event) => setEditState({ ...editState, contextSummary: event.target.value })} rows={3} value={editState.contextSummary} /></label>
                     <div className="community-flow-editor-field">
-                      <div className="community-flow-editor-field-header"><span>{t("community.content")}</span>{onUploadAsset ? <><input accept="image/gif,image/jpeg,image/png,image/webp" className="bh-visually-hidden" onChange={(event) => void uploadAsset(event)} ref={assetInputRef} type="file" /><button className="toolbar-button" disabled={isUploading || isSaving} onClick={() => assetInputRef.current?.click()} type="button"><ImagePlus aria-hidden="true" size={15} /><span>{isUploading ? t("community.uploading") : t("community.image")}</span></button></> : null}</div>
+                      <div className="community-flow-editor-field-header"><span>{t("community.content")}</span>{onUploadAsset ? <><input accept="image/gif,image/jpeg,image/png,image/webp" className="bh-visually-hidden" onChange={(event) => void uploadAsset(event)} ref={assetInputRef} type="file" /><button className="toolbar-button" disabled={isUploading || isSaving} onClick={() => assetInputRef.current?.click()} type="button" aria-busy={isUploading || isSaving || undefined}><ImagePlus aria-hidden="true" size={15} /><span>{isUploading ? t("community.uploading") : t("community.image")}</span></button></> : null}</div>
                       <textarea maxLength={20000} onChange={(event) => setEditState({ ...editState, notes: event.target.value })} ref={notesRef} rows={6} value={editState.notes} />
                     </div>
                     <fieldset className="community-selection"><legend>{t("community.sharedPrompts")}</legend>{selectedFlow.items.map((item) => <label key={item.id}><input checked={editState.includedItemIds.includes(item.id)} onChange={() => setEditState({ ...editState, includedItemIds: toggleId(editState.includedItemIds, item.id) })} type="checkbox" /><span>{t("community.promptNumber", { count: item.sequence })}: {item.prompt_text.slice(0, 120)}</span></label>)}</fieldset>
@@ -360,7 +360,7 @@ export function CommunityPage({
                       <label><span>{t("common.status")}</span><select onChange={(event) => setEditState({ ...editState, status: event.target.value as CommunityFlowEditState["status"] })} value={editState.status}><option value="draft">{t("community.draft")}</option><option value="published">{t("community.published")}</option><option value="archived">{t("community.archived")}</option></select></label>
                     </div>
                     {saveError ? <div className="community-flow-error" role="alert">{saveError}</div> : null}
-                    <div className="community-flow-editor-actions"><button className="toolbar-button" onClick={() => { setEditState(editStateFor(selectedFlow)); setIsEditing(false); }} type="button"><X aria-hidden="true" size={15} /><span>{t("common.cancel")}</span></button><button className="community-flow-save-button" disabled={isSaving} onClick={() => void save()} type="button"><Check aria-hidden="true" size={15} /><span>{isSaving ? t("common.saving") : t("community.saveReview")}</span></button></div>
+                    <div className="community-flow-editor-actions"><button className="toolbar-button" onClick={() => { setEditState(editStateFor(selectedFlow)); setIsEditing(false); }} type="button"><X aria-hidden="true" size={15} /><span>{t("common.cancel")}</span></button><button className="community-flow-save-button" disabled={isSaving} onClick={() => void save()} type="button" aria-busy={isSaving || undefined}><Check aria-hidden="true" size={15} /><span>{isSaving ? t("common.saving") : t("community.saveReview")}</span></button></div>
                   </section>
                 ) : saveError ? <div className="community-flow-error" role="alert">{saveError}</div> : null}
 

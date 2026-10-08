@@ -289,7 +289,7 @@ export function SupportPage({
               <small className="support-character-count">{message.length} / 5000</small>
             </label>
 
-            <button className="support-submit-button" disabled={isSubmitting} type="submit">
+            <button className="support-submit-button" disabled={isSubmitting} type="submit" aria-busy={isSubmitting || undefined}>
               <Send aria-hidden="true" size={17} strokeWidth={1.5} />
               <span>
                 {isSubmitting ? t("support.submitting") : t("support.submit")}
