@@ -263,8 +263,8 @@ function HumanCollectorGuide() {
 
           <DocsSection id="use-memory" kicker="05" title="Use Project Memory in the next session">
             <p>
-              Captured activity becomes useful when you turn completed work into Project Memory,
-              review it, and read the approved result from a later session.
+              Captured activity becomes useful when you review the source evidence, turn it into
+              Project Memory, and separately approve the result for a later session.
             </p>
             <ol className="docs-steps">
               <Step title="Finish a meaningful coding turn">
@@ -398,7 +398,7 @@ Follow these instructions from the repository root.
 10. Run doctor with the same --tool value used for init.
 11. Report each diagnostic status. Do not claim success if any check says "needs-action".
 12. Ask the user to submit one non-sensitive test prompt in the selected tool, then confirm the new activity in Promty.
-13. When completed work is ready, ask the user to review and approve Project Memory in Promty.
+13. When source activity for a meaningful work turn is ready, ask the user to review and approve Project Memory in Promty.
 14. From a later session in the same repository, verify the approved handoff with:
     npx promty-collector@latest context --profile ${currentProfile()}
 

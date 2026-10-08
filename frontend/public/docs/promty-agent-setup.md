@@ -96,7 +96,7 @@ npx promty-collector@latest doctor --profiles dev,prod --tool <selected-tool>
 
 11. Report the status of `config`, `login`, the selected hook check, `queue`, `backend`, and `uploader`.
 12. Ask the user to submit one small, non-sensitive prompt in the selected tool and confirm that the new activity appears in Promty.
-13. When completed work is ready, ask the user to review and approve Project Memory in Promty.
+13. When source activity for a meaningful work turn is ready, ask the user to review and approve Project Memory in Promty.
 14. From a later session in the same repository, verify the approved handoff:
 
 ```bash

@@ -774,7 +774,7 @@
   padding: 22px;
 }
 
-.about-review-items button {
+.about-review-items article {
   position: relative;
   display: grid;
   grid-template-columns: 1fr auto;
@@ -787,17 +787,16 @@
   color: inherit;
   background: rgb(6 8 11 / 72%);
   text-align: left;
-  cursor: pointer;
   transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
 }
 
-.about-review-items button.is-included {
+.about-review-items article {
   border-color: rgb(159 181 215 / 36%);
   background: rgb(28 36 49 / 52%);
 }
 
-.about-review-items button > span,
-.about-review-items button > small {
+.about-review-items article > span,
+.about-review-items article > small {
   color: var(--about-accent);
   font-family: var(--bh-font-code);
   font-size: 9px;
@@ -805,18 +804,18 @@
   letter-spacing: 0.1em;
 }
 
-.about-review-items button > small {
+.about-review-items article > small {
   color: var(--about-muted);
 }
 
-.about-review-items button p {
+.about-review-items article p {
   grid-column: 1 / -1;
   color: #d9dee6;
   font-size: 14px;
   line-height: 1.5;
 }
 
-.about-review-items button > i {
+.about-review-items article > i {
   position: absolute;
   top: 50%;
   right: 18px;
@@ -831,7 +830,7 @@
   transform: translateY(-50%);
 }
 
-.about-review-items button.is-included > i {
+.about-review-items article > i {
   border-color: var(--about-accent-strong);
   background: var(--about-accent-strong);
 }
@@ -984,7 +983,7 @@
     transform: translateY(-3px);
   }
 
-  .about-review-items button:hover {
+  .about-review-items article:hover {
     border-color: rgb(178 198 229 / 32%);
     transform: translateY(-1px);
   }
@@ -1256,7 +1255,7 @@
     padding: 16px;
   }
 
-  .about-review-items button {
+  .about-review-items article {
     min-height: 124px;
   }
 
@@ -1300,7 +1299,7 @@
   .about-button,
   .about-moment-grid article,
   .about-principle-grid article,
-  .about-review-items button {
+  .about-review-items article {
     transition: none;
   }
 
