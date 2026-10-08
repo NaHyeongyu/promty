@@ -112,7 +112,7 @@ export function PolicyConsentModal({
           <button
             disabled={!acceptedPolicies || !confirmedEligibility || isSaving}
             onClick={() => void onAccept()}
-            type="button"
+            type="button" aria-busy={isSaving || undefined}
           >
             {isSaving ? t("common.saving") : t("policyConsent.continue")}
           </button>

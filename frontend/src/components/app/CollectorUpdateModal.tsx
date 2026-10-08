@@ -1,3 +1,4 @@
+import { LoadingIndicator } from "./LoadingState";
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, RefreshCw, ShieldCheck, X } from "lucide-react";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -179,7 +180,7 @@ export function CollectorUpdateModal({
 
         {isVerifying && !isComplete ? (
           <div className="collector-update-result" role="status">
-            <RefreshCw aria-hidden="true" className="is-spinning" size={17} />
+            <LoadingIndicator size={17} />
             <span><strong>{t("collector.waitingForUpdate")}</strong><small>{t("collector.waitingForHeartbeat")}</small></span>
           </div>
         ) : null}

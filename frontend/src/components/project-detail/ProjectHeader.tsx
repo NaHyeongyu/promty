@@ -210,7 +210,7 @@ export function ProjectHeader({
             disabled={isBookmarkUpdating}
             onClick={onToggleBookmark}
             title={isBookmarked ? t("project.removeSaved") : t("project.saveProject")}
-            type="button"
+            type="button" aria-busy={isBookmarkUpdating || undefined}
           >
             <Bookmark
               aria-hidden="true"

@@ -1,3 +1,4 @@
+import { LoadingIndicator } from "./LoadingState";
 import { useId, useState } from "react";
 import { Check, RefreshCw } from "lucide-react";
 import { siClaudecode } from "simple-icons";
@@ -238,7 +239,7 @@ function FirstEventWaiter({
       className="first-event-waiter"
       data-status={displayStatus}
     >
-      <span className="first-event-indicator" aria-hidden="true" />
+      {status === "connected" ? <span className="first-event-indicator" aria-hidden="true" /> : <LoadingIndicator size={20} />}
       <div aria-live="polite" role="status">
         <strong>{content.title}</strong>
         <p>{content.description}</p>
@@ -250,7 +251,7 @@ function FirstEventWaiter({
           disabled={isChecking}
           onClick={onCheckNow}
           title={isChecking ? t("collector.checkingConnection") : t("collector.checkNow")}
-          type="button"
+          type="button" aria-busy={isChecking || undefined}
         >
           <RefreshCw aria-hidden="true" size={15} strokeWidth={1.5} />
         </button>

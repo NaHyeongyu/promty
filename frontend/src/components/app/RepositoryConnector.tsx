@@ -284,7 +284,7 @@ export function RepositoryConnector({
                 <button
                   className="repository-url-submit"
                   disabled={!canSubmitManualRepository || isManualRepositorySaving}
-                  type="submit"
+                  type="submit" aria-busy={isManualRepositorySaving || undefined}
                 >
                   {isManualRepositorySaving ? manualSavingLabel : manualSubmitLabel}
                 </button>

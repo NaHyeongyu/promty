@@ -406,7 +406,6 @@
 
 .collector-update-result .is-spinning {
   flex: 0 0 auto;
-  animation: collector-update-spin 0.9s linear infinite;
 }
 
 .collector-update-dialog > footer {
@@ -427,10 +426,6 @@
   color: var(--bh-color-text-primary);
   background: var(--bh-color-surface-hover);
   cursor: pointer;
-}
-
-@keyframes collector-update-spin {
-  to { transform: rotate(360deg); }
 }
 
 .sidebar-collector-status > span {

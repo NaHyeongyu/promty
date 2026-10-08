@@ -1,3 +1,4 @@
+import { LoadingIndicator, ContentSkeleton } from "./components/app/LoadingState";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
@@ -21,7 +22,6 @@ import {
   KeyRound,
   Languages,
   LayoutDashboard,
-  LoaderCircle,
   LogOut,
   Menu,
   MessageSquareText,
@@ -752,8 +752,8 @@ export function AdminApp() {
             <button aria-pressed={locale === "ko"} data-active={locale === "ko"} onClick={() => setLocale("ko")} type="button">한</button>
             <button aria-pressed={locale === "en"} data-active={locale === "en"} onClick={() => setLocale("en")} type="button">EN</button>
           </div>
-          <button className="ops-refresh" disabled={isLoading || section === "marketing"} onClick={() => void loadData()} type="button">
-            <RefreshCw className={isLoading ? "is-spinning" : undefined} size={16} /><span>{isLoading ? text("Syncing", "동기화 중") : text("Sync", "동기화")}</span>
+          <button className="ops-refresh" disabled={isLoading || section === "marketing"} onClick={() => void loadData()} type="button" aria-busy={isLoading || undefined}>
+            {isLoading ? <LoadingIndicator size={16} /> : <RefreshCw size={16} />}<span>{isLoading ? text("Syncing", "동기화 중") : text("Sync", "동기화")}</span>
           </button>
         </header>
         <div className="ops-status-strip">
@@ -770,11 +770,13 @@ export function AdminApp() {
           </header>
           {notice ? <div className="ops-notice" role="status"><CheckCircle2 size={16} /><span>{notice}</span><button aria-label={text("Dismiss", "닫기")} onClick={() => setNotice(null)} type="button"><X size={15} /></button></div> : null}
           {errorMessage && sectionReady ? <div className="ops-error" role="alert"><AlertTriangle size={16} /><span>{errorMessage}</span></div> : null}
-          {!sectionReady ? (
-            <div className="ops-loading" data-error={!isLoading || undefined}>
-              {isLoading ? <LoaderCircle className="is-spinning" size={20} /> : <AlertTriangle size={20} />}
-              <span>{isLoading ? text("Building operational picture…", "운영 현황을 불러오는 중…") : errorMessage ?? text("The operational picture could not be loaded.", "운영 현황을 불러오지 못했습니다.")}</span>
-              {!isLoading ? <button className="toolbar-button" onClick={() => void loadData()} type="button"><RefreshCw size={16} /> {text("Retry", "다시 시도")}</button> : null}
+          {!sectionReady ? isLoading ? (
+            <ContentSkeleton label={text("Building operational picture…", "운영 현황을 불러오는 중…")} variant="cards" rows={6} />
+          ) : (
+            <div className="ops-loading" data-error="true" role="alert">
+              <AlertTriangle size={20} />
+              <span>{errorMessage ?? text("The operational picture could not be loaded.", "운영 현황을 불러오지 못했습니다.")}</span>
+              <button className="toolbar-button" onClick={() => void loadData()} type="button"><RefreshCw size={16} /> {text("Retry", "다시 시도")}</button>
             </div>
           ) : (
             <AdminSectionContent
@@ -1266,7 +1268,7 @@ function ProjectEditorDialog({ editor, isMutating, onCancel, onSave, users }: { 
           <label>{text("Tags", "태그")}<input onChange={(event) => setTags(event.target.value)} placeholder="ai, backend, product" value={tags} /></label>
           <label className="is-wide">{text("Type", "확인을 위해")} <strong>{expected}</strong>{text(" to confirm", " 입력")}<input onChange={(event) => setConfirmation(event.target.value)} spellCheck="false" value={confirmation} /></label>
         </div>
-        <div className="ops-confirm-actions"><button disabled={isMutating} onClick={onCancel} type="button">{text("Cancel", "취소")}</button><button disabled={!valid || isMutating} onClick={() => onSave({ confirmation, default_branch: defaultBranch.trim(), description: description.trim() || null, github_url: githubUrl.trim() || null, name: name.trim(), owner_id: project ? undefined : ownerId, project_url: projectUrl.trim() || null, slug: slug.trim() || null, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), visibility })} type="button">{isMutating ? <LoaderCircle className="is-spinning" size={14} /> : project ? <Pencil size={14} /> : <Plus size={14} />}{project ? text("Save project", "프로젝트 저장") : text("Create project", "프로젝트 생성")}</button></div>
+        <div className="ops-confirm-actions"><button disabled={isMutating} onClick={onCancel} type="button">{text("Cancel", "취소")}</button><button disabled={!valid || isMutating} onClick={() => onSave({ confirmation, default_branch: defaultBranch.trim(), description: description.trim() || null, github_url: githubUrl.trim() || null, name: name.trim(), owner_id: project ? undefined : ownerId, project_url: projectUrl.trim() || null, slug: slug.trim() || null, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), visibility })} type="button" aria-busy={isMutating || undefined}>{isMutating ? <LoadingIndicator size={14} /> : project ? <Pencil size={14} /> : <Plus size={14} />}{project ? text("Save project", "프로젝트 저장") : text("Create project", "프로젝트 생성")}</button></div>
       </section>
     </div>
   );
@@ -1301,7 +1303,7 @@ function ConfirmationDialog({ action, actionDetail, confirmationValue, isMutatin
         {action.kind === "issue-token" ? <label>{text("Token name", "토큰 이름")}<input autoFocus onChange={(event) => onDetailChange(event.target.value)} placeholder={text("Admin-issued collector", "관리자 발급 수집기")} value={actionDetail} /></label> : null}
         {action.kind === "suspend-user" ? <label>{text("Suspension reason", "정지 사유")}<textarea autoFocus onChange={(event) => onDetailChange(event.target.value)} rows={3} value={actionDetail} /></label> : null}
         <label>{text("Type", "확인을 위해")} <strong>{expected}</strong>{text(" to confirm", " 입력")}<input autoFocus={action.kind !== "issue-token" && action.kind !== "suspend-user"} onChange={(event) => onChange(event.target.value)} spellCheck="false" value={confirmationValue} /></label>
-        <div className="ops-confirm-actions"><button disabled={isMutating} onClick={onCancel} type="button">{text("Cancel", "취소")}</button><button className={action.kind.startsWith("delete") || action.kind === "suspend-user" ? "is-danger" : undefined} disabled={isMutating || confirmationValue !== expected || !detailValid} onClick={onConfirm} type="button">{isMutating ? <LoaderCircle className="is-spinning" size={15} /> : <ShieldAlert size={15} />} {text("Confirm action", "작업 확인")}</button></div>
+        <div className="ops-confirm-actions"><button disabled={isMutating} onClick={onCancel} type="button">{text("Cancel", "취소")}</button><button className={action.kind.startsWith("delete") || action.kind === "suspend-user" ? "is-danger" : undefined} disabled={isMutating || confirmationValue !== expected || !detailValid} onClick={onConfirm} type="button" aria-busy={isMutating || undefined}>{isMutating ? <LoadingIndicator size={15} /> : <ShieldAlert size={15} />} {text("Confirm action", "작업 확인")}</button></div>
       </section>
     </div>
   );

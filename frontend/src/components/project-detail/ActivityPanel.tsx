@@ -1,8 +1,8 @@
+import { LoadingIndicator, ContentSkeleton } from "../app/LoadingState";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Activity,
-  LoaderCircle,
   Search,
   Share2,
   Sparkles,
@@ -838,7 +838,7 @@ export function ActivityPanel({
             {view === "prompts" &&
             isPromptActivityLoading &&
             promptActivities.length === 0 ? (
-              <div className="bh-prompt-search-empty">{t("activity.loadingPrompts")}</div>
+              <ContentSkeleton label={t("activity.loadingPrompts")} rows={3} />
             ) : filteredActivityFeedItems.length > 0 ? (
               <div className="bh-prompt-list">
                 {view === "prompts"
@@ -889,7 +889,7 @@ export function ActivityPanel({
                 onClick={() => {
                   void loadMorePromptActivities();
                 }}
-                type="button"
+                type="button" aria-busy={isPromptActivityLoadingMore || undefined}
               >
                 {isPromptActivityLoadingMore ? t("activity.loading") : t("activity.loadMore")}
               </button>
@@ -957,9 +957,7 @@ export function ActivityPanel({
                       </div>
                     ) : null}
                     {isSessionPromptLoading && selectedSessionPrompts.length === 0 ? (
-                      <div className="bh-prompt-search-empty">
-                        {t("activity.loadingConversations")}
-                      </div>
+                      <ContentSkeleton label={t("activity.loadingConversations")} rows={3} />
                     ) : selectedSessionPrompts.length > 0 ? (
                       filteredSessionPrompts.length > 0 ? (
                         <>
@@ -987,7 +985,7 @@ export function ActivityPanel({
                               onClick={() => {
                                 void loadMoreSessionPrompts();
                               }}
-                              type="button"
+                              type="button" aria-busy={isSessionPromptLoadingMore || undefined}
                             >
                               {isSessionPromptLoadingMore ? t("activity.loading") : t("activity.loadMore")}
                             </button>
@@ -1133,7 +1131,7 @@ export function ActivityPanel({
                 type="button"
               >
                 {isDeletingActivity ? (
-                  <LoaderCircle aria-hidden="true" className="bh-spin" size={16} />
+                  <LoadingIndicator aria-hidden="true" size={16} />
                 ) : (
                   <Trash2 aria-hidden="true" size={16} />
                 )}

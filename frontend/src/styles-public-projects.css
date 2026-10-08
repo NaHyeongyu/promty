@@ -1359,7 +1359,6 @@
   height: 132px;
   border-radius: var(--bh-radius-sm);
   background: var(--bh-color-surface-hover);
-  animation: bh-skeleton-pulse 1.5s ease-in-out infinite;
 }
 
 .public-project-detail-skeleton {

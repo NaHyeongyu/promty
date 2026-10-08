@@ -1,3 +1,4 @@
+import { ContentSkeleton } from "./LoadingState";
 import {
   Activity,
   AlertTriangle,
@@ -120,6 +121,10 @@ export function AdminDashboard({
   const recentMemory = overview?.memory_monitor.recent_artifacts ?? [];
   const recentAdminAuditLogs = overview?.recent_admin_audit_logs ?? [];
 
+  if (!overview && !errorMessage) {
+    return <ContentSkeleton label={text("Loading administrator overview…", "관리자 개요를 불러오는 중…")} variant="cards" rows={6} />;
+  }
+
   if (!overview) {
     return (
       <section className="admin-console" aria-label={text("Admin console", "관리자 콘솔")}>
@@ -157,7 +162,7 @@ export function AdminDashboard({
             className="toolbar-button"
             disabled={isLoading}
             onClick={onRefresh}
-            type="button"
+            type="button" aria-busy={isLoading || undefined}
           >
             <RefreshCw aria-hidden="true" size={16} strokeWidth={1.5} />
             <span>{isLoading ? text("Refreshing", "새로고침 중") : text("Refresh", "새로고침")}</span>

@@ -1,3 +1,4 @@
+import { ContentSkeleton, LoadingStatus } from "./LoadingState";
 import { useEffect, useState } from "react";
 import {
   Check,
@@ -65,9 +66,9 @@ function AccountStatus({
     <div
       className="settings-status"
       data-error={error ? "true" : undefined}
-      role={error ? "alert" : "status"}
+      role={error ? "alert" : undefined}
     >
-      {error ?? t("settings.loadingAccount")}
+      {error ?? <LoadingStatus>{t("settings.loadingAccount")}</LoadingStatus>}
     </div>
   );
 }
@@ -123,6 +124,10 @@ export function UserProfilePage({
     setDeleteConfirmation("");
     setHasAcknowledgedDeletion(false);
   };
+
+  if (isAccountLoading && !accountOverview && !accountError) {
+    return <ContentSkeleton label={t("settings.loadingAccount")} variant="detail" />;
+  }
 
   return (
     <section className="profile-page" aria-label="Profile settings">
@@ -293,7 +298,7 @@ export function UserProfilePage({
               className="toolbar-button settings-danger-action"
               disabled={currentUser?.is_admin || isSaving}
               onClick={() => setIsDeleteDialogOpen(true)}
-              type="button"
+              type="button" aria-busy={isSaving || undefined}
             >
               <Trash2 aria-hidden="true" size={15} strokeWidth={1.5} />
               <span>{t("accountDeletion.open")}</span>
@@ -666,11 +671,7 @@ export function UserSettingsPage({
   if (!accountOverview) {
     return (
       <section className="settings-page" aria-label={t("settings.serviceSetup")}>
-        <EmptyState
-          description={t("auth.moment")}
-          icon={RefreshCw}
-          title={t("settings.loadingAccount")}
-        />
+        <ContentSkeleton label={t("settings.loadingAccount")} variant="detail" />
       </section>
     );
   }
@@ -703,7 +704,7 @@ export function UserSettingsPage({
             className="toolbar-button"
             disabled={isRefreshing || isAccountLoading}
             onClick={onRefreshWorkspace}
-            type="button"
+            type="button" aria-busy={isRefreshing || isAccountLoading || undefined}
           >
             <RefreshCw aria-hidden="true" size={15} strokeWidth={1.5} />
             <span>{isRefreshing || isAccountLoading ? t("common.refreshing") : t("common.refresh")}</span>
@@ -820,7 +821,7 @@ export function UserSettingsPage({
                       void onDisconnectGithub();
                     }
                   }}
-                  type="button"
+                  type="button" aria-busy={isSaving || undefined}
                 >
                   {t("settings.disconnect")}
                 </button>
@@ -875,7 +876,7 @@ export function UserSettingsPage({
                   placeholder={t("settings.token.namePlaceholder")}
                   value={collectorTokenName}
                 />
-                <button className="toolbar-button" disabled={isSaving || !collectorTokenName.trim()} type="submit">
+                <button className="toolbar-button" disabled={isSaving || !collectorTokenName.trim()} type="submit" aria-busy={isSaving || undefined}>
                   <KeyRound aria-hidden="true" size={15} strokeWidth={1.5} />
                   <span>{t("common.create")}</span>
                 </button>

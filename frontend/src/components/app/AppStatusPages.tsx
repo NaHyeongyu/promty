@@ -1,6 +1,8 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { CircleAlert, Home, LoaderCircle, RefreshCw } from "lucide-react";
+import { CircleAlert, Home, RefreshCw } from "lucide-react";
 import { useI18n } from "../../i18n/I18nProvider";
+import type { AppRoute } from "../../routing";
+import { AppSkeleton } from "./AppSkeleton";
 import { BrandLockup } from "./Branding";
 
 function StatusPage({
@@ -50,28 +52,9 @@ export function NotFoundPage() {
   );
 }
 
-export function AppLoadingPage() {
+export function AppLoadingPage({ route = "workspace" }: { route?: AppRoute }) {
   const { t } = useI18n();
-  return (
-    <main className="app-status-page">
-      <section
-        aria-label={t("auth.loading")}
-        aria-live="polite"
-        className="app-status-card"
-        role="status"
-      >
-        <div className="app-status-brand">
-          <BrandLockup />
-        </div>
-        <LoaderCircle
-          aria-hidden="true"
-          className="app-status-icon app-status-loading-icon"
-          size={30}
-        />
-        <p>{t("auth.loading")}</p>
-      </section>
-    </main>
-  );
+  return <AppSkeleton route={route} label={t("auth.loading")} />;
 }
 
 function AppCrashPage() {

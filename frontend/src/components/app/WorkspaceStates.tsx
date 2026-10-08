@@ -5,74 +5,14 @@ import {
   useState,
 } from "react";
 import type { LucideProps } from "lucide-react";
-import { BRAND_NAME } from "../../config";
+import { AppLoadingPage } from "./AppStatusPages";
 import { useI18n } from "../../i18n/I18nProvider";
 import { navigateToAppUrl } from "../../routing";
 import type { EventRecord } from "../../workspace/types";
 import { FirstRunOnboarding } from "./CollectorOnboarding";
 
 export function LoadingScreen() {
-  const { t } = useI18n();
-  return (
-    <div
-      aria-busy="true"
-      aria-label={`${BRAND_NAME} · ${t("auth.loading")}`}
-      aria-live="polite"
-      className="app-shell"
-      role="status"
-    >
-      <LoadingSidebar loadingLabel={t("auth.loading")} />
-
-      <main className="page">
-        <header className="page-header">
-          <div>
-            <h1>{t("project.projects")}</h1>
-          </div>
-        </header>
-
-        <section className="projects-section" aria-label={t("project.projects")}>
-          <ProjectListLoadingState />
-        </section>
-      </main>
-    </div>
-  );
-}
-
-function LoadingSidebar({ loadingLabel }: { loadingLabel: string }) {
-  return (
-    <aside className="sidebar sidebar-loading" aria-hidden="true">
-      <div className="sidebar-header">
-        <div className="sidebar-loading-brand">
-          <span />
-          <span />
-        </div>
-      </div>
-
-      <div className="sidebar-content">
-        <div className="sidebar-divider" />
-
-        <nav className="sidebar-nav" aria-label={loadingLabel}>
-          <div className="sidebar-loading-item">
-            <span />
-            <span />
-          </div>
-        </nav>
-
-        <div className="sidebar-spacer" />
-
-        <div className="sidebar-footer">
-          <div className="sidebar-loading-item is-profile">
-            <span />
-            <span />
-          </div>
-          <div className="sidebar-loading-item">
-            <span />
-            <span />
-          </div>
-        </div>
-      </div>
-    </aside>
-  );
+  return <AppLoadingPage route="workspace" />;
 }
 
 export function EmptyState({
@@ -138,7 +78,7 @@ export function EmptyProjectsState({
   );
 }
 
-export function ProjectListLoadingState({ delayMs = 500 }: { delayMs?: number }) {
+export function ProjectListLoadingState({ delayMs = 0 }: { delayMs?: number }) {
   const [shouldShow, setShouldShow] = useState(delayMs <= 0);
 
   useEffect(() => {

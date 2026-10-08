@@ -1052,14 +1052,6 @@
   cursor: default;
 }
 
-.is-spinning {
-  animation: ops-spin 0.8s linear infinite;
-}
-
-@keyframes ops-spin {
-  to { transform: rotate(360deg); }
-}
-
 .ops-status-strip {
   display: flex;
   min-height: 30px;

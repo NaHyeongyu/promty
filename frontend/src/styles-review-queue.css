@@ -321,12 +321,6 @@
   font-size: var(--bh-font-size-small);
 }
 
-.review-queue-loading .lucide-loader-circle,
-.review-queue-global-state > .lucide-loader-circle,
-.review-queue-primary-action .lucide-loader-circle {
-  animation: review-queue-spin 900ms linear infinite;
-}
-
 .review-queue-project-empty {
   color: var(--bh-color-success);
 }
@@ -555,11 +549,5 @@
   to {
     transform: translateY(0);
     opacity: 1;
-  }
-}
-
-@keyframes review-queue-spin {
-  to {
-    transform: rotate(360deg);
   }
 }

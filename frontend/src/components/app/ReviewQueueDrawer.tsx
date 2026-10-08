@@ -1,3 +1,4 @@
+import { ContentSkeleton } from "./LoadingState";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
@@ -10,7 +11,6 @@ import {
   ArrowRight,
   CheckCircle2,
   CircleAlert,
-  LoaderCircle,
   RefreshCw,
   Search,
   X,
@@ -489,13 +489,7 @@ export function ReviewQueueDrawer({
           ) : null}
 
           {!workspaceReady || (isQueueRefreshing && !queueRefreshError && reviewProjects.length === 0) ? (
-            <div className="review-queue-global-state" role="status">
-              <LoaderCircle aria-hidden="true" size={20} strokeWidth={1.5} />
-              <div>
-                <strong>{t("review.refreshing")}</strong>
-                <span>{t("review.checkingProjects")}</span>
-              </div>
-            </div>
+            <ContentSkeleton label={`${t("review.refreshing")} · ${t("review.checkingProjects")}`} rows={3} />
           ) : queueRefreshError && reviewProjects.length === 0 ? (
             <div className="review-queue-global-state" data-error="true" role="alert">
               <CircleAlert aria-hidden="true" size={20} strokeWidth={1.5} />
@@ -528,10 +522,7 @@ export function ReviewQueueDrawer({
                   <section className="review-queue-project" key={project.id}>
                     {projectState?.status === "loading" ||
                     (isQueueRefreshing && !projectState) ? (
-                      <div className="review-queue-loading" role="status">
-                        <LoaderCircle aria-hidden="true" size={18} strokeWidth={1.5} />
-                        <span>{t("review.loadingProject", { name: project.name })}</span>
-                      </div>
+                      <ContentSkeleton label={t("review.loadingProject", { name: project.name })} rows={2} />
                     ) : projectState?.status === "error" ? (
                       <div className="review-queue-error" role="alert">
                         <CircleAlert aria-hidden="true" size={18} strokeWidth={1.5} />

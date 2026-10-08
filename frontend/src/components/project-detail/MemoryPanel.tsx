@@ -1155,7 +1155,7 @@ export function MemoryPanel({
           className="is-danger"
           disabled={isReviewDeleting}
           onClick={() => void confirmReviewActivityDeletion()}
-          type="button"
+          type="button" aria-busy={isReviewDeleting || undefined}
         >
           {isReviewDeleting ? t("activity.deleting") : t("activity.deleteConfirm")}
         </button>
@@ -1202,7 +1202,7 @@ export function MemoryPanel({
                   kind: "prompt",
                 });
               }}
-              type="button"
+              type="button" aria-busy={isReviewDeleting || undefined}
             >
               <Trash2 aria-hidden="true" size={14} strokeWidth={1.7} />
               <span>{t("activity.deletePrompt")}</span>
@@ -1330,7 +1330,7 @@ export function MemoryPanel({
                 </div>
                 <div className="bh-memory-generation-action">
                   <button
-                    aria-busy={isGenerationActive || undefined}
+                    aria-busy={isGenerationActive || isReviewLoading || undefined}
                     aria-disabled={
                       !hasPendingDocumentation ||
                       isGenerationActive ||
@@ -1522,7 +1522,7 @@ export function MemoryPanel({
                     isReviewLoading
                   }
                   onClick={() => void acceptExternalAiAndReview()}
-                  type="button"
+                  type="button" aria-busy={isExternalAiConsentSaving || isReviewLoading || undefined}
                 >
                   {isExternalAiConsentSaving || isReviewLoading
                     ? t("memory.aiConsent.saving")
@@ -1720,7 +1720,7 @@ export function MemoryPanel({
                                       sessionId,
                                     });
                                   }}
-                                  type="button"
+                                  type="button" aria-busy={isReviewDeleting || undefined}
                                 >
                                   <Trash2 aria-hidden="true" size={14} strokeWidth={1.7} />
                                   <span>{t("activity.deleteSession")}</span>
@@ -1781,7 +1781,7 @@ export function MemoryPanel({
                     className="bh-memory-primary-action"
                     disabled={isGenerating || isReviewDeleting}
                     onClick={() => void createProjectMemory()}
-                    type="button"
+                    type="button" aria-busy={isGenerating || undefined}
                   >
                     {isGenerating ? t("memory.creating") : t("memory.review.generate")}
                   </button>
@@ -1866,6 +1866,7 @@ export function MemoryPanel({
                     </span>
                     {projectMemoryNeedsApproval && onApproveProjectMemory ? (
                       <button
+                        aria-busy={isApprovingForAgents || undefined}
                         disabled={isApprovingForAgents}
                         onClick={() => void approveForAgentUse()}
                         type="button"
@@ -1939,7 +1940,7 @@ export function MemoryPanel({
                       className="bh-memory-load-more"
                       disabled={isArtifactHistoryLoading}
                       onClick={() => void loadMoreArtifacts()}
-                      type="button"
+                      type="button" aria-busy={isArtifactHistoryLoading || undefined}
                     >
                       {isArtifactHistoryLoading
                         ? t("activity.loading")

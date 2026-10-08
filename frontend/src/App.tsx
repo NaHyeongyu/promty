@@ -16,6 +16,9 @@ const loadCollectorDocsPage = () => import("./components/docs/CollectorDocsPage"
 const loadLandingPage = () => import("./components/marketing/LandingPage");
 const loadLegalPage = () => import("./components/legal/LegalPage");
 const loadProductPage = () => import("./components/marketing/ProductPage");
+const LoadingPreview = import.meta.env.DEV
+  ? lazy(() => import("./components/app/LoadingPreview"))
+  : null;
 
 const AboutPage = lazy(() =>
   loadAboutPage().then((module) => ({ default: module.AboutPage })),
@@ -147,6 +150,14 @@ function App() {
     };
   }, []);
 
+  // Keep loading states reviewable locally without slowing down real navigation.
+  if (LoadingPreview && new URLSearchParams(window.location.search).get("loading-preview") === "states") {
+    return <Suspense fallback={<AppLoadingPage route={route} />}><LoadingPreview /></Suspense>;
+  }
+  if (import.meta.env.DEV && new URLSearchParams(window.location.search).get("loading-preview") === "true") {
+    return <AppLoadingPage route={route} />;
+  }
+
   let page;
   if (route === "about") page = <AboutPage />;
   else if (route === "admin") page = <AdminApp />;
@@ -162,7 +173,7 @@ function App() {
   else if (route === "legal-security") page = <LegalPage document="security" />;
   else page = <NotFoundPage />;
 
-  return <Suspense fallback={<AppLoadingPage />}>{page}</Suspense>;
+  return <Suspense fallback={<AppLoadingPage route={route} />}>{page}</Suspense>;
 }
 
 export default App;
